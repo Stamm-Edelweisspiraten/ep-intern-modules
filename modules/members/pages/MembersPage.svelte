@@ -1,0 +1,277 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { toast } from 'svelte-sonner';
+	import Check from '@lucide/svelte/icons/check';
+	import Minus from '@lucide/svelte/icons/minus';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Table from '$lib/components/ui/table';
+	import {
+		ColorBadge,
+		ConfirmDialog,
+		DataTable,
+		PageHeader,
+		Pagination,
+		SearchInput
+	} from '$lib/components/layout';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import {
+		STAGES,
+		STAGE_LABELS,
+		ageFromBirthDate,
+		type Group,
+		type Member,
+		type MemberList
+	} from '../schemas';
+	import MemberForm from './MemberForm.svelte';
+
+	const PAGE_SIZE = 20;
+
+	const permissions = $derived((page.data.permissions ?? []) as string[]);
+	const canEdit = $derived(can(permissions, 'members.member.edit'));
+	const canDelete = $derived(can(permissions, 'members.member.delete'));
+	const canUpload = $derived(can(permissions, 'members.storage.write'));
+	const canRemoveDoc = $derived(can(permissions, 'members.storage.delete'));
+
+	const search = $derived(page.url.searchParams.get('search') ?? '');
+	const stage = $derived(page.url.searchParams.get('stage') ?? '');
+	const groupId = $derived(page.url.searchParams.get('groupId') ?? '');
+	const offset = $derived(Math.max(0, Number(page.url.searchParams.get('offset')) || 0));
+
+	let items = $state<Member[]>([]);
+	let total = $state(0);
+	let groups = $state<Group[]>([]);
+	let loading = $state(true);
+	let loadError = $state('');
+	let reloadTick = $state(0);
+
+	let formOpen = $state(false);
+	let editMember = $state<Member | null>(null);
+	let deleteOpen = $state(false);
+	let deleteMember = $state<Member | null>(null);
+
+	function loadGroups() {
+		apiFetch<Group[]>('/modules/members/groups')
+			.then((g) => (groups = g))
+			.catch(() => {});
+	}
+
+	$effect(() => {
+		loadGroups();
+	});
+
+	$effect(() => {
+		void reloadTick;
+		const q = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+		if (search) q.set('search', search);
+		if (stage) q.set('stage', stage);
+		if (groupId) q.set('groupId', groupId);
+		let stale = false;
+		loading = true;
+		apiFetch<MemberList>(`/modules/members/members?${q}`)
+			.then((r) => {
+				if (stale) return;
+				items = r.items;
+				total = r.total;
+				loadError = '';
+			})
+			.catch((e) => {
+				if (!stale) loadError = e instanceof ApiClientError ? e.message : 'Laden fehlgeschlagen';
+			})
+			.finally(() => {
+				if (!stale) loading = false;
+			});
+		return () => {
+			stale = true;
+		};
+	});
+
+	function setFilter(key: string, value: string) {
+		const url = new URL(page.url);
+		if (value) url.searchParams.set(key, value);
+		else url.searchParams.delete(key);
+		url.searchParams.delete('offset');
+		goto(url, { keepFocus: true, noScroll: true });
+	}
+
+	function fmtDate(iso: string) {
+		const [y, m, d] = iso.split('-');
+		return `${d}.${m}.${y}`;
+	}
+
+	function fmtAge(iso: string) {
+		const a = ageFromBirthDate(iso);
+		return a === null || a < 0 ? '' : ` · ${a} J.`;
+	}
+
+	function openCreate() {
+		editMember = null;
+		loadGroups();
+		formOpen = true;
+	}
+	function openEdit(m: Member) {
+		editMember = m;
+		loadGroups();
+		formOpen = true;
+	}
+	function openDelete(m: Member) {
+		deleteMember = m;
+		deleteOpen = true;
+	}
+
+	async function confirmDelete() {
+		if (!deleteMember) return;
+		try {
+			await apiFetch(`/modules/members/members/${deleteMember.id}`, { method: 'DELETE' });
+			toast.success('Mitglied gelöscht');
+			reloadTick++;
+		} catch (e) {
+			toast.error(e instanceof ApiClientError ? e.message : 'Löschen fehlgeschlagen');
+		}
+	}
+
+	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
+	const groupOptions = $derived(groups.map((g) => ({ value: g.id, label: g.name })));
+	const consents = [
+		{ key: 'consentSocialMedia', label: 'Socialmedia' },
+		{ key: 'consentWebsite', label: 'Stammeswebsite' },
+		{ key: 'consentPrint', label: 'Print' }
+	] as const;
+</script>
+
+<svelte:head><title>Mitglieder</title></svelte:head>
+
+<PageHeader title="Mitglieder" description="Mitglieder des Stammes verwalten.">
+	{#snippet actions()}
+		{#if canEdit}
+			<Button onclick={openCreate}><UserPlus /> Mitglied anlegen</Button>
+		{/if}
+	{/snippet}
+</PageHeader>
+
+<DataTable
+	caption="Mitglieder"
+	{loading}
+	error={loadError}
+	empty={!items.length}
+	emptyTitle="Keine Mitglieder gefunden"
+	emptyDescription={search || stage || groupId
+		? 'Passe Suche oder Filter an.'
+		: 'Es wurden noch keine Mitglieder angelegt.'}
+>
+	{#snippet toolbar()}
+		<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
+		<SelectField
+			label="Nach Stand filtern"
+			emptyLabel="Alle Stände"
+			class="w-auto"
+			options={stageOptions}
+			value={stage || null}
+			onchange={(v) => setFilter('stage', v ?? '')}
+		/>
+		<SelectField
+			label="Nach Gruppe filtern"
+			emptyLabel="Alle Gruppen"
+			class="w-auto"
+			options={groupOptions}
+			value={groupId || null}
+			onchange={(v) => setFilter('groupId', v ?? '')}
+		/>
+	{/snippet}
+	{#snippet head()}
+		<Table.Row>
+			<Table.Head>Name</Table.Head>
+			<Table.Head>Stand</Table.Head>
+			<Table.Head>Gruppen</Table.Head>
+			<Table.Head>Geburtsdatum</Table.Head>
+			<Table.Head>Darf gezeigt werden</Table.Head>
+			{#if canEdit || canDelete}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
+		</Table.Row>
+	{/snippet}
+	{#each items as m (m.id)}
+		<Table.Row>
+			<Table.Cell class="font-medium">
+				{m.firstName}
+				{m.lastName}
+				{#if m.scoutName}<span class="text-muted-foreground">„{m.scoutName}“</span>{/if}
+			</Table.Cell>
+			<Table.Cell><Badge variant="secondary">{STAGE_LABELS[m.stage]}</Badge></Table.Cell>
+			<Table.Cell>
+				<div class="flex flex-wrap gap-1">
+					{#each m.groups as g (g.id)}
+						<ColorBadge color={g.color}>{g.name}</ColorBadge>
+					{/each}
+					{#if !m.groups.length}<span class="text-muted-foreground">–</span>{/if}
+				</div>
+			</Table.Cell>
+			<Table.Cell class="whitespace-nowrap">{fmtDate(m.birthDate)}{fmtAge(m.birthDate)}</Table.Cell>
+			<Table.Cell>
+				<ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+					{#each consents as c (c.key)}
+						{@const on = m[c.key]}
+						<li class="flex items-center gap-1" class:text-muted-foreground={!on}>
+							{#if on}
+								<Check class="size-3.5 text-primary" aria-hidden="true" />
+							{:else}
+								<Minus class="size-3.5" aria-hidden="true" />
+							{/if}
+							{c.label}<span class="sr-only">: {on ? 'ja' : 'nein'}</span>
+						</li>
+					{/each}
+				</ul>
+			</Table.Cell>
+			{#if canEdit || canDelete}
+				<Table.Cell class="text-right">
+					<div class="flex justify-end gap-2">
+						{#if canEdit}
+							<Button
+								size="icon"
+								variant="outline"
+								aria-label={`${m.firstName} ${m.lastName} bearbeiten`}
+								onclick={() => openEdit(m)}><Pencil /></Button
+							>
+						{/if}
+						{#if canDelete}
+							<Button
+								size="icon"
+								variant="destructive"
+								aria-label={`${m.firstName} ${m.lastName} löschen`}
+								onclick={() => openDelete(m)}><Trash2 /></Button
+							>
+						{/if}
+					</div>
+				</Table.Cell>
+			{/if}
+		</Table.Row>
+	{/each}
+	{#snippet footer()}
+		{#if items.length}<Pagination {total} limit={PAGE_SIZE} {offset} />{/if}
+	{/snippet}
+</DataTable>
+
+<MemberForm
+	bind:open={formOpen}
+	member={editMember}
+	{groups}
+	{canUpload}
+	{canRemoveDoc}
+	onsaved={() => {
+		reloadTick++;
+	}}
+/>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Mitglied löschen?"
+	description={deleteMember
+		? `${deleteMember.firstName} ${deleteMember.lastName} wird unwiderruflich gelöscht.`
+		: undefined}
+	confirmLabel="Löschen"
+	destructive
+	onconfirm={confirmDelete}
+/>
