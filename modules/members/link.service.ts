@@ -126,6 +126,12 @@ export async function buildLinkLetters(
 		const link = await ensureLinkCode(ctx, m.id as string);
 		const first = m.first_name as string;
 		const adult = isAdult(m.birth_date as string);
+		const url = linkUrl(origin, link.token);
+		const validUntil = link.expiresAt.toLocaleDateString('de-DE', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
 		inputs.push({
 			template: 'stamm-brief',
 			title: 'Konto verknüpfen',
@@ -139,6 +145,7 @@ export async function buildLinkLetters(
 				country: (m.country as string | null) ?? 'DE'
 			}),
 			content: [
+				{ type: 'paragraph', text: 'Guten Tag,' },
 				{
 					type: 'paragraph',
 					text: adult
@@ -146,26 +153,41 @@ export async function buildLinkLetters(
 						: `Mit einem Benutzerkonto in ${systemName} können Sie ${first} ${m.last_name} künftig online verwalten, z. B. bei Anmeldungen zu Aktionen. Dazu verknüpfen Sie Ihr Konto einmalig mit dem Mitglied.`
 				},
 				{
+					type: 'box',
+					image: {
+						dataUrl: await core.qr.dataUrl(url, { widthPx: 500 }),
+						widthMm: 36,
+						alt: 'QR-Code zur Verknüpfung'
+					},
+					label: 'Ihr Verknüpfungscode',
+					value: formatLinkCode(link.code),
+					lines: [`gültig bis ${validUntil}`],
+					linkLabel: 'Ohne Kamera: diese Adresse im Browser öffnen',
+					link: { href: url, text: url.replace(/^https?:\/\//, '') }
+				},
+				{ type: 'heading', level: 3, text: 'So geht’s' },
+				{
 					type: 'list',
 					ordered: true,
 					items: [
-						'QR-Code scannen oder den Link unten im Browser öffnen.',
-						'Den Code eingeben.',
-						'Anmelden oder ein neues Konto anlegen – fertig.'
+						'QR-Code mit der Handykamera scannen oder die Adresse im Browser öffnen.',
+						'Den Verknüpfungscode eingeben.',
+						'Mit Ihrem Konto anmelden oder ein neues Konto anlegen – fertig.'
 					]
 				},
+				{ type: 'heading', level: 3, text: 'Gut zu wissen' },
 				{
-					type: 'image',
-					dataUrl: await core.qr.dataUrl(linkUrl(origin, link.token), { widthPx: 500 }),
-					widthMm: 42,
-					alt: 'QR-Code zur Verknüpfung'
+					type: 'list',
+					items: [
+						...(adult
+							? []
+							: [
+									'Mehrere Personen (z. B. beide Elternteile) können den Code nutzen, jede mit einem eigenen Konto.'
+								]),
+						'Bitte geben Sie den Code nicht an Dritte weiter.'
+					]
 				},
-				{ type: 'paragraph', text: linkUrl(origin, link.token) },
-				{ type: 'heading', level: 1, text: `Code: ${formatLinkCode(link.code)}` },
-				{
-					type: 'paragraph',
-					text: `Der Code ist bis zum ${link.expiresAt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} gültig. ${adult ? '' : 'Mehrere Personen (z. B. beide Elternteile) können ihn nutzen, jede mit einem eigenen Konto. '}Bitte geben Sie den Code nicht an Dritte weiter.`
-				}
+				{ type: 'paragraph', text: 'Viele Grüße und Gut Pfad!' }
 			]
 		});
 	}

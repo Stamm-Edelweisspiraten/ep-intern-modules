@@ -83,7 +83,7 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
 
 ### Konto-Verknüpfung (`link.ts` rein, `link.service.ts`, `link.endpoints.ts`, UI `LinksDialog`, `LinkAccount`)
 Mitglied ↔ Konten n:m (Mutter+Vater ↔ Kind; Elternteil ↔ mehrere Kinder). Verknüpft wird per **Brief** (Vorlage `stamm-brief`,
-Adressfeld „Eltern von …“ + Anschrift, QR-Code, Link, Code `123 456`). Code ist mehrfach nutzbar, 90 Tage gültig; der Brief
+Adressfeld „Eltern von …“ + Anschrift; Block `box` (ohne Rahmen) mit QR-Code, großem Code `123 456`, Gültigkeit und anklickbarem Link ohne `https://`; darunter „So geht’s“ und „Gut zu wissen“, passt auf eine Seite). Code ist mehrfach nutzbar, 90 Tage gültig; der Brief
 verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem Code einen neuen (`POST …/link-code` erzwingt neu → neues Token).
 | Methode + Pfad | Recht | Besonderheiten |
 |---|---|---|
