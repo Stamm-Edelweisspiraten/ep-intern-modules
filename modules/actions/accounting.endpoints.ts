@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
+import type { ActionContributions } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import {
 	ENTRY_COLUMNS,
@@ -7,6 +8,7 @@ import {
 	closedInfo,
 	loadAutoIncome,
 	loadEntries,
+	loadTreasuryContributions,
 	mapEntry
 } from './accounting-core';
 import { payeeTotals, summarize } from './accounting';
@@ -120,7 +122,12 @@ interface LoadedState {
 	closedBy: string | null;
 }
 
-async function loadState(tx: Tx, ctx: RequestContext, actionId: string): Promise<LoadedState> {
+async function loadState(
+	tx: Tx,
+	ctx: RequestContext,
+	actionId: string,
+	treasury: ActionContributions | null
+): Promise<LoadedState> {
 	const closed = await closedInfo(tx, actionId);
 	const entries = await loadEntries(tx, actionId);
 	const plan = await loadPlan(tx, actionId);
@@ -130,7 +137,7 @@ async function loadState(tx: Tx, ctx: RequestContext, actionId: string): Promise
 			FROM accounting_entries WHERE action_id = ${actionId}`
 	);
 	const summaryEntries = toSummaryEntries(raw);
-	const autoIncome = await loadAutoIncome(tx, actionId, summaryEntries);
+	const autoIncome = await loadAutoIncome(tx, actionId, summaryEntries, treasury);
 	const canViewPayouts = core.permissions.has(ctx, 'actions.payout.view');
 	let payees: AccountingPayee[] | null = null;
 	if (canViewPayouts) {
@@ -225,11 +232,13 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
+			const treasury = await loadTreasuryContributions(id);
 			const loaded = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
-				return loadState(tx, ctx, id);
+				return loadState(tx, ctx, id, treasury);
 			});
 			const { state, closedBy } = loaded;
+			state.payoutsViaTreasury = await core.modules.isEnabled('treasury');
 			if (state.closed && closedBy) {
 				const found = await core.users.directory(ctx, { ids: [closedBy], limit: 30 });
 				const u = found.find((x) => x.id === closedBy);

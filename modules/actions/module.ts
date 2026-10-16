@@ -18,6 +18,7 @@ import m0009 from './migrations/0009_subsidy_eligibility.sql?raw';
 import m0010 from './migrations/0010_member_registration.sql?raw';
 import { refundEndpoints } from './refund.endpoints';
 import { exportImportEndpoints } from './export-import.endpoints';
+import { actionsService } from './service';
 
 export default defineModule({
 	manifest: {
@@ -25,6 +26,8 @@ export default defineModule({
 		name: 'Aktionen',
 		version: '1.1.0',
 		dependencies: ['members'],
+		/** Kasse: tatsaechlich eingegangene Beitraege fuer die Abrechnung (`TreasuryService`) */
+		optionalDependencies: ['treasury'],
 		permissions: [
 			'actions.action.view',
 			'actions.action.create',
@@ -45,6 +48,8 @@ export default defineModule({
 			}
 		]
 	},
+	/** Dienste für abhängige Module (Vertrag: `contract.ts`) */
+	provides: actionsService as unknown as Record<string, unknown>,
 	settings: [
 		{
 			key: 'actions.bank.holder',

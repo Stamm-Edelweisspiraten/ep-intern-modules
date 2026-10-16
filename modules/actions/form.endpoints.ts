@@ -4,6 +4,7 @@ import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$l
 import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
 import type { FormDefinition, FormValues } from '$lib/forms/types';
 import type { LinkedMemberData, MembersService } from '$lib/modules/members/contract';
+import type { TreasuryService } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import {
 	STATUS_CONFLICT_MESSAGES,
@@ -444,6 +445,14 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 	}
 	let emailSent = false;
 	if (m.email) {
+		// Kasse aktiv: Rechnung als PDF an die Bestaetigung haengen (Fehler verhindern die Mail nicht)
+		let invoice: Awaited<ReturnType<TreasuryService['invoiceForRegistration']>> = null;
+		try {
+			const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+			invoice = treasury ? await treasury.invoiceForRegistration(loaded.id, participantId) : null;
+		} catch (e) {
+			console.error('[actions] Rechnung zur Anmeldung nicht erstellt:', e);
+		}
 		try {
 			const mail = buildConfirmationMail({
 				actionName: action.name,
@@ -452,7 +461,14 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 				birthDate: m.birthDate,
 				disclaimer
 			});
-			await core.mail.send({ to: m.email, ...mail });
+			if (invoice) {
+				mail.text += '\n\nDie Rechnung für den Teilnahmebeitrag findest du im Anhang.';
+			}
+			await core.mail.send({
+				to: m.email,
+				...mail,
+				...(invoice ? { attachments: [invoice] } : {})
+			});
 			emailSent = true;
 		} catch {
 			emailSent = false;

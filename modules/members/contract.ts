@@ -27,6 +27,20 @@ export interface MemberFieldDefinition {
 	field: FieldDefinition;
 }
 
+/** Kontaktdaten fuer Systemfunktionen anderer Module (z. B. Kasse: Zahler, Mails) */
+export interface MemberContact {
+	id: string;
+	firstName: string;
+	lastName: string;
+	/** JJJJ-MM-TT */
+	birthDate: string;
+	/** Alle E-Mail-Adressen in Reihenfolge */
+	emails: string[];
+	street: string;
+	postalCode: string;
+	city: string;
+}
+
 export interface MembersService {
 	/** Mit dem Konto verknüpfte Mitglieder (`ctx.userId` Pflicht) */
 	listLinkedMembers(ctx: import('$lib/sdk/types').RequestContext): Promise<LinkedMemberData[]>;
@@ -41,6 +55,15 @@ export interface MembersService {
 		memberId: string,
 		values: Record<string, FormValue>
 	): Promise<string[]>;
+	/**
+	 * Kontaktdaten ohne Verknuepfungs- oder Rechtepruefung – der AUFRUFER prueft seine eigenen Rechte.
+	 * `ids` (≤ 1000) oder `search` (Vor-/Nach-/Pfadname); ohne beides alle (≤ `limit`, Standard 1000).
+	 */
+	listMemberContacts(query: {
+		ids?: string[];
+		search?: string;
+		limit?: number;
+	}): Promise<MemberContact[]>;
 	/** Aktive Zusatzfelder (für den Formular-Builder anderer Module) */
 	listFieldDefinitions(): Promise<MemberFieldDefinition[]>;
 }

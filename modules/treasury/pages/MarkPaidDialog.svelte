@@ -1,0 +1,146 @@
+<script lang="ts">
+	import { toast } from 'svelte-sonner';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import { FormField, MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
+	import {
+		markPaidInput,
+		type Account,
+		type AllocationResult,
+		type InvoiceSummary
+	} from '../schemas';
+	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
+
+	let {
+		open = $bindable(false),
+		invoice,
+		accounts,
+		onsaved
+	}: {
+		open?: boolean;
+		invoice: InvoiceSummary | null;
+		accounts: Account[];
+		onsaved: () => void | Promise<void>;
+	} = $props();
+
+	let accountId = $state<string | null>(null);
+	let bookedOn = $state(todayIso());
+	let amountCents = $state(0);
+	let counterparty = $state('');
+	let notify = $state(true);
+	let busy = $state(false);
+	let error = $state('');
+	let errors = $state<Record<string, string>>({});
+
+	$effect(() => {
+		if (!open || !invoice) return;
+		accountId = defaultAccountId(accounts);
+		bookedOn = todayIso();
+		amountCents = invoice.openCents;
+		counterparty = invoice.recipientName;
+		notify = true;
+		error = '';
+		errors = {};
+	});
+
+	const accountOptions = $derived(
+		accounts.filter((a) => !a.archived).map((a) => ({ value: a.id, label: a.name }))
+	);
+
+	async function submit(e: SubmitEvent) {
+		e.preventDefault();
+		if (!invoice) return;
+		const parsed = markPaidInput.safeParse({
+			accountId: accountId ?? undefined,
+			bookedOn,
+			amountCents,
+			counterparty,
+			notify
+		});
+		if (!parsed.success) {
+			errors = issuesToErrors(parsed.error.issues);
+			return;
+		}
+		busy = true;
+		error = '';
+		try {
+			const r = await apiFetch<AllocationResult>(`${BASE}/invoices/${invoice.id}/mark-paid`, {
+				method: 'POST',
+				body: JSON.stringify(parsed.data)
+			});
+			toast.success(
+				r.mailsSent ? `Zahlung erfasst, ${r.mailsSent} Bestätigung(en) gesendet` : 'Zahlung erfasst'
+			);
+			open = false;
+			await onsaved();
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				error = err.message;
+				errors = fieldErrorsFrom(err.details);
+			} else error = 'Speichern fehlgeschlagen';
+		} finally {
+			busy = false;
+		}
+	}
+</script>
+
+<Dialog.Root bind:open>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Zahlung erfassen</Dialog.Title>
+			<Dialog.Description>
+				{#if invoice}
+					{invoice.number} · {invoice.recipientName} · offen {formatEuro(invoice.openCents)}
+				{/if}
+			</Dialog.Description>
+		</Dialog.Header>
+		<form class="space-y-4" onsubmit={submit} novalidate>
+			<FormField label="Konto *" id="mp-account" error={errors.accountId}>
+				<SelectField
+					id="mp-account"
+					label="Konto"
+					options={accountOptions}
+					bind:value={accountId}
+					invalid={!!errors.accountId}
+				/>
+			</FormField>
+			<div class="grid grid-cols-2 gap-4">
+				<FormField label="Betrag *" id="mp-amount" error={errors.amountCents}>
+					<MoneyInput
+						id="mp-amount"
+						label="Betrag"
+						bind:cents={amountCents}
+						max={invoice?.openCents}
+						invalid={!!errors.amountCents}
+					/>
+				</FormField>
+				<FormField label="Datum *" id="mp-date" error={errors.bookedOn}>
+					<Input id="mp-date" type="date" bind:value={bookedOn} />
+				</FormField>
+			</div>
+			<FormField label="Gezahlt von" id="mp-counterparty" error={errors.counterparty}>
+				<Input id="mp-counterparty" bind:value={counterparty} maxlength={140} />
+			</FormField>
+			<div class="flex items-center gap-2">
+				<Switch id="mp-notify" bind:checked={notify} />
+				<Label for="mp-notify">Bestätigung per E-Mail, wenn vollständig bezahlt</Label>
+			</div>
+			{#if !accountOptions.length}
+				<p class="text-sm text-muted-foreground">Lege zuerst unter „Einstellungen“ ein Konto an.</p>
+			{/if}
+			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			<Dialog.Footer>
+				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
+				<Button type="submit" disabled={busy || !accountOptions.length}>
+					{busy ? 'Speichert …' : 'Zahlung buchen'}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>

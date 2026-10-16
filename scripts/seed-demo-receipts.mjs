@@ -5,7 +5,6 @@ import { writeFileSync } from 'node:fs';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const BASE = 'http://127.0.0.1:4300';
-const ACTION = 'bdddf2e9-e17f-469f-835d-55225525bfa6';
 const headers = { origin: 'http://localhost:4300' };
 
 const login = await fetch(`${BASE}/api/auth/sign-in/email`, {
@@ -17,6 +16,14 @@ const cookie = login.headers
 	.getSetCookie()
 	.map((c) => c.split(';')[0])
 	.join('; ');
+const list = await (
+	await fetch(`${BASE}/api/v1/modules/actions/actions?search=Kopenhagen`, {
+		headers: { ...headers, cookie }
+	})
+).json();
+const ACTION = list.data.items.find((a) => a.name === 'Kopenhagen 2026')?.id;
+if (!ACTION)
+	throw new Error('Demo-Aktion "Kopenhagen 2026" fehlt (node scripts/seed-demo-modules.mjs)');
 const api = (path, init = {}) =>
 	fetch(`${BASE}/api/v1/modules/actions/actions/${ACTION}/accounting${path}`, {
 		...init,

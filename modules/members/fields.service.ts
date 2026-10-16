@@ -6,7 +6,12 @@ import {
 	type FieldDefinition,
 	type FormValue
 } from '$lib/forms';
-import type { LinkedMemberData, MemberFieldDefinition, MembersService } from './contract';
+import type {
+	LinkedMemberData,
+	MemberContact,
+	MemberFieldDefinition,
+	MembersService
+} from './contract';
 import {
 	MEMBER_FIELDS_MAX,
 	MEMBER_FIELD_PRESETS,
@@ -214,7 +219,54 @@ async function toLinked(tx: Tx, list: Row[]): Promise<LinkedMemberData[]> {
 	}));
 }
 
+async function memberContacts(
+	tx: Tx,
+	query: { ids?: string[]; search?: string; limit?: number }
+): Promise<MemberContact[]> {
+	const limit = Math.min(Math.max(1, Math.floor(query.limit ?? 1000)), 1000);
+	if (query.ids && !query.ids.length) return [];
+	const search = query.search?.trim();
+	const p = search ? `%${search.replace(/[\\%_]/g, '\\$&')}%` : '';
+	const where = query.ids
+		? sql`m.id IN (${sql.join(
+				query.ids.slice(0, 1000).map((v) => sql`${v}`),
+				sql`, `
+			)})`
+		: search
+			? sql`(m.first_name ILIKE ${p} OR m.last_name ILIKE ${p} OR m.scout_name ILIKE ${p}
+				OR (m.first_name || ' ' || m.last_name) ILIKE ${p})`
+			: sql`TRUE`;
+	const list = await rows(
+		tx,
+		sql`SELECT m.id, m.first_name, m.last_name, to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date,
+			m.street, m.postal_code, m.city FROM members m WHERE ${where}
+			ORDER BY m.last_name, m.first_name, m.id LIMIT ${limit}`
+	);
+	if (!list.length) return [];
+	const emails = await rows(
+		tx,
+		sql`SELECT member_id, value FROM member_emails WHERE member_id IN (${sql.join(
+			list.map((r) => sql`${r.id as string}`),
+			sql`, `
+		)}) ORDER BY position, id`
+	);
+	return list.map((r) => ({
+		id: r.id as string,
+		firstName: r.first_name as string,
+		lastName: r.last_name as string,
+		birthDate: r.birth_date as string,
+		emails: emails.filter((e) => e.member_id === r.id).map((e) => e.value as string),
+		street: (r.street as string | null) ?? '',
+		postalCode: (r.postal_code as string | null) ?? '',
+		city: (r.city as string | null) ?? ''
+	}));
+}
+
 export const membersService: MembersService = {
+	listMemberContacts(query) {
+		return mdb().transaction((tx) => memberContacts(tx, query));
+	},
+
 	async listLinkedMembers(ctx) {
 		if (!ctx.userId) throw errors.unauthenticated();
 		const userId = ctx.userId;

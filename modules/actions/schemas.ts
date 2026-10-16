@@ -970,6 +970,12 @@ export interface AutoIncome {
 		teamCount: number;
 		feeCents: number;
 		teamFeeCents: number;
+		/** `treasury`: tatsaechlich eingegangene Zahlungen aus der Kasse (Ist statt Soll) */
+		source?: 'calculated' | 'treasury';
+		/** nur bei `treasury`: Soll, offen, Anzahl Rechnungen */
+		dueCents?: number;
+		openCents?: number;
+		invoiceCount?: number;
 	} | null;
 	subsidy: { cents: number; eligibleCount: number } | null;
 	/** Kategorien, fuer die manuelle Buchungen die Automatik ersetzen */
@@ -985,6 +991,8 @@ export interface AccountingState {
 	/** `null` ohne `actions.payout.view` */
 	payees: AccountingPayee[] | null;
 	canViewPayouts: boolean;
+	/** Kasse aktiv: Auslagen werden dort ausgezahlt und hier automatisch markiert */
+	payoutsViaTreasury?: boolean;
 }
 
 /** Eintrag fuer die reinen Funktionen in accounting.ts. */

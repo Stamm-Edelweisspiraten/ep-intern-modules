@@ -6,6 +6,7 @@ import {
 	assertOpen,
 	closedInfo,
 	loadAutoIncome,
+	loadTreasuryContributions,
 	loadEntries,
 	loadRefundSnapshot
 } from './accounting-core';
@@ -393,6 +394,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
 			const withBank = core.permissions.has(ctx, PAYOUT_PERMISSION);
+			const treasury = await loadTreasuryContributions(id);
 			const data = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const [a] = await rowsOf(
@@ -414,7 +416,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 						WHERE action_id = ${id} AND receipt_path IS NOT NULL`
 				);
 				const refund = await loadRefundSnapshot(tx, id);
-				const autoIncome = await loadAutoIncome(tx, id, entries);
+				const autoIncome = await loadAutoIncome(tx, id, entries, treasury);
 				return { a, entries, closed, payees, receipts, refund, autoIncome };
 			});
 

@@ -252,7 +252,14 @@
 		<RefundCard {actionId} {editable} {reloadKey} onchanged={load} />
 
 		{#if canViewPayouts}
-			<PayoutsSection {actionId} payees={acc.payees} {canViewPayouts} {editable} onchanged={load} />
+			<PayoutsSection
+				{actionId}
+				payees={acc.payees}
+				{canViewPayouts}
+				{editable}
+				viaTreasury={!!acc.payoutsViaTreasury}
+				onchanged={load}
+			/>
 		{/if}
 	</div>
 

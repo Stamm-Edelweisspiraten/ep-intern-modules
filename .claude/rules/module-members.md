@@ -67,7 +67,8 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
   Eigene Felder: text, textarea, select, multiselect, boolean (max. 40); Antworten sind immer freiwillig. Werte deaktivierter Felder bleiben erhalten.
 - `GET /fields` (member.view), `PUT /fields` (`members.field.manage`, ersetzt die Liste; Seite „Zusatzfelder“ mit `FormBuilder`). Audit `members.field.updated`.
 - **Dienst `MembersService`** (`provides` in `module.ts`, Vertrag `contract.ts`): `listLinkedMembers(ctx)`, `getLinkedMember(ctx,id)` (404 wenn nicht mit `ctx.userId` verknüpft),
-  `updateMemberFields(ctx,id,values)` (nur aktive Zusatzfelder, nur verknüpfte Mitglieder, Audit `members.member.fields_updated` mit Schlüsseln, ohne Werte), `listFieldDefinitions()`.
+  `updateMemberFields(ctx,id,values)` (nur aktive Zusatzfelder, nur verknüpfte Mitglieder, Audit `members.member.fields_updated` mit Schlüsseln, ohne Werte), `listFieldDefinitions()`,
+  `listMemberContacts({ids?,search?,limit?})` (Name, Geburtsdatum, alle E-Mails, Anschrift – **ohne** Rechteprüfung; genutzt von der Kasse).
   Abruf nur über `core.modules.use<MembersService>('members', '<caller>')` (Aufrufer muss `members` in `dependencies` führen).
 - **Gesundheitsdaten (Ernährung, Allergien, Medikamente) liegen unverschlüsselt in `members.custom`** – Verschlüsselung/Sonderrecht wäre ein Folgeschritt (DSGVO).
 

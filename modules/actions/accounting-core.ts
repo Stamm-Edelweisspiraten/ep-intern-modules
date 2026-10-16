@@ -1,6 +1,7 @@
 /** Gemeinsame Datenbank-Hilfen der Abrechnung (Buchungen, Abschlussstatus). */
 import { sql } from 'drizzle-orm';
-import { errors, type Tx } from '$lib/sdk/server';
+import { core, errors, type Tx } from '$lib/sdk/server';
+import type { ActionContributions, TreasuryService } from '$lib/modules/treasury/contract';
 import { rowsOf } from './access';
 import { computeAutoIncome } from './auto-income';
 import type { EligibilityParticipant } from './subsidy-eligibility';
@@ -154,7 +155,8 @@ export async function loadEligibilityParticipants(
 export async function loadAutoIncome(
 	tx: Tx,
 	actionId: string,
-	entries: { type: EntryType; category: string }[]
+	entries: { type: EntryType; category: string }[],
+	treasury: ActionContributions | null = null
 ): Promise<AutoIncome> {
 	const [act] = await rowsOf(
 		tx,
@@ -183,6 +185,24 @@ export async function loadAutoIncome(
 						participants
 					}
 				: null,
-		entries
+		entries,
+		treasury
 	});
+}
+
+/**
+ * Tatsaechlich eingegangene Beitraege aus der Kasse (optional, nur wenn das Modul aktiv ist).
+ * AUSSERHALB der Modul-Transaktion aufrufen und an `loadAutoIncome` uebergeben.
+ */
+export async function loadTreasuryContributions(
+	actionId: string
+): Promise<ActionContributions | null> {
+	const svc = await core.modules.useOptional<TreasuryService>('treasury', 'actions');
+	if (!svc) return null;
+	try {
+		return await svc.contributionsForAction(actionId);
+	} catch (e) {
+		console.error('[actions] Kasse nicht erreichbar:', e);
+		return null;
+	}
 }

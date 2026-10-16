@@ -121,6 +121,13 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
   (n × x € + m × y €)“ bzw. „Zuschuss laut Kalkulation (n berechtigte Personen)“ in den Einnahme-Gruppen; Anlagenverzeichnis unverändert.
 - Fallstrick: Automatik hat kein Datum/keinen Beleg und ist nicht als Buchung vorhanden (nicht editier-/löschbar).
 
+## Kasse (optionale Abhängigkeit `treasury`)
+- `manifest.optionalDependencies: ['treasury']`; `actions` stellt `actionsService` bereit (`contract.ts`: `listReceivableSources`,
+  `listActionRefs` – ohne Objektrechte, der Aufrufer prüft).
+- `loadTreasuryContributions(actionId)` (VOR der Transaktion) → an `loadAutoIncome(…, treasury)` / `loadRefund(…, treasury)`:
+  Führt die Kasse Rechnungen zur Aktion, zählen bei Teilnehmerbeiträgen die **eingegangenen Zahlungen**
+  (`contributions.source = 'treasury'`, dazu `dueCents`, `openCents`, `invoiceCount`); sonst wie bisher n × Beitrag.
+
 ## Anmeldung mit Mitglied (Migration 0010, `dependencies: ['members']`)
 - `actions` hängt hart von `members` ab (Aktivieren nur mit aktivem `members`, `members` nicht deaktivierbar). Zugriff auf Mitgliedsdaten **nur** über `core.modules.use<MembersService>('members','actions')`
   (`form.endpoints.ts` `membersService()`), außerhalb von Modul-Transaktionen.
@@ -217,4 +224,4 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - Rückzahlung: ganze Euro abrunden, > 5 € je Person, Hinweis nur im PDF, Zahlung = Markieren.
 - Core-Services (`storage`, `crypto`, `audit`, `pdf`, `mail`) **außerhalb** der Modul-Transaktion (PGlite hängt sonst).
 - IBAN/Namen nie in Audit-`metadata`; `payouts.csv` Format vorläufig (ggf. SEPA-XML).
-- Offen: Zahlungseingänge je Teilnehmende*r (eigenes Modul), Auszahlungsformat, `docs/` um `actions` ergänzen.
+- Zahlungseingänge je Teilnehmende*r: Modul `treasury` (siehe `rules/module-treasury.md`). Offen: Auszahlungsformat, `docs/` um `actions` ergänzen.

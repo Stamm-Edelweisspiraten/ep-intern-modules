@@ -21,6 +21,13 @@ export interface AutoIncomeInput {
 	};
 	/** Manuelle Buchungen (nur Typ und Kategorie noetig) */
 	entries: { type: EntryType; category: string }[];
+	/** Zahlungseingaenge aus der Kasse: ersetzen die berechneten Beitraege (Ist statt Soll) */
+	treasury?: {
+		invoiceCount: number;
+		dueCents: number;
+		paidCents: number;
+		openCents: number;
+	} | null;
 }
 
 const nat = (v: unknown): number =>
@@ -28,17 +35,27 @@ const nat = (v: unknown): number =>
 
 export function computeAutoIncome(input: AutoIncomeInput): AutoIncome {
 	let contributions: AutoIncome['contributions'] = null;
-	if (input.feeCents != null) {
+	const treasury = input.treasury && input.treasury.invoiceCount > 0 ? input.treasury : null;
+	if (input.feeCents != null || treasury) {
 		const feeCents = nat(input.feeCents);
 		const teamFeeCents = nat(input.teamFeeCents);
 		const payingCount = nat(input.payingCount);
 		const teamCount = nat(input.teamCount);
+		const calculated = payingCount * feeCents + teamCount * teamFeeCents;
 		contributions = {
-			cents: payingCount * feeCents + teamCount * teamFeeCents,
+			cents: treasury ? nat(treasury.paidCents) : calculated,
 			payingCount,
 			teamCount,
 			feeCents,
-			teamFeeCents
+			teamFeeCents,
+			source: treasury ? 'treasury' : 'calculated',
+			...(treasury
+				? {
+						dueCents: nat(treasury.dueCents),
+						openCents: nat(treasury.openCents),
+						invoiceCount: nat(treasury.invoiceCount)
+					}
+				: {})
 		};
 	}
 	let subsidy: AutoIncome['subsidy'] = null;
