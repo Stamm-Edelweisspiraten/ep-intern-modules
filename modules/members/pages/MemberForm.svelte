@@ -8,6 +8,9 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { ContactListField, FileField, FormField } from '$lib/components/layout';
 	import { SelectField } from '$lib/components/ui/select-field';
+	import { FormRenderer } from '$lib/components/forms';
+	import type { FieldDefinition, FormValues } from '$lib/forms';
+	import AddressFields from './AddressFields.svelte';
 	import {
 		DOCUMENT_CONTENT_TYPES,
 		DOCUMENT_KINDS,
@@ -58,7 +61,13 @@
 	let scoutName = $state('');
 	let birthDate = $state('');
 	const age = $derived(birthDate ? ageFromBirthDate(birthDate) : null);
-	let address = $state('');
+	/** Aktive Zusatzfelder und deren Werte */
+	let customFields = $state<FieldDefinition[]>([]);
+	let custom = $state<FormValues>({});
+	let street = $state('');
+	let postalCode = $state('');
+	let city = $state('');
+	let country = $state('DE');
 	let phones = $state<{ name: string; value: string }[]>([]);
 	let emails = $state<{ name: string; value: string }[]>([]);
 	let stage = $state<Stage | ''>('');
@@ -83,7 +92,12 @@
 		lastName = m?.lastName ?? '';
 		scoutName = m?.scoutName ?? '';
 		birthDate = m?.birthDate ?? '';
-		address = m?.address ?? '';
+		custom = {};
+		void loadCustomFields(m?.custom ?? {});
+		street = m?.street ?? '';
+		postalCode = m?.postalCode ?? '';
+		city = m?.city ?? '';
+		country = m?.country ?? 'DE';
 		phones = m ? toRows(m.phones) : [];
 		emails = m ? toRows(m.emails) : [];
 		stage = m?.stage ?? '';
@@ -100,6 +114,20 @@
 		fieldErrors = {};
 		busy = false;
 	});
+
+	async function loadCustomFields(values: Record<string, unknown>) {
+		try {
+			const r = await apiFetch<{ fields: { active: boolean; field: FieldDefinition }[] }>(
+				'/modules/members/fields'
+			);
+			customFields = r.fields.filter((d) => d.active).map((d) => d.field);
+			custom = Object.fromEntries(
+				customFields.map((f) => [f.key, (values[f.key] ?? null) as FormValues[string]])
+			);
+		} catch {
+			customFields = [];
+		}
+	}
 
 	async function uploadDoc(id: string, kind: DocumentKind, file: File) {
 		const fd = new FormData();
@@ -158,7 +186,10 @@
 		'lastName',
 		'scoutName',
 		'birthDate',
-		'address',
+		'street',
+		'postalCode',
+		'city',
+		'country',
 		'phones',
 		'emails',
 		'stage',
@@ -169,7 +200,10 @@
 		lastName: 'm-last',
 		scoutName: 'm-scout',
 		birthDate: 'm-birth',
-		address: 'm-address',
+		street: 'm-street',
+		postalCode: 'm-postal',
+		city: 'm-city',
+		country: 'm-country',
 		phones: 'm-phones',
 		emails: 'm-emails',
 		stage: 'm-stage',
@@ -230,14 +264,18 @@
 			lastName,
 			scoutName: scoutName || null,
 			birthDate,
-			address,
+			street,
+			postalCode,
+			city,
+			country,
 			phones: keep('phones'),
 			emails: keep('emails'),
 			stage: stage as Stage,
 			groupIds,
 			consentSocialMedia,
 			consentWebsite,
-			consentPrint
+			consentPrint,
+			custom: { ...custom }
 		};
 		const parsed = memberInput.safeParse(input);
 		const errs: Record<string, string> = {};
@@ -249,7 +287,6 @@
 			}
 		}
 		if (!stage) errs.stage = 'Bitte einen Stand wählen';
-		if (hasGroups && !groupIds.length) errs.groupIds = 'Mindestens eine Gruppe auswählen';
 		if (!parsed.success || Object.keys(errs).length) {
 			fieldErrors = errs;
 			error = 'Bitte die markierten Felder prüfen.';
@@ -358,16 +395,7 @@
 					</div>
 				</FormField>
 			</div>
-			<FormField label="Adresse *" id="m-address" error={fieldErrors.address}>
-				<Input
-					id="m-address"
-					aria-invalid={!!fieldErrors.address}
-					aria-describedby={fieldErrors.address ? 'm-address-error' : undefined}
-					bind:value={address}
-					required
-					maxlength={300}
-				/>
-			</FormField>
+			<AddressFields bind:street bind:postalCode bind:city bind:country errors={fieldErrors} />
 
 			<div class="grid gap-4">
 				<ContactListField
@@ -407,20 +435,17 @@
 				{#if hasGroups}
 					<MultiSelect
 						id="m-groups"
-						label="Gruppen *"
+						label="Gruppen"
 						options={groupOptions}
 						bind:value={groupIds}
-						placeholder="Gruppen auswählen"
+						placeholder="Gruppen auswählen (optional)"
 						searchPlaceholder="Gruppe suchen …"
 						emptyText="Keine Gruppe gefunden."
 						invalid={!!fieldErrors.groupIds}
 					/>
 				{:else}
 					<p class="text-sm font-medium">Gruppen</p>
-					<p class="text-sm text-muted-foreground">
-						Noch keine Gruppen vorhanden – lege das Mitglied zuerst ohne Gruppe an und erstelle dann
-						eine Gruppe.
-					</p>
+					<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
 				{/if}
 				{#if fieldErrors.groupIds}
 					<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
@@ -441,6 +466,22 @@
 					</label>
 				</div>
 			</fieldset>
+
+			{#if customFields.length}
+				<fieldset class="space-y-3">
+					<legend class="text-sm font-medium">Weitere Angaben</legend>
+					<FormRenderer
+						definition={{ version: 1, fields: customFields }}
+						bind:values={custom}
+						idPrefix="m-custom"
+						errors={Object.fromEntries(
+							Object.entries(fieldErrors)
+								.filter(([k]) => k.startsWith('custom.'))
+								.map(([k, v]) => [k.slice(7), v])
+						)}
+					/>
+				</fieldset>
+			{/if}
 
 			<div class="grid gap-4 sm:grid-cols-2">
 				{#each docs as d (d.kind)}

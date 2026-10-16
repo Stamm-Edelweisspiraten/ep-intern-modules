@@ -11,6 +11,15 @@ export const NO_FEE_TEXT = 'den noch festzulegenden Beitrag';
 
 // --- Standarddefinition -----------------------------------------------------
 
+/** Standardfelder, die an Zusatzfelder des Mitglieds gebunden sind (Vorbelegung + Rückschreiben) */
+export const MEMBER_KEY_BY_STANDARD: Record<string, string> = {
+	[K.diet]: 'ernaehrung',
+	[K.allergies]: 'allergien'
+};
+
+/** Stammdatenfelder, die bei einer Anmeldung mit Mitglied aus dem Mitglied kommen (nicht abgefragt) */
+export const IDENTITY_KEYS: string[] = [K.name, K.group, K.birthDate, K.bremenResident, K.email];
+
 function yesNoOptions() {
 	return [
 		{ value: 'yes', label: 'Ja' },
@@ -62,6 +71,7 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Ernährung',
 			required: true,
 			locked: true,
+			memberKey: MEMBER_KEY_BY_STANDARD[K.diet],
 			options: dietOptions()
 		},
 		{
@@ -70,7 +80,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			type: 'textarea',
 			label: 'Unverträglichkeiten und Allergien',
 			required: false,
-			locked: true
+			locked: true,
+			memberKey: MEMBER_KEY_BY_STANDARD[K.allergies]
 		},
 		{
 			id: K.notes,
@@ -132,6 +143,9 @@ export function mergeStandardFields(
 			fields.push(std);
 		} else {
 			const merged = { ...f, locked: true } as FieldDefinition;
+			if (MEMBER_KEY_BY_STANDARD[f.key]) {
+				merged.memberKey = MEMBER_KEY_BY_STANDARD[f.key];
+			}
 			if (f.key === K.diet || f.key === K.bremenResident) {
 				(merged as { options: unknown }).options = (std as { options: unknown }).options;
 			}
@@ -166,6 +180,68 @@ export function toPublicDefinition(
 		}
 	}
 	return { ...def, fields };
+}
+
+// --- Anmeldung mit Mitglied ---------------------------------------------------
+
+/** Wohnort Bremen/Bremerhaven (Land DE, Ort ohne Beachtung der Gross-/Kleinschreibung) */
+export function isBremenCity(city: string, country: string): boolean | null {
+	if (!city.trim()) return null;
+	if (country && country !== 'DE') return false;
+	return /^(freie hansestadt )?(bremen|bremerhaven)$/i.test(city.trim());
+}
+
+/** Definition ohne die Stammdatenfelder, die aus dem Mitglied kommen (für Validierung/Anzeige). */
+export function withoutIdentityFields(def: FormDefinition): FormDefinition {
+	return { ...def, fields: def.fields.filter((f) => !IDENTITY_KEYS.includes(f.key)) };
+}
+
+export interface MemberForRegistration {
+	firstName: string;
+	lastName: string;
+	birthDate: string;
+	groups: { name: string }[];
+	email: string | null;
+	city: string;
+	country: string;
+	custom: Record<string, unknown>;
+}
+
+/** Werte der Stammdatenfelder, die der SERVER aus dem Mitglied setzt (Client-Angaben werden ignoriert). */
+export function identityValues(m: MemberForRegistration, accountEmail: string | null): FormValues {
+	const bremen = isBremenCity(m.city, m.country);
+	const groups = m.groups.map((g) => g.name).join(', ');
+	return {
+		[K.name]: `${m.firstName} ${m.lastName}`.replace(/\s+/g, ' ').trim(),
+		[K.group]: groups ? groups.slice(0, 150) : null,
+		[K.birthDate]: m.birthDate,
+		[K.bremenResident]: bremen === null ? null : bremen ? 'yes' : 'no',
+		[K.email]: m.email ?? accountEmail
+	};
+}
+
+/** Vorbelegung: Wert je Formularfeld aus den Zusatzfeldern des Mitglieds (`memberKey`). */
+export function prefillValues(def: FormDefinition, custom: Record<string, unknown>): FormValues {
+	const out: FormValues = {};
+	for (const f of def.fields) {
+		if (!f.memberKey || f.hidden || f.type === 'info') continue;
+		const v = custom[f.memberKey];
+		out[f.key] =
+			typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || Array.isArray(v)
+				? (v as FormValues[string])
+				: null;
+	}
+	return out;
+}
+
+/** Zu speichernde Zusatzfeld-Werte: je gebundenem, sichtbarem Feld der eingegebene Wert unter dem `memberKey`. */
+export function memberUpdates(def: FormDefinition, values: FormValues): FormValues {
+	const out: FormValues = {};
+	for (const f of def.fields) {
+		if (!f.memberKey || f.hidden || f.type === 'info' || !(f.key in values)) continue;
+		out[f.memberKey] = values[f.key] ?? null;
+	}
+	return out;
 }
 
 // --- Disclaimer -------------------------------------------------------------

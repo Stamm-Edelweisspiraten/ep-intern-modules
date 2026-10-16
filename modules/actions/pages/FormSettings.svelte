@@ -10,6 +10,7 @@
 		intro: string;
 		disclaimerTemplate: string;
 		privacyUrl: string;
+		requireLogin: boolean;
 		definition: FormDefinition;
 	}
 </script>
@@ -126,6 +127,17 @@
 			</span>
 		</Label>
 		<Switch id="reg-enabled" checked={draft.enabled} onCheckedChange={setEnabled} {disabled} />
+	</div>
+
+	<div class="flex items-center justify-between gap-3">
+		<Label for="reg-require-login" class="flex flex-col items-start gap-0.5">
+			<span>Anmeldung erzwingen</span>
+			<span class="text-muted-foreground text-xs font-normal">
+				Nur mit Login und verknüpftem Mitglied. Aus: Mitglieder können sich anmelden, Gäste (z. B.
+				anderer Stämme) auch ohne Konto.
+			</span>
+		</Label>
+		<Switch id="reg-require-login" bind:checked={draft.requireLogin} {disabled} />
 	</div>
 
 	<div class="flex flex-col gap-1.5">

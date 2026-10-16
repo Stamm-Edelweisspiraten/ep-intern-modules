@@ -651,6 +651,8 @@ export const formConfigInput = z
 		intro: optionalText(2000, true),
 		disclaimerTemplate: z.string().max(5000, 'Höchstens 5000 Zeichen'),
 		privacyUrl: httpUrl,
+		/** Anmeldung nur mit Login und verknüpftem Mitglied */
+		requireLogin: z.boolean().default(false),
 		definition: formDefinitionSchema
 	})
 	.superRefine((c, ctx) => {
@@ -680,6 +682,8 @@ export interface FormConfig {
 	intro: string | null;
 	disclaimerTemplate: string;
 	privacyUrl: string | null;
+	/** Login + Mitglied Pflicht (aus: optional, auch für Gäste anderer Stämme) */
+	requireLogin: boolean;
 	definition: FormDefinition;
 	/** Aktueller Status laut Konfiguration (Zeitraum/Plätze) */
 	status: FormStatus;
@@ -705,6 +709,22 @@ export interface PublicForm {
 	/** Gerenderter Disclaimer-Text (Platzhalter ersetzt) */
 	disclaimer: string;
 	privacyUrl: string | null;
+	/** Login + Mitglied Pflicht */
+	requireLogin: boolean;
+	/** Angemeldete Person (Session) oder `null` */
+	viewer: { name: string } | null;
+	/** Mit dem Konto verknüpfte Mitglieder (nur mit Session) inkl. Vorbelegung */
+	members: PublicMemberOption[];
+}
+
+export interface PublicMemberOption {
+	id: string;
+	/** Anzeigename, z. B. „Max Muster“ */
+	name: string;
+	/** Schon zu dieser Aktion angemeldet? */
+	registered: boolean;
+	/** Vorbelegte Werte je Formularfeld (`key`) aus den Zusatzfeldern des Mitglieds */
+	prefill: Record<string, string | number | boolean | string[] | null>;
 }
 
 export const publicSubmitInput = z
@@ -713,6 +733,8 @@ export const publicSubmitInput = z
 			z.string().max(40),
 			z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()])
 		),
+		/** Mit verknüpftem Mitglied anmelden (Konto Pflicht) */
+		memberId: z.uuid().optional(),
 		/** Honeypot: muss leer bleiben */
 		website: z.string().max(200).optional()
 	})
@@ -727,6 +749,8 @@ export interface PublicSubmitResult {
 	emailSent: boolean;
 	/** Gerenderter Disclaimer-Text zur Anzeige auf der Danke-Seite */
 	disclaimer: string;
+	/** Änderungen wurden im Mitgliedsprofil gespeichert (nur bei Anmeldung mit Mitglied) */
+	memberUpdated?: boolean;
 }
 
 // === Phase 4: Abrechnung ====================================================

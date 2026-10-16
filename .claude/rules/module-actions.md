@@ -6,8 +6,8 @@ paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*
 
 Freizeiten/Veranstaltungen: Stammdaten, Freigabe, Teilnehmende, Kalkulation (+ Zuschuss), öffentlicher Anmeldelink,
 Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Überschusses. Schema `mod_actions`,
-Version 1.0.0. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
-Kein Bezug zum Modul `members`: Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext).
+Version 1.1.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
+Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
 ## Dateien (`src/lib/modules/actions/`)
 | Datei | Inhalt |
@@ -120,6 +120,17 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Rückzahlung (`refund.endpoints.ts`): Überschuss enthält die angewendete Automatik. PDF: Zeile „Automatisch aus Anmeldungen
   (n × x € + m × y €)“ bzw. „Zuschuss laut Kalkulation (n berechtigte Personen)“ in den Einnahme-Gruppen; Anlagenverzeichnis unverändert.
 - Fallstrick: Automatik hat kein Datum/keinen Beleg und ist nicht als Buchung vorhanden (nicht editier-/löschbar).
+
+## Anmeldung mit Mitglied (Migration 0010, `dependencies: ['members']`)
+- `actions` hängt hart von `members` ab (Aktivieren nur mit aktivem `members`, `members` nicht deaktivierbar). Zugriff auf Mitgliedsdaten **nur** über `core.modules.use<MembersService>('members','actions')`
+  (`form.endpoints.ts` `membersService()`), außerhalb von Modul-Transaktionen.
+- `action_forms.require_login` („Anmeldung erzwingen“, Schalter in `FormSettings`), `action_participants.member_id`/`user_id` + UNIQUE `(action_id, member_id)`.
+- Formularfeld-Bindung `memberKey` (Formular-Bibliothek): Standardfelder Ernährung→`ernaehrung`, Allergien→`allergien` (`MEMBER_KEY_BY_STANDARD`); weitere per „Mitgliedsfeld hinzufügen“ (Schlüssel `mf_<key>`, `GET /actions/:id/form/member-fields`).
+- Öffentlich: `GET /public/forms/:token` liefert `requireLogin`, `viewer`, `members[]` (nur mit Session; `id`, `name`, `registered`, `prefill`). `POST …/submit` nimmt optional `memberId`:
+  `requireLogin` ohne Konto → 401, ohne `memberId` → 422, `memberId` ohne Konto 401, nicht verknüpft → 404, doppelt → 409.
+  Mit Mitglied setzt der **Server** Name, Gruppen (Namen), Geburtsdatum, Bremen (`isBremenCity`), E-Mail (Mitglied, sonst Konto) und `juleica` (Zusatzfeld); Stammdatenfelder (`IDENTITY_KEYS`) werden nicht
+  abgefragt (Client-Werte dafür → 422). Nach dem Speichern werden `memberKey`-Werte **ans Mitglied zurückgeschrieben** (`memberUpdated`; Fehler bricht die Anmeldung nicht ab).
+- UI `PublicRegistration`: Login-Karte mit `redirectTo`, Mitgliedsauswahl (bei Erzwingen Pflicht, sonst „Andere Person“), Stammdatenfelder ausgeblendet, Gesundheitsfelder vorausgefüllt.
 
 ## Anmeldeformular
 - Bibliothek `src/lib/forms/` (Typen, Feldtyp-Registry, `validateFormValues`); Komponenten `src/lib/components/forms/`.

@@ -3,13 +3,17 @@
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
+	import FileDown from '@lucide/svelte/icons/file-down';
+	import Link2 from '@lucide/svelte/icons/link-2';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import X from '@lucide/svelte/icons/x';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Table from '$lib/components/ui/table';
 	import {
 		ColorBadge,
@@ -21,13 +25,18 @@
 	} from '$lib/components/layout';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import {
+		BULK_MAX_IDS,
 		STAGES,
 		STAGE_LABELS,
 		ageFromBirthDate,
+		type BulkResult,
 		type Group,
 		type Member,
 		type MemberList
 	} from '../schemas';
+	import BulkDialog, { type BulkMode } from './BulkDialog.svelte';
+	import { downloadPdf } from './download';
+	import LinksDialog from './LinksDialog.svelte';
 	import MemberForm from './MemberForm.svelte';
 
 	const PAGE_SIZE = 20;
@@ -35,6 +44,8 @@
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canEdit = $derived(can(permissions, 'members.member.edit'));
 	const canDelete = $derived(can(permissions, 'members.member.delete'));
+	const canLinkView = $derived(can(permissions, 'members.link.view'));
+	const canLinkManage = $derived(can(permissions, 'members.link.manage'));
 	const canUpload = $derived(can(permissions, 'members.storage.write'));
 	const canRemoveDoc = $derived(can(permissions, 'members.storage.delete'));
 
@@ -54,6 +65,94 @@
 	let editMember = $state<Member | null>(null);
 	let deleteOpen = $state(false);
 	let deleteMember = $state<Member | null>(null);
+
+	// --- Sammelaktionen ---------------------------------------------------------
+	let selected = $state<string[]>([]);
+	let bulkOpen = $state(false);
+	let bulkMode = $state<BulkMode>('add-groups');
+	let bulkDeleteOpen = $state(false);
+	const showSelect = $derived(canEdit || canDelete || canLinkManage);
+	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
+	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
+
+	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeaendert wird
+	let lastFilter = '';
+	$effect(() => {
+		const key = `${search}|${stage}|${groupId}`;
+		if (lastFilter && key !== lastFilter) selected = [];
+		lastFilter = key;
+	});
+
+	function toggle(id: string, on: boolean) {
+		if (on && selected.length >= BULK_MAX_IDS && !selected.includes(id)) {
+			toast.error(`Höchstens ${BULK_MAX_IDS} Mitglieder auf einmal`);
+			return;
+		}
+		selected = on ? [...new Set([...selected, id])] : selected.filter((i) => i !== id);
+	}
+	function togglePage(on: boolean) {
+		const pageIds = items.map((m) => m.id);
+		if (!on) {
+			selected = selected.filter((i) => !pageIds.includes(i));
+			return;
+		}
+		const next = [...new Set([...selected, ...pageIds])];
+		if (next.length > BULK_MAX_IDS) toast.error(`Höchstens ${BULK_MAX_IDS} Mitglieder auf einmal`);
+		selected = next.slice(0, BULK_MAX_IDS);
+	}
+	let linksOpen = $state(false);
+	let linksMember = $state<Member | null>(null);
+	let lettersBusy = $state(false);
+	function openLinks(m: Member) {
+		linksMember = m;
+		linksOpen = true;
+	}
+	async function bulkLetters() {
+		lettersBusy = true;
+		try {
+			await downloadPdf(
+				'/api/v1/modules/members/members/link-letters.pdf',
+				{ method: 'POST', body: JSON.stringify({ ids: selected }) },
+				'Konto-Verknuepfungen.pdf'
+			);
+			toast.success(`Briefe für ${selected.length} Mitglieder erzeugt`);
+			reloadTick++;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			lettersBusy = false;
+		}
+	}
+
+	function openBulk(mode: BulkMode) {
+		bulkMode = mode;
+		loadGroups();
+		bulkOpen = true;
+	}
+	function bulkDone(r: BulkResult, verb: string) {
+		if (r.affected)
+			toast.success(`${verb}: ${r.affected} ${r.affected === 1 ? 'Mitglied' : 'Mitglieder'}`);
+		if (r.skipped.length) {
+			toast.warning(
+				`${r.skipped.length} übersprungen: ${r.skipped.map((s) => `${s.name} (${s.reason})`).join('; ')}`,
+				{ duration: 10000 }
+			);
+		}
+		if (!r.affected && !r.skipped.length) toast.info('Keine Änderung nötig');
+		selected = [];
+		reloadTick++;
+	}
+	async function confirmBulkDelete() {
+		try {
+			const r = await apiFetch<BulkResult>('/modules/members/members/bulk', {
+				method: 'POST',
+				body: JSON.stringify({ action: 'delete', ids: selected })
+			});
+			bulkDone(r, 'Gelöscht');
+		} catch (e) {
+			toast.error(e instanceof ApiClientError ? e.message : 'Löschen fehlgeschlagen');
+		}
+	}
 
 	function loadGroups() {
 		apiFetch<Group[]>('/modules/members/groups')
@@ -182,19 +281,76 @@
 			value={groupId || null}
 			onchange={(v) => setFilter('groupId', v ?? '')}
 		/>
+		{#if selected.length}
+			<div
+				class="flex w-full flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2"
+				role="region"
+				aria-label="Sammelaktionen"
+			>
+				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
+				{#if canEdit}
+					<Button size="sm" variant="outline" onclick={() => openBulk('add-groups')}>
+						Zu Gruppen hinzufügen
+					</Button>
+					<Button size="sm" variant="outline" onclick={() => openBulk('remove-groups')}>
+						Aus Gruppen entfernen
+					</Button>
+					<Button size="sm" variant="outline" onclick={() => openBulk('set-stage')}>
+						Stand setzen
+					</Button>
+					<Button size="sm" variant="outline" onclick={() => openBulk('set-consent')}>
+						Einwilligungen
+					</Button>
+				{/if}
+				{#if canLinkManage}
+					<Button size="sm" variant="outline" disabled={lettersBusy} onclick={bulkLetters}>
+						<FileDown />
+						{lettersBusy ? 'Erzeuge PDF …' : 'Verknüpfungs-Briefe (PDF)'}
+					</Button>
+				{/if}
+				{#if canDelete}
+					<Button size="sm" variant="destructive" onclick={() => (bulkDeleteOpen = true)}>
+						<Trash2 /> Löschen
+					</Button>
+				{/if}
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</div>
+		{/if}
 	{/snippet}
 	{#snippet head()}
 		<Table.Row>
+			{#if showSelect}
+				<Table.Head class="w-10">
+					<Checkbox
+						aria-label="Alle Mitglieder dieser Seite auswählen"
+						checked={allOnPage}
+						indeterminate={someOnPage}
+						onCheckedChange={(v) => togglePage(v === true)}
+					/>
+				</Table.Head>
+			{/if}
 			<Table.Head>Name</Table.Head>
 			<Table.Head>Stand</Table.Head>
 			<Table.Head>Gruppen</Table.Head>
 			<Table.Head>Geburtsdatum</Table.Head>
 			<Table.Head>Darf gezeigt werden</Table.Head>
-			{#if canEdit || canDelete}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
+			{#if canEdit || canDelete || canLinkView}<Table.Head class="text-right">Aktionen</Table.Head
+				>{/if}
 		</Table.Row>
 	{/snippet}
 	{#each items as m (m.id)}
-		<Table.Row>
+		<Table.Row data-state={selected.includes(m.id) ? 'selected' : undefined}>
+			{#if showSelect}
+				<Table.Cell>
+					<Checkbox
+						aria-label={`${m.firstName} ${m.lastName} auswählen`}
+						checked={selected.includes(m.id)}
+						onCheckedChange={(v) => toggle(m.id, v === true)}
+					/>
+				</Table.Cell>
+			{/if}
 			<Table.Cell class="font-medium">
 				{m.firstName}
 				{m.lastName}
@@ -225,9 +381,26 @@
 					{/each}
 				</ul>
 			</Table.Cell>
-			{#if canEdit || canDelete}
+			{#if canEdit || canDelete || canLinkView}
 				<Table.Cell class="text-right">
 					<div class="flex justify-end gap-2">
+						{#if canLinkView}
+							<Button
+								size="icon"
+								variant="outline"
+								class="relative"
+								aria-label={`Verknüpfte Konten von ${m.firstName} ${m.lastName} (${m.linkCount})`}
+								title={`Verknüpfte Konten: ${m.linkCount}`}
+								onclick={() => openLinks(m)}
+								><Link2 />
+								{#if m.linkCount}
+									<span
+										class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-[10px] text-primary-foreground"
+										aria-hidden="true">{m.linkCount}</span
+									>
+								{/if}
+							</Button>
+						{/if}
 						{#if canEdit}
 							<Button
 								size="icon"
@@ -254,6 +427,13 @@
 	{/snippet}
 </DataTable>
 
+<LinksDialog
+	bind:open={linksOpen}
+	member={linksMember}
+	canManage={canLinkManage}
+	onchanged={() => reloadTick++}
+/>
+
 <MemberForm
 	bind:open={formOpen}
 	member={editMember}
@@ -263,6 +443,23 @@
 	onsaved={() => {
 		reloadTick++;
 	}}
+/>
+
+<BulkDialog
+	bind:open={bulkOpen}
+	mode={bulkMode}
+	ids={selected}
+	{groups}
+	ondone={(r) => bulkDone(r, 'Geändert')}
+/>
+
+<ConfirmDialog
+	bind:open={bulkDeleteOpen}
+	title="Ausgewählte Mitglieder löschen?"
+	description={`${selected.length} ${selected.length === 1 ? 'Mitglied wird' : 'Mitglieder werden'} unwiderruflich gelöscht. Einzige Leiter von Gruppen werden übersprungen.`}
+	confirmLabel="Löschen"
+	destructive
+	onconfirm={confirmBulkDelete}
 />
 
 <ConfirmDialog

@@ -7,7 +7,10 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import { Label } from '$lib/components/ui/label';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import type { FieldDefinition } from '$lib/forms';
 	import { FormBuilder } from '$lib/components/forms';
 	import { formConfigInput, type FormConfig } from '../schemas';
 	import DisclaimerEditor from './DisclaimerEditor.svelte';
@@ -26,6 +29,44 @@
 		onopencalculation?: () => void;
 		onopenparticipants?: () => void;
 	} = $props();
+
+	// Zusatzfelder aus dem Mitgliedsprofil (zum Einbinden in das Formular)
+	let memberFields = $state<{ key: string; field: FieldDefinition }[]>([]);
+	let memberFieldPick = $state<string | null>(null);
+	const memberFieldOptions = $derived(
+		memberFields
+			.filter((m) => !draft?.definition.fields.some((f) => f.memberKey === m.key))
+			.map((m) => ({ value: m.key, label: m.field.label }))
+	);
+	$effect(() => {
+		if (!canEdit) return;
+		apiFetch<{ fields: { key: string; field: FieldDefinition }[] }>(
+			`/modules/actions/actions/${encodeURIComponent(actionId)}/form/member-fields`
+		)
+			.then((r) => (memberFields = r.fields))
+			.catch(() => (memberFields = []));
+	});
+	function addMemberField() {
+		const m = memberFields.find((x) => x.key === memberFieldPick);
+		if (!m || !draft) return;
+		const key = `mf_${m.key}`.slice(0, 40);
+		if (draft.definition.fields.some((f) => f.key === key || f.memberKey === m.key)) return;
+		const field = {
+			...m.field,
+			id: crypto.randomUUID(),
+			key,
+			memberKey: m.key,
+			required: false,
+			locked: undefined,
+			hidden: undefined
+		} as FieldDefinition;
+		// vor die Zustimmungsfelder einsortieren (diese bleiben am Ende)
+		const at = draft.definition.fields.findIndex((f) => f.type === 'consent');
+		const fields = [...draft.definition.fields];
+		fields.splice(at < 0 ? fields.length : at, 0, field);
+		draft.definition = { ...draft.definition, fields };
+		memberFieldPick = null;
+	}
 
 	const path = $derived(`/modules/actions/actions/${encodeURIComponent(actionId)}/form`);
 
@@ -50,6 +91,7 @@
 			intro: c.intro ?? '',
 			disclaimerTemplate: c.disclaimerTemplate,
 			privacyUrl: c.privacyUrl ?? '',
+			requireLogin: c.requireLogin,
 			definition: c.definition
 		};
 	}
@@ -63,6 +105,7 @@
 			intro: d.intro,
 			disclaimerTemplate: d.disclaimerTemplate,
 			privacyUrl: d.privacyUrl.trim() || null,
+			requireLogin: d.requireLogin,
 			definition: d.definition
 		};
 	}
@@ -244,7 +287,28 @@
 					<Card.Title>Formular</Card.Title>
 					<Card.Description>Standardfelder und eigene Felder der Anmeldung.</Card.Description>
 				</Card.Header>
-				<Card.Content>
+				<Card.Content class="space-y-4">
+					{#if canEdit && memberFields.length}
+						<div class="flex flex-wrap items-end gap-2">
+							<div class="min-w-48 flex-1 space-y-1.5">
+								<Label for="reg-member-field">Mitgliedsfeld hinzufügen</Label>
+								<SelectField
+									id="reg-member-field"
+									label="Mitgliedsfeld"
+									placeholder="Feld aus dem Mitgliedsprofil wählen …"
+									options={memberFieldOptions}
+									bind:value={memberFieldPick}
+								/>
+							</div>
+							<Button variant="outline" disabled={!memberFieldPick} onclick={addMemberField}>
+								Hinzufügen
+							</Button>
+						</div>
+						<p class="text-xs text-muted-foreground">
+							Mitgliedsfelder werden bei einer Anmeldung mit Mitglied vorausgefüllt; Änderungen
+							werden im Mitgliedsprofil gespeichert.
+						</p>
+					{/if}
 					<FormBuilder bind:definition={draft.definition} disabled={!canEdit} />
 				</Card.Content>
 			</Card.Root>
