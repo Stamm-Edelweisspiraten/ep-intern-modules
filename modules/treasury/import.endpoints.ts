@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
 import { loadMatchLines } from './allocation';
-import { ibanHash } from './bank';
+import { ibanHash, storeIban } from './bank';
 import {
 	applyMapping,
 	detectDelimiter,
@@ -47,7 +47,11 @@ interface ParsedUpload {
 	fileName: string;
 	headers: string[];
 	mapping: ImportMapping;
-	rows: (ParsedRow & { hash: string | null; ibanRef: { hash: string; last4: string } | null })[];
+	rows: (ParsedRow & {
+		hash: string | null;
+		ibanRef: { hash: string; last4: string } | null;
+		ibanStore: { enc: string | null } | undefined;
+	})[];
 }
 
 async function readUpload(request: Request): Promise<ParsedUpload> {
@@ -111,7 +115,8 @@ async function readUpload(request: Request): Promise<ParsedUpload> {
 	const parsedRows = applyMapping(table, mapping).map((r) => ({
 		...r,
 		hash: r.key ? hashOf(`${accountId}|${r.key}`) : null,
-		ibanRef: ibanHash(r.iban)
+		ibanRef: ibanHash(r.iban),
+		ibanStore: r.iban && ibanHash(r.iban) ? storeIban(r.iban) : undefined
 	}));
 	return {
 		accountId,
@@ -235,9 +240,11 @@ export const importEndpoints = [
 					const inserted = await rows(
 						tx,
 						sql`INSERT INTO transactions (id, account_id, booked_on, amount_cents, counterparty, purpose,
-							import_hash, import_batch_id, counterparty_iban_hash, counterparty_iban_last4, created_by)
+							import_hash, import_batch_id, counterparty_iban_hash, counterparty_iban_last4,
+							counterparty_iban_enc, created_by)
 						VALUES (${id}, ${up.accountId}, ${r.bookedOn}, ${r.amountCents}, ${r.counterparty}, ${r.purpose},
-							${r.hash}, ${batchId}, ${r.ibanRef?.hash ?? null}, ${r.ibanRef?.last4 ?? null}, ${ctx.userId})
+							${r.hash}, ${batchId}, ${r.ibanRef?.hash ?? null}, ${r.ibanRef?.last4 ?? null},
+							${r.ibanStore?.enc ?? null}, ${ctx.userId})
 						ON CONFLICT (account_id, import_hash) WHERE import_hash IS NOT NULL DO NOTHING
 						RETURNING id`
 					);

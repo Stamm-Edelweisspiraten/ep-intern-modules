@@ -72,8 +72,8 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - **Mails**: Bestätigung einmalig, sobald eine Rechnung vollständig bezahlt ist (je Adresse **eine** Mail mit allen Posten);
   `notify:false` markiert ohne Versand. Erinnerung Stufe 1 ab `firstDays` nach Fälligkeit, Stufe 2 frühestens `secondDays`
   nach Stufe 1, danach nur manuell (`POST /invoices/:id/remind`, nächste Stufe). Ohne Adresse/SMTP: kein Reminder-Eintrag.
-  Platzhalter `{name} {posten} {summe} {rechnungen} {faellig} {kontodaten} {verwendungszweck} {stufe}`; Kontodaten
-  `treasury.bank.*`, sonst `actions.bank.*`.
+  Platzhalter `{name} {posten} {summe} {rechnungen} {faellig} {kontodaten} {verwendungszweck} {stufe} {zahlung}`; Kontodaten
+  nur `treasury.bank.*` (seit Ausbaustufe 3).
 - **Ist statt Soll in `actions`**: `actions` führt `treasury` als `optionalDependencies`; `loadTreasuryContributions` (VOR der
   Transaktion) → `computeAutoIncome({ treasury })`: `contributions.cents` = eingegangene Zahlungen, `source:'treasury'`,
   `dueCents/openCents/invoiceCount`. Manuelle `contributions`-Buchungen überschreiben weiterhin. Kasse aus → wieder Soll.
@@ -98,6 +98,24 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
   nach Bearbeitung) automatisch „Geänderte Rechnung“ bzw. „Stornierung“ mit neuer Fassung an `invoiceAddresses`. Vorlage
   `treasury.mail.invoiceSubject/Body` (Platzhalter zusätzlich `{anlass}`, `{aenderung}`). Manuell: `POST /invoices/:id/send`.
 - Neue Rechte: `treasury.bank.view`, `treasury.payable.edit`.
+
+## Ausbaustufe 3 – Regeln (2026-10-16, Migration 0003)
+- **Bankdaten nur aus den Kassen-Einstellungen** (`treasury.bank.*`, `loadBankData`/`TreasuryService.bankData()`), kein Rückgriff
+  auf `actions.bank`. Bei aktiver Kasse nutzt auch die Anmeldebestätigung von `actions` diese Daten. Fehlen sie, steht „bei der
+  Kasse erfragen“ und die Übersicht warnt (`Overview.bankMissing`).
+- **Mails** (`mail-html.ts`, `mail-compose.ts` `composeMail`, Modus `paid|open`): HTML mit Postentabelle und Zahlungskasten
+  (Empfänger, IBAN, Betrag, Frist, Verwendungszweck); Platzhalter `{posten}`/`{zahlung}` werden als HTML-Block ersetzt. Neue
+  Standardtexte greifen nur, wenn nichts gespeichert ist.
+- **Rechnungs-PDF** (`documents.ts`): Eckdaten-Zeile, Postentabelle, Zahlungsblock mit **GiroCode** (`epcPayload` in `logic.ts`,
+  `core.qr.dataUrl`), Verwendungszweck `invoicePurpose`. **Sammelrechnung** je Zahler: `GET /payers/:id/statement.pdf` (alle offenen).
+- **Zahler aus Buchungen** (`payer-learning.ts`): Buchung mit `counterpartyIban` (verschlüsselt in `transactions.counterparty_iban_enc`)
+  oder `payerId`; beim Zuordnen legt `learnPayerFromTransaction` den Zahler an bzw. ergänzt IBAN (nie überschreiben) und Mitglieder
+  (bestehende Zuordnung zu anderen Zahlern bleibt). `TransactionDialog` schlägt Zahler per Autovervollständigung vor und übernimmt die IBAN.
+- **Rückzahlung/Guthaben aufs Herkunftskonto**: `syncPayables` nimmt die IBAN der zugeordneten Zahlung (`PayableDesired.ibanEnc`).
+- **Belege zu Auszahlungen**: `GET /payables/:id/receipts[/:entryId]` (`treasury.storage.read`, Belege aus der Abrechnung über `actions`).
+- **Ablage abgeschlossener Abrechnungen** (`closed-accountings.ts`, Tabelle `filed_accountings`): `GET /closed-accountings`,
+  `GET /closed-accountings/:id/pdf`, `PUT /closed-accountings/:id/filed` (`treasury.report.view`); UI im Tab Berichte.
+- Tests: `tests/integration/treasury-stage3.test.ts`, `tests/unit/treasury-mail.test.ts`.
 
 ## Rechte
 | Schlüssel | Bedeutung |

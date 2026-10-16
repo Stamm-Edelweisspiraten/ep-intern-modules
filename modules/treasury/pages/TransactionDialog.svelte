@@ -14,6 +14,7 @@
 		transactionInput,
 		type Account,
 		type Category,
+		type Payer,
 		type Transaction
 	} from '../schemas';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
@@ -24,6 +25,7 @@
 		accounts,
 		categories,
 		actions,
+		payers = [],
 		canUploadReceipt,
 		onsaved
 	}: {
@@ -32,6 +34,8 @@
 		accounts: Account[];
 		categories: Category[];
 		actions: { id: string; name: string }[];
+		/** Für die Autovervollständigung der Gegenpartei */
+		payers?: Payer[];
 		canUploadReceipt: boolean;
 		onsaved: (t: Transaction) => void | Promise<void>;
 	} = $props();
@@ -41,6 +45,9 @@
 	let bookedOn = $state(todayIso());
 	let amountCents = $state(0);
 	let counterparty = $state('');
+	let counterpartyIban = $state('');
+	let payerId = $state<string | null>(null);
+	let suggestOpen = $state(false);
 	let purpose = $state('');
 	let categoryId = $state<string | null>(null);
 	let actionId = $state<string | null>(null);
@@ -59,6 +66,9 @@
 		bookedOn = t?.bookedOn ?? todayIso();
 		amountCents = t ? Math.abs(t.amountCents) : 0;
 		counterparty = t?.counterparty ?? '';
+		counterpartyIban = '';
+		payerId = t?.payer?.id ?? null;
+		suggestOpen = false;
 		purpose = t?.purpose ?? '';
 		categoryId = t?.category?.id ?? null;
 		actionId = t?.action?.id ?? null;
@@ -106,7 +116,10 @@
 			purpose,
 			categoryId,
 			actionId,
-			note
+			note,
+			// leer = unverändert (bzw. IBAN des gewählten Zahlers)
+			counterpartyIban: counterpartyIban.trim() ? counterpartyIban : undefined,
+			payerId
 		});
 		if (!parsed.success) {
 			errors = issuesToErrors(parsed.error.issues);
@@ -155,6 +168,27 @@
 		transaction?.receipt ? `/api/v1${BASE}/transactions/${transaction.id}/receipt` : null
 	);
 	const locked = $derived(!!transaction?.transferId);
+
+	const selectedPayer = $derived(payers.find((p) => p.id === payerId) ?? null);
+	/** Vorschläge: Zahler-Name, Kontoinhaber oder Name eines Kindes passt zur Eingabe */
+	const suggestions = $derived.by(() => {
+		const q = counterparty.trim().toLowerCase();
+		if (q.length < 2 || direction !== 'income') return [];
+		return payers
+			.filter((p) =>
+				[p.name, p.accountHolder ?? '', ...p.members.map((m) => m.name)].some((n) =>
+					n.toLowerCase().includes(q)
+				)
+			)
+			.slice(0, 6);
+	});
+
+	function pickPayer(p: Payer) {
+		payerId = p.id;
+		counterparty = p.accountHolder ?? p.name;
+		counterpartyIban = '';
+		suggestOpen = false;
+	}
 </script>
 
 <Dialog.Root bind:open>
@@ -213,8 +247,76 @@
 				id="tx-counterparty"
 				error={errors.counterparty}
 			>
-				<Input id="tx-counterparty" bind:value={counterparty} maxlength={140} disabled={locked} />
+				<div class="relative">
+					<Input
+						id="tx-counterparty"
+						bind:value={counterparty}
+						maxlength={140}
+						disabled={locked}
+						autocomplete="off"
+						role="combobox"
+						aria-expanded={suggestOpen && suggestions.length > 0}
+						aria-controls="tx-counterparty-list"
+						oninput={() => {
+							suggestOpen = true;
+							if (
+								selectedPayer &&
+								counterparty !== (selectedPayer.accountHolder ?? selectedPayer.name)
+							) {
+								payerId = null;
+							}
+						}}
+						onfocus={() => (suggestOpen = true)}
+						onblur={() => setTimeout(() => (suggestOpen = false), 150)}
+					/>
+					{#if suggestOpen && suggestions.length}
+						<ul
+							id="tx-counterparty-list"
+							role="listbox"
+							class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+						>
+							{#each suggestions as p (p.id)}
+								<li role="option" aria-selected={p.id === payerId}>
+									<button
+										type="button"
+										class="flex w-full flex-col items-start rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+										onmousedown={(e) => e.preventDefault()}
+										onclick={() => pickPayer(p)}
+									>
+										<span class="font-medium">{p.name}</span>
+										<span class="text-xs text-muted-foreground">
+											{[p.accountHolder, p.ibanMasked, p.members.map((m) => m.name).join(', ')]
+												.filter(Boolean)
+												.join(' · ')}
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</div>
 			</FormField>
+			{#if direction === 'income'}
+				<FormField
+					label="IBAN der Zahler*in"
+					id="tx-iban"
+					error={errors.counterpartyIban}
+					hint={selectedPayer
+						? `Zahler: ${selectedPayer.name}${selectedPayer.ibanMasked ? ` (${selectedPayer.ibanMasked} wird übernommen)` : ''}`
+						: transaction?.counterpartyIbanLast4
+							? `Hinterlegt: •••• ${transaction.counterpartyIbanLast4} – leer lassen für unverändert`
+							: 'Optional. Beim Zuordnen zu Rechnungen legt die Kasse daraus automatisch den Zahler an.'}
+				>
+					<Input
+						id="tx-iban"
+						bind:value={counterpartyIban}
+						autocomplete="off"
+						placeholder="DE00 0000 0000 0000 0000 00"
+						disabled={locked}
+						aria-invalid={!!errors.counterpartyIban}
+					/>
+				</FormField>
+			{/if}
 			<FormField label="Verwendungszweck" id="tx-purpose" error={errors.purpose}>
 				<Input id="tx-purpose" bind:value={purpose} maxlength={300} disabled={locked} />
 			</FormField>

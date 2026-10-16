@@ -111,7 +111,8 @@ export const NEEDS_ALLOCATION_SQL = sql`(t.amount_cents > 0 AND t.transfer_id IS
 
 export const TX_COLUMNS = sql`t.id, t.account_id, a.name AS account_name, to_char(t.booked_on, 'YYYY-MM-DD') AS booked_on,
 	t.amount_cents, t.counterparty, t.purpose, t.category_id, c.name AS category_name, t.action_id, t.note,
-	t.receipt_name, t.receipt_content_type, t.transfer_id, t.import_hash, t.created_at, t.counterparty_iban_last4, t.counterparty_iban_hash,
+	t.receipt_name, t.receipt_content_type, t.transfer_id, t.import_hash, t.created_at, t.counterparty_iban_last4, t.counterparty_iban_hash, t.payer_id,
+	(SELECT py.name FROM payers py WHERE py.id = t.payer_id) AS payer_name,
 	(SELECT p.id || '|' || p.recipient_name FROM payable_payments pp JOIN payables p ON p.id = pp.payable_id
 		WHERE pp.transaction_id = t.id LIMIT 1) AS payable_ref,
 	(SELECT a2.name FROM transactions t2 JOIN accounts a2 ON a2.id = t2.account_id
@@ -168,6 +169,7 @@ export function toTransaction(t: RawTransaction, actionNames: Map<string, string
 		transferId: str(r.transfer_id),
 		transferAccountName: str(r.transfer_account),
 		counterpartyIbanLast4: str(r.counterparty_iban_last4),
+		payer: r.payer_id ? { id: String(r.payer_id), name: String(r.payer_name ?? 'Zahler') } : null,
 		payable: r.payable_ref
 			? {
 					id: String(r.payable_ref).split('|')[0]!,

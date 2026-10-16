@@ -87,12 +87,34 @@ export async function syncPayables(
 		);
 		const existingRows = await rows(
 			tx,
-			sql`SELECT p.id, p.source_ref, p.amount_cents, p.description, p.recipient_name, p.payer_id,
+			sql`SELECT p.id, p.source_ref, p.amount_cents, p.description, p.recipient_name, p.payer_id, p.iban_last4,
 				p.cancelled_at, p.auto_cancelled,
 				coalesce((SELECT sum(pp.amount_cents) FROM payable_payments pp WHERE pp.payable_id = p.id), 0) AS paid
 			FROM payables p WHERE p.source <> 'manual'`
 		);
 		const paidByRef = new Map(existingRows.map((r) => [String(r.source_ref), num(r.paid)]));
+		// Herkunftskonto: IBAN der (letzten) Zahlung, die einem Beitrag bzw. einer Rechnung zugeordnet ist
+		const originRows = await rows(
+			tx,
+			sql`SELECT DISTINCT ON (l.id) l.source_ref, l.invoice_id, t.counterparty_iban_enc, t.counterparty_iban_last4
+			FROM invoice_lines l JOIN allocations a ON a.line_id = l.id JOIN transactions t ON t.id = a.transaction_id
+			WHERE t.counterparty_iban_enc IS NOT NULL
+			ORDER BY l.id, t.booked_on DESC, t.created_at DESC`
+		);
+		const originByRef = new Map(
+			originRows
+				.filter((r) => r.source_ref)
+				.map((r) => [
+					String(r.source_ref),
+					{ enc: str(r.counterparty_iban_enc), last4: str(r.counterparty_iban_last4) }
+				])
+		);
+		const originByInvoice = new Map(
+			originRows.map((r) => [
+				String(r.invoice_id),
+				{ enc: str(r.counterparty_iban_enc), last4: str(r.counterparty_iban_last4) }
+			])
+		);
 		const actionLabel = (id: string) => actionNames.get(id) ?? 'Aktion';
 
 		const desired: PayableDesired[] = [
@@ -118,6 +140,9 @@ export async function syncPayables(
 					members
 				);
 				const payerId = memberId ? (payerByMember.get(memberId) ?? null) : null;
+				const origin = r.participantId
+					? originByRef.get(`action:${r.actionId}:${r.participantId}`)
+					: undefined;
 				return {
 					sourceRef: `refund:${r.actionId}:${r.id}`,
 					source: 'refund' as const,
@@ -127,8 +152,9 @@ export async function syncPayables(
 					amountCents: r.amountCents,
 					payerId,
 					memberId,
-					ibanLast4: payerId ? (payerBank.get(payerId)?.last4 ?? null) : null,
-					bic: payerId ? (payerBank.get(payerId)?.bic ?? null) : null
+					ibanLast4: origin?.last4 ?? (payerId ? (payerBank.get(payerId)?.last4 ?? null) : null),
+					bic: origin ? null : payerId ? (payerBank.get(payerId)?.bic ?? null) : null,
+					ibanEnc: origin?.enc ?? null
 				};
 			}),
 			...summaries
@@ -142,8 +168,15 @@ export async function syncPayables(
 					amountCents: s.creditCents,
 					payerId: s.payer?.id ?? null,
 					memberId: null,
-					ibanLast4: s.payer ? (payerBank.get(s.payer.id)?.last4 ?? null) : null,
-					bic: s.payer ? (payerBank.get(s.payer.id)?.bic ?? null) : null
+					ibanLast4:
+						originByInvoice.get(s.id)?.last4 ??
+						(s.payer ? (payerBank.get(s.payer.id)?.last4 ?? null) : null),
+					bic: originByInvoice.has(s.id)
+						? null
+						: s.payer
+							? (payerBank.get(s.payer.id)?.bic ?? null)
+							: null,
+					ibanEnc: originByInvoice.get(s.id)?.enc ?? null
 				}))
 		];
 		const existing: PayableExisting[] = existingRows.map((r) => ({
@@ -154,6 +187,7 @@ export async function syncPayables(
 			description: String(r.description),
 			recipientName: String(r.recipient_name),
 			payerId: str(r.payer_id),
+			ibanLast4: str(r.iban_last4),
 			cancelled: r.cancelled_at != null,
 			autoCancelled: Boolean(r.auto_cancelled)
 		}));
@@ -162,16 +196,18 @@ export async function syncPayables(
 		for (const d of plan.create) {
 			await tx.execute(
 				sql`INSERT INTO payables (id, source, source_ref, action_id, payer_id, member_id, recipient_name,
-					iban_last4, bic, description, amount_cents, due_on)
+					iban_last4, bic, iban_enc, description, amount_cents, due_on)
 				VALUES (${crypto.randomUUID()}, ${d.source}, ${d.sourceRef}, ${d.actionId}, ${d.payerId}, ${d.memberId},
-					${d.recipientName.slice(0, 150)}, ${d.ibanLast4}, ${d.bic}, ${d.description}, ${d.amountCents}, ${due})`
+					${d.recipientName.slice(0, 150)}, ${d.ibanLast4}, ${d.bic}, ${d.ibanEnc ?? null}, ${d.description},
+					${d.amountCents}, ${due})`
 			);
 		}
 		for (const u of plan.update) {
 			await tx.execute(
 				sql`UPDATE payables SET amount_cents = ${u.amountCents}, description = ${u.want.description},
 					recipient_name = ${u.want.recipientName.slice(0, 150)}, payer_id = ${u.want.payerId},
-					iban_last4 = ${u.want.ibanLast4}, bic = ${u.want.bic}, updated_at = now()
+					iban_last4 = ${u.want.ibanLast4}, bic = ${u.want.bic}, iban_enc = ${u.want.ibanEnc ?? null},
+					updated_at = now()
 				WHERE id = ${u.id}`
 			);
 		}
@@ -726,6 +762,118 @@ export const payableEndpoints = [
 				headers: {
 					'content-type': file.contentType,
 					'content-disposition': `inline; filename="${sanitizeName(ref.name)}"`,
+					'cache-control': 'private, no-store',
+					'x-content-type-options': 'nosniff'
+				}
+			});
+		}
+	}
+] as ApiEndpoint[];
+
+// --- Belege zu Auszahlungen ------------------------------------------------------
+
+export interface PayableReceipt {
+	id: string;
+	label: string;
+	date: string | null;
+	amountCents: number | null;
+	name: string;
+	contentType: string;
+}
+
+async function payableSource(id: string) {
+	const [p] = await mdb().transaction((tx) =>
+		rows(
+			tx,
+			sql`SELECT source, source_ref, receipt_name, receipt_content_type, amount_cents, description,
+				to_char(due_on, 'YYYY-MM-DD') AS due FROM payables WHERE id = ${id}`
+		)
+	);
+	if (!p) throw errors.notFound('Auszahlung nicht gefunden');
+	return p;
+}
+
+export const payableReceiptEndpoints = [
+	{
+		method: 'GET',
+		path: '/payables/:id/receipts',
+		summary:
+			'Belege einer Auszahlung (Eingangsrechnung bzw. Belege der Auslagen aus der Abrechnung)',
+		tags: TAGS,
+		permission: 'treasury.storage.read',
+		params: idParams,
+		handler: async ({ params }) => {
+			const { id } = params as { id: string };
+			const p = await payableSource(id);
+			const out: PayableReceipt[] = [];
+			if (p.receipt_name) {
+				out.push({
+					id: 'own',
+					label: String(p.description),
+					date: str(p.due),
+					amountCents: num(p.amount_cents),
+					name: String(p.receipt_name),
+					contentType: String(p.receipt_content_type)
+				});
+			}
+			if (p.source === 'reimbursement') {
+				const [, actionId, payeeId] = String(p.source_ref).split(':');
+				for (const r of await (
+					await actionsService()
+				).listReimbursementReceipts(actionId!, payeeId!)) {
+					out.push({
+						id: r.entryId,
+						label: r.description,
+						date: r.entryDate,
+						amountCents: r.amountCents,
+						name: r.name,
+						contentType: r.contentType
+					});
+				}
+			}
+			return out;
+		}
+	},
+	{
+		method: 'GET',
+		path: '/payables/:id/receipts/:entryId',
+		summary: 'Einzelnen Beleg einer Auszahlung anzeigen',
+		tags: TAGS,
+		permission: 'treasury.storage.read',
+		params: z.object({ id: z.uuid(), entryId: z.string().regex(/^(own|[0-9a-f-]{36})$/) }),
+		handler: async ({ ctx, params }) => {
+			const { id, entryId } = params as { id: string; entryId: string };
+			const p = await payableSource(id);
+			let file: { data: Uint8Array; name: string; contentType: string } | null = null;
+			if (entryId === 'own') {
+				const path = await mdb().transaction(async (tx) =>
+					str(
+						(await rows(tx, sql`SELECT receipt_path FROM payables WHERE id = ${id}`))[0]
+							?.receipt_path
+					)
+				);
+				if (path) {
+					const dl = await core.storage.download(ctx, { module: MODULE_ID, path });
+					file = {
+						data: new Uint8Array(dl.buffer),
+						name: String(p.receipt_name ?? 'beleg'),
+						contentType: dl.file.contentType
+					};
+				}
+			} else if (p.source === 'reimbursement') {
+				const [, actionId] = String(p.source_ref).split(':');
+				file = await (await actionsService()).downloadReceipt(actionId!, entryId);
+			}
+			if (!file) throw errors.notFound('Beleg nicht gefunden');
+			await core.audit.logFromContext(ctx, 'treasury.payable.receipt_viewed', {
+				target: id,
+				metadata: { entryId }
+			});
+			return new Response(file.data as BodyInit, {
+				status: 200,
+				headers: {
+					'content-type': file.contentType,
+					'content-disposition': `inline; filename="${sanitizeName(file.name)}"`,
 					'cache-control': 'private, no-store',
 					'x-content-type-options': 'nosniff'
 				}

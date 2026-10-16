@@ -23,5 +23,18 @@ export interface TreasuryService {
 	invoiceForRegistration(
 		actionId: string,
 		participantId: string
-	): Promise<{ filename: string; contentType: 'application/pdf'; data: Uint8Array } | null>;
+	): Promise<RegistrationInvoice | null>;
+	/** Bankdaten aus den Kassen-Einstellungen (leere Felder = nicht gepflegt) */
+	bankData(): Promise<{ holder: string; iban: string; bic: string; name: string }>;
+}
+
+export interface RegistrationInvoice {
+	filename: string;
+	contentType: 'application/pdf';
+	data: Uint8Array;
+	number: string;
+	totalCents: number;
+	/** Zahlungsangaben fuer die Bestaetigungsmail (Text bzw. HTML-Block) */
+	paymentText: string;
+	paymentHtml: string;
 }

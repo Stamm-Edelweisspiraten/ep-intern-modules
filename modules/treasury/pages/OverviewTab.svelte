@@ -116,6 +116,20 @@
 	</Card.Root>
 {:else if data}
 	<div class="space-y-6">
+		{#if data.bankMissing}
+			<div
+				class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/50 bg-amber-50 px-4 py-3 text-sm dark:bg-amber-950/30"
+				role="alert"
+			>
+				<span>
+					<strong>Kontodaten fehlen.</strong> Rechnungen, Mails und Anmeldebestätigungen enthalten erst
+					dann IBAN und GiroCode, wenn Kontoinhaber und IBAN in den Kassen-Einstellungen stehen.
+				</span>
+				<Button size="sm" variant="outline" href="/modules/treasury/settings"
+					>Einstellungen öffnen</Button
+				>
+			</div>
+		{/if}
 		<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
 			<Card.Root>
 				<Card.Content>

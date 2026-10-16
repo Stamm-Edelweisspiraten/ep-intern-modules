@@ -58,6 +58,27 @@ export interface RefundItemSource {
 	birthDate: string | null;
 }
 
+export interface ReceiptRef {
+	entryId: string;
+	description: string;
+	/** JJJJ-MM-TT */
+	entryDate: string;
+	amountCents: number;
+	name: string;
+	contentType: string;
+}
+
+export interface ClosedAccounting {
+	actionId: string;
+	name: string;
+	startsOn: string;
+	endsOn: string | null;
+	closedAt: string;
+	incomeCents: number;
+	expenseCents: number;
+	balanceCents: number;
+}
+
 export interface ActionsService {
 	/** Aktionen mit uebernommenem Beitrag (`fee_applied_at` gesetzt) inkl. Teilnehmender */
 	listReceivableSources(query?: { actionIds?: string[] }): Promise<ReceivableSource[]>;
@@ -71,4 +92,19 @@ export interface ActionsService {
 	markReimbursed(actionId: string, payeeId: string, reimbursed: boolean): Promise<number>;
 	/** Einzelbetraege gebuchter Rueckzahlungen des Ueberschusses */
 	listRefundItems(): Promise<RefundItemSource[]>;
+	/** Belege der Auslagen einer Empfaenger*in (fuer die Kasse) */
+	listReimbursementReceipts(actionId: string, payeeId: string): Promise<ReceiptRef[]>;
+	/** Beleg einer Buchung laden (Systemkontext; nur Belege der genannten Aktion) */
+	downloadReceipt(
+		actionId: string,
+		entryId: string
+	): Promise<{ data: Uint8Array; name: string; contentType: string } | null>;
+	/** Abgeschlossene Abrechnungen mit Ergebnis */
+	listClosedAccountings(): Promise<ClosedAccounting[]>;
+	/** Abrechnungsbericht als PDF (mit Beleg-Anhaengen); `withBank` = IBAN im Klartext */
+	accountingReportPdf(
+		actionId: string,
+		withBank: boolean,
+		auditCtx: import('$lib/sdk/types').RequestContext
+	): Promise<{ data: Uint8Array; fileName: string }>;
 }

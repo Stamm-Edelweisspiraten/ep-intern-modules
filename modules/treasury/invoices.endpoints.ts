@@ -6,6 +6,7 @@ import { decryptIban, storeIban } from './bank';
 import {
 	invoicePdfResponse,
 	listDocuments,
+	payerStatementResponse,
 	refreshSentDocuments,
 	sendDocuments
 } from './documents';
@@ -937,6 +938,15 @@ export const invoiceEndpoints = [
 			});
 			return (await loadPayers()).find((p) => p.id === id)!;
 		}
+	},
+	{
+		method: 'GET',
+		path: '/payers/:id/statement.pdf',
+		summary: 'Sammelrechnung: alle offenen Rechnungen eines Zahlers als PDF',
+		tags: TAGS,
+		permission: VIEW,
+		params: idParams,
+		handler: ({ ctx, params }) => payerStatementResponse(ctx, (params as { id: string }).id)
 	},
 	{
 		method: 'GET',

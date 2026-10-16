@@ -20,13 +20,11 @@ import {
 	groupByAddress,
 	invoiceTotals,
 	lineOpen,
-	mailSubject,
-	mailVars,
-	renderTemplate,
 	reminderLevelDue,
 	type BankData,
 	type MailInvoice
 } from './logic';
+import { composeMail } from './mail-compose';
 import {
 	DEFAULT_PAID_BODY,
 	DEFAULT_PAID_SUBJECT,
@@ -37,23 +35,20 @@ import {
 
 const num = (v: unknown) => Number(v ?? 0);
 
+/** Bankdaten fuer Rechnungen und Mails – ausschliesslich aus den Kassen-Einstellungen */
 export async function loadBankData(): Promise<BankData> {
 	const s = await core.settings.getMany([
 		SETTING_KEYS.bankHolder,
 		SETTING_KEYS.bankIban,
 		SETTING_KEYS.bankBic,
-		SETTING_KEYS.bankName,
-		'actions.bank.holder',
-		'actions.bank.iban',
-		'actions.bank.bic',
-		'actions.bank.name'
+		SETTING_KEYS.bankName
 	]);
-	const pick = (own: string, fallback: string) => String(s[own] || s[fallback] || '').trim();
+	const v = (k: string) => String(s[k] ?? '').trim();
 	return {
-		holder: pick(SETTING_KEYS.bankHolder, 'actions.bank.holder'),
-		iban: pick(SETTING_KEYS.bankIban, 'actions.bank.iban'),
-		bic: pick(SETTING_KEYS.bankBic, 'actions.bank.bic'),
-		name: pick(SETTING_KEYS.bankName, 'actions.bank.name')
+		holder: v(SETTING_KEYS.bankHolder),
+		iban: v(SETTING_KEYS.bankIban),
+		bic: v(SETTING_KEYS.bankBic),
+		name: v(SETTING_KEYS.bankName)
 	};
 }
 
@@ -97,7 +92,7 @@ interface SendStats {
 
 async function sendGrouped(
 	items: { inv: RawInvoice; addresses: string[] }[],
-	build: (invoices: RawInvoice[]) => { subject: string; text: string }
+	build: (invoices: RawInvoice[]) => { subject: string; text: string; html?: string }
 ): Promise<SendStats> {
 	const stats: SendStats = {
 		sent: 0,
@@ -159,13 +154,15 @@ export async function notifyPaid(
 	const items = paid.map((inv) => ({ inv, addresses: addressesOf(inv, names) }));
 	if (notify && s[SETTING_KEYS.paidMailEnabled] !== false) {
 		const bank = await loadBankData();
-		stats = await sendGrouped(items, (group) => {
-			const vars = mailVars({ invoices: group.map((g) => mailInvoice(g, 'paid')), bank });
-			return {
-				subject: mailSubject(String(s[SETTING_KEYS.paidSubject] || DEFAULT_PAID_SUBJECT), vars),
-				text: renderTemplate(String(s[SETTING_KEYS.paidBody] || DEFAULT_PAID_BODY), vars)
-			};
-		});
+		stats = await sendGrouped(items, (group) =>
+			composeMail({
+				subjectTpl: String(s[SETTING_KEYS.paidSubject] || DEFAULT_PAID_SUBJECT),
+				bodyTpl: String(s[SETTING_KEYS.paidBody] || DEFAULT_PAID_BODY),
+				invoices: group.map((g) => mailInvoice(g, 'paid')),
+				bank,
+				mode: 'paid'
+			})
+		);
 	}
 	// Erledigt: Mail raus, keine Adresse vorhanden oder Versand bewusst abgeschaltet
 	const done = items
@@ -203,14 +200,14 @@ async function sendReminderMails(
 	const items = due.map((d) => ({ inv: d.inv, addresses: addressesOf(d.inv, names) }));
 	const stats = await sendGrouped(items, (group) => {
 		const level = Math.max(...group.map((g) => levelOf.get(String(g.row.id)) ?? 1));
-		const vars = mailVars({ invoices: group.map((g) => mailInvoice(g, 'open')), bank, level });
-		return {
-			subject: mailSubject(
-				String(s[SETTING_KEYS.reminderSubject] || DEFAULT_REMINDER_SUBJECT),
-				vars
-			),
-			text: renderTemplate(String(s[SETTING_KEYS.reminderBody] || DEFAULT_REMINDER_BODY), vars)
-		};
+		return composeMail({
+			subjectTpl: String(s[SETTING_KEYS.reminderSubject] || DEFAULT_REMINDER_SUBJECT),
+			bodyTpl: String(s[SETTING_KEYS.reminderBody] || DEFAULT_REMINDER_BODY),
+			invoices: group.map((g) => mailInvoice(g, 'open')),
+			bank,
+			mode: 'open',
+			level
+		});
 	});
 	const sent = due.filter((d) => stats.delivered.has(String(d.inv.row.id)));
 	if (sent.length) {

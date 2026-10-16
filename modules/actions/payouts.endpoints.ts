@@ -138,6 +138,150 @@ function reimburseEndpoint(method: 'POST' | 'DELETE'): ApiEndpoint {
 	} as ApiEndpoint;
 }
 
+/**
+ * Abrechnungsbericht (PDF inkl. Beleg-Anhaengen). `checkAccess=false` nur fuer vertrauenswuerdige
+ * Aufrufer (Dienst fuer die Kasse); dann laeuft der Abruf mit dem uebergebenen (System-)Kontext.
+ */
+export async function buildAccountingReport(
+	ctx: RequestContext,
+	id: string,
+	opts: { withBank: boolean; canAttach: boolean; checkAccess: boolean; auditCtx?: RequestContext }
+): Promise<{ buffer: Uint8Array; fileName: string }> {
+	const withBank = opts.withBank;
+	const treasury = await loadTreasuryContributions(id);
+	const data = await mdb().transaction(async (tx) => {
+		if (opts.checkAccess) await requireAccess(tx, ctx, id, 'read');
+		const [a] = await rowsOf(
+			tx,
+			sql`SELECT name, location, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
+					to_char(ends_on, 'YYYY-MM-DD') AS ends_on FROM actions WHERE id = ${id}`
+		);
+		if (!a) throw errors.notFound('Aktion nicht gefunden');
+		const entries = await loadEntries(tx, id);
+		const closed = await closedInfo(tx, id);
+		const payees = await rowsOf(
+			tx,
+			sql`SELECT id, name, bic, iban_enc, iban_last4 FROM accounting_payees
+				WHERE action_id = ${id} ORDER BY name, id`
+		);
+		const receipts = await rowsOf(
+			tx,
+			sql`SELECT id, receipt_path FROM accounting_entries
+				WHERE action_id = ${id} AND receipt_path IS NOT NULL`
+		);
+		const refund = await loadRefundSnapshot(tx, id);
+		const autoIncome = await loadAutoIncome(tx, id, entries, treasury);
+		return { a, entries, closed, payees, receipts, refund, autoIncome };
+	});
+
+	// Core-Services erst nach der Transaktion: IBAN entschluesseln, Belege laden.
+	const se: SummaryEntry[] = data.entries.map((e) => ({
+		type: e.type,
+		category: e.category,
+		amountCents: e.amountCents,
+		paidBy: e.paidBy,
+		payeeId: e.payee?.id ?? null,
+		hasReceipt: e.receipt !== null,
+		reimbursed: e.reimbursedAt !== null
+	}));
+	const totals = payeeTotals(se);
+	const ibanOf = (p: Record<string, unknown>): string | null => {
+		if (!p.iban_enc) return null;
+		if (withBank) {
+			try {
+				return crypt().decrypt(String(p.iban_enc));
+			} catch {
+				return null;
+			}
+		}
+		return maskFromLast(str(p.iban_last4));
+	};
+
+	const numbering = numberExpenses(data.entries);
+	const paths = new Map(data.receipts.map((r) => [String(r.id), String(r.receipt_path)]));
+	const attachments: PdfAttachment[] = [];
+	const attachedEntryIds: string[] = [];
+	let missingAttachments = 0;
+	const canAttach = opts.canAttach;
+	const withReceipt = data.entries
+		.filter((e) => e.type === 'expense' && e.category !== 'refund' && e.receipt)
+		.sort((x, y) => (numbering.get(x.id) ?? 0) - (numbering.get(y.id) ?? 0));
+	let totalBytes = 0;
+	let storageDown = false;
+	for (const e of withReceipt) {
+		const path = paths.get(e.id);
+		if (!canAttach || storageDown || !path || attachments.length >= MAX_ATTACHMENTS) {
+			missingAttachments += 1;
+			continue;
+		}
+		try {
+			const { buffer, file } = await core.storage.download(ctx, { module: MODULE_ID, path });
+			const contentType = (file.contentType || e.receipt!.contentType || '').toLowerCase();
+			if (
+				!ATTACHABLE_TYPES.includes(contentType) ||
+				totalBytes + buffer.byteLength > MAX_ATTACHMENT_BYTES
+			) {
+				missingAttachments += 1;
+				continue;
+			}
+			totalBytes += buffer.byteLength;
+			attachments.push({
+				label: `Beleg Nr. ${numbering.get(e.id)}`,
+				caption: `${e.description} – ${euroText(e.amountCents)}`,
+				contentType,
+				data: new Uint8Array(buffer)
+			});
+			attachedEntryIds.push(e.id);
+		} catch (err) {
+			missingAttachments += 1;
+			if ((err as { code?: string })?.code === 'unavailable') storageDown = true;
+		}
+	}
+
+	const input: ReportInput = {
+		actionName: String(data.a.name),
+		location: str(data.a.location),
+		startsOn: String(data.a.starts_on),
+		endsOn: str(data.a.ends_on),
+		closedAt: data.closed?.at ?? null,
+		entries: data.entries,
+		summary: summarize(se, null, data.autoIncome),
+		autoIncome: data.autoIncome,
+		payees: data.payees.map((n) => {
+			const t = totals.get(String(n.id));
+			return {
+				name: String(n.name),
+				openCents: t?.openCents ?? 0,
+				reimbursedCents: t?.reimbursedCents ?? 0,
+				iban: ibanOf(n),
+				bic: str(n.bic)
+			};
+		}),
+		refund: data.refund
+			? {
+					items: data.refund.items.map((i) => ({ name: i.name, amountCents: i.amountCents })),
+					totalCents: data.refund.totalCents,
+					remainderCents: data.refund.remainderCents,
+					bookedAt: data.refund.bookedAt
+				}
+			: null,
+		missingAttachments,
+		attachedEntryIds
+	};
+	const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'stamm-briefkopf');
+	const pdf = await core.pdf.generate(ctx, {
+		template: hasLetterhead ? 'stamm-briefkopf' : 'default',
+		title: `Abrechnung – ${input.actionName}`,
+		content: buildReportBlocks(input),
+		attachments
+	});
+	await core.audit.logFromContext(opts.auditCtx ?? ctx, 'actions.accounting.report', {
+		target: id,
+		metadata: { actionId: id, withBank, attachments: attachments.length, missingAttachments }
+	});
+	return { buffer: pdf.buffer, fileName: pdf.fileName };
+}
+
 export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
@@ -393,137 +537,10 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const withBank = core.permissions.has(ctx, PAYOUT_PERMISSION);
-			const treasury = await loadTreasuryContributions(id);
-			const data = await mdb().transaction(async (tx) => {
-				await requireAccess(tx, ctx, id, 'read');
-				const [a] = await rowsOf(
-					tx,
-					sql`SELECT name, location, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
-							to_char(ends_on, 'YYYY-MM-DD') AS ends_on FROM actions WHERE id = ${id}`
-				);
-				if (!a) throw errors.notFound('Aktion nicht gefunden');
-				const entries = await loadEntries(tx, id);
-				const closed = await closedInfo(tx, id);
-				const payees = await rowsOf(
-					tx,
-					sql`SELECT id, name, bic, iban_enc, iban_last4 FROM accounting_payees
-						WHERE action_id = ${id} ORDER BY name, id`
-				);
-				const receipts = await rowsOf(
-					tx,
-					sql`SELECT id, receipt_path FROM accounting_entries
-						WHERE action_id = ${id} AND receipt_path IS NOT NULL`
-				);
-				const refund = await loadRefundSnapshot(tx, id);
-				const autoIncome = await loadAutoIncome(tx, id, entries, treasury);
-				return { a, entries, closed, payees, receipts, refund, autoIncome };
-			});
-
-			// Core-Services erst nach der Transaktion: IBAN entschluesseln, Belege laden.
-			const se: SummaryEntry[] = data.entries.map((e) => ({
-				type: e.type,
-				category: e.category,
-				amountCents: e.amountCents,
-				paidBy: e.paidBy,
-				payeeId: e.payee?.id ?? null,
-				hasReceipt: e.receipt !== null,
-				reimbursed: e.reimbursedAt !== null
-			}));
-			const totals = payeeTotals(se);
-			const ibanOf = (p: Record<string, unknown>): string | null => {
-				if (!p.iban_enc) return null;
-				if (withBank) {
-					try {
-						return crypt().decrypt(String(p.iban_enc));
-					} catch {
-						return null;
-					}
-				}
-				return maskFromLast(str(p.iban_last4));
-			};
-
-			const numbering = numberExpenses(data.entries);
-			const paths = new Map(data.receipts.map((r) => [String(r.id), String(r.receipt_path)]));
-			const attachments: PdfAttachment[] = [];
-			const attachedEntryIds: string[] = [];
-			let missingAttachments = 0;
-			const canAttach = core.permissions.has(ctx, 'actions.storage.read');
-			const withReceipt = data.entries
-				.filter((e) => e.type === 'expense' && e.category !== 'refund' && e.receipt)
-				.sort((x, y) => (numbering.get(x.id) ?? 0) - (numbering.get(y.id) ?? 0));
-			let totalBytes = 0;
-			let storageDown = false;
-			for (const e of withReceipt) {
-				const path = paths.get(e.id);
-				if (!canAttach || storageDown || !path || attachments.length >= MAX_ATTACHMENTS) {
-					missingAttachments += 1;
-					continue;
-				}
-				try {
-					const { buffer, file } = await core.storage.download(ctx, { module: MODULE_ID, path });
-					const contentType = (file.contentType || e.receipt!.contentType || '').toLowerCase();
-					if (
-						!ATTACHABLE_TYPES.includes(contentType) ||
-						totalBytes + buffer.byteLength > MAX_ATTACHMENT_BYTES
-					) {
-						missingAttachments += 1;
-						continue;
-					}
-					totalBytes += buffer.byteLength;
-					attachments.push({
-						label: `Beleg Nr. ${numbering.get(e.id)}`,
-						caption: `${e.description} – ${euroText(e.amountCents)}`,
-						contentType,
-						data: new Uint8Array(buffer)
-					});
-					attachedEntryIds.push(e.id);
-				} catch (err) {
-					missingAttachments += 1;
-					if ((err as { code?: string })?.code === 'unavailable') storageDown = true;
-				}
-			}
-
-			const input: ReportInput = {
-				actionName: String(data.a.name),
-				location: str(data.a.location),
-				startsOn: String(data.a.starts_on),
-				endsOn: str(data.a.ends_on),
-				closedAt: data.closed?.at ?? null,
-				entries: data.entries,
-				summary: summarize(se, null, data.autoIncome),
-				autoIncome: data.autoIncome,
-				payees: data.payees.map((n) => {
-					const t = totals.get(String(n.id));
-					return {
-						name: String(n.name),
-						openCents: t?.openCents ?? 0,
-						reimbursedCents: t?.reimbursedCents ?? 0,
-						iban: ibanOf(n),
-						bic: str(n.bic)
-					};
-				}),
-				refund: data.refund
-					? {
-							items: data.refund.items.map((i) => ({ name: i.name, amountCents: i.amountCents })),
-							totalCents: data.refund.totalCents,
-							remainderCents: data.refund.remainderCents,
-							bookedAt: data.refund.bookedAt
-						}
-					: null,
-				missingAttachments,
-				attachedEntryIds
-			};
-			const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'stamm-briefkopf');
-			const pdf = await core.pdf.generate(ctx, {
-				template: hasLetterhead ? 'stamm-briefkopf' : 'default',
-				title: `Abrechnung – ${input.actionName}`,
-				content: buildReportBlocks(input),
-				attachments
-			});
-			await core.audit.logFromContext(ctx, 'actions.accounting.report', {
-				target: id,
-				metadata: { actionId: id, withBank, attachments: attachments.length, missingAttachments }
+			const pdf = await buildAccountingReport(ctx, id, {
+				withBank: core.permissions.has(ctx, PAYOUT_PERMISSION),
+				canAttach: core.permissions.has(ctx, 'actions.storage.read'),
+				checkAccess: true
 			});
 			return new Response(Buffer.from(pdf.buffer), {
 				status: 200,

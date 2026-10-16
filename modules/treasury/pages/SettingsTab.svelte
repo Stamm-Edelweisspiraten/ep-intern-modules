@@ -255,7 +255,10 @@
 			<Card.Root>
 				<Card.Header>
 					<Card.Title>Kontodaten für Rechnungen und Mails</Card.Title>
-					<Card.Description>Leer = Kontodaten aus den Einstellungen der Aktionen.</Card.Description>
+					<Card.Description
+						>Erscheinen auf Rechnungen (mit GiroCode), in Zahlungs-Mails und – solange die Kasse
+						aktiv ist – in der Anmeldebestätigung der Aktionen.</Card.Description
+					>
 				</Card.Header>
 				<Card.Content class="grid gap-4 sm:grid-cols-2">
 					<FormField label="Kontoinhaber" id="st-holder"

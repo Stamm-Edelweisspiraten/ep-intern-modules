@@ -676,6 +676,8 @@ export interface PayableDesired {
 	memberId: string | null;
 	ibanLast4: string | null;
 	bic: string | null;
+	/** Verschluesselte IBAN (z. B. Herkunftskonto des Beitrags); `null` = aus Quelle/Zahler */
+	ibanEnc?: string | null;
 }
 
 export interface PayableExisting {
@@ -686,6 +688,7 @@ export interface PayableExisting {
 	description: string;
 	recipientName: string;
 	payerId: string | null;
+	ibanLast4?: string | null;
 	cancelled: boolean;
 	autoCancelled: boolean;
 }
@@ -721,11 +724,46 @@ export function planPayables(desired: PayableDesired[], existing: PayableExistin
 			amountCents !== e.amountCents ||
 			d.description !== e.description ||
 			d.recipientName !== e.recipientName ||
-			d.payerId !== e.payerId
+			d.payerId !== e.payerId ||
+			(e.ibanLast4 !== undefined && (d.ibanLast4 ?? null) !== (e.ibanLast4 ?? null))
 		) {
 			plan.update.push({ id: e.id, want: d, amountCents });
 		}
 	}
 	for (const [ref, d] of want) if (!seen.has(ref)) plan.create.push(d);
 	return plan;
+}
+
+/**
+ * GiroCode (EPC-QR, Version 002) fuer Banking-Apps. `null` ohne IBAN/Empfaenger oder Betrag ≤ 0.
+ * Felder: Name max. 70, Verwendungszweck max. 140 Zeichen.
+ */
+export function epcPayload(p: {
+	holder: string;
+	iban: string;
+	bic?: string | null;
+	amountCents: number;
+	purpose: string;
+}): string | null {
+	const iban = p.iban.replace(/\s+/g, '').toUpperCase();
+	if (!iban || !p.holder.trim() || !(p.amountCents > 0) || p.amountCents > 99_999_999_999)
+		return null;
+	const clean = (s: string, max: number) =>
+		s
+			.replace(/[\r\n]+/g, ' ')
+			.trim()
+			.slice(0, max);
+	return [
+		'BCD',
+		'002',
+		'1',
+		'SCT',
+		clean(p.bic ?? '', 11),
+		clean(p.holder, 70),
+		iban,
+		`EUR${(p.amountCents / 100).toFixed(2)}`,
+		'',
+		'',
+		clean(p.purpose, 140)
+	].join('\n');
 }

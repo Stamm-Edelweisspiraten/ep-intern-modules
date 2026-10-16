@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { core, type Tx } from '$lib/sdk/server';
 import type { ActionRef, ActionsService, ReceivableSource } from './contract';
+import { summarize } from './accounting';
+import { loadAutoIncome, loadEntries, loadTreasuryContributions } from './accounting-core';
+import { buildAccountingReport } from './payouts.endpoints';
 
 type Row = Record<string, unknown>;
 const MODULE_ID = 'actions';
@@ -169,5 +172,95 @@ export const actionsService: ActionsService = {
 				birthDate: (r.birth_date as string | null) ?? null
 			}));
 		});
+	},
+
+	async listReimbursementReceipts(actionId, payeeId) {
+		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const found = await rows(
+				tx,
+				sql`SELECT id, description, to_char(entry_date, 'YYYY-MM-DD') AS entry_date, amount_cents,
+					receipt_name, receipt_content_type
+				FROM accounting_entries
+				WHERE action_id = ${actionId} AND payee_id = ${payeeId} AND receipt_path IS NOT NULL
+				ORDER BY entry_date, created_at, id`
+			);
+			return found.map((r) => ({
+				entryId: String(r.id),
+				description: String(r.description),
+				entryDate: String(r.entry_date),
+				amountCents: Number(r.amount_cents),
+				name: String(r.receipt_name ?? 'beleg'),
+				contentType: String(r.receipt_content_type ?? 'application/octet-stream')
+			}));
+		});
+	},
+
+	async downloadReceipt(actionId, entryId) {
+		const ref = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const [r] = await rows(
+				tx,
+				sql`SELECT receipt_path, receipt_name FROM accounting_entries WHERE id = ${entryId} AND action_id = ${actionId}`
+			);
+			return r?.receipt_path
+				? { path: String(r.receipt_path), name: String(r.receipt_name ?? 'beleg') }
+				: null;
+		});
+		if (!ref) return null;
+		const { buffer, file } = await core.storage.download(core.auth.systemContext('treasury'), {
+			module: MODULE_ID,
+			path: ref.path
+		});
+		return { data: new Uint8Array(buffer), name: ref.name, contentType: file.contentType };
+	},
+
+	async listClosedAccountings() {
+		const closed = await core.database.forModule(MODULE_ID).transaction((tx) =>
+			rows(
+				tx,
+				sql`SELECT a.id, a.name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
+					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, c.closed_at
+				FROM action_accounting c JOIN actions a ON a.id = c.action_id
+				WHERE c.closed_at IS NOT NULL ORDER BY c.closed_at DESC`
+			)
+		);
+		const out = [];
+		for (const r of closed) {
+			const id = String(r.id);
+			const treasury = await loadTreasuryContributions(id);
+			const summary = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+				const entries = await loadEntries(tx, id);
+				const se = entries.map((e) => ({
+					type: e.type,
+					category: e.category,
+					amountCents: e.amountCents,
+					paidBy: e.paidBy,
+					payeeId: e.payee?.id ?? null,
+					hasReceipt: e.receipt !== null,
+					reimbursed: e.reimbursedAt !== null
+				}));
+				return summarize(se, null, await loadAutoIncome(tx, id, entries, treasury));
+			});
+			out.push({
+				actionId: id,
+				name: String(r.name),
+				startsOn: String(r.starts_on),
+				endsOn: (r.ends_on as string | null) ?? null,
+				closedAt: new Date(String(r.closed_at)).toISOString(),
+				incomeCents: summary.incomeCents,
+				expenseCents: summary.expenseCents,
+				balanceCents: summary.balanceCents
+			});
+		}
+		return out;
+	},
+
+	async accountingReportPdf(actionId, withBank, auditCtx) {
+		const pdf = await buildAccountingReport(core.auth.systemContext('treasury'), actionId, {
+			withBank,
+			canAttach: true,
+			checkAccess: false,
+			auditCtx
+		});
+		return { data: pdf.buffer, fileName: pdf.fileName };
 	}
 };

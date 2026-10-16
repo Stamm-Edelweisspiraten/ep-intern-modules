@@ -11,6 +11,7 @@ import {
 	rows
 } from './db';
 import { loadSummaries } from './invoices.endpoints';
+import { loadBankData } from './notify';
 import { listPayables } from './payables';
 import { centsToCsv, csvDocument, formatDateDe } from './logic';
 import {
@@ -57,6 +58,7 @@ async function overview(ctx: RequestContext): Promise<Overview> {
 	});
 	const stats = await openStats();
 	const payables = (await listPayables()).filter((p) => p.openCents > 0);
+	const bank = await loadBankData();
 	return {
 		accounts: data.accounts.filter((a) => !a.archived || a.balanceCents !== 0),
 		balanceCents: data.accounts.reduce((s, a) => s + a.balanceCents, 0),
@@ -69,7 +71,8 @@ async function overview(ctx: RequestContext): Promise<Overview> {
 		recent: await decorateTransactions(data.recent),
 		lastSyncAt: data.lastSyncAt,
 		payableCents: payables.reduce((s, p) => s + p.openCents, 0),
-		payableCount: payables.length
+		payableCount: payables.length,
+		bankMissing: !bank.iban || !bank.holder
 	};
 }
 

@@ -168,6 +168,13 @@ export interface Category {
 
 // --- Buchungen ----------------------------------------------------------------
 
+const optionalIbanEarly = z
+	.string()
+	.trim()
+	.max(50, 'IBAN zu lang')
+	.transform((v) => normalizeIban(v))
+	.refine((v) => v === '' || isValidIban(v), 'Ungültige IBAN');
+
 export const transactionInput = z.object({
 	accountId: id,
 	bookedOn: dateString,
@@ -182,7 +189,11 @@ export const transactionInput = z.object({
 	purpose: optionalText(300),
 	categoryId: categoryId.nullish().transform((v) => v ?? null),
 	actionId: id.nullish().transform((v) => v ?? null),
-	note: optionalText(1000)
+	note: optionalText(1000),
+	/** IBAN der Gegenpartei (fehlt = unverändert, '' = entfernen) */
+	counterpartyIban: optionalIbanEarly.optional(),
+	/** Zahler (z. B. per Autovervollständigung gewählt) */
+	payerId: id.nullish().transform((v) => v ?? null)
 });
 export type TransactionInput = z.infer<typeof transactionInput>;
 export type TransactionFormInput = z.input<typeof transactionInput>;
@@ -241,6 +252,8 @@ export interface Transaction {
 	transferAccountName: string | null;
 	/** Letzte vier Stellen der IBAN der Gegenpartei (aus dem Import) */
 	counterpartyIbanLast4: string | null;
+	/** Zahler (Familie), der diese Einnahme überwiesen hat */
+	payer: { id: string; name: string } | null;
 	/** Verknüpfte Auszahlung (bei Ausgaben) */
 	payable: { id: string; recipientName: string } | null;
 	imported: boolean;
@@ -493,6 +506,8 @@ export type MarkPaidInput = z.infer<typeof markPaidInput>;
 
 export interface AllocationResult {
 	transactionId: string;
+	/** Zahler, der aus der Buchung angelegt bzw. ergänzt wurde */
+	payer?: { id: string; name: string; created: boolean } | null;
 	allocatedCents: number;
 	unallocatedCents: number;
 	paidInvoices: number;
@@ -558,6 +573,8 @@ export interface Overview {
 	/** Ausstehende Überweisungen */
 	payableCents: number;
 	payableCount: number;
+	/** Kontodaten in den Kassen-Einstellungen fehlen (Rechnungen ohne IBAN) */
+	bankMissing: boolean;
 }
 
 // --- Ausstehende Überweisungen -------------------------------------------------
@@ -757,30 +774,26 @@ export const SETTING_KEYS = {
 export const DEFAULT_PAID_SUBJECT = 'Zahlungseingang bestätigt';
 export const DEFAULT_PAID_BODY = `Hallo,
 
-vielen Dank! Wir haben folgende Zahlung erhalten:
+vielen Dank! Wir haben deine Zahlung erhalten und die folgenden Posten als bezahlt verbucht:
 
 {posten}
 
-Summe: {summe}
-
-Herzliche Grüße
+Herzliche Grüße und Gut Pfad
 Die Kasse`;
 export const DEFAULT_REMINDER_SUBJECT = 'Zahlungserinnerung';
 export const DEFAULT_REMINDER_BODY = `Hallo,
 
-bei uns sind folgende Beträge noch offen:
+nach unseren Unterlagen sind die folgenden Beträge noch offen (fällig seit {faellig}):
 
 {posten}
 
-Offen insgesamt: {summe}
+Bitte überweise den offenen Betrag mit diesen Angaben:
 
-Bitte überweise den Betrag auf folgendes Konto:
-{kontodaten}
-Verwendungszweck: {verwendungszweck}
+{zahlung}
 
-Falls du schon bezahlt hast, betrachte diese Nachricht bitte als gegenstandslos.
+Falls du in den letzten Tagen schon bezahlt hast, betrachte diese Nachricht bitte als gegenstandslos.
 
-Herzliche Grüße
+Herzliche Grüße und Gut Pfad
 Die Kasse`;
 
 export const DEFAULT_INVOICE_SUBJECT = '{anlass}: {rechnungen}';
@@ -790,13 +803,11 @@ export const DEFAULT_INVOICE_BODY = `Hallo,
 
 {posten}
 
-Summe: {summe} – bitte bis {faellig} überweisen:
-{kontodaten}
-Verwendungszweck: {verwendungszweck}
+{zahlung}
 
-Die Rechnung findest du im Anhang.
+Die Rechnung findest du auch als PDF im Anhang.
 
-Herzliche Grüße
+Herzliche Grüße und Gut Pfad
 Die Kasse`;
 
 export const settingsInput = z.object({
@@ -821,11 +832,15 @@ export type TreasurySettings = z.infer<typeof settingsInput>;
 
 export const MAIL_PLACEHOLDERS = [
 	['{name}', 'Name(n) der Empfänger*innen'],
-	['{posten}', 'Liste der Posten mit Beträgen'],
+	['{posten}', 'Tabelle der Posten mit Beträgen (eigener Absatz)'],
 	['{summe}', 'Summe der Posten'],
 	['{rechnungen}', 'Rechnungsnummern'],
 	['{faellig}', 'Fälligkeitsdatum (früheste)'],
 	['{kontodaten}', 'Kontoinhaber, IBAN, BIC, Bank'],
+	[
+		'{zahlung}',
+		'Zahlungskasten: Empfänger, IBAN, Betrag, Frist, Verwendungszweck (eigener Absatz)'
+	],
 	['{verwendungszweck}', 'Rechnungsnummern + Name'],
 	['{stufe}', 'Erinnerungsstufe (1 oder 2)'],
 	['{anlass}', 'Rechnung / Geänderte Rechnung / Stornierung'],

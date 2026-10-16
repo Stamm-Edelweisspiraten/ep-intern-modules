@@ -161,14 +161,22 @@ async function loadById(tx: Tx, id: string): Promise<Loaded> {
 	return { form: row ? toFormRow(row) : null, action, ...(await counts(tx, id)) };
 }
 
+/** Kontodaten fuer Anmeldetexte: bei aktiver Kasse aus deren Einstellungen, sonst aus `actions.bank.*` */
 async function readSettings() {
 	const s = await core.settings.getMany(SETTING_KEYS);
 	const s1 = (k: string) => (typeof s[k] === 'string' ? (s[k] as string) : '');
+	let treasuryBank: Awaited<ReturnType<TreasuryService['bankData']>> | null;
+	try {
+		const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+		treasuryBank = treasury ? await treasury.bankData() : null;
+	} catch {
+		treasuryBank = null;
+	}
 	return {
-		kontoinhaber: s1('actions.bank.holder'),
-		iban: s1('actions.bank.iban'),
-		bic: s1('actions.bank.bic'),
-		bank: s1('actions.bank.name'),
+		kontoinhaber: treasuryBank ? treasuryBank.holder : s1('actions.bank.holder'),
+		iban: treasuryBank ? treasuryBank.iban : s1('actions.bank.iban'),
+		bic: treasuryBank ? treasuryBank.bic : s1('actions.bank.bic'),
+		bank: treasuryBank ? treasuryBank.name : s1('actions.bank.name'),
 		purposeTemplate: s1('actions.payment.purposeTemplate')
 	};
 }
@@ -459,15 +467,19 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 				name: m.name,
 				groupLabel: m.groupLabel,
 				birthDate: m.birthDate,
-				disclaimer
+				disclaimer,
+				invoice
 			});
-			if (invoice) {
-				mail.text += '\n\nDie Rechnung für den Teilnahmebeitrag findest du im Anhang.';
-			}
 			await core.mail.send({
 				to: m.email,
 				...mail,
-				...(invoice ? { attachments: [invoice] } : {})
+				...(invoice
+					? {
+							attachments: [
+								{ filename: invoice.filename, contentType: invoice.contentType, data: invoice.data }
+							]
+						}
+					: {})
 			});
 			emailSent = true;
 		} catch {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
+	import FileText from '@lucide/svelte/icons/file-text';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -10,7 +11,7 @@
 	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { Payer, PayerFormInput, PayerSuggestion } from '../schemas';
-	import { BASE, errorMessage, type SharedData } from './helpers';
+	import { BASE, errorMessage, openApiFile, type SharedData } from './helpers';
 	import PayerDialog from './PayerDialog.svelte';
 
 	let {
@@ -61,6 +62,14 @@
 			toast.error(errorMessage(e, 'Anlegen fehlgeschlagen'));
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function statement(p: Payer) {
+		try {
+			await openApiFile(`${BASE}/payers/${p.id}/statement.pdf`);
+		} catch (e) {
+			toast.error(errorMessage(e, 'PDF konnte nicht erstellt werden'));
 		}
 	}
 
@@ -190,12 +199,19 @@
 								{/if}
 							</div>
 						{/if}
-						<div class="flex flex-wrap gap-x-4 text-sm tabular-nums">
-							<span>Offen <strong>{formatEuro(p.openCents)}</strong></span>
-							{#if p.overdueCents}
-								<span class="text-destructive">überfällig {formatEuro(p.overdueCents)}</span>
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<div class="flex flex-wrap gap-x-4 text-sm tabular-nums">
+								<span>Offen <strong>{formatEuro(p.openCents)}</strong></span>
+								{#if p.overdueCents}
+									<span class="text-destructive">überfällig {formatEuro(p.overdueCents)}</span>
+								{/if}
+								{#if p.creditCents}<span>Guthaben {formatEuro(p.creditCents)}</span>{/if}
+							</div>
+							{#if p.openCents > 0}
+								<Button size="sm" variant="outline" onclick={() => statement(p)}>
+									<FileText /> Sammelrechnung
+								</Button>
 							{/if}
-							{#if p.creditCents}<span>Guthaben {formatEuro(p.creditCents)}</span>{/if}
 						</div>
 					</Card.Content>
 				</Card.Root>

@@ -107,6 +107,40 @@
 		}
 	}
 
+	// Belege (Eingangsrechnung bzw. Belege der Auslagen aus der Abrechnung)
+	type ReceiptItem = {
+		id: string;
+		label: string;
+		date: string | null;
+		amountCents: number | null;
+		name: string;
+		contentType: string;
+	};
+	let receiptsOpen = $state(false);
+	let receiptsFor = $state<Payable | null>(null);
+	let receipts = $state<ReceiptItem[] | null>(null);
+
+	async function showReceipts(p: Payable) {
+		receiptsFor = p;
+		receipts = null;
+		receiptsOpen = true;
+		try {
+			receipts = await apiFetch<ReceiptItem[]>(`${BASE}/payables/${p.id}/receipts`);
+		} catch (e) {
+			receipts = [];
+			toast.error(errorMessage(e, 'Belege konnten nicht geladen werden'));
+		}
+	}
+
+	async function openReceipt(r: ReceiptItem) {
+		if (!receiptsFor) return;
+		try {
+			await openApiFile(`${BASE}/payables/${receiptsFor.id}/receipts/${r.id}`);
+		} catch (e) {
+			toast.error(errorMessage(e, 'Beleg nicht verfügbar'));
+		}
+	}
+
 	async function showIban(p: Payable) {
 		try {
 			const r = await apiFetch<{ iban: string }>(`${BASE}/payables/${p.id}/iban`);
@@ -262,10 +296,8 @@
 								>IBAN anzeigen und kopieren</DropdownMenu.Item
 							>
 						{/if}
-						{#if p.receipt}
-							<DropdownMenu.Item onclick={() => openApiFile(`${BASE}/payables/${p.id}/receipt`)}>
-								Beleg öffnen
-							</DropdownMenu.Item>
+						{#if p.receipt || p.source === 'reimbursement'}
+							<DropdownMenu.Item onclick={() => showReceipts(p)}>Belege ansehen</DropdownMenu.Item>
 						{/if}
 						{#if perm.payable}
 							<DropdownMenu.Item
@@ -309,6 +341,42 @@
 	canUpload={perm.upload}
 	onsaved={onchanged}
 />
+
+<Dialog.Root bind:open={receiptsOpen}>
+	<Dialog.Content class="sm:max-w-lg">
+		<Dialog.Header>
+			<Dialog.Title>Belege</Dialog.Title>
+			<Dialog.Description>
+				{receiptsFor?.recipientName} · {receiptsFor?.description}
+			</Dialog.Description>
+		</Dialog.Header>
+		{#if receipts === null}
+			<p class="text-sm text-muted-foreground">Lädt …</p>
+		{:else if !receipts.length}
+			<p class="text-sm text-muted-foreground">
+				Keine Belege vorhanden. Bei Auslagen werden die Belege in der Abrechnung der Aktion
+				hochgeladen.
+			</p>
+		{:else}
+			<ul class="divide-y text-sm">
+				{#each receipts as r (r.id)}
+					<li class="flex items-center justify-between gap-2 py-2">
+						<div class="min-w-0">
+							<div class="truncate font-medium">{r.label}</div>
+							<div class="text-xs text-muted-foreground">
+								{fmtDate(r.date)}{r.amountCents != null ? ` · ${formatEuro(r.amountCents)}` : ''} · {r.name}
+							</div>
+						</div>
+						<Button size="sm" variant="outline" onclick={() => openReceipt(r)}>Öffnen</Button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (receiptsOpen = false)}>Schließen</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root bind:open={payOpen}>
 	<Dialog.Content class="sm:max-w-md">

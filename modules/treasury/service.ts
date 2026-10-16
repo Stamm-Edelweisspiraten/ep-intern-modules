@@ -3,6 +3,7 @@ import type { ActionContributions, TreasuryService } from './contract';
 import { mdb, num, rows } from './db';
 import { registrationDocument } from './documents';
 import { lineOpen, sourceRef } from './logic';
+import { loadBankData } from './notify';
 import { syncActions } from './sync';
 
 export const treasuryService: TreasuryService = {
@@ -50,5 +51,9 @@ export const treasuryService: TreasuryService = {
 		if (!line) return null;
 		const doc = await registrationDocument(String(line.invoice_id));
 		return doc ? { ...doc, contentType: 'application/pdf' as const } : null;
+	},
+
+	bankData() {
+		return loadBankData();
 	}
 };

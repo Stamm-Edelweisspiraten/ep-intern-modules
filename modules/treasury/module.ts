@@ -5,8 +5,10 @@ import { importEndpoints } from './import.endpoints';
 import { invoiceEndpoints } from './invoices.endpoints';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_extensions.sql?raw';
+import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
 import { runReminderJob } from './notify';
-import { payableEndpoints } from './payables';
+import { closedAccountingEndpoints } from './closed-accountings';
+import { payableEndpoints, payableReceiptEndpoints } from './payables';
 import { reportEndpoints } from './reports.endpoints';
 import {
 	DEFAULT_INVOICE_BODY,
@@ -150,7 +152,8 @@ export default defineModule({
 	],
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_extensions', sql: m0002 }
+		{ name: '0002_extensions', sql: m0002 },
+		{ name: '0003_payer_from_bookings', sql: m0003 }
 	],
 	jobs: [
 		{
@@ -177,6 +180,8 @@ export default defineModule({
 		...transactionEndpoints,
 		...invoiceEndpoints,
 		...payableEndpoints,
+		...payableReceiptEndpoints,
+		...closedAccountingEndpoints,
 		...importEndpoints,
 		...reportEndpoints
 	]

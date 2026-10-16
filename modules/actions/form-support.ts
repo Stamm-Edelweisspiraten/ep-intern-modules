@@ -366,31 +366,58 @@ export function normalizeDedupeKey(name: string, birthDate: string): string {
 
 // --- Bestaetigungs-Mail -----------------------------------------------------
 
+const escapeHtml = (v: string) =>
+	v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Anmeldebestaetigung. Mit `invoice` (Kasse aktiv) folgt nach den Angaben die Rechnung mit
+ * Zahlungskasten (Bankdaten, Betrag, Verwendungszweck = Rechnungsnummer) und Hinweis auf das PDF.
+ */
 export function buildConfirmationMail(p: {
 	actionName: string;
 	name: string;
 	groupLabel: string | null;
 	birthDate: string | null;
 	disclaimer: string;
-}): { subject: string; text: string } {
+	invoice?: { number: string; totalCents: number; paymentText: string; paymentHtml: string } | null;
+}): { subject: string; text: string; html: string } {
 	const birth = p.birthDate ? p.birthDate.split('-').reverse().join('.') : '';
-	const lines = [
-		`Hallo ${p.name},`,
-		'',
-		`vielen Dank für die Anmeldung zu „${p.actionName}“. Wir haben folgende Angaben erhalten:`,
-		'',
+	const details = [
 		`Name: ${p.name}`,
 		...(p.groupLabel ? [`Gruppe: ${p.groupLabel}`] : []),
-		...(birth ? [`Geburtsdatum: ${birth}`] : []),
-		'',
-		p.disclaimer,
-		'',
-		'Herzliche Grüße',
-		'Dein Team'
+		...(birth ? [`Geburtsdatum: ${birth}`] : [])
 	];
+	const euro = p.invoice ? `${(p.invoice.totalCents / 100).toFixed(2).replace('.', ',')} €` : '';
+	const invoiceIntro = p.invoice
+		? `Für die Teilnahme stellen wir dir ${euro} in Rechnung (Rechnung ${p.invoice.number}, als PDF im Anhang). Bitte überweise den Betrag mit diesen Angaben:`
+		: '';
+	const paragraphs: { text?: string; html?: string }[] = [
+		{ text: `Hallo ${p.name},` },
+		{
+			text: `vielen Dank für die Anmeldung zu „${p.actionName}“. Wir haben folgende Angaben erhalten:`
+		},
+		{ text: details.join('\n') },
+		{ text: p.disclaimer },
+		...(p.invoice
+			? [{ text: invoiceIntro }, { text: p.invoice.paymentText, html: p.invoice.paymentHtml }]
+			: []),
+		{ text: 'Herzliche Grüße und Gut Pfad\nDein Team' }
+	];
+	const html = paragraphs
+		.filter((x) => x.text?.trim() || x.html)
+		.map((x) =>
+			x.html
+				? x.html
+				: `<p style="margin:0 0 16px;">${escapeHtml(x.text!.trim()).replace(/\n/g, '<br/>')}</p>`
+		)
+		.join('');
 	return {
 		subject: `Anmeldebestätigung: ${p.actionName}`.replace(/[\r\n]+/g, ' ').slice(0, 200),
-		text: lines.join('\n')
+		text: paragraphs
+			.map((x) => x.text?.trim() ?? '')
+			.filter(Boolean)
+			.join('\n\n'),
+		html
 	};
 }
 

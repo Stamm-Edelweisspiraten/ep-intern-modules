@@ -4,7 +4,10 @@
 	import { toast } from 'svelte-sonner';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Plus from '@lucide/svelte/icons/plus';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Upload from '@lucide/svelte/icons/upload';
 	import { apiFetch, can } from '$lib/sdk/client';
@@ -171,19 +174,29 @@
 							</Button>
 						{/snippet}
 					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end">
+					<DropdownMenu.Content align="end" class="w-72">
 						{#if perm.editTx}
-							<DropdownMenu.Item onclick={() => (transferOpen = true)}>Umbuchung</DropdownMenu.Item>
+							<DropdownMenu.Label class="text-xs text-muted-foreground"
+								>Buchungen</DropdownMenu.Label
+							>
+							<DropdownMenu.Item onclick={() => (transferOpen = true)}>
+								<ArrowLeftRight /> Umbuchung zwischen Konten
+							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={() => (suggestionsOpen = true)}>
-								Zuordnungsvorschläge
+								<Sparkles /> Zuordnungsvorschläge prüfen
 							</DropdownMenu.Item>
 						{/if}
+						{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
 						{#if perm.editInvoice}
-							<DropdownMenu.Item onclick={() => (invoiceOpen = true)}
-								>Neue Rechnung</DropdownMenu.Item
+							<DropdownMenu.Label class="text-xs text-muted-foreground"
+								>Rechnungen</DropdownMenu.Label
 							>
+							<DropdownMenu.Item onclick={() => (invoiceOpen = true)}>
+								<FilePlus /> Neue Rechnung
+							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={sync} disabled={syncing}>
-								<RefreshCw /> Mit Aktionen abgleichen
+								<RefreshCw />
+								{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
 							</DropdownMenu.Item>
 						{/if}
 					</DropdownMenu.Content>
@@ -250,6 +263,7 @@
 	{accounts}
 	{categories}
 	{actions}
+	{payers}
 	canUploadReceipt={perm.upload}
 	onsaved={afterTxSaved}
 />

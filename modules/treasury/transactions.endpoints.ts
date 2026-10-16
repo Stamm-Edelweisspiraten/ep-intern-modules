@@ -16,7 +16,9 @@ import {
 	type RawTransaction
 } from './db';
 import { sanitizeName, suggestMatch } from './logic';
+import { storeIban } from './bank';
 import { notifyPaid } from './notify';
+import { learnPayerFromTransaction } from './payer-learning';
 import { syncReimbursementStatus } from './payables';
 import {
 	MAX_RECEIPT_BYTES,
@@ -97,6 +99,30 @@ async function requireActionRef(actionId: string | null): Promise<void> {
 	}
 }
 
+/** IBAN der Gegenpartei und Zahler speichern; ohne eigene IBAN wird die des Zahlers uebernommen */
+async function applyCounterparty(tx: Tx, id: string, input: TransactionInput): Promise<void> {
+	if (input.payerId) {
+		const [p] = await rows(tx, sql`SELECT id FROM payers WHERE id = ${input.payerId}`);
+		if (!p) throw errors.validation([{ path: ['payerId'], message: 'Zahler nicht gefunden' }]);
+	}
+	await tx.execute(sql`UPDATE transactions SET payer_id = ${input.payerId} WHERE id = ${id}`);
+	const bank = storeIban(input.counterpartyIban);
+	if (bank) {
+		await tx.execute(
+			sql`UPDATE transactions SET counterparty_iban_enc = ${bank.enc}, counterparty_iban_hash = ${bank.hash},
+				counterparty_iban_last4 = ${bank.last4} WHERE id = ${id}`
+		);
+	}
+	if (input.payerId && !bank?.enc) {
+		await tx.execute(
+			sql`UPDATE transactions t SET counterparty_iban_enc = p.iban_enc, counterparty_iban_hash = p.iban_hash,
+				counterparty_iban_last4 = p.iban_last4
+			FROM payers p WHERE t.id = ${id} AND p.id = ${input.payerId} AND p.iban_enc IS NOT NULL
+				AND t.counterparty_iban_enc IS NULL`
+		);
+	}
+}
+
 async function lockTransaction(tx: Tx, id: string) {
 	const [t] = await rows(tx, sql`SELECT * FROM transactions WHERE id = ${id} FOR UPDATE`);
 	if (!t) throw errors.notFound('Buchung nicht gefunden');
@@ -110,6 +136,15 @@ export async function allocateAndNotify(
 	const r = await mdb().transaction((tx) =>
 		replaceAllocations(tx, input.transactionId, input.allocations, ctx.userId)
 	);
+	// Zahler aus der Buchung lernen (IBAN + Mitglieder der bezahlten Posten)
+	let payer: AllocationResult['payer'] = null;
+	if (input.allocations.length) {
+		try {
+			payer = await learnPayerFromTransaction(ctx, input.transactionId);
+		} catch (e) {
+			console.error('[treasury] Zahler konnte nicht angelegt werden:', e);
+		}
+	}
 	const mail = await notifyPaid(r.invoiceIds, input.notify);
 	await core.audit.logFromContext(ctx, 'treasury.transaction.allocated', {
 		target: input.transactionId,
@@ -124,6 +159,7 @@ export async function allocateAndNotify(
 		transactionId: input.transactionId,
 		allocatedCents: r.allocatedCents,
 		unallocatedCents: Math.max(0, r.amountCents - r.allocatedCents),
+		payer,
 		...mail
 	};
 }
@@ -190,6 +226,7 @@ export const transactionEndpoints = [
 					VALUES (${id}, ${input.accountId}, ${input.bookedOn}, ${input.amountCents}, ${input.counterparty},
 						${input.purpose}, ${input.categoryId}, ${input.actionId}, ${input.note}, ${ctx.userId})`
 				);
+				await applyCounterparty(tx, id, input);
 				return loadOne(tx, id);
 			});
 			await core.audit.logFromContext(ctx, 'treasury.transaction.created', {
@@ -234,6 +271,7 @@ export const transactionEndpoints = [
 						updated_at = now()
 					WHERE id = ${id}`
 				);
+				await applyCounterparty(tx, id, input);
 				return loadOne(tx, id);
 			});
 			await core.audit.logFromContext(ctx, 'treasury.transaction.updated', {

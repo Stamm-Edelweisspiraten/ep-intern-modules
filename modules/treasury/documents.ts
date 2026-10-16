@@ -19,21 +19,20 @@ import {
 	resolveNames,
 	rows,
 	str,
-	today,
 	type NameMaps,
 	type RawInvoice
 } from './db';
 import {
-	bankText,
 	centsToCsv,
+	epcPayload,
 	formatDateDe,
 	groupByAddress,
-	mailSubject,
-	mailVars,
-	renderTemplate,
 	sanitizeName,
 	type BankData
 } from './logic';
+import { formatIban } from './iban';
+import { composeMail } from './mail-compose';
+import { paymentBox, paymentText } from './mail-html';
 import { loadBankData } from './notify';
 import {
 	DEFAULT_INVOICE_BODY,
@@ -133,26 +132,108 @@ export async function buildSnapshot(
 
 const eur = (c: number) => `${centsToCsv(c)} €`;
 
-/** PDF einer Rechnungsfassung (Briefvorlage mit Adressfeld) */
+/** Verwendungszweck einer Rechnung (Nummer + Name, max. 140 Zeichen) */
+export const invoicePurpose = (s: Pick<InvoiceSnapshot, 'number' | 'recipientName'>) =>
+	`${s.number} ${s.recipientName}`.slice(0, 140);
+
+/** Zahlungsteil fuer PDF-Dokumente (Tabelle + GiroCode); auch fuer Sammelrechnungen */
+export async function paymentBlocks(p: {
+	bank: BankData;
+	amountCents: number;
+	purpose: string;
+	dueOn: string | null;
+}): Promise<PdfBlock[]> {
+	if (!p.bank.iban || !p.bank.holder) {
+		return [
+			{ type: 'heading', text: 'Zahlung', level: 2 },
+			{
+				type: 'paragraph',
+				text: `Bitte überweise ${eur(p.amountCents)} mit dem Verwendungszweck „${p.purpose}“. Die Kontodaten erhältst du bei der Kasse.`
+			}
+		];
+	}
+	const rows: string[][] = [
+		['Empfänger', p.bank.holder],
+		['IBAN', formatIban(p.bank.iban)],
+		...(p.bank.bic || p.bank.name
+			? [['Bank / BIC', [p.bank.name, p.bank.bic].filter(Boolean).join(' · ')]]
+			: []),
+		['Betrag', eur(p.amountCents)],
+		...(p.dueOn ? [['Zahlbar bis', formatDateDe(p.dueOn)]] : []),
+		['Verwendungszweck', p.purpose]
+	];
+	const blocks: PdfBlock[] = [
+		{ type: 'heading', text: 'Zahlung', level: 2 },
+		{
+			type: 'table',
+			variant: 'grid',
+			noHeader: true,
+			columns: ['', ''],
+			widths: [1, 3],
+			rows
+		}
+	];
+	const epc = epcPayload({
+		holder: p.bank.holder,
+		iban: p.bank.iban,
+		bic: p.bank.bic,
+		amountCents: p.amountCents,
+		purpose: p.purpose
+	});
+	if (epc) {
+		try {
+			blocks.push(
+				{
+					type: 'image',
+					dataUrl: await core.qr.dataUrl(epc, { widthPx: 320 }),
+					widthMm: 26,
+					alt: 'GiroCode'
+				},
+				{
+					type: 'paragraph',
+					text: 'GiroCode: mit der Banking-App scannen – alle Angaben sind ausgefüllt.'
+				}
+			);
+		} catch {
+			/* ohne QR-Code weiter */
+		}
+	}
+	return blocks;
+}
+
+/** PDF einer Rechnungsfassung (Briefvorlage mit Adressfeld; der Titel kommt aus der Vorlage) */
 export async function renderInvoicePdf(
 	ctx: RequestContext,
 	s: InvoiceSnapshot,
 	version?: number
 ): Promise<Uint8Array> {
 	const title = s.cancelled ? `Stornierung der Rechnung ${s.number}` : `Rechnung ${s.number}`;
+	const openCents = Math.max(0, s.totalCents - s.paidCents);
+	// Eckdaten kompakt in einer Zeile (Kopfzeile = Bezeichnungen)
+	const infoCols = [
+		'Rechnungsnummer',
+		'Rechnungsdatum',
+		...(s.cancelled ? [] : ['Zahlbar bis']),
+		...(version && version > 1 ? ['Fassung'] : [])
+	];
+	const infoRow = [
+		s.number,
+		formatDateDe(s.issuedOn),
+		...(s.cancelled ? [] : [formatDateDe(s.dueOn)]),
+		...(version && version > 1 ? [String(version)] : [])
+	];
 	const content: PdfBlock[] = [
-		{ type: 'heading', text: title, level: 1 },
+		{ type: 'table', variant: 'grid', columns: infoCols, rows: [infoRow] },
 		{
 			type: 'paragraph',
-			text: [
-				`Rechnungsdatum: ${formatDateDe(s.issuedOn)}`,
-				s.cancelled ? null : `Fällig bis: ${formatDateDe(s.dueOn)}`,
-				version && version > 1 ? `Fassung ${version} vom ${formatDateDe(today())}` : null
-			]
-				.filter(Boolean)
-				.join(' · ')
+			text:
+				'Hallo,\n' +
+				(s.cancelled
+					? `die Rechnung ${s.number} für ${s.recipientName} wurde storniert:`
+					: s.actionName
+						? `vielen Dank für die Anmeldung von ${s.recipientName} zu „${s.actionName}“. Für die Teilnahme berechnen wir:`
+						: `für ${s.recipientName} berechnen wir die folgenden Posten:`)
 		},
-		...(s.actionName ? [{ type: 'paragraph' as const, text: `Aktion: ${s.actionName}` }] : []),
 		{
 			type: 'table',
 			variant: 'grid',
@@ -165,7 +246,7 @@ export async function renderInvoicePdf(
 					: l.description,
 				eur(l.amountCents - l.waivedCents)
 			]),
-			totalRow: ['Summe', eur(s.totalCents)]
+			totalRow: ['Rechnungsbetrag', eur(s.totalCents)]
 		}
 	];
 	if (s.cancelled) {
@@ -173,25 +254,37 @@ export async function renderInvoicePdf(
 			type: 'paragraph',
 			text:
 				s.paidCents > 0
-					? `Die Rechnung ist storniert. Bereits bezahlte ${eur(s.paidCents)} erstatten wir zurück.`
-					: 'Die Rechnung ist storniert. Es ist nichts zu zahlen.'
+					? `Bereits bezahlte ${eur(s.paidCents)} erstatten wir dir zurück.`
+					: 'Es ist nichts zu zahlen.'
 		});
 	} else {
 		if (s.paidCents > 0) {
 			content.push({
 				type: 'paragraph',
-				text: `Bereits bezahlt: ${eur(s.paidCents)} · Noch offen: ${eur(Math.max(0, s.totalCents - s.paidCents))}`
+				text: `Bereits bezahlt: ${eur(s.paidCents)} · noch offen: ${eur(openCents)}`
+			});
+		}
+		if (openCents > 0) {
+			content.push(
+				...(await paymentBlocks({
+					bank: s.bank,
+					amountCents: openCents,
+					purpose: invoicePurpose(s),
+					dueOn: s.dueOn
+				}))
+			);
+		} else {
+			content.push({
+				type: 'paragraph',
+				text: 'Die Rechnung ist vollständig bezahlt – vielen Dank!'
 			});
 		}
 		if (s.note) content.push({ type: 'paragraph', text: s.note });
-		content.push(
-			{ type: 'heading', text: 'Zahlung', level: 2 },
-			{
-				type: 'paragraph',
-				text: `${bankText(s.bank) || 'Kontodaten bitte bei der Kasse erfragen.'}\nVerwendungszweck: ${s.number} ${s.recipientName}`
-			}
-		);
 	}
+	content.push({
+		type: 'paragraph',
+		text: 'Bei Fragen zur Rechnung melde dich gern bei der Kasse. Gut Pfad!'
+	});
 	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'stamm-brief');
 	const pdf = await core.pdf.generate(ctx, {
 		template: hasLetter ? 'stamm-brief' : 'default',
@@ -271,9 +364,14 @@ async function storeDocument(
  * Anmeldung: Fassung 1 der Rechnung erzeugen und als PDF zurueckgeben (`actions` haengt sie an die
  * Anmeldebestaetigung). Bereits vorhandene Fassungen werden nicht dupliziert.
  */
-export async function registrationDocument(
-	invoiceId: string
-): Promise<{ filename: string; data: Uint8Array } | null> {
+export async function registrationDocument(invoiceId: string): Promise<{
+	filename: string;
+	data: Uint8Array;
+	number: string;
+	totalCents: number;
+	paymentText: string;
+	paymentHtml: string;
+} | null> {
 	const [loaded] = await loadInvoices([invoiceId]);
 	if (!loaded || loaded.inv.row.cancelled_at) return null;
 	const bank = await loadBankData();
@@ -284,8 +382,22 @@ export async function registrationDocument(
 		? existing.version
 		: await storeDocument(invoiceId, 'registration', snapshot, null, { recipients: 1 });
 	const ctx = core.auth.systemContext('treasury-documents');
-	const data = await renderInvoicePdf(ctx, existing?.snapshot ?? snapshot, version);
-	return { filename: pdfFileName(existing?.snapshot ?? snapshot, version), data };
+	const used = existing?.snapshot ?? snapshot;
+	const data = await renderInvoicePdf(ctx, used, version);
+	const pay = {
+		bank: used.bank,
+		amountCents: used.totalCents,
+		purpose: invoicePurpose(used),
+		dueOn: formatDateDe(used.dueOn)
+	};
+	return {
+		filename: pdfFileName(used, version),
+		data,
+		number: used.number,
+		totalCents: used.totalCents,
+		paymentText: paymentText(pay),
+		paymentHtml: paymentBox(pay)
+	};
 }
 
 export interface SendResult {
@@ -325,34 +437,31 @@ export async function sendDocuments(
 			: reason === 'changed'
 				? 'Geänderte Rechnung'
 				: 'Rechnung';
-		const vars = {
-			...mailVars({
-				invoices: [
-					{
-						number: snapshot.number,
-						recipientName: snapshot.recipientName,
-						dueOn: snapshot.dueOn,
-						lines: snapshot.lines.map((l) => ({
-							description: l.description,
-							cents: l.amountCents - l.waivedCents
-						}))
-					}
-				],
-				bank
-			}),
-			anlass,
-			aenderung: describeChange(prev, snapshot)
-		};
+		const mail = composeMail({
+			subjectTpl: String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT),
+			bodyTpl: String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY),
+			invoices: [
+				{
+					number: snapshot.number,
+					recipientName: snapshot.recipientName,
+					dueOn: snapshot.dueOn,
+					lines: snapshot.lines.map((l) => ({
+						description: l.description,
+						cents: l.amountCents - l.waivedCents
+					}))
+				}
+			],
+			bank,
+			// Storno: kein Zahlungskasten
+			mode: snapshot.cancelled ? 'paid' : 'open',
+			extraVars: { anlass, aenderung: describeChange(prev, snapshot) }
+		});
 		let delivered = 0;
 		for (const address of groupByAddress([{ addresses }]).keys()) {
 			try {
 				await core.mail.send({
 					to: address,
-					subject: mailSubject(
-						String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT),
-						vars
-					),
-					text: renderTemplate(String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY), vars),
+					...mail,
 					attachments: [
 						{
 							filename: pdfFileName(snapshot, nextVersion),
@@ -487,6 +596,116 @@ export async function invoicePdfResponse(
 		headers: {
 			'content-type': 'application/pdf',
 			'content-disposition': `inline; filename="${pdfFileName(snapshot, version)}"`,
+			'cache-control': 'private, no-store'
+		}
+	});
+}
+
+/** Sammelrechnung: alle offenen Rechnungen eines Zahlers in einem PDF (mit GiroCode ueber die Summe) */
+export async function payerStatementResponse(
+	ctx: RequestContext,
+	payerId: string
+): Promise<Response> {
+	const { payer, memberId } = await mdb().transaction(async (tx) => {
+		const [p] = await rows(
+			tx,
+			sql`SELECT id, name, account_holder FROM payers WHERE id = ${payerId}`
+		);
+		if (!p) throw errors.notFound('Zahler nicht gefunden');
+		const [m] = await rows(
+			tx,
+			sql`SELECT member_id FROM payer_members WHERE payer_id = ${payerId} ORDER BY member_id LIMIT 1`
+		);
+		return { payer: p, memberId: str(m?.member_id) };
+	});
+	const invoices = (
+		await loadInvoices(
+			(
+				await mdb().transaction((tx) =>
+					rows(
+						tx,
+						sql`SELECT i.id FROM invoices i WHERE i.cancelled_at IS NULL AND (i.payer_id = ${payerId}
+							OR EXISTS (SELECT 1 FROM invoice_lines l JOIN payer_members pm ON pm.member_id = l.member_id
+								WHERE l.invoice_id = i.id AND pm.payer_id = ${payerId}))`
+					)
+				)
+			).map((r) => String(r.id))
+		)
+	).filter(({ inv }) =>
+		inv.lines.some((l) => num(l.amount_cents) - num(l.waived_cents) - num(l.paid_cents) > 0)
+	);
+	const bank = await loadBankData();
+	const contact = memberId
+		? (await (await membersService()).listMemberContacts({ ids: [memberId] }))[0]
+		: undefined;
+	const name = str(payer.account_holder) ?? String(payer.name);
+	const address = [
+		name,
+		...(contact ? [contact.street, `${contact.postalCode} ${contact.city}`.trim()] : [])
+	]
+		.filter((l) => l && l.trim())
+		.map((l) => l.slice(0, 60));
+	const rowsOut: string[][] = [];
+	let total = 0;
+	let earliest: string | null = null;
+	const numbers: string[] = [];
+	for (const { inv } of invoices.sort((a, b) =>
+		String(a.inv.row.due_on).localeCompare(String(b.inv.row.due_on))
+	)) {
+		numbers.push(String(inv.row.number));
+		const due = String(inv.row.due_on);
+		if (!earliest || due < earliest) earliest = due;
+		for (const l of inv.lines) {
+			const open = num(l.amount_cents) - num(l.waived_cents) - num(l.paid_cents);
+			if (open <= 0) continue;
+			total += open;
+			rowsOut.push([String(inv.row.number), String(l.description), formatDateDe(due), eur(open)]);
+		}
+	}
+	const content: PdfBlock[] = [
+		{
+			type: 'paragraph',
+			text: rowsOut.length
+				? `hier findest du alle noch offenen Beträge für ${String(payer.name)} auf einen Blick. Du kannst alles mit einer Überweisung bezahlen.`
+				: `für ${String(payer.name)} sind derzeit keine Beträge offen. Vielen Dank!`
+		}
+	];
+	if (rowsOut.length) {
+		content.push(
+			{
+				type: 'table',
+				variant: 'grid',
+				columns: ['Rechnung', 'Posten', 'Fällig', 'Offen'],
+				align: ['left', 'left', 'left', 'right'],
+				widths: [1.2, 4, 1.2, 1.2],
+				rows: rowsOut,
+				totalRow: ['', 'Summe offen', '', eur(total)]
+			},
+			...(await paymentBlocks({
+				bank,
+				amountCents: total,
+				purpose: `${numbers.join(' ')} ${String(payer.name)}`.slice(0, 140),
+				dueOn: earliest
+			}))
+		);
+	}
+	content.push({ type: 'paragraph', text: 'Bei Fragen melde dich gern bei der Kasse. Gut Pfad!' });
+	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'stamm-brief');
+	const pdf = await core.pdf.generate(ctx, {
+		template: hasLetter ? 'stamm-brief' : 'default',
+		title: 'Übersicht offener Rechnungen',
+		recipient: hasLetter ? address : undefined,
+		content
+	});
+	await core.audit.logFromContext(ctx, 'treasury.payer.statement', {
+		target: payerId,
+		metadata: { invoices: numbers.length }
+	});
+	return new Response(Buffer.from(pdf.buffer), {
+		status: 200,
+		headers: {
+			'content-type': 'application/pdf',
+			'content-disposition': `inline; filename="${sanitizeName(`Offene-Rechnungen-${String(payer.name)}.pdf`)}"`,
 			'cache-control': 'private, no-store'
 		}
 	});

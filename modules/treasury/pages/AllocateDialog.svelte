@@ -137,6 +137,11 @@
 			const parts = [`${formatEuro(r.allocatedCents)} zugeordnet`];
 			if (r.paidInvoices) parts.push(`${r.paidInvoices} Rechnung(en) vollständig bezahlt`);
 			if (r.mailsSent) parts.push(`${r.mailsSent} Bestätigung(en) gesendet`);
+			if (r.payer) {
+				parts.push(
+					r.payer.created ? `Zahler „${r.payer.name}“ angelegt` : `Zahler „${r.payer.name}“ ergänzt`
+				);
+			}
 			toast.success(parts.join(' · '));
 			if (r.mailErrors) toast.error(`${r.mailErrors} Mail(s) konnten nicht gesendet werden`);
 			open = false;
