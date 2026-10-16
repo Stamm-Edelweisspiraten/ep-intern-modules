@@ -3,6 +3,14 @@
  * Abruf: `await core.modules.use<ActionsService>('actions', '<aufrufendes Modul>')`.
  * Die Funktionen pruefen KEINE Objektrechte – der Aufrufer verantwortet den Zugriff (z. B. Kasse).
  */
+import type {
+	AccountingEntry,
+	AccountingPayee,
+	AccountingPlan,
+	AccountingSummary,
+	AutoIncome
+} from './schemas';
+
 export interface ReceivableParticipant {
 	id: string;
 	name: string;
@@ -79,12 +87,43 @@ export interface ClosedAccounting {
 	balanceCents: number;
 }
 
+/** Ausgabe „bezahlt vom Stamm“ mit Empfaenger fuer die Ueberweisung durch die Kasse. */
+export interface ClubExpenseSource {
+	actionId: string;
+	entryId: string;
+	description: string;
+	recipientName: string | null;
+	/** Letzte Stellen der IBAN (Anzeige) */
+	ibanLast: string | null;
+	hasIban: boolean;
+	bic: string | null;
+	purpose: string | null;
+	amountCents: number;
+	/** JJJJ-MM-TT */
+	entryDate: string;
+	/** `null` = offen */
+	paidAt: string | null;
+	paidVia: 'manual' | 'treasury' | null;
+	receipt: { name: string; contentType: string } | null;
+}
+
+/** Abgeschlossene Abrechnung zum Nachvollziehen in der Kasse (nur Lesen, Bankdaten maskiert). */
+export interface ClosedAccountingDetail extends ClosedAccounting {
+	location: string | null;
+	summary: AccountingSummary;
+	plan: AccountingPlan | null;
+	autoIncome: AutoIncome;
+	entries: AccountingEntry[];
+	payees: AccountingPayee[];
+	refund: { totalCents: number; count: number; remainderCents: number; bookedAt: string } | null;
+}
+
 export interface ActionsService {
 	/** Aktionen mit uebernommenem Beitrag (`fee_applied_at` gesetzt) inkl. Teilnehmender */
 	listReceivableSources(query?: { actionIds?: string[] }): Promise<ReceivableSource[]>;
 	/** Kurzdaten von Aktionen (Anzeige, Auswahl); `search` im Namen, max. 200 */
 	listActionRefs(query?: { ids?: string[]; search?: string; limit?: number }): Promise<ActionRef[]>;
-	/** Auslagen je Aktion und Empfaenger*in (bezahlt von Person) */
+	/** Auslagen je Aktion und Empfaenger*in (bezahlt von Person), nur aus abgeschlossenen Abrechnungen */
 	listReimbursements(): Promise<ReimbursementSource[]>;
 	/** Klartext-IBAN der Empfaenger*in (Aufrufer prueft eigene Rechte und auditiert) */
 	getPayeeIban(actionId: string, payeeId: string): Promise<string | null>;
@@ -101,6 +140,17 @@ export interface ActionsService {
 	): Promise<{ data: Uint8Array; name: string; contentType: string } | null>;
 	/** Abgeschlossene Abrechnungen mit Ergebnis */
 	listClosedAccountings(): Promise<ClosedAccounting[]>;
+	/** Detail einer abgeschlossenen Abrechnung; `null`, wenn offen oder unbekannt */
+	getClosedAccounting(actionId: string): Promise<ClosedAccountingDetail | null>;
+	/** Ausgaben des Stammes (ohne Rueckzahlung), offen oder bezahlt */
+	listClubExpenses(): Promise<ClubExpenseSource[]>;
+	/** Klartext-IBAN des Empfaengers einer Stamm-Ausgabe (Aufrufer prueft Rechte und auditiert) */
+	getClubExpenseIban(actionId: string, entryId: string): Promise<string | null>;
+	/**
+	 * Stamm-Ausgabe als von der Kasse ueberwiesen markieren bzw. zuruecknehmen (auch bei abgeschlossener
+	 * Abrechnung). Eine manuelle Markierung („bereits bezahlt“) bleibt unberuehrt.
+	 */
+	markClubExpensePaid(actionId: string, entryId: string, paid: boolean): Promise<boolean>;
 	/** Abrechnungsbericht als PDF (mit Beleg-Anhaengen); `withBank` = IBAN im Klartext */
 	accountingReportPdf(
 		actionId: string,

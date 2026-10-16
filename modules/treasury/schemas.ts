@@ -21,8 +21,13 @@ export const CATEGORY_KIND_LABELS: Record<CategoryKind, string> = {
 	both: 'Beides'
 };
 
-export const INVOICE_SOURCES = ['manual', 'action'] as const;
+export const INVOICE_SOURCES = ['manual', 'action', 'annual'] as const;
 export type InvoiceSource = (typeof INVOICE_SOURCES)[number];
+export const INVOICE_SOURCE_LABELS: Record<InvoiceSource, string> = {
+	manual: 'Manuell',
+	action: 'Aktion',
+	annual: 'Jahresbeitrag'
+};
 
 export const INVOICE_STATUSES = ['open', 'partial', 'paid', 'cancelled'] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
@@ -63,6 +68,8 @@ export const DEFAULT_CATEGORIES: { id: string; name: string; kind: CategoryKind 
 	{ id: 'cat-sonstiges', name: 'Sonstiges', kind: 'both' }
 ];
 export const CONTRIBUTIONS_CATEGORY_ID = 'cat-beitraege';
+/** Mitgliedsbeiträge (Jahresbeitrag) */
+export const MEMBERSHIP_CATEGORY_ID = 'cat-mitgliedsbeitraege';
 
 // --- Hilfs-Schemas ------------------------------------------------------------
 
@@ -493,13 +500,20 @@ export interface InvoiceDetail extends InvoiceSummary {
 	updatedAt: string;
 }
 
-export const DOCUMENT_REASONS = ['registration', 'changed', 'cancelled', 'manual'] as const;
+export const DOCUMENT_REASONS = [
+	'registration',
+	'changed',
+	'cancelled',
+	'manual',
+	'annual'
+] as const;
 export type DocumentReason = (typeof DOCUMENT_REASONS)[number];
 export const DOCUMENT_REASON_LABELS: Record<DocumentReason, string> = {
 	registration: 'Anmeldung',
 	changed: 'Geänderte Rechnung',
 	cancelled: 'Stornierung',
-	manual: 'Manuell versendet'
+	manual: 'Manuell versendet',
+	annual: 'Jahresbeitrag'
 };
 
 export interface InvoiceDocument {
@@ -623,13 +637,14 @@ export interface Overview {
 
 // --- Ausstehende Überweisungen -------------------------------------------------
 
-export const PAYABLE_SOURCES = ['manual', 'reimbursement', 'refund', 'credit'] as const;
+export const PAYABLE_SOURCES = ['manual', 'reimbursement', 'refund', 'credit', 'expense'] as const;
 export type PayableSource = (typeof PAYABLE_SOURCES)[number];
 export const PAYABLE_SOURCE_LABELS: Record<PayableSource, string> = {
 	manual: 'Eingangsrechnung',
 	reimbursement: 'Auslagenerstattung',
 	refund: 'Rückzahlung Überschuss',
-	credit: 'Guthaben'
+	credit: 'Guthaben',
+	expense: 'Ausgabe aus Abrechnung'
 };
 
 export const payableInput = z.object({
@@ -812,7 +827,14 @@ export const SETTING_KEYS = {
 	reminderSubject: 'treasury.mail.reminderSubject',
 	reminderBody: 'treasury.mail.reminderBody',
 	invoiceSubject: 'treasury.mail.invoiceSubject',
-	invoiceBody: 'treasury.mail.invoiceBody'
+	invoiceBody: 'treasury.mail.invoiceBody',
+	annualStamm: 'treasury.annual.stamm',
+	annualGau: 'treasury.annual.gau',
+	annualLandesmark: 'treasury.annual.landesmark',
+	annualBund: 'treasury.annual.bund',
+	annualSubject: 'treasury.annual.mailSubject',
+	annualBody: 'treasury.annual.mailBody',
+	annualPdfText: 'treasury.annual.pdfText'
 } as const;
 
 export const DEFAULT_PAID_SUBJECT = 'Zahlungseingang bestätigt';
@@ -890,3 +912,154 @@ export const MAIL_PLACEHOLDERS = [
 	['{anlass}', 'Rechnung / Geänderte Rechnung / Stornierung'],
 	['{aenderung}', 'Erklärender Satz zur geänderten oder stornierten Rechnung']
 ] as const;
+
+// --- Jahresbeitrag --------------------------------------------------------------
+
+/** Beitragsebenen (gleiche Werte wie `members` `FEE_LEVELS`) */
+export const FEE_LEVELS = ['stamm', 'gau', 'landesmark', 'bund'] as const;
+export type FeeLevel = (typeof FEE_LEVELS)[number];
+export const FEE_LEVEL_LABELS: Record<FeeLevel, string> = {
+	stamm: 'Stamm',
+	gau: 'Gau',
+	landesmark: 'Landesmark',
+	bund: 'Bund'
+};
+/** Cent je Ebene */
+export type FeeRates = Record<FeeLevel, number>;
+export const DEFAULT_FEE_RATES: FeeRates = { stamm: 1200, gau: 800, landesmark: 200, bund: 2500 };
+/** Eintritt nach diesem Tag (MM-TT) im Beitragsjahr → nur Stammesbeitrag */
+export const FEE_FULL_UNTIL = '02-28';
+
+export const ANNUAL_RUN_STATUSES = ['draft', 'scheduled', 'sent'] as const;
+export type AnnualRunStatus = (typeof ANNUAL_RUN_STATUSES)[number];
+export const ANNUAL_RUN_STATUS_LABELS: Record<AnnualRunStatus, string> = {
+	draft: 'Entwurf',
+	scheduled: 'Versand geplant',
+	sent: 'Versendet'
+};
+
+export const DEFAULT_ANNUAL_SUBJECT = 'Jahresbeitrag {jahr}: {rechnungen}';
+export const DEFAULT_ANNUAL_BODY = `Hallo,
+
+der Jahresbeitrag {jahr} für {mitglieder} ist fällig. Die Aufschlüsselung nach Stamm, Gau, Landesmark und Bund findest du im PDF im Anhang.
+
+{zahlung}
+
+Herzliche Grüße und Gut Pfad
+Die Kasse`;
+export const DEFAULT_ANNUAL_PDF_TEXT = `wir bitten um Zahlung des Mitgliedsbeitrags für das Jahr {jahr}. Der Beitrag setzt sich aus den Anteilen für Stamm, Gau, Landesmark und Bund zusammen. Bitte überweise den Betrag bis zum {faellig}.`;
+
+export const ANNUAL_PLACEHOLDERS = [
+	['{jahr}', 'Beitragsjahr'],
+	['{name}', 'Name(n) der Empfänger*innen'],
+	['{mitglieder}', 'Vornamen der abgerechneten Mitglieder'],
+	['{summe}', 'Rechnungsbetrag'],
+	['{rechnungen}', 'Rechnungsnummer'],
+	['{faellig}', 'Zahlungsfrist'],
+	['{zahlung}', 'Zahlungskasten (nur Mail, eigener Absatz)'],
+	['{verwendungszweck}', 'Rechnungsnummer + Name']
+] as const;
+
+const feeCents = z.number('Ungültiger Betrag').int('Ungültiger Betrag').min(0).max(100_000);
+export const feeRatesInput = z.object({
+	stamm: feeCents,
+	gau: feeCents,
+	landesmark: feeCents,
+	bund: feeCents
+});
+
+export const annualRunInput = z.object({
+	year: z.number().int().min(2000).max(2100)
+});
+export type AnnualRunInput = z.infer<typeof annualRunInput>;
+
+/** Änderungen nur an Entwürfen/geplanten Läufen */
+export const annualRunUpdate = z.object({
+	dueOn: dateString.optional(),
+	rates: feeRatesInput.optional(),
+	mailSubject: z.string().trim().min(1, 'Pflichtfeld').max(150).optional(),
+	mailBody: z.string().trim().min(1, 'Pflichtfeld').max(5000).optional(),
+	pdfText: z.string().trim().min(1, 'Pflichtfeld').max(3000).optional()
+});
+export type AnnualRunUpdate = z.infer<typeof annualRunUpdate>;
+
+export const annualScheduleInput = z.object({ sendOn: dateString });
+
+export const annualPreviewQuery = z.object({
+	/** `run` = Lauf zum Stichtag, `catch-up` = Nachberechnung; Standard: versendet → `catch-up`, sonst `run` */
+	mode: z.enum(['run', 'catch-up']).optional(),
+	/** Rechnungsschlüssel aus `AnnualPreview.invoices[].key` (sonst die erste) */
+	key: z.string().max(80).optional()
+});
+
+export interface AnnualRun {
+	id: string;
+	year: number;
+	/** Stichtag (Erstellung): wer da Mitglied ist, zahlt */
+	createdOn: string;
+	dueOn: string;
+	sendOn: string | null;
+	status: AnnualRunStatus;
+	sentAt: string | null;
+	rates: FeeRates;
+	mailSubject: string;
+	mailBody: string;
+	pdfText: string;
+	/** Ergebnis des letzten Versands */
+	lastResult: AnnualSendResult | null;
+	/** Bereits erzeugte Rechnungen dieses Laufs */
+	invoiceCount: number;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AnnualPreviewMember {
+	memberId: string;
+	name: string;
+	levels: FeeLevel[];
+	/** Grund für reduzierte Ebenen */
+	note: 'secondary' | 'late-entry' | null;
+	totalCents: number;
+}
+
+export interface AnnualPreviewInvoice {
+	/** `payer:<id>` oder `member:<id>` */
+	key: string;
+	payerId: string | null;
+	recipientName: string;
+	/** Leer ohne `treasury.invoice.send`/`.edit` (dann nur `emailCount`) */
+	emails: string[];
+	emailCount: number;
+	members: AnnualPreviewMember[];
+	totalCents: number;
+}
+
+export interface AnnualPreview {
+	year: number;
+	/** `run` = Lauf zum Stichtag; `catch-up` = noch nicht abgerechnete Mitglieder des Jahres */
+	mode: 'run' | 'catch-up';
+	invoices: AnnualPreviewInvoice[];
+	totalCents: number;
+	memberCount: number;
+	/** Mitglieder ohne E-Mail (Rechnung entsteht trotzdem, Mail nicht) */
+	withoutEmail: { memberId: string; name: string }[];
+	/** Mitglieder mit 0 € (z. B. Zweitmitglied ohne Ebenen) */
+	skipped: { memberId: string; name: string }[];
+	/** Anzahl Mitglieder ohne Zahler mit Geschwister-Vorschlag (Hinweis auf „Zahler & Familien“) */
+	payerSuggestions: number;
+}
+
+export interface AnnualSendResult {
+	invoicesCreated: number;
+	mailsSent: number;
+	mailErrors: number;
+	withoutAddress: number;
+}
+
+/** Vorschau der Mail einer geplanten Rechnung (`GET /annual-fees/:id/preview-mail`) */
+export interface AnnualMailPreview {
+	subject: string;
+	html: string;
+	text: string;
+	to: string[];
+}

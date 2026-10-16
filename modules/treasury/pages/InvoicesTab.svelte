@@ -9,7 +9,7 @@
 	import * as Table from '$lib/components/ui/table';
 	import { DataTable } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import type { InvoiceList } from '../schemas';
+	import { INVOICE_SOURCE_LABELS, type InvoiceList } from '../schemas';
 	import {
 		BASE,
 		errorMessage,
@@ -74,7 +74,8 @@
 	];
 	const sources = [
 		{ value: 'action', label: 'Aus Aktionen' },
-		{ value: 'manual', label: 'Manuell' }
+		{ value: 'annual', label: INVOICE_SOURCE_LABELS.annual },
+		{ value: 'manual', label: INVOICE_SOURCE_LABELS.manual }
 	];
 	const actionOptions = $derived(actions.map((a) => ({ value: a.id, label: a.name })));
 	const open = (id: string) => goto(`/modules/treasury/invoices/${id}`);
@@ -158,7 +159,7 @@
 					{i.number}
 				</a>
 				<div class="text-xs text-muted-foreground">
-					{i.source === 'action' ? 'Aktion' : 'Manuell'}
+					{INVOICE_SOURCE_LABELS[i.source] ?? i.source}
 				</div>
 			</Table.Cell>
 			<Table.Cell class="max-w-72">

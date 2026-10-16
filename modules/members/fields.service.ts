@@ -13,6 +13,7 @@ import type {
 	MembersService
 } from './contract';
 import {
+	FEE_LEVELS,
 	MEMBER_FIELDS_MAX,
 	MEMBER_FIELD_PRESETS,
 	MEMBER_FIELD_TYPES,
@@ -239,7 +240,10 @@ async function memberContacts(
 	const list = await rows(
 		tx,
 		sql`SELECT m.id, m.first_name, m.last_name, to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date,
-			m.street, m.postal_code, m.city FROM members m WHERE ${where}
+			m.street, m.postal_code, m.city,
+			to_char(m.entry_date, 'YYYY-MM-DD') AS entry_date, to_char(m.exit_date, 'YYYY-MM-DD') AS exit_date,
+			m.secondary_member, array_to_string(m.fee_levels, ',') AS fee_levels
+			FROM members m WHERE ${where}
 			ORDER BY m.last_name, m.first_name, m.id LIMIT ${limit}`
 	);
 	if (!list.length) return [];
@@ -258,7 +262,17 @@ async function memberContacts(
 		emails: emails.filter((e) => e.member_id === r.id).map((e) => e.value as string),
 		street: (r.street as string | null) ?? '',
 		postalCode: (r.postal_code as string | null) ?? '',
-		city: (r.city as string | null) ?? ''
+		city: (r.city as string | null) ?? '',
+		entryDate: (r.entry_date as string | null) ?? null,
+		exitDate: (r.exit_date as string | null) ?? null,
+		secondaryMember: Boolean(r.secondary_member),
+		feeLevels: r.secondary_member
+			? FEE_LEVELS.filter((f) =>
+					String(r.fee_levels ?? '')
+						.split(',')
+						.includes(f)
+				)
+			: [...FEE_LEVELS]
 	}));
 }
 

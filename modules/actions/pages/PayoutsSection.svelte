@@ -98,8 +98,8 @@
 
 	{#if viaTreasury}
 		<p class="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground" role="note">
-			Offene Auslagen erscheinen automatisch in der Kasse unter „Auszahlungen“. Sobald die Kasse die
-			Überweisung bucht, wird die Person hier als ausgezahlt markiert.
+			Offene Auslagen gehen mit dem Abschluss der Abrechnung an die Kasse (unter „Auszahlungen“).
+			Sobald die Kasse die Überweisung bucht, wird die Person hier als ausgezahlt markiert.
 		</p>
 	{/if}
 	{#if !canViewPayouts || payees === null}

@@ -56,6 +56,14 @@ const crypt = () => core.crypto.forModule(MODULE_ID);
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
+const decryptOrNull = (enc: unknown): string | null => {
+	if (enc == null) return null;
+	try {
+		return crypt().decrypt(String(enc));
+	} catch {
+		return null;
+	}
+};
 const bool = (v: unknown): boolean | null => (v == null ? null : Boolean(v));
 
 function jsonOf(v: unknown): unknown {
@@ -130,7 +138,8 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 			tx,
 			sql`SELECT id, type, category, description, amount_cents,
 					to_char(entry_date, 'YYYY-MM-DD') AS entry_date, paid_by, payee_id,
-					receipt_path, receipt_name, receipt_content_type, reimbursed_at
+					receipt_path, receipt_name, receipt_content_type, reimbursed_at, recipient_name,
+					recipient_iban_enc, recipient_bic, purpose, club_paid_at
 				FROM accounting_entries WHERE action_id = ${id} ORDER BY entry_date, created_at, id`
 		),
 		refund: await loadRefundSnapshot(tx, id),
@@ -306,7 +315,17 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			paidBy: String(e.paid_by) as 'club' | 'person',
 			payeeRef: e.payee_id == null ? null : (yid.get(String(e.payee_id)) ?? null),
 			receipt: receiptOf.get(String(e.id)) as ArchiveDocument['entries'][number]['receipt'],
-			reimbursedAt: iso(e.reimbursed_at)
+			reimbursedAt: iso(e.reimbursed_at),
+			transfer:
+				e.type === 'expense' && e.paid_by === 'club' && e.category !== 'refund'
+					? {
+							recipientName: str(e.recipient_name),
+							...(withBank ? { iban: decryptOrNull(e.recipient_iban_enc) } : {}),
+							bic: str(e.recipient_bic),
+							purpose: str(e.purpose),
+							paidAt: iso(e.club_paid_at)
+						}
+					: null
 		})),
 		refund: rows.refund
 			? {
@@ -460,6 +479,23 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		const normalized = normalizeIban(p.iban);
 		payeeIban.set(p.id, { enc: crypt().encrypt(normalized), last: ibanLast(normalized) });
 	}
+	const entryIban = new Map<string, { enc: string; last: string }>();
+	for (const e of doc.entries) {
+		const iban = e.transfer?.iban;
+		if (!iban) continue;
+		if (!canPayout) {
+			ibanSkipped += 1;
+			continue;
+		}
+		if (!isValidIban(iban)) {
+			warnings.push(
+				`Die IBAN der Ausgabe „${e.description}“ ist ungültig; sie wurde ohne IBAN angelegt.`
+			);
+			continue;
+		}
+		const normalized = normalizeIban(iban);
+		entryIban.set(e.id, { enc: crypt().encrypt(normalized), last: ibanLast(normalized) });
+	}
 	if (ibanSkipped > 0) {
 		warnings.push(
 			`${ibanSkipped} IBAN(s) wurden nicht übernommen, weil das Recht „Auszahlungen einsehen“ fehlt.`
@@ -593,15 +629,24 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 
 			for (const [i, e] of doc.entries.entries()) {
 				const r = receiptPath.get(e.id);
+				const t = e.transfer ?? null;
+				const iban = entryIban.get(e.id);
+				// Stamm-Ausgaben aelterer Archive (ohne `transfer`) gelten als bezahlt
+				const clubExpense = e.type === 'expense' && e.paidBy === 'club' && e.category !== 'refund';
+				const paidAt = t ? t.paidAt : clubExpense ? stamp(i) : null;
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
 							amount_cents, entry_date, paid_by, payee_id, receipt_path, receipt_name,
-							receipt_content_type, reimbursed_at, created_by, created_at, updated_at)
+							receipt_content_type, reimbursed_at, created_by, created_at, updated_at,
+							recipient_name, recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose,
+							club_paid_at, club_paid_via)
 						VALUES (${eids.get(e.id)!}, ${actionId}, ${e.type}, ${e.category}, ${e.description},
 							${e.amountCents}, ${e.entryDate}, ${e.paidBy},
 							${e.payeeRef ? yids.get(e.payeeRef)! : null}, ${r?.path ?? null},
 							${r?.name ?? null}, ${r?.contentType ?? null}, ${e.reimbursedAt}, ${ownerId},
-							${stamp(i)}, ${stamp(i)})`
+							${stamp(i)}, ${stamp(i)}, ${t?.recipientName ?? null}, ${iban?.enc ?? null},
+							${iban?.last ?? null}, ${t?.bic ?? null}, ${t?.purpose ?? null}, ${paidAt},
+							${paidAt ? 'manual' : null})`
 				);
 			}
 

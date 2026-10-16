@@ -39,6 +39,12 @@ export interface MemberContact {
 	street: string;
 	postalCode: string;
 	city: string;
+	/** Eintritt/Austritt (JJJJ-MM-TT) oder null */
+	entryDate: string | null;
+	exitDate: string | null;
+	secondaryMember: boolean;
+	/** Ebenen, die bei uns gezahlt werden: Teilmenge von `stamm|gau|landesmark|bund` (bei Nicht-Zweitmitgliedern alle) */
+	feeLevels: ('stamm' | 'gau' | 'landesmark' | 'bund')[];
 }
 
 export interface MembersService {

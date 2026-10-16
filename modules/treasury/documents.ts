@@ -27,20 +27,39 @@ import {
 	epcPayload,
 	formatDateDe,
 	groupByAddress,
+	renderTemplate,
 	sanitizeName,
 	type BankData
 } from './logic';
 import { formatIban } from './iban';
+import { joinNames } from './annual-fee';
 import { composeMail } from './mail-compose';
 import { paymentBox, paymentText } from './mail-html';
 import { loadBankData } from './notify';
 import {
 	DEFAULT_INVOICE_BODY,
 	DEFAULT_INVOICE_SUBJECT,
+	FEE_LEVEL_LABELS,
+	FEE_LEVELS,
 	SETTING_KEYS,
 	type DocumentReason,
+	type FeeLevel,
 	type InvoiceDocument
 } from './schemas';
+
+/** Jahresbeitrag: alles, was das PDF braucht (alte Snapshots haben das Feld nicht) */
+export interface AnnualSnapshot {
+	year: number;
+	/** Textvorlage des Laufs (Platzhalter werden beim Rendern ersetzt) */
+	pdfText: string;
+	members: {
+		name: string;
+		firstName: string;
+		/** Cent je Ebene (nach Ermaessigung); fehlende Ebene = nicht berechnet */
+		levels: Partial<Record<FeeLevel, number>>;
+		totalCents: number;
+	}[];
+}
 
 export interface InvoiceSnapshot {
 	number: string;
@@ -61,6 +80,7 @@ export interface InvoiceSnapshot {
 	totalCents: number;
 	paidCents: number;
 	bank: BankData;
+	annual?: AnnualSnapshot;
 }
 
 /** Teile des Snapshots, deren Aenderung eine neue Fassung ausloest (nicht: Zahlungen, Bankdaten) */
@@ -77,7 +97,10 @@ export function snapshotKey(s: InvoiceSnapshot): string {
 export function describeChange(prev: InvoiceSnapshot | null, next: InvoiceSnapshot): string {
 	if (next.cancelled)
 		return 'die folgende Rechnung wurde storniert. Bitte überweise dafür nichts (mehr).';
-	if (!prev) return 'anbei die Rechnung zur Anmeldung.';
+	if (!prev)
+		return next.annual
+			? `anbei die Rechnung zum Jahresbeitrag ${next.annual.year}.`
+			: 'anbei die Rechnung zur Anmeldung.';
 	const parts: string[] = [];
 	if (prev.totalCents !== next.totalCents) {
 		parts.push(
@@ -89,17 +112,54 @@ export function describeChange(prev: InvoiceSnapshot | null, next: InvoiceSnapsh
 	return `unsere Rechnung hat sich geändert. ${parts.join(' ')}`;
 }
 
-async function addressFor(inv: RawInvoice): Promise<string[]> {
-	const memberId = inv.lines.find((l) => l.member_id)?.member_id;
-	const contact = memberId
-		? (await (await membersService()).listMemberContacts({ ids: [String(memberId)] }))[0]
-		: undefined;
+type Contact = Awaited<
+	ReturnType<Awaited<ReturnType<typeof membersService>>['listMemberContacts']>
+>[number];
+
+function addressLines(inv: RawInvoice, contact: Contact | undefined): string[] {
 	return [
 		String(inv.row.recipient_name),
 		...(contact ? [contact.street, `${contact.postalCode} ${contact.city}`.trim()] : [])
 	]
 		.filter((l) => l && l.trim())
 		.map((l) => l.slice(0, 60));
+}
+
+/** Aufschluesselung je Mitglied und Ebene (Reihenfolge der Posten) */
+function annualSnapshot(
+	inv: RawInvoice,
+	names: NameMaps,
+	contacts: Map<string, Contact>
+): AnnualSnapshot | undefined {
+	if (inv.row.source !== 'annual' || inv.row.annual_year == null) return undefined;
+	const members: AnnualSnapshot['members'] = [];
+	const byId = new Map<string, AnnualSnapshot['members'][number]>();
+	for (const l of inv.lines) {
+		const memberId = String(l.member_id ?? '');
+		let m = byId.get(memberId);
+		if (!m) {
+			const c = contacts.get(memberId);
+			m = {
+				name: c
+					? `${c.firstName} ${c.lastName}`
+					: (names.members.get(memberId) ?? String(l.description)),
+				firstName: c?.firstName ?? (names.members.get(memberId) ?? '').split(' ')[0] ?? '',
+				levels: {},
+				totalCents: 0
+			};
+			byId.set(memberId, m);
+			members.push(m);
+		}
+		const cents = num(l.amount_cents) - num(l.waived_cents);
+		const level = str(l.fee_level) as FeeLevel | null;
+		if (level && FEE_LEVELS.includes(level)) m.levels[level] = (m.levels[level] ?? 0) + cents;
+		m.totalCents += cents;
+	}
+	return {
+		year: num(inv.row.annual_year),
+		pdfText: String(inv.row.annual_pdf_text ?? ''),
+		members
+	};
 }
 
 export async function buildSnapshot(
@@ -114,10 +174,22 @@ export async function buildSnapshot(
 		waiveReason: str(l.waive_reason)
 	}));
 	const actionId = str(inv.row.action_id) ?? str(inv.lines.find((l) => l.action_id)?.action_id);
+	const annual = inv.row.source === 'annual';
+	const memberIds = [
+		...new Set(inv.lines.filter((l) => l.member_id).map((l) => String(l.member_id)))
+	];
+	const contactIds = annual ? memberIds : memberIds.slice(0, 1);
+	const contacts = new Map(
+		(contactIds.length
+			? await (await membersService()).listMemberContacts({ ids: contactIds })
+			: []
+		).map((c) => [c.id, c])
+	);
+	const annualData = annualSnapshot(inv, names, contacts);
 	return {
 		number: String(inv.row.number),
 		recipientName: String(inv.row.recipient_name),
-		address: await addressFor(inv),
+		address: addressLines(inv, memberIds[0] ? contacts.get(memberIds[0]) : undefined),
 		issuedOn: String(inv.row.issued_on),
 		dueOn: String(inv.row.due_on),
 		note: str(inv.row.note),
@@ -126,11 +198,52 @@ export async function buildSnapshot(
 		lines,
 		totalCents: lines.reduce((s, l) => s + Math.max(0, l.amountCents - l.waivedCents), 0),
 		paidCents: inv.lines.reduce((s, l) => s + num(l.paid_cents), 0),
-		bank
+		bank,
+		...(annualData ? { annual: annualData } : {})
 	};
 }
 
 const eur = (c: number) => `${centsToCsv(c)} €`;
+
+/** Platzhalter des Jahresbeitrag-Textes (`{jahr} {faellig} {name} {summe} {rechnungen} {mitglieder} {verwendungszweck}`) */
+export function annualVars(s: InvoiceSnapshot, a: AnnualSnapshot): Record<string, string> {
+	return {
+		jahr: String(a.year),
+		faellig: formatDateDe(s.dueOn),
+		name: s.recipientName,
+		summe: eur(s.totalCents),
+		rechnungen: s.number,
+		mitglieder: joinNames(a.members.map((m) => m.firstName || m.name)),
+		verwendungszweck: invoicePurpose(s)
+	};
+}
+
+/** Einleitung + Tabelle Mitglied × Ebene fuer Jahresbeitrags-Rechnungen */
+function annualBlocks(s: InvoiceSnapshot, a: AnnualSnapshot): PdfBlock[] {
+	const intro = s.cancelled
+		? `die Rechnung ${s.number} über den Jahresbeitrag ${a.year} wurde storniert:`
+		: renderTemplate(a.pdfText, annualVars(s, a)).trim();
+	return [
+		{
+			type: 'paragraph',
+			text: `Hallo,
+${intro}`
+		},
+		{
+			type: 'table',
+			variant: 'grid',
+			columns: ['Mitglied', ...FEE_LEVELS.map((l) => FEE_LEVEL_LABELS[l]), 'Summe'],
+			align: ['left', 'right', 'right', 'right', 'right', 'right'],
+			widths: [3, 1, 1, 1.3, 1, 1.2],
+			rows: a.members.map((m) => [
+				m.name,
+				...FEE_LEVELS.map((l) => (m.levels[l] != null ? eur(m.levels[l]!) : '–')),
+				eur(m.totalCents)
+			]),
+			totalRow: ['Rechnungsbetrag', '', '', '', '', eur(s.totalCents)]
+		}
+	];
+}
 
 /** Verwendungszweck einer Rechnung (Nummer + Name, max. 140 Zeichen) */
 export const invoicePurpose = (s: Pick<InvoiceSnapshot, 'number' | 'recipientName'>) =>
@@ -223,32 +336,38 @@ export async function renderInvoicePdf(
 		...(version && version > 1 ? [String(version)] : [])
 	];
 	const content: PdfBlock[] = [
-		{ type: 'table', variant: 'grid', columns: infoCols, rows: [infoRow] },
-		{
-			type: 'paragraph',
-			text:
-				'Hallo,\n' +
-				(s.cancelled
-					? `die Rechnung ${s.number} für ${s.recipientName} wurde storniert:`
-					: s.actionName
-						? `vielen Dank für die Anmeldung von ${s.recipientName} zu „${s.actionName}“. Für die Teilnahme berechnen wir:`
-						: `für ${s.recipientName} berechnen wir die folgenden Posten:`)
-		},
-		{
-			type: 'table',
-			variant: 'grid',
-			columns: ['Posten', 'Betrag'],
-			align: ['left', 'right'],
-			widths: [4, 1],
-			rows: s.lines.map((l) => [
-				l.waivedCents > 0
-					? `${l.description} (ermäßigt um ${eur(l.waivedCents)}${l.waiveReason ? `: ${l.waiveReason}` : ''})`
-					: l.description,
-				eur(l.amountCents - l.waivedCents)
-			]),
-			totalRow: ['Rechnungsbetrag', eur(s.totalCents)]
-		}
+		{ type: 'table', variant: 'grid', columns: infoCols, rows: [infoRow] }
 	];
+	if (s.annual) {
+		content.push(...annualBlocks(s, s.annual));
+	} else {
+		content.push(
+			{
+				type: 'paragraph',
+				text:
+					'Hallo,\n' +
+					(s.cancelled
+						? `die Rechnung ${s.number} für ${s.recipientName} wurde storniert:`
+						: s.actionName
+							? `vielen Dank für die Anmeldung von ${s.recipientName} zu „${s.actionName}“. Für die Teilnahme berechnen wir:`
+							: `für ${s.recipientName} berechnen wir die folgenden Posten:`)
+			},
+			{
+				type: 'table',
+				variant: 'grid',
+				columns: ['Posten', 'Betrag'],
+				align: ['left', 'right'],
+				widths: [4, 1],
+				rows: s.lines.map((l) => [
+					l.waivedCents > 0
+						? `${l.description} (ermäßigt um ${eur(l.waivedCents)}${l.waiveReason ? `: ${l.waiveReason}` : ''})`
+						: l.description,
+					eur(l.amountCents - l.waivedCents)
+				]),
+				totalRow: ['Rechnungsbetrag', eur(s.totalCents)]
+			}
+		);
+	}
 	if (s.cancelled) {
 		content.push({
 			type: 'paragraph',
@@ -407,11 +526,18 @@ export interface SendResult {
 	withoutAddress: number;
 }
 
+/** Abweichende Mailvorlage (z. B. Jahresbeitrag: Texte des Laufs) */
+export interface SendOverrides {
+	subjectTpl?: string;
+	bodyTpl?: string;
+}
+
 /** Neue Fassung erzeugen und (je Adresse) mit PDF-Anhang versenden */
 export async function sendDocuments(
 	ctx: RequestContext,
 	invoiceIds: string[],
-	reason: DocumentReason
+	reason: DocumentReason,
+	overrides: SendOverrides = {}
 ): Promise<SendResult> {
 	const result: SendResult = { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
 	const loaded = await loadInvoices(invoiceIds);
@@ -438,8 +564,9 @@ export async function sendDocuments(
 				? 'Geänderte Rechnung'
 				: 'Rechnung';
 		const mail = composeMail({
-			subjectTpl: String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT),
-			bodyTpl: String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY),
+			subjectTpl:
+				overrides.subjectTpl || String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT),
+			bodyTpl: overrides.bodyTpl || String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY),
 			invoices: [
 				{
 					number: snapshot.number,
@@ -454,7 +581,15 @@ export async function sendDocuments(
 			bank,
 			// Storno: kein Zahlungskasten
 			mode: snapshot.cancelled ? 'paid' : 'open',
-			extraVars: { anlass, aenderung: describeChange(prev, snapshot) }
+			extraVars: {
+				anlass,
+				aenderung: describeChange(prev, snapshot),
+				...(snapshot.annual
+					? (({ jahr, mitglieder }) => ({ jahr, mitglieder }))(
+							annualVars(snapshot, snapshot.annual)
+						)
+					: {})
+			}
 		});
 		let delivered = 0;
 		for (const address of groupByAddress([{ addresses }]).keys()) {

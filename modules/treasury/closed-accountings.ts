@@ -6,7 +6,10 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { core, errors, type ApiEndpoint } from '$lib/sdk/server';
 import { actionsService, mdb, rows, str } from './db';
-import type { ClosedAccounting } from '$lib/modules/actions/contract';
+import { sanitizeName } from './logic';
+import { listPayables } from './payables';
+import type { ClosedAccounting, ClosedAccountingDetail } from '$lib/modules/actions/contract';
+import type { Payable } from './schemas';
 
 const TAGS = ['Modul: treasury'];
 const PERM = 'treasury.report.view';
@@ -15,6 +18,13 @@ const params = z.object({ id: z.uuid() });
 export interface ClosedAccountingItem extends ClosedAccounting {
 	filedAt: string | null;
 	filedBy: string | null;
+}
+
+export interface ClosedAccountingDetailItem extends ClosedAccountingDetail {
+	filedAt: string | null;
+	filedBy: string | null;
+	/** Auszahlungen der Kasse zu dieser Aktion (Auslagen, Stamm-Ausgaben, Rueckzahlungen) */
+	payables: Payable[];
 }
 
 export const closedAccountingEndpoints = [
@@ -68,6 +78,65 @@ export const closedAccountingEndpoints = [
 					'content-type': 'application/pdf',
 					'content-disposition': `inline; filename="${pdf.fileName}"`,
 					'cache-control': 'private, no-store'
+				}
+			});
+		}
+	},
+	{
+		method: 'GET',
+		path: '/closed-accountings/:id',
+		summary: 'Abgeschlossene Abrechnung einer Aktion lesen (Buchungen, Soll/Ist, Auszahlungen)',
+		tags: TAGS,
+		permission: PERM,
+		params,
+		handler: async ({ ctx, params: p }) => {
+			const { id } = p as { id: string };
+			const detail = await (await actionsService()).getClosedAccounting(id);
+			if (!detail) throw errors.notFound('Abgeschlossene Abrechnung nicht gefunden');
+			const payables = await listPayables(sql`p.action_id = ${id} AND p.source <> 'manual'`);
+			const [filed] = await mdb().transaction((tx) =>
+				rows(tx, sql`SELECT filed_at, filed_by FROM filed_accountings WHERE action_id = ${id}`)
+			);
+			const by = filed ? str(filed.filed_by) : null;
+			const users = by
+				? await core.users.directory(ctx, { ids: [by], limit: 30 }).catch(() => [])
+				: [];
+			const out: ClosedAccountingDetailItem = {
+				...detail,
+				filedAt: filed ? new Date(String(filed.filed_at)).toISOString() : null,
+				filedBy: by ? (users.find((u) => u.id === by)?.name ?? 'Unbekannt') : null,
+				payables
+			};
+			return out;
+		}
+	},
+	{
+		method: 'GET',
+		path: '/closed-accountings/:id/receipts/:entryId',
+		summary: 'Beleg einer Buchung aus einer abgeschlossenen Abrechnung anzeigen',
+		tags: TAGS,
+		permission: PERM,
+		params: z.object({ id: z.uuid(), entryId: z.uuid() }),
+		handler: async ({ ctx, params: p }) => {
+			await core.permissions.require(ctx, 'treasury.storage.read');
+			const { id, entryId } = p as { id: string; entryId: string };
+			const svc = await actionsService();
+			if (!(await svc.getClosedAccounting(id))) {
+				throw errors.notFound('Abgeschlossene Abrechnung nicht gefunden');
+			}
+			const file = await svc.downloadReceipt(id, entryId);
+			if (!file) throw errors.notFound('Beleg nicht gefunden');
+			await core.audit.logFromContext(ctx, 'treasury.accounting.receipt_viewed', {
+				target: id,
+				metadata: { entryId }
+			});
+			return new Response(file.data as BodyInit, {
+				status: 200,
+				headers: {
+					'content-type': file.contentType,
+					'content-disposition': `inline; filename="${sanitizeName(file.name)}"`,
+					'cache-control': 'private, no-store',
+					'x-content-type-options': 'nosniff'
 				}
 			});
 		}

@@ -251,7 +251,21 @@ const entrySchema = z
 				contentType: z.enum(RECEIPT_CONTENT_TYPES)
 			})
 			.nullable(),
-		reimbursedAt: isoStamp.nullable()
+		reimbursedAt: isoStamp.nullable(),
+		/**
+		 * Nur Ausgaben des Stammes: Empfaenger der Ueberweisung und Zahlstatus. Fehlt das Feld (aeltere
+		 * Archive), gilt die Ausgabe als bezahlt. `iban` nur mit `actions.payout.view` beim Export.
+		 */
+		transfer: z
+			.strictObject({
+				recipientName: entryInput.shape.recipientName,
+				iban: z.string().max(50).nullable().optional(),
+				bic: entryInput.shape.bic,
+				purpose: entryInput.shape.purpose,
+				paidAt: isoStamp.nullable()
+			})
+			.nullable()
+			.optional()
 	})
 	.superRefine((e, ctx) => {
 		const bad = (path: string, message: string) =>
@@ -275,6 +289,9 @@ const entrySchema = z
 		}
 		if (e.receipt && e.type !== 'expense') bad('receipt', 'Belege gibt es nur bei Ausgaben');
 		if (e.reimbursedAt && e.paidBy !== 'person') bad('reimbursedAt', 'Nur bei Auslagen');
+		if (e.transfer && (e.type !== 'expense' || e.paidBy !== 'club')) {
+			bad('transfer', 'Nur bei Ausgaben des Stammes');
+		}
 	});
 
 const refundSchema = z.strictObject({

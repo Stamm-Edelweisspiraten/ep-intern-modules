@@ -1,16 +1,24 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
 import { accountEndpoints } from './accounts.endpoints';
+import { annualFeeEndpoints } from './annual-fee.endpoints';
+import { runScheduledAnnualFees } from './annual-fee.service';
 import { importEndpoints } from './import.endpoints';
 import { invoiceEndpoints } from './invoices.endpoints';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_extensions.sql?raw';
 import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
+import m0004 from './migrations/0004_club_expenses.sql?raw';
+import m0005 from './migrations/0005_annual_fees.sql?raw';
 import { runReminderJob } from './notify';
 import { closedAccountingEndpoints } from './closed-accountings';
 import { payableEndpoints, payableReceiptEndpoints } from './payables';
 import { reportEndpoints } from './reports.endpoints';
 import {
+	DEFAULT_ANNUAL_BODY,
+	DEFAULT_ANNUAL_PDF_TEXT,
+	DEFAULT_ANNUAL_SUBJECT,
+	DEFAULT_FEE_RATES,
 	DEFAULT_INVOICE_BODY,
 	DEFAULT_INVOICE_SUBJECT,
 	DEFAULT_PAID_BODY,
@@ -24,6 +32,7 @@ import { syncActions } from './sync';
 import { transactionEndpoints } from './transactions.endpoints';
 
 const days = z.number().int().min(0).max(365);
+const feeCents = z.number().int().min(0).max(100_000);
 
 export default defineModule({
 	manifest: {
@@ -45,6 +54,8 @@ export default defineModule({
 			'treasury.settings.manage',
 			'treasury.bank.view',
 			'treasury.payable.edit',
+			'treasury.annual-fee.view',
+			'treasury.annual-fee.manage',
 			'treasury.storage.read',
 			'treasury.storage.write',
 			'treasury.storage.delete'
@@ -148,12 +159,56 @@ export default defineModule({
 			label: 'Kasse: Text Rechnungs-Mail (neue/geänderte/stornierte Rechnung)',
 			schema: z.string().max(5000),
 			default: DEFAULT_INVOICE_BODY
+		},
+		{
+			key: SETTING_KEYS.annualStamm,
+			label: 'Kasse: Jahresbeitrag Stamm (Cent)',
+			schema: feeCents,
+			default: DEFAULT_FEE_RATES.stamm
+		},
+		{
+			key: SETTING_KEYS.annualGau,
+			label: 'Kasse: Jahresbeitrag Gau (Cent)',
+			schema: feeCents,
+			default: DEFAULT_FEE_RATES.gau
+		},
+		{
+			key: SETTING_KEYS.annualLandesmark,
+			label: 'Kasse: Jahresbeitrag Landesmark (Cent)',
+			schema: feeCents,
+			default: DEFAULT_FEE_RATES.landesmark
+		},
+		{
+			key: SETTING_KEYS.annualBund,
+			label: 'Kasse: Jahresbeitrag Bund (Cent)',
+			schema: feeCents,
+			default: DEFAULT_FEE_RATES.bund
+		},
+		{
+			key: SETTING_KEYS.annualSubject,
+			label: 'Kasse: Betreff Jahresbeitrag (Vorlage für neue Läufe)',
+			schema: z.string().max(150),
+			default: DEFAULT_ANNUAL_SUBJECT
+		},
+		{
+			key: SETTING_KEYS.annualBody,
+			label: 'Kasse: Text Jahresbeitrag-Mail (Vorlage für neue Läufe)',
+			schema: z.string().max(5000),
+			default: DEFAULT_ANNUAL_BODY
+		},
+		{
+			key: SETTING_KEYS.annualPdfText,
+			label: 'Kasse: Text im Jahresbeitrag-PDF (Vorlage für neue Läufe)',
+			schema: z.string().max(3000),
+			default: DEFAULT_ANNUAL_PDF_TEXT
 		}
 	],
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_extensions', sql: m0002 },
-		{ name: '0003_payer_from_bookings', sql: m0003 }
+		{ name: '0003_payer_from_bookings', sql: m0003 },
+		{ name: '0004_club_expenses', sql: m0004 },
+		{ name: '0005_annual_fees', sql: m0005 }
 	],
 	jobs: [
 		{
@@ -173,6 +228,12 @@ export default defineModule({
 				const r = await runReminderJob(ctx);
 				return `${r.invoices} Rechnungen erinnert, ${r.mailsSent} Mails, ${r.mailErrors} Fehler, ${r.withoutAddress} ohne Adresse`;
 			}
+		},
+		{
+			id: 'annual-fees',
+			summary: 'Geplanten Jahresbeitrag versenden',
+			schedule: 'hourly',
+			run: (ctx) => runScheduledAnnualFees(ctx)
 		}
 	],
 	endpoints: [
@@ -183,6 +244,7 @@ export default defineModule({
 		...payableReceiptEndpoints,
 		...closedAccountingEndpoints,
 		...importEndpoints,
-		...reportEndpoints
+		...reportEndpoints,
+		...annualFeeEndpoints
 	]
 });

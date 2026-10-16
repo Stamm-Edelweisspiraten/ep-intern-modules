@@ -20,6 +20,7 @@
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		DOCUMENT_REASON_LABELS,
+		INVOICE_SOURCE_LABELS,
 		type Account,
 		type InvoiceDetail,
 		type InvoiceLine,
@@ -275,7 +276,9 @@
 
 		<div class="flex flex-wrap items-center gap-2">
 			<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>
-			<Badge variant="outline">{inv.source === 'action' ? 'Aus Aktion' : 'Manuell'}</Badge>
+			<Badge variant="outline"
+				>{inv.source === 'action' ? 'Aus Aktion' : INVOICE_SOURCE_LABELS[inv.source]}</Badge
+			>
 			{#if inv.remindersPaused}<Badge variant="outline">Erinnerungen pausiert</Badge>{/if}
 			{#if inv.paidNotifiedAt}<Badge variant="secondary">Bestätigung versendet</Badge>{/if}
 		</div>
@@ -365,6 +368,20 @@
 						<div class="flex justify-between gap-2">
 							<span class="text-muted-foreground">Fällig</span>{fmtDate(inv.dueOn)}
 						</div>
+						{#if inv.source === 'annual'}
+							<div class="flex justify-between gap-2">
+								<span class="text-muted-foreground">Herkunft</span>
+								<a
+									class="underline-offset-4 hover:underline"
+									href="/modules/treasury?tab=annual"
+									title="Zum Tab Jahresbeitrag">{INVOICE_SOURCE_LABELS.annual}</a
+								>
+							</div>
+						{:else if inv.action}
+							<div class="flex justify-between gap-2">
+								<span class="text-muted-foreground">Aktion</span>{inv.action.name}
+							</div>
+						{/if}
 						{#if inv.payer}
 							<div class="flex justify-between gap-2">
 								<span class="text-muted-foreground">Zahler</span>{inv.payer.name}

@@ -26,6 +26,8 @@
 		Transaction
 	} from '../schemas';
 	import { BASE, errorMessage } from './helpers';
+	import AccountingsTab from './AccountingsTab.svelte';
+	import AnnualFeeTab from './AnnualFeeTab.svelte';
 	import AllocateDialog from './AllocateDialog.svelte';
 	import ImportDialog from './ImportDialog.svelte';
 	import InvoiceDialog from './InvoiceDialog.svelte';
@@ -54,8 +56,19 @@
 		payable: can(permissions, 'treasury.payable.edit'),
 		bank: can(permissions, 'treasury.bank.view')
 	});
+	const annualView = $derived(can(permissions, 'treasury.annual-fee.view'));
+	const annualManage = $derived(can(permissions, 'treasury.annual-fee.manage'));
 
-	const TABS = ['overview', 'open', 'payables', 'transactions', 'invoices', 'reports'];
+	const TABS = [
+		'overview',
+		'open',
+		'payables',
+		'accountings',
+		'transactions',
+		'invoices',
+		'annual',
+		'reports'
+	];
 	const initialTab = page.url.searchParams.get('tab');
 	let tab = $state(initialTab && TABS.includes(initialTab) ? initialTab : 'overview');
 	/** Zahler & Familien: im „Mehr“-Menü als Seitenpanel (alte Links mit ?tab=payers öffnen es) */
@@ -213,8 +226,10 @@
 			<Tabs.Trigger value="overview">Übersicht</Tabs.Trigger>
 			<Tabs.Trigger value="open">Offene Posten</Tabs.Trigger>
 			<Tabs.Trigger value="payables">Auszahlungen</Tabs.Trigger>
+			{#if perm.report}<Tabs.Trigger value="accountings">Abrechnungen</Tabs.Trigger>{/if}
 			<Tabs.Trigger value="transactions">Buchungen</Tabs.Trigger>
 			<Tabs.Trigger value="invoices">Rechnungen</Tabs.Trigger>
+			{#if annualView}<Tabs.Trigger value="annual">Jahresbeitrag</Tabs.Trigger>{/if}
 			{#if perm.report}<Tabs.Trigger value="reports">Berichte</Tabs.Trigger>{/if}
 		</Tabs.List>
 		<Tabs.Content value="overview">
@@ -245,6 +260,19 @@
 		<Tabs.Content value="invoices">
 			{#if tab === 'invoices'}
 				<InvoicesTab {...shared} oncreate={() => (invoiceOpen = true)} onchanged={changed} />
+			{/if}
+		</Tabs.Content>
+		<Tabs.Content value="accountings">
+			{#if tab === 'accountings' && perm.report}<AccountingsTab {...shared} />{/if}
+		</Tabs.Content>
+		<Tabs.Content value="annual">
+			{#if tab === 'annual' && annualView}
+				<AnnualFeeTab
+					{...shared}
+					canManage={annualManage}
+					onopen={(t) => setTab(t)}
+					onchanged={changed}
+				/>
 			{/if}
 		</Tabs.Content>
 		<Tabs.Content value="reports">

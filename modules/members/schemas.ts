@@ -47,6 +47,16 @@ export const DOCUMENT_LABELS: Record<DocumentKind, string> = {
 	registration: 'Stammesanmeldung'
 };
 
+/** Beitragsebenen des Jahresbeitrags (Stamm → Bund); Zweitmitglieder zahlen nur die angehakten */
+export const FEE_LEVELS = ['stamm', 'gau', 'landesmark', 'bund'] as const;
+export type FeeLevel = (typeof FEE_LEVELS)[number];
+export const FEE_LEVEL_LABELS: Record<FeeLevel, string> = {
+	stamm: 'Stamm',
+	gau: 'Gau',
+	landesmark: 'Landesmark',
+	bund: 'Bund'
+};
+
 /** Maximale Dokumentgroesse (Bytes) und erlaubte Typen beim Upload */
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_CONTENT_TYPES = [
@@ -155,6 +165,17 @@ const birthDate = z
 	.refine((v) => v <= new Date().toISOString().slice(0, 10), 'Darf nicht in der Zukunft liegen')
 	.refine((v) => (ageFromBirthDate(v) ?? 0) <= 120, 'Geburtsdatum unplausibel');
 
+/** Optionales Datum JJJJ-MM-TT; leer → null */
+const optionalDate = z
+	.string()
+	.trim()
+	.nullish()
+	.transform((v) => (v ? v : null))
+	.refine(
+		(v) => v === null || (/^\d{4}-\d{2}-\d{2}$/.test(v) && isRealDate(v)),
+		'Kein gültiges Datum'
+	);
+
 function noDuplicates<T extends { value: string }>(
 	list: T[],
 	ctx: z.RefinementCtx,
@@ -211,9 +232,33 @@ export const memberInput = z
 		consentWebsite: z.boolean().default(false),
 		consentPrint: z.boolean().default(false),
 		/** Werte der Zusatzfelder (nur aktive Schlüssel; fehlende bleiben unverändert) */
-		custom: z.record(z.string().max(40), z.unknown()).default({})
+		custom: z.record(z.string().max(40), z.unknown()).default({}),
+		/** Eintritt/Austritt (JJJJ-MM-TT); leer = unbekannt bzw. noch Mitglied */
+		entryDate: optionalDate,
+		exitDate: optionalDate,
+		/** Zweitmitglied: zahlt nur die Ebenen in `feeLevels` */
+		secondaryMember: z.boolean().default(false),
+		feeLevels: z
+			.array(z.enum(FEE_LEVELS))
+			.max(FEE_LEVELS.length)
+			.default([...FEE_LEVELS])
+			.transform((l) => FEE_LEVELS.filter((f) => l.includes(f)))
 	})
 	.superRefine((m, ctx) => {
+		if (m.entryDate && m.exitDate && m.exitDate < m.entryDate) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['exitDate'],
+				message: 'Austritt darf nicht vor dem Eintritt liegen'
+			});
+		}
+		if (m.secondaryMember && m.feeLevels.length === 0) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['feeLevels'],
+				message: 'Mindestens eine Ebene wählen'
+			});
+		}
 		if (m.country === 'DE' && !/^\d{5}$/.test(m.postalCode)) {
 			ctx.addIssue({
 				code: 'custom',
@@ -232,6 +277,8 @@ export const memberListQuery = z.object({
 	search: z.string().trim().max(100).optional(),
 	stage: z.enum(STAGES).optional(),
 	groupId: id.optional(),
+	/** Mitgliedschaft heute: aktiv (Standard), ausgetreten oder alle */
+	status: z.enum(['active', 'left', 'all']).default('active'),
 	limit: z.coerce.number().int().min(1).max(200).default(50),
 	offset: z.coerce.number().int().min(0).default(0)
 });
@@ -387,6 +434,12 @@ export interface Member extends MemberRef {
 	consentPrint: boolean;
 	privacyConsent: MemberDocument | null;
 	registration: MemberDocument | null;
+	/** Eintritt/Austritt (JJJJ-MM-TT) oder null */
+	entryDate: string | null;
+	exitDate: string | null;
+	secondaryMember: boolean;
+	/** Ebenen, die bei uns gezahlt werden (bei Nicht-Zweitmitgliedern immer alle) */
+	feeLevels: FeeLevel[];
 	/** Anzahl verknüpfter Benutzerkonten */
 	linkCount: number;
 	/** Werte der Zusatzfelder (inkl. deaktivierter Felder) */

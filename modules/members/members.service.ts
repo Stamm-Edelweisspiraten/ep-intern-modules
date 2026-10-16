@@ -7,6 +7,8 @@ import {
 	type BulkResult,
 	type ContactEntry,
 	type GroupRef,
+	FEE_LEVELS,
+	type FeeLevel,
 	type Member,
 	type MemberInput,
 	type MemberList,
@@ -35,7 +37,26 @@ const MEMBER_COLUMNS = sql`m.id, m.first_name, m.last_name, m.scout_name,
 	to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date, m.street, m.postal_code, m.city, m.country, m.stage,
 	m.consent_social_media, m.consent_website, m.consent_print,
 	m.privacy_consent_name, m.registration_name, m.created_at, m.updated_at,
-		(SELECT count(*)::int FROM member_user_links l WHERE l.member_id = m.id) AS link_count, m.custom`;
+		(SELECT count(*)::int FROM member_user_links l WHERE l.member_id = m.id) AS link_count, m.custom,
+	to_char(m.entry_date, 'YYYY-MM-DD') AS entry_date, to_char(m.exit_date, 'YYYY-MM-DD') AS exit_date,
+	m.secondary_member, array_to_string(m.fee_levels, ',') AS fee_levels`;
+
+/** `text[]` als kommagetrennter String (treiberunabhaengig) → Ebenen in fester Reihenfolge */
+export function parseFeeLevels(v: unknown): FeeLevel[] {
+	const list = String(v ?? '').split(',');
+	return FEE_LEVELS.filter((f) => list.includes(f));
+}
+
+/** Nicht-Zweitmitglieder zahlen immer alle Ebenen bei uns */
+function storedFeeLevels(input: MemberInput): FeeLevel[] {
+	return input.secondaryMember ? input.feeLevels : [...FEE_LEVELS];
+}
+
+const feeLevelsSql = (levels: FeeLevel[]) =>
+	sql`ARRAY[${sql.join(
+		levels.map((l) => sql`${l}`),
+		sql`, `
+	)}]::text[]`;
 
 /** Baut Member-DTOs fuer die geladenen Zeilen (Telefone, E-Mails, Gruppen in Reihenfolge). */
 async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
@@ -80,6 +101,10 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 			consentPrint: Boolean(r.consent_print),
 			privacyConsent: r.privacy_consent_name ? { name: r.privacy_consent_name as string } : null,
 			registration: r.registration_name ? { name: r.registration_name as string } : null,
+			entryDate: (r.entry_date as string | null) ?? null,
+			exitDate: (r.exit_date as string | null) ?? null,
+			secondaryMember: Boolean(r.secondary_member),
+			feeLevels: r.secondary_member ? parseFeeLevels(r.fee_levels) : [...FEE_LEVELS],
 			linkCount: Number(r.link_count ?? 0),
 			custom: (typeof r.custom === 'string'
 				? JSON.parse(r.custom)
@@ -107,6 +132,7 @@ export async function listMembers(query: {
 	search?: string;
 	stage?: Stage;
 	groupId?: string;
+	status?: 'active' | 'left' | 'all';
 	limit: number;
 	offset: number;
 }): Promise<MemberList> {
@@ -123,6 +149,9 @@ export async function listMembers(query: {
 			conds.push(
 				sql`EXISTS (SELECT 1 FROM member_groups mg WHERE mg.member_id = m.id AND mg.group_id = ${query.groupId})`
 			);
+		const status = query.status ?? 'active';
+		if (status === 'active') conds.push(sql`(m.exit_date IS NULL OR m.exit_date > CURRENT_DATE)`);
+		else if (status === 'left') conds.push(sql`m.exit_date <= CURRENT_DATE`);
 		const where = sql.join(conds, sql` AND `);
 		const total = await rows(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
 		const found = await rows(
@@ -175,9 +204,10 @@ export async function createMember(ctx: RequestContext, input: MemberInput): Pro
 		const custom = mergeCustom({}, await validateCustomValues(tx, input.custom));
 		await tx.execute(
 			sql`INSERT INTO members (id, first_name, last_name, scout_name, birth_date, street, postal_code, city, country, stage,
-				consent_social_media, consent_website, consent_print, custom)
+				consent_social_media, consent_website, consent_print, custom, entry_date, exit_date, secondary_member, fee_levels)
 				VALUES (${id}, ${input.firstName}, ${input.lastName}, ${input.scoutName}, ${input.birthDate}::date,
-				${input.street}, ${input.postalCode}, ${input.city}, ${input.country}, ${input.stage}, ${input.consentSocialMedia}, ${input.consentWebsite}, ${input.consentPrint}, ${JSON.stringify(custom)}::jsonb)`
+				${input.street}, ${input.postalCode}, ${input.city}, ${input.country}, ${input.stage}, ${input.consentSocialMedia}, ${input.consentWebsite}, ${input.consentPrint}, ${JSON.stringify(custom)}::jsonb,
+				${input.entryDate}::date, ${input.exitDate}::date, ${input.secondaryMember}, ${feeLevelsSql(storedFeeLevels(input))})`
 		);
 		await writeRelations(tx, id, input, groupIds);
 		return (await loadMember(tx, id))!;
@@ -209,6 +239,8 @@ export async function updateMember(
 					country = ${input.country}, address = NULL, custom = ${JSON.stringify(custom)}::jsonb,
 				stage = ${input.stage}, consent_social_media = ${input.consentSocialMedia},
 				consent_website = ${input.consentWebsite}, consent_print = ${input.consentPrint},
+				entry_date = ${input.entryDate}::date, exit_date = ${input.exitDate}::date,
+				secondary_member = ${input.secondaryMember}, fee_levels = ${feeLevelsSql(storedFeeLevels(input))},
 				updated_at = now() WHERE id = ${id}`
 		);
 		await writeRelations(tx, id, input, groupIds);

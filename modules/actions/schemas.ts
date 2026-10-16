@@ -247,6 +247,11 @@ export interface Participant {
 	source: 'manual' | 'link';
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * Zahlstand des Beitrags laut Kasse. Fehlt das Feld, ist die Kasse nicht aktiv; `null` = keine
+	 * Rechnung (z. B. kein Beitrag übernommen).
+	 */
+	payment?: import('$lib/modules/treasury/contract').ParticipantPayment | null;
 }
 
 // === Phase 2: Kalkulation ===================================================
@@ -804,6 +809,7 @@ export const isIncomeCategory = (c: string): boolean =>
 export const PAID_BY = ['club', 'person'] as const;
 export type PaidBy = (typeof PAID_BY)[number];
 export const PAID_BY_LABELS: Record<PaidBy, string> = { club: 'Stamm', person: 'Person' };
+export type ClubPaidVia = 'manual' | 'treasury';
 
 export const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 export const RECEIPT_CONTENT_TYPES = [
@@ -812,6 +818,21 @@ export const RECEIPT_CONTENT_TYPES = [
 	'image/png',
 	'image/webp'
 ] as const;
+
+const bicSchema = z
+	.string()
+	.trim()
+	.toUpperCase()
+	.max(11)
+	.nullish()
+	.transform((v) => (v ? v : null))
+	.refine(
+		(v) => v === null || /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v),
+		'Ungültige BIC (8 oder 11 Zeichen)'
+	);
+
+/** Verwendungszweck einer SEPA-Ueberweisung (max. 140 Zeichen). */
+export const MAX_PURPOSE_LENGTH = 140;
 
 export const entryInput = z
 	.object({
@@ -825,7 +846,23 @@ export const entryInput = z
 			.max(MAX_AMOUNT_CENTS, 'Betrag zu groß'),
 		entryDate: date,
 		paidBy: z.enum(PAID_BY).default('club'),
-		payeeId: id.nullish().transform((v) => v ?? null)
+		payeeId: id.nullish().transform((v) => v ?? null),
+		/**
+		 * Nur Ausgaben „bezahlt vom Stamm“: `true` = bereits bezahlt, `false` = offen, die Kasse ueberweist
+		 * an den Empfaenger. Fehlt das Feld, gilt die Ausgabe als bezahlt (Verhalten vor der Kasse).
+		 */
+		clubPaid: z.boolean().default(true),
+		recipientName: optionalText(100),
+		/** Fehlt beim Bearbeiten = gespeicherte IBAN bleibt */
+		iban: z
+			.string()
+			.trim()
+			.max(50, 'IBAN zu lang')
+			.nullish()
+			.transform((v) => (v ? normalizeIban(v) : null))
+			.refine((v) => v === null || isValidIban(v), 'Ungültige IBAN'),
+		bic: bicSchema,
+		purpose: optionalText(MAX_PURPOSE_LENGTH)
 	})
 	.superRefine((e, ctx) => {
 		const income = isIncomeCategory(e.category);
@@ -867,21 +904,28 @@ export const entryInput = z
 				message: 'Nur bei „Person“ angeben'
 			});
 		}
+		if (e.type === 'expense' && e.paidBy === 'club' && !e.clubPaid) {
+			if (!e.recipientName) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['recipientName'],
+					message: 'Bitte den Empfänger angeben'
+				});
+			}
+			if (!e.purpose) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['purpose'],
+					message: 'Bitte einen Verwendungszweck angeben'
+				});
+			}
+		}
 	});
+/** Offene Stamm-Ausgabe braucht Empfaengerdaten fuer die Ueberweisung. */
+export const needsTransfer = (e: { type: string; paidBy: string; clubPaid: boolean }): boolean =>
+	e.type === 'expense' && e.paidBy === 'club' && !e.clubPaid;
 export type EntryInput = z.infer<typeof entryInput>;
 export type EntryFormInput = z.input<typeof entryInput>;
-
-const bicSchema = z
-	.string()
-	.trim()
-	.toUpperCase()
-	.max(11)
-	.nullish()
-	.transform((v) => (v ? v : null))
-	.refine(
-		(v) => v === null || /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v),
-		'Ungültige BIC (8 oder 11 Zeichen)'
-	);
 
 export const payeeInput = z.object({
 	name: text(100),
@@ -917,6 +961,12 @@ export interface AccountingEntry {
 	receipt: { name: string; contentType: string } | null;
 	/** Auslage wurde ausgezahlt (nur bei paidBy = person) */
 	reimbursedAt: string | null;
+	/** Nur Ausgaben des Stammes: Empfaenger der Ueberweisung (IBAN maskiert) */
+	recipient: { name: string; ibanMasked: string | null; bic: string | null } | null;
+	purpose: string | null;
+	/** Stamm-Ausgabe bezahlt (`null` = offen); `via` = manuell markiert oder von der Kasse ueberwiesen */
+	clubPaidAt: string | null;
+	clubPaidVia: ClubPaidVia | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -960,6 +1010,8 @@ export interface AccountingSummary {
 	missingReceipts: number;
 	/** Summe offener Auslagen aller Personen */
 	openReimbursementCents: number;
+	/** Noch nicht ueberwiesene Ausgaben des Stammes */
+	openClubPayments: { count: number; cents: number };
 }
 
 /** Automatische Einnahmen aus Teilnehmerliste und Kalkulation. */
@@ -1004,6 +1056,8 @@ export interface SummaryEntry {
 	payeeId: string | null;
 	hasReceipt: boolean;
 	reimbursed: boolean;
+	/** Stamm-Ausgabe noch nicht bezahlt (fehlt = bezahlt) */
+	clubOpen?: boolean;
 }
 
 export interface PayoutRow {

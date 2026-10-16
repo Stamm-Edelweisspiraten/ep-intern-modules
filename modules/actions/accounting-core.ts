@@ -4,11 +4,13 @@ import { core, errors, type Tx } from '$lib/sdk/server';
 import type { ActionContributions, TreasuryService } from '$lib/modules/treasury/contract';
 import { rowsOf } from './access';
 import { computeAutoIncome } from './auto-income';
+import { maskFromLast } from './iban';
 import type { EligibilityParticipant } from './subsidy-eligibility';
 import type {
 	AccountingCategory,
 	AccountingEntry,
 	AutoIncome,
+	ClubPaidVia,
 	EntryType,
 	FreizeitType,
 	LodgingType,
@@ -43,7 +45,8 @@ export async function assertOpen(tx: Tx, actionId: string): Promise<void> {
 /** SELECT-Spalten fuer Buchungen (Alias `e`, Empfaenger `p` per LEFT JOIN). */
 export const ENTRY_COLUMNS = sql`e.id, e.type, e.category, e.description, e.amount_cents,
 	to_char(e.entry_date, 'YYYY-MM-DD') AS entry_date, e.paid_by, e.payee_id, p.name AS payee_name,
-	e.receipt_path, e.receipt_name, e.receipt_content_type, e.reimbursed_at, e.created_at, e.updated_at`;
+	e.receipt_path, e.receipt_name, e.receipt_content_type, e.reimbursed_at, e.created_at, e.updated_at,
+	e.recipient_name, e.recipient_iban_last4, e.recipient_bic, e.purpose, e.club_paid_at, e.club_paid_via`;
 
 export function mapEntry(r: Record<string, unknown>): AccountingEntry {
 	return {
@@ -63,6 +66,18 @@ export function mapEntry(r: Record<string, unknown>): AccountingEntry {
 						contentType: String(r.receipt_content_type ?? 'application/octet-stream')
 					},
 		reimbursedAt: r.reimbursed_at == null ? null : iso(r.reimbursed_at),
+		recipient:
+			r.recipient_name == null
+				? null
+				: {
+						name: String(r.recipient_name),
+						ibanMasked:
+							r.recipient_iban_last4 == null ? null : maskFromLast(String(r.recipient_iban_last4)),
+						bic: r.recipient_bic == null ? null : String(r.recipient_bic)
+					},
+		purpose: r.purpose == null ? null : String(r.purpose),
+		clubPaidAt: r.club_paid_at == null ? null : iso(r.club_paid_at),
+		clubPaidVia: r.club_paid_via == null ? null : (String(r.club_paid_via) as ClubPaidVia),
 		createdAt: iso(r.created_at),
 		updatedAt: iso(r.updated_at)
 	};

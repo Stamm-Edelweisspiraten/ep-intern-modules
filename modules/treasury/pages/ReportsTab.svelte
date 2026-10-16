@@ -9,9 +9,6 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import { FormField } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { PeriodReport } from '../schemas';
@@ -64,64 +61,6 @@
 			toast.error(errorMessage(e, 'PDF konnte nicht erstellt werden'));
 		} finally {
 			pdfBusy = false;
-		}
-	}
-
-	// Abgeschlossene Abrechnungen der Aktionen (Ablage)
-	type Closed = {
-		actionId: string;
-		name: string;
-		startsOn: string;
-		endsOn: string | null;
-		closedAt: string;
-		incomeCents: number;
-		expenseCents: number;
-		balanceCents: number;
-		filedAt: string | null;
-		filedBy: string | null;
-	};
-	let closed = $state<Closed[] | null>(null);
-	let closedError = $state('');
-	let showFiled = $state(false);
-	let closedBusy = $state<string | null>(null);
-
-	async function loadClosed() {
-		closedError = '';
-		try {
-			closed = await apiFetch<Closed[]>(`${BASE}/closed-accountings`);
-		} catch (e) {
-			closedError = errorMessage(e, 'Abrechnungen konnten nicht geladen werden');
-		}
-	}
-
-	$effect(() => {
-		void version;
-		untrack(() => void loadClosed());
-	});
-
-	const visibleClosed = $derived((closed ?? []).filter((c) => showFiled || !c.filedAt));
-
-	async function closedPdf(c: Closed) {
-		closedBusy = c.actionId;
-		try {
-			await openApiFile(`${BASE}/closed-accountings/${c.actionId}/pdf`);
-		} catch (e) {
-			toast.error(errorMessage(e, 'PDF konnte nicht erstellt werden'));
-		} finally {
-			closedBusy = null;
-		}
-	}
-
-	async function setFiled(c: Closed, filed: boolean) {
-		try {
-			await apiFetch(`${BASE}/closed-accountings/${c.actionId}/filed`, {
-				method: 'PUT',
-				body: JSON.stringify({ filed })
-			});
-			toast.success(filed ? `${c.name} als abgelegt markiert` : 'Markierung entfernt');
-			await loadClosed();
-		} catch (e) {
-			toast.error(errorMessage(e, 'Speichern fehlgeschlagen'));
 		}
 	}
 
@@ -300,93 +239,4 @@
 			</Card.Content>
 		</Card.Root>
 	{/if}
-	<Card.Root>
-		<Card.Header class="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
-			<div>
-				<Card.Title>Abgeschlossene Abrechnungen</Card.Title>
-				<Card.Description>
-					Abrechnungen der Aktionen zum Ablegen – als PDF inklusive aller Belege.
-				</Card.Description>
-			</div>
-			<div class="flex items-center gap-2">
-				<Switch id="rp-filed" bind:checked={showFiled} />
-				<Label for="rp-filed">Auch abgelegte zeigen</Label>
-			</div>
-		</Card.Header>
-		<Card.Content class="overflow-x-auto">
-			{#if closedError}
-				<p class="text-sm text-destructive" role="alert">{closedError}</p>
-			{:else if closed === null}
-				<Skeleton class="h-20 w-full" />
-			{:else if !visibleClosed.length}
-				<p class="text-sm text-muted-foreground">
-					{closed.length
-						? 'Alle abgeschlossenen Abrechnungen sind abgelegt.'
-						: 'Noch keine Aktion hat ihre Abrechnung abgeschlossen.'}
-				</p>
-			{:else}
-				<Table.Root>
-					<Table.Header>
-						<Table.Row>
-							<Table.Head>Aktion</Table.Head>
-							<Table.Head>Abgeschlossen</Table.Head>
-							<Table.Head class="text-right">Einnahmen</Table.Head>
-							<Table.Head class="text-right">Ausgaben</Table.Head>
-							<Table.Head class="text-right">Ergebnis</Table.Head>
-							<Table.Head>Ablage</Table.Head>
-							<Table.Head class="text-right"><span class="sr-only">Aktionen</span></Table.Head>
-						</Table.Row>
-					</Table.Header>
-					<Table.Body>
-						{#each visibleClosed as c (c.actionId)}
-							<Table.Row>
-								<Table.Cell>
-									<div class="font-medium">{c.name}</div>
-									<div class="text-xs text-muted-foreground">
-										{fmtDate(c.startsOn)}{c.endsOn ? ` – ${fmtDate(c.endsOn)}` : ''}
-									</div>
-								</Table.Cell>
-								<Table.Cell class="whitespace-nowrap tabular-nums">{fmtDate(c.closedAt)}</Table.Cell
-								>
-								<Table.Cell class="text-right tabular-nums">{formatEuro(c.incomeCents)}</Table.Cell>
-								<Table.Cell class="text-right tabular-nums">{formatEuro(c.expenseCents)}</Table.Cell
-								>
-								<Table.Cell
-									class="text-right font-medium tabular-nums {c.balanceCents < 0
-										? 'text-destructive'
-										: ''}"
-								>
-									{formatEuro(c.balanceCents)}
-								</Table.Cell>
-								<Table.Cell>
-									{#if c.filedAt}
-										<Badge variant="secondary">abgelegt {fmtDate(c.filedAt)}</Badge>
-										{#if c.filedBy}<div class="text-xs text-muted-foreground">
-												von {c.filedBy}
-											</div>{/if}
-									{:else}
-										<Badge variant="outline">offen</Badge>
-									{/if}
-								</Table.Cell>
-								<Table.Cell class="text-right whitespace-nowrap">
-									<Button
-										size="sm"
-										variant="outline"
-										onclick={() => closedPdf(c)}
-										disabled={closedBusy === c.actionId}
-									>
-										<FileText />
-										{closedBusy === c.actionId ? 'Erstellt …' : 'PDF'}
-									</Button>
-									<Button size="sm" variant="ghost" onclick={() => setFiled(c, !c.filedAt)}>
-										{c.filedAt ? 'Zurücknehmen' : 'Als abgelegt markieren'}
-									</Button>
-								</Table.Cell>
-							</Table.Row>
-						{/each}
-					</Table.Body>
-				</Table.Root>
-			{/if}
-		</Card.Content>
-	</Card.Root>
 </div>

@@ -40,7 +40,8 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 | `payables.ts` | Auszahlungen: `syncPayables` (Quellen aus `actions` + Guthaben), Endpoints, Rückkanal `syncReimbursementStatus` |
 | `bank.ts`, `iban.ts` | IBAN verschlüsseln/HMAC (`core.crypto.forModule('treasury').hash`), Prüfung, Maske `•••• 1234` |
 | `*.endpoints.ts` | `accounts`, `transactions`, `invoices` (inkl. Zahler, offene Posten, Aktionen), `import`, `reports` |
-| `pages/` | `TreasuryPage` (Tabs Übersicht · Offene Posten · Auszahlungen · Buchungen · Rechnungen · Berichte; „Zahler & Familien“ als Seitenpanel im „Mehr“-Menü, `?tab=payers` öffnet es), `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
+| `closed-accountings.ts` | Abgeschlossene Abrechnungen: Liste, Detail, Belege, PDF, Ablage |
+| `pages/` | `TreasuryPage` (Tabs Übersicht · Offene Posten · Auszahlungen · Abrechnungen · Buchungen · Rechnungen · Berichte; `AccountingPage`; „Zahler & Familien“ als Seitenpanel im „Mehr“-Menü, `?tab=payers` öffnet es), `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
 
 ## Datenmodell (Migration 0001)
 - `accounts` (kind giro|cash|other, `iban` Klartext – eigenes Vereinskonto, Anfangsbestand + Stichtag, `archived_at`).
@@ -127,6 +128,51 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - **Zahlung erfassen** (`mark-paid`) nimmt `counterpartyIban`/`payerId` und lernt danach den Zahler (`AllocationResult.payer`).
 - Tests: `tests/integration/treasury-booking-match.test.ts`, `tests/unit/treasury-payable-match.test.ts`.
 
+## Ausgaben aus Abrechnungen + Tab „Abrechnungen“ (2026-10-16, Migration 0004)
+- Auszahlungsquelle `expense` (`expense:<aktion>:<buchung>`, Label „Ausgabe aus Abrechnung“): offene bzw. von der Kasse bezahlte
+  Stamm-Ausgaben aus `ActionsService.listClubExpenses` (Zweck → `description`, fällig heute). IBAN über `getClubExpenseIban`,
+  Beleg über `downloadReceipt`. Rückkanal `syncActionPayableStatus` (vorher `syncReimbursementStatus`) für `reimbursement` und `expense`.
+- **Auslagen erst nach Abschluss** der Aktions-Abrechnung; Wieder-Öffnen storniert unbezahlte automatisch, erneuter Abschluss reaktiviert.
+- Tab **„Abrechnungen“** (`AccountingsTab`, nur `treasury.report.view`): abgeschlossene Abrechnungen + Ablage (aus „Berichte“ umgezogen);
+  Detailseite `accountings/:id` (`AccountingPage`): Ergebnis, Soll/Ist, Buchungen mit Belegen/Status, Überweisungen der Kasse.
+  API `GET /closed-accountings/:id` (offen/unbekannt → 404), `GET /closed-accountings/:id/receipts/:entryId` (+ `treasury.storage.read`).
+- `TreasuryService.participantPayments(actionId)`: Zahlstand je Teilnehmende*r (Rechnung, Soll, bezahlt, offen,
+  Status, überfällig) für die Teilnehmerliste in `actions`.
+- Tests: `tests/integration/treasury-club-expenses.test.ts`. Falle: erster Einsatz eines API-Keys schreibt `lastUsedAt` ohne await –
+  vor `close()` noch eine Anfrage abwarten.
+
+## Jahresbeitrag (Migration 0005, 2026-10-16)
+- Dateien: `annual-fee.ts` (rein: `isMemberOn`, `isMemberInYear`, `levelsFor`, `planAnnualInvoices`, `defaultAnnualDueOn`),
+  `annual-fee.service.ts`, `annual-fee.endpoints.ts`; Tabelle `annual_fee_runs` (ein Lauf je Jahr, `status` draft|scheduled|sent,
+  Sätze/Texte je Lauf aus `treasury.annual.*`), `invoices.source = 'annual'` + `annual_run_id`, `invoice_lines.fee_level`.
+- **Lauf** für Jahr Y: Stichtag = `created_on` (Anlagedatum). Mitglied am Tag D: (Eintritt fehlt oder ≤ D) und (Austritt fehlt oder > D).
+  Eintritt im Jahr Y **nach dem 28.02.** (29.02. zählt als danach) → nur Stamm. Zweitmitglieder zahlen nur `feeLevels`
+  (spät: nur Stamm, falls enthalten). 0 € → übersprungen (`skipped`). Frist: 31.03.Y, sonst heute + `minDays`.
+- **Eine Sammelrechnung je Zahler** (`payer_members`), sonst je Mitglied; Posten je Mitglied × Ebene,
+  `source_ref = annual:<Y>:<mitglied>:<ebene>` (Idempotenz: Mitglied mit vorhandenem Posten wird übersprungen, auch storniert).
+- **Nachberechnung** (`catch-up`, erst nach Versand): Mitglieder irgendwann im Jahr Y ohne Posten – gleiche Regel.
+- Versand: Rechnungen in EINER Transaktion (`nextInvoiceNumber`), danach `sendDocuments(…, 'annual', { subjectTpl, bodyTpl })`
+  mit PDF an alle `invoiceAddresses`; Vars `{jahr}`, `{mitglieder}` zusätzlich. Geplanter Versand per Job `annual-fees` (stündlich,
+  `send_on <= today()`). Rechnungsfrist nie vor dem Rechnungsdatum.
+- PDF: Snapshot-Feld `annual` (Jahr, Text, Mitglieder × Ebenen) → Einleitung aus `pdf_text` mit Platzhaltern + Tabelle
+  Mitglied | Stamm | Gau | Landesmark | Bund | Summe (fehlende Ebene „–“); alte Snapshots ohne Feld rendern wie bisher.
+- Schutz: Abgleich (`sync.ts`) betrachtet nur `source_ref LIKE 'action:%'`; Bearbeiten wie Aktions-Rechnungen (nur Empfänger/
+  Frist/Notiz), Löschen 409 (stornieren). Zahlung → Kategorie „Mitgliedsbeiträge“ (`MEMBERSHIP_CATEGORY_ID`).
+- API: `GET/POST /annual-fees`, `GET/PUT/DELETE /annual-fees/:id` (PUT/DELETE nach Versand 409), `GET …/preview?mode=run|catch-up`,
+  `GET …/preview.pdf?mode&key`, `GET …/preview-mail?mode&key` (Standard: versendet → catch-up), `POST …/send`, `…/schedule {sendOn}`,
+  `…/unschedule`, `…/catch-up`. Rechte `treasury.annual-fee.view|manage`; send/schedule/catch-up zusätzlich `treasury.invoice.send`.
+- **Stichtagsregel genau** (`isBillable`): Lauf = Mitglied am Stichtag **und** im Jahr Y (Austritt ≤ 01.01.Y zahlt nicht);
+  Nachberechnung = Mitglied im Jahr Y und Austritt nach dem Stichtag (oder keiner). Rechnungsfrist = Frist des Laufs, liegt sie
+  zurück: heute + `minDays` (`annualInvoiceDueOn`).
+- Versand in Paketen à 25, Fehler werden gezählt (`mailErrors`), nie abgebrochen; `POST …/resend` (manage + `invoice.send`,
+  Audit `resent`) schickt alle nicht stornierten Rechnungen ohne zugestellte Fassung erneut (UI „Versand wiederholen“).
+  Job versendet nur, wenn der Lauf unter `FOR UPDATE` noch `scheduled` und fällig ist. `PUT` auf geplanten Lauf → zurück auf Entwurf.
+- Lesen braucht zusätzlich `treasury.cash.view`; E-Mail-Adressen in der Vorschau nur mit `invoice.send`/`invoice.edit`
+  (sonst `emails: []`, `emailCount`). Mehr als 999 Mitglieder (inkl. Ausgetretener) → 409 (Grenze von `listMemberContacts`).
+  Rate-Limit 30/min auf `preview.pdf`, `send`, `catch-up`, `resend`.
+- Audit `treasury.annual-fee.created|updated|deleted|scheduled|sent|catch-up|resent` (nur IDs/Zähler/Beträge).
+- Tests: `tests/unit/annual-fee.test.ts`, `tests/integration/treasury-annual-fee.test.ts`.
+
 ## Rechte
 | Schlüssel | Bedeutung |
 |---|---|
@@ -139,6 +185,7 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 | `treasury.storage.read/write/delete` | Belege |
 | `treasury.bank.view` | IBAN von Zahlern/Auszahlungen im Klartext, Überweisungsliste mit IBAN |
 | `treasury.payable.edit` | Eingangsrechnungen, Auszahlungen buchen/zuordnen/stornieren |
+| `treasury.annual-fee.view` / `.manage` | Jahresbeitrag: Läufe und Vorschau sehen / anlegen, ändern, versenden (+ `invoice.send`) |
 Empfänger-Adressen im Rechnungsdetail nur mit `invoice.edit` oder `invoice.send`.
 
 ## API (Auszug)
@@ -178,5 +225,5 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTr
 - Svelte: In `$effect` keine Funktion aufrufen, die synchron Zustand liest, den sie später setzt (Endlosschleife →
   „Zu viele Anfragen“); `untrack` oder Aufruf in `setTimeout` (siehe `OverviewTab`, `ReportsTab`).
 - Demo: Die Demo-DB hatte zwischenzeitlich echte SMTP-Daten; vor Tests mit Mails `node scripts/setup-demo-mail.mjs` (Mailpit) prüfen.
-- Offen/bewusst nicht: keine Jahressperre, kein SEPA/FinTS, Aktions-**Ausgaben** werden nicht automatisch übernommen,
+- Offen/bewusst nicht: keine Jahressperre, kein SEPA/FinTS, bereits bezahlte Stamm-Ausgaben erzeugen keine Kassenbuchung,
   feste Fälligkeit zurücksetzen ändert bestehende Rechnungen nicht, Guthaben wird nicht automatisch verrechnet.

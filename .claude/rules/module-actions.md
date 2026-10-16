@@ -42,6 +42,8 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
   `entry_id`, `surplus_cents`, `per_head_cents`, `paying_count`, `remainder_cents`, `booked_at/by`).
 - **0007** `action_refund_booking.mode` `auto|manual` (Default `auto`).
 - **0009** `action_participants.subsidy_eligible boolean` (NULL = automatisch).
+- **0011** Stamm-Ausgaben: `accounting_entries.recipient_name`, `recipient_iban_enc` (verschlüsselt), `recipient_iban_last4`,
+  `recipient_bic`, `purpose`, `club_paid_at` (NULL = offen), `club_paid_via` `manual|treasury`. Altdaten → bezahlt (`manual`).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
 ## Rechte
@@ -124,6 +126,12 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 ## Kasse (optionale Abhängigkeit `treasury`)
 - `manifest.optionalDependencies: ['treasury']`; `actions` stellt `actionsService` bereit (`contract.ts`: `listReceivableSources`,
   `listActionRefs` – ohne Objektrechte, der Aufrufer prüft).
+- **Zahlstand in der Teilnehmerliste**: `GET /actions/:id/participants` hängt bei aktiver Kasse `payment` an
+  (`TreasuryService.participantPayments`, nach der Transaktion; `null` = keine Rechnung, Feld fehlt = Kasse aus).
+  UI: Spalte „Beitrag“ (`PaymentCell`: Bezahlt / Teilweise / Offen / Überfällig / Erlassen, Link zur Rechnung mit
+  `treasury.cash.view`) und Zusammenfassung „Beiträge: x von y bezahlt · … offen“.
+- Weitere Vertragsfunktionen für die Kasse: `listClubExpenses`, `getClubExpenseIban`, `markClubExpensePaid`,
+  `getClosedAccounting` (Detail abgeschlossener Abrechnungen, nutzt `loadState` aus `accounting.endpoints.ts`).
 - `loadTreasuryContributions(actionId)` (VOR der Transaktion) → an `loadAutoIncome(…, treasury)` / `loadRefund(…, treasury)`:
   Führt die Kasse Rechnungen zur Aktion, zählen bei Teilnehmerbeiträgen die **eingegangenen Zahlungen**
   (`contributions.source = 'treasury'`, dazu `dueCents`, `openCents`, `invoiceCount`); sonst wie bisher n × Beitrag.
@@ -148,6 +156,18 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Disclaimer aus Vorlage mit Platzhaltern (`renderDisclaimer`, Beitrag, Kontodaten aus Settings); Datenschutz = externer Link + Pflicht-Checkbox.
 - Bestätigungs-Mail über `core.mail.send` nach der Transaktion (Fehler ≠ Fehlschlag); Audit mit Akteur `system`/`public-form`.
 - Öffentliche Seite `/p/actions/anmeldung/<token>`; Link kopieren/erneuern im Tab „Anmeldung“.
+
+## Ausgaben „bezahlt vom Stamm“ (Migration 0011, 2026-10-16)
+- Ausgabe + `paidBy='club'`: `clubPaid` (API-Default **true** = bezahlt; die UI startet mit **offen**). Offen ⇒ Pflicht
+  Empfänger, IBAN (`isValidIban`), Verwendungszweck (≤ 140); BIC optional. PUT ohne `iban` behält die gespeicherte IBAN.
+- Offene Stamm-Ausgaben werden **sofort** Auszahlung in der Kasse (`expense:<aktion>:<buchung>`); bezahlt die Kasse vollständig,
+  setzt `markClubExpensePaid` `club_paid_via='treasury'` (auch bei abgeschlossener Abrechnung) – dann PUT/DELETE 409.
+  Zahlung in der Kasse gelöscht → wieder offen. „Bereits bezahlt“ nachträglich → Kassen-Auszahlung wird automatisch storniert.
+- IBAN-Klartext: `GET …/entries/:eid/iban` (`payout.view`, auditiert). DTO: `recipient {name, ibanMasked, bic}`, `purpose`,
+  `clubPaidAt`, `clubPaidVia`; `summary.openClubPayments {count, cents}` (Hinweis im Abschluss-Dialog, blockiert nicht).
+- PDF: „Stamm (offen)“. Export/Import: `entries[].transfer` (`recipientName`, `iban` nur mit `payout.view`, `bic`,
+  `purpose`, `paidAt`); fehlt `transfer` (alte Archive) → bezahlt. Kategorie `refund` ist nie eine Stamm-Ausgabe in diesem Sinn.
+- **Auslagen** (bezahlt von Person) gibt `listReimbursements` nur aus **abgeschlossenen** Abrechnungen an die Kasse.
 
 ## Abrechnung (`accounting.ts`)
 - Kategorien: Ausgaben = `CALC_CATEGORIES`; Einnahmen `contributions` (Teilnehmerbeiträge), `subsidy`, `misc`; `refund`

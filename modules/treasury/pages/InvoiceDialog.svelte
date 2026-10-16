@@ -40,7 +40,7 @@
 		onsaved
 	}: {
 		open?: boolean;
-		/** Bearbeiten; bei Rechnungen aus Aktionen nur Empfänger/Frist/Notiz */
+		/** Bearbeiten; bei Rechnungen aus Aktionen/Jahresbeitrag nur Empfänger/Frist/Notiz */
 		invoice?: InvoiceDetail | null;
 		payers: Payer[];
 		members: Ref[];
@@ -60,7 +60,8 @@
 	let error = $state('');
 	let errors = $state<Record<string, string>>({});
 
-	const fromAction = $derived(invoice?.source === 'action');
+	/** Aus Aktion oder Jahresbeitrag: nur Empfänger/Frist/Notiz änderbar, Posten fest */
+	const fixedLines = $derived(invoice?.source === 'action' || invoice?.source === 'annual');
 	const newLine = (): DraftLine => ({
 		key: crypto.randomUUID(),
 		description: '',
@@ -117,7 +118,7 @@
 			note,
 			remindersPaused
 		};
-		const parsed = fromAction
+		const parsed = fixedLines
 			? invoicePatchInput.safeParse(base)
 			: invoiceInput.safeParse({
 					...base,
@@ -163,9 +164,11 @@
 				{invoice ? `Rechnung ${invoice.number} bearbeiten` : 'Neue Rechnung'}
 			</Dialog.Title>
 			<Dialog.Description>
-				{fromAction
+				{invoice?.source === 'action'
 					? 'Diese Rechnung stammt aus einer Aktion. Beträge ändern sich über den Beitrag der Aktion oder eine Ermäßigung je Posten.'
-					: 'Für Mitgliedsbeiträge, Material, Zuschüsse o. Ä. Pflichtfelder sind mit * markiert.'}
+					: invoice?.source === 'annual'
+						? 'Diese Rechnung stammt aus dem Jahresbeitrag. Beträge ändern sich nur über eine Ermäßigung je Posten.'
+						: 'Für Mitgliedsbeiträge, Material, Zuschüsse o. Ä. Pflichtfelder sind mit * markiert.'}
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
@@ -202,7 +205,7 @@
 					/>
 				</FormField>
 				<div class="grid grid-cols-2 gap-4">
-					{#if !fromAction}
+					{#if !fixedLines}
 						<FormField label="Datum *" id="inv-issued" error={errors.issuedOn}>
 							<Input id="inv-issued" type="date" bind:value={issuedOn} />
 						</FormField>
@@ -213,7 +216,7 @@
 				</div>
 			</div>
 
-			{#if !fromAction}
+			{#if !fixedLines}
 				<fieldset class="space-y-3">
 					<legend class="mb-1 text-sm font-medium">Posten *</legend>
 					{#each lines as l, i (l.key)}

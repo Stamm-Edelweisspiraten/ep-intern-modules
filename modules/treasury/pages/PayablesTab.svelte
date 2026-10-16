@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -96,7 +97,9 @@
 			toast.success(
 				payItem.source === 'reimbursement'
 					? 'Überweisung gebucht – in der Abrechnung als ausgezahlt markiert'
-					: 'Überweisung gebucht'
+					: payItem.source === 'expense'
+						? 'Überweisung gebucht – in der Abrechnung als bezahlt markiert'
+						: 'Überweisung gebucht'
 			);
 			payOpen = false;
 			await onchanged();
@@ -296,8 +299,14 @@
 								>IBAN anzeigen und kopieren</DropdownMenu.Item
 							>
 						{/if}
-						{#if p.receipt || p.source === 'reimbursement'}
+						{#if p.receipt || p.source === 'reimbursement' || p.source === 'expense'}
 							<DropdownMenu.Item onclick={() => showReceipts(p)}>Belege ansehen</DropdownMenu.Item>
+						{/if}
+						{#if p.source === 'reimbursement' && p.action && perm.report}
+							<DropdownMenu.Item
+								onclick={() => p.action && goto(`/modules/treasury/accountings/${p.action.id}`)}
+								>Abrechnung ansehen</DropdownMenu.Item
+							>
 						{/if}
 						{#if perm.payable}
 							<DropdownMenu.Item

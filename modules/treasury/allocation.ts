@@ -16,7 +16,7 @@ import {
 	str
 } from './db';
 import { lineOpen, normalizeName, type MatchLine } from './logic';
-import { CONTRIBUTIONS_CATEGORY_ID, type OpenLine } from './schemas';
+import { CONTRIBUTIONS_CATEGORY_ID, MEMBERSHIP_CATEGORY_ID, type OpenLine } from './schemas';
 
 /**
  * Ersetzt alle Zuordnungen einer Buchung. Prueft: Einnahme (keine Umbuchung), Summe ≤ Betrag,
@@ -97,15 +97,21 @@ export async function replaceAllocations(
 		// Fehlende Kategorie/Aktion ergaenzen (nie ueberschreiben): Beitraege aus Aktionen
 		const meta = await rows(
 			tx,
-			sql`SELECT DISTINCT coalesce(l.action_id, i.action_id) AS action_id
+			sql`SELECT DISTINCT coalesce(l.action_id, i.action_id) AS action_id, i.source
 			FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
 			WHERE l.id IN (${idList([...merged.keys()])})`
 		);
 		const actionIds = meta.map((r) => str(r.action_id));
 		const allFromActions = actionIds.length > 0 && actionIds.every(Boolean);
+		const allAnnual = meta.length > 0 && meta.every((r) => r.source === 'annual');
+		const category = allFromActions
+			? CONTRIBUTIONS_CATEGORY_ID
+			: allAnnual
+				? MEMBERSHIP_CATEGORY_ID
+				: null;
 		await tx.execute(
 			sql`UPDATE transactions SET
-				category_id = coalesce(category_id, ${allFromActions ? CONTRIBUTIONS_CATEGORY_ID : null}),
+				category_id = coalesce(category_id, ${category}),
 				action_id = coalesce(action_id, ${actionIds.length === 1 ? actionIds[0]! : null}),
 				updated_at = now()
 			WHERE id = ${transactionId}`

@@ -114,7 +114,7 @@
 			let offset = 0;
 			for (;;) {
 				const res = await apiFetch<MemberList>(
-					`/modules/members/members?limit=200&offset=${offset}`
+					`/modules/members/members?status=all&limit=200&offset=${offset}`
 				);
 				all.push(...res.items);
 				offset += res.items.length;

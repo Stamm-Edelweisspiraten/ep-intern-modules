@@ -38,6 +38,7 @@
 	import { downloadPdf } from './download';
 	import LinksDialog from './LinksDialog.svelte';
 	import MemberForm from './MemberForm.svelte';
+	import MemberView from './MemberView.svelte';
 
 	const PAGE_SIZE = 20;
 
@@ -52,6 +53,13 @@
 	const search = $derived(page.url.searchParams.get('search') ?? '');
 	const stage = $derived(page.url.searchParams.get('stage') ?? '');
 	const groupId = $derived(page.url.searchParams.get('groupId') ?? '');
+	/** Mitgliedschaftsstatus: active (Standard) | left | all */
+	const status = $derived(
+		(['active', 'left', 'all'] as const).find((s) => s === page.url.searchParams.get('status')) ??
+			'active'
+	);
+	const today = new Date().toISOString().slice(0, 10);
+	const isLeft = (m: Member) => !!m.exitDate && m.exitDate <= today;
 	const offset = $derived(Math.max(0, Number(page.url.searchParams.get('offset')) || 0));
 
 	let items = $state<Member[]>([]);
@@ -65,6 +73,8 @@
 	let editMember = $state<Member | null>(null);
 	let deleteOpen = $state(false);
 	let deleteMember = $state<Member | null>(null);
+	let viewOpen = $state(false);
+	let viewMember = $state<Member | null>(null);
 
 	// --- Sammelaktionen ---------------------------------------------------------
 	let selected = $state<string[]>([]);
@@ -78,7 +88,7 @@
 	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeaendert wird
 	let lastFilter = '';
 	$effect(() => {
-		const key = `${search}|${stage}|${groupId}`;
+		const key = `${search}|${stage}|${groupId}|${status}`;
 		if (lastFilter && key !== lastFilter) selected = [];
 		lastFilter = key;
 	});
@@ -170,6 +180,7 @@
 		if (search) q.set('search', search);
 		if (stage) q.set('stage', stage);
 		if (groupId) q.set('groupId', groupId);
+		q.set('status', status);
 		let stale = false;
 		loading = true;
 		apiFetch<MemberList>(`/modules/members/members?${q}`)
@@ -177,6 +188,9 @@
 				if (stale) return;
 				items = r.items;
 				total = r.total;
+				// Offene Ansicht mit frischen Daten versorgen (z. B. nach Aenderung der Verknuepfungen)
+				const shown = viewMember;
+				if (shown) viewMember = r.items.find((x) => x.id === shown.id) ?? shown;
 				loadError = '';
 			})
 			.catch((e) => {
@@ -218,6 +232,17 @@
 		loadGroups();
 		formOpen = true;
 	}
+	function openView(m: Member) {
+		viewMember = m;
+		viewOpen = true;
+	}
+	function rowKey(e: KeyboardEvent, m: Member) {
+		if (e.target !== e.currentTarget) return;
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openView(m);
+		}
+	}
 	function openDelete(m: Member) {
 		deleteMember = m;
 		deleteOpen = true;
@@ -236,6 +261,11 @@
 
 	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 	const groupOptions = $derived(groups.map((g) => ({ value: g.id, label: g.name })));
+	const statusOptions = [
+		{ value: 'active', label: 'Aktiv' },
+		{ value: 'left', label: 'Ausgetreten' },
+		{ value: 'all', label: 'Alle' }
+	];
 	const consents = [
 		{ key: 'consentSocialMedia', label: 'Socialmedia' },
 		{ key: 'consentWebsite', label: 'Stammeswebsite' },
@@ -259,12 +289,19 @@
 	error={loadError}
 	empty={!items.length}
 	emptyTitle="Keine Mitglieder gefunden"
-	emptyDescription={search || stage || groupId
+	emptyDescription={search || stage || groupId || status !== 'active'
 		? 'Passe Suche oder Filter an.'
 		: 'Es wurden noch keine Mitglieder angelegt.'}
 >
 	{#snippet toolbar()}
 		<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
+		<SelectField
+			label="Nach Mitgliedschaft filtern"
+			class="w-auto"
+			options={statusOptions}
+			value={status}
+			onchange={(v) => setFilter('status', v && v !== 'active' ? v : '')}
+		/>
 		<SelectField
 			label="Nach Stand filtern"
 			emptyLabel="Alle Stände"
@@ -341,9 +378,16 @@
 		</Table.Row>
 	{/snippet}
 	{#each items as m (m.id)}
-		<Table.Row data-state={selected.includes(m.id) ? 'selected' : undefined}>
+		<Table.Row
+			data-state={selected.includes(m.id) ? 'selected' : undefined}
+			class="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+			tabindex={0}
+			aria-label={`${m.firstName} ${m.lastName} anzeigen`}
+			onclick={() => openView(m)}
+			onkeydown={(e) => rowKey(e, m)}
+		>
 			{#if showSelect}
-				<Table.Cell>
+				<Table.Cell onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 					<Checkbox
 						aria-label={`${m.firstName} ${m.lastName} auswählen`}
 						checked={selected.includes(m.id)}
@@ -355,6 +399,8 @@
 				{m.firstName}
 				{m.lastName}
 				{#if m.scoutName}<span class="text-muted-foreground">„{m.scoutName}“</span>{/if}
+				{#if m.secondaryMember}<Badge variant="outline" class="ml-1">Zweitmitglied</Badge>{/if}
+				{#if isLeft(m)}<Badge variant="destructive" class="ml-1">ausgetreten</Badge>{/if}
 			</Table.Cell>
 			<Table.Cell><Badge variant="secondary">{STAGE_LABELS[m.stage]}</Badge></Table.Cell>
 			<Table.Cell>
@@ -382,7 +428,11 @@
 				</ul>
 			</Table.Cell>
 			{#if canEdit || canDelete || canLinkView}
-				<Table.Cell class="text-right">
+				<Table.Cell
+					class="text-right"
+					onclick={(e) => e.stopPropagation()}
+					onkeydown={(e) => e.stopPropagation()}
+				>
 					<div class="flex justify-end gap-2">
 						{#if canLinkView}
 							<Button
@@ -432,6 +482,18 @@
 	member={linksMember}
 	canManage={canLinkManage}
 	onchanged={() => reloadTick++}
+/>
+
+<MemberView
+	bind:open={viewOpen}
+	member={viewMember}
+	{canEdit}
+	{canLinkView}
+	onedit={(m) => {
+		viewOpen = false;
+		openEdit(m);
+	}}
+	onlinks={(m) => openLinks(m)}
 />
 
 <MemberForm

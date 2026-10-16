@@ -32,6 +32,20 @@ function optCents(value: number | null | undefined): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : null;
 }
 
+/** Buchung (DTO) → Eintrag fuer `summarize`/`payeeTotals`. */
+export function toSummaryEntry(e: AccountingEntry): SummaryEntry {
+	return {
+		type: e.type,
+		category: e.category,
+		amountCents: e.amountCents,
+		paidBy: e.paidBy,
+		payeeId: e.payee?.id ?? null,
+		hasReceipt: e.receipt !== null,
+		reimbursed: e.reimbursedAt !== null,
+		clubOpen: e.type === 'expense' && e.paidBy === 'club' && e.clubPaidAt === null
+	};
+}
+
 /** Summen, Saldo, Soll/Ist je Kategorie, fehlende Belege, offene Auslagen. */
 export function summarize(
 	entries: SummaryEntry[],
@@ -42,6 +56,7 @@ export function summarize(
 	let expenseCents = 0;
 	let missingReceipts = 0;
 	let openReimbursementCents = 0;
+	const openClubPayments = { count: 0, cents: 0 };
 	const actual = new Map<string, number>();
 
 	for (const e of entries ?? []) {
@@ -53,6 +68,10 @@ export function summarize(
 			expenseCents += amount;
 			if (!e.hasReceipt && e.category !== 'refund') missingReceipts += 1;
 			if (e.paidBy === 'person' && !e.reimbursed) openReimbursementCents += amount;
+			if (e.paidBy === 'club' && e.clubOpen && e.category !== 'refund') {
+				openClubPayments.count += 1;
+				openClubPayments.cents += amount;
+			}
 		}
 	}
 
@@ -99,7 +118,8 @@ export function summarize(
 		plannedExpenseCents,
 		byCategory,
 		missingReceipts,
-		openReimbursementCents
+		openReimbursementCents,
+		openClubPayments
 	};
 }
 
@@ -208,8 +228,14 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 		list.reduce((acc, e) => acc + cents(e.amountCents), 0);
 	const refundBookedCents = sum(entries.filter((e) => e.category === 'refund'));
 	const expenseExRefund = Math.max(0, cents(s.expenseCents) - refundBookedCents);
-	const payerOf = (e: AccountingEntry): string =>
-		e.paidBy === 'person' && e.payee ? e.payee.name : PAID_BY_LABELS[e.paidBy];
+	const payerOf = (e: AccountingEntry): string => {
+		if (e.paidBy === 'person' && e.payee) return e.payee.name;
+		// Offene Stamm-Ausgabe: Ueberweisung durch die Kasse steht noch aus
+		if (e.type === 'expense' && e.category !== 'refund' && e.clubPaidAt === null) {
+			return `${PAID_BY_LABELS.club} (offen)`;
+		}
+		return PAID_BY_LABELS[e.paidBy];
+	};
 
 	const period = input.endsOn
 		? `${germanDate(input.startsOn)} – ${germanDate(input.endsOn)}`

@@ -40,7 +40,7 @@
 	import { formatEuro } from '$lib/components/layout/money';
 	import ActionForm from './ActionForm.svelte';
 	import ParticipantForm from './ParticipantForm.svelte';
-	import SubsidyCell from './SubsidyCell.svelte';
+	import PaymentCell from './PaymentCell.svelte';
 	import AccountingTab from './AccountingTab.svelte';
 	import CalculationTab from './CalculationTab.svelte';
 	import RegistrationTab from './RegistrationTab.svelte';
@@ -78,6 +78,22 @@
 			(action.access.isOwner || action.access.level === 'edit')
 	);
 	const base = $derived(`/modules/actions/actions/${id}`);
+	/** Kasse aktiv: Teilnehmende tragen einen Zahlstand (auch `null` = keine Rechnung) */
+	const showPayments = $derived(participants.some((p) => p.payment !== undefined));
+	const canOpenInvoices = $derived(can(permissions, 'treasury.cash.view'));
+	const paymentSummary = $derived.by(() => {
+		if (!showPayments) return undefined;
+		const withInvoice = participants.filter((p) => p.payment);
+		if (!withInvoice.length) return 'Noch keine Beitragsrechnungen in der Kasse.';
+		const paid = withInvoice.filter(
+			(p) => p.payment!.status === 'paid' || p.payment!.status === 'waived'
+		).length;
+		const open = withInvoice.reduce((s, p) => s + p.payment!.openCents, 0);
+		const overdue = withInvoice.filter((p) => p.payment!.overdue).length;
+		return `Beiträge: ${paid} von ${withInvoice.length} bezahlt${
+			open > 0 ? ` · ${formatEuro(open)} offen` : ''
+		}${overdue > 0 ? ` · ${overdue} überfällig` : ''}`;
+	});
 
 	function errMsg(e: unknown, fallback: string) {
 		return e instanceof ApiClientError ? e.message : fallback;
@@ -384,6 +400,7 @@
 			<DataTable
 				caption="Teilnehmende"
 				title="Teilnehmende"
+				description={paymentSummary}
 				loading={partLoading}
 				error={partError}
 				empty={!participants.length}
@@ -407,7 +424,7 @@
 						<Table.Head>Rolle</Table.Head>
 						<Table.Head>Ernährung</Table.Head>
 						<Table.Head>Allergien / Hinweise</Table.Head>
-						<Table.Head>Zuschuss</Table.Head>
+						{#if showPayments}<Table.Head>Beitrag</Table.Head>{/if}
 						<Table.Head>Quelle</Table.Head>
 						{#if canEdit}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
 					</Table.Row>
@@ -428,14 +445,11 @@
 						<Table.Cell class="max-w-64" title={hint || undefined}>
 							{hint ? truncate(hint) : '–'}
 						</Table.Cell>
-						<Table.Cell>
-							<SubsidyCell
-								participant={p}
-								actionId={id}
-								{canEdit}
-								onchanged={refreshAfterParticipant}
-							/>
-						</Table.Cell>
+						{#if showPayments}
+							<Table.Cell>
+								<PaymentCell payment={p.payment} linkToInvoice={canOpenInvoices} />
+							</Table.Cell>
+						{/if}
 						<Table.Cell>
 							<Badge variant="outline">{p.source === 'link' ? 'Anmeldelink' : 'Manuell'}</Badge>
 						</Table.Cell>

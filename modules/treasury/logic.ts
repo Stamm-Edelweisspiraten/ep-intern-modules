@@ -744,7 +744,7 @@ export function sanitizeName(name: string): string {
 
 export interface PayableDesired {
 	sourceRef: string;
-	source: 'reimbursement' | 'refund' | 'credit';
+	source: 'reimbursement' | 'refund' | 'credit' | 'expense';
 	actionId: string | null;
 	recipientName: string;
 	description: string;

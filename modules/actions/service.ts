@@ -1,8 +1,14 @@
 import { sql } from 'drizzle-orm';
 import { core, type Tx } from '$lib/sdk/server';
 import type { ActionRef, ActionsService, ReceivableSource } from './contract';
-import { summarize } from './accounting';
-import { loadAutoIncome, loadEntries, loadTreasuryContributions } from './accounting-core';
+import { summarize, toSummaryEntry } from './accounting';
+import { loadState } from './accounting.endpoints';
+import {
+	loadAutoIncome,
+	loadEntries,
+	loadRefundSnapshot,
+	loadTreasuryContributions
+} from './accounting-core';
 import { buildAccountingReport } from './payouts.endpoints';
 
 type Row = Record<string, unknown>;
@@ -93,6 +99,7 @@ export const actionsService: ActionsService = {
 					sum(e.amount_cents) AS total_cents,
 					coalesce(sum(e.amount_cents) FILTER (WHERE e.reimbursed_at IS NULL), 0) AS open_cents
 				FROM accounting_entries e JOIN accounting_payees p ON p.id = e.payee_id
+				JOIN action_accounting c ON c.action_id = e.action_id AND c.closed_at IS NOT NULL
 				WHERE e.paid_by = 'person' AND e.type = 'expense'
 				GROUP BY e.action_id, e.payee_id, p.name, p.iban_last4, p.bic, p.iban_enc
 				ORDER BY e.action_id, p.name`
@@ -229,15 +236,7 @@ export const actionsService: ActionsService = {
 			const treasury = await loadTreasuryContributions(id);
 			const summary = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
 				const entries = await loadEntries(tx, id);
-				const se = entries.map((e) => ({
-					type: e.type,
-					category: e.category,
-					amountCents: e.amountCents,
-					paidBy: e.paidBy,
-					payeeId: e.payee?.id ?? null,
-					hasReceipt: e.receipt !== null,
-					reimbursed: e.reimbursedAt !== null
-				}));
+				const se = entries.map(toSummaryEntry);
 				return summarize(se, null, await loadAutoIncome(tx, id, entries, treasury));
 			});
 			out.push({
@@ -252,6 +251,125 @@ export const actionsService: ActionsService = {
 			});
 		}
 		return out;
+	},
+
+	async getClosedAccounting(actionId) {
+		const treasury = await loadTreasuryContributions(actionId);
+		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const [a] = await rows(
+				tx,
+				sql`SELECT a.id, a.name, a.location, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
+					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, c.closed_at
+				FROM actions a JOIN action_accounting c ON c.action_id = a.id
+				WHERE a.id = ${actionId} AND c.closed_at IS NOT NULL`
+			);
+			if (!a) return null;
+			const { state } = await loadState(tx, actionId, treasury, true);
+			const refund = await loadRefundSnapshot(tx, actionId);
+			return {
+				actionId,
+				name: String(a.name),
+				location: (a.location as string | null) ?? null,
+				startsOn: String(a.starts_on),
+				endsOn: (a.ends_on as string | null) ?? null,
+				closedAt: new Date(String(a.closed_at)).toISOString(),
+				incomeCents: state.summary.incomeCents,
+				expenseCents: state.summary.expenseCents,
+				balanceCents: state.summary.balanceCents,
+				summary: state.summary,
+				plan: state.plan,
+				autoIncome: state.autoIncome,
+				entries: state.entries,
+				payees: state.payees ?? [],
+				refund: refund
+					? {
+							totalCents: refund.totalCents,
+							count: refund.items.length,
+							remainderCents: refund.remainderCents,
+							bookedAt: refund.bookedAt
+						}
+					: null
+			};
+		});
+	},
+
+	async listClubExpenses() {
+		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const found = await rows(
+				tx,
+				sql`SELECT id, action_id, description, recipient_name, recipient_iban_last4, recipient_bic,
+					(recipient_iban_enc IS NOT NULL) AS has_iban, purpose, amount_cents,
+					to_char(entry_date, 'YYYY-MM-DD') AS entry_date, club_paid_at, club_paid_via,
+					(receipt_path IS NOT NULL) AS has_receipt, receipt_name, receipt_content_type
+				FROM accounting_entries
+				WHERE type = 'expense' AND paid_by = 'club' AND category <> 'refund'
+				ORDER BY action_id, entry_date, created_at, id`
+			);
+			return found.map((r) => ({
+				actionId: String(r.action_id),
+				entryId: String(r.id),
+				description: String(r.description),
+				recipientName: (r.recipient_name as string | null) ?? null,
+				ibanLast: (r.recipient_iban_last4 as string | null) ?? null,
+				hasIban: Boolean(r.has_iban),
+				bic: (r.recipient_bic as string | null) ?? null,
+				purpose: (r.purpose as string | null) ?? null,
+				amountCents: Number(r.amount_cents),
+				entryDate: String(r.entry_date),
+				paidAt: r.club_paid_at == null ? null : new Date(String(r.club_paid_at)).toISOString(),
+				paidVia: (r.club_paid_via as 'manual' | 'treasury' | null) ?? null,
+				receipt: r.has_receipt
+					? {
+							name: String(r.receipt_name ?? 'beleg'),
+							contentType: String(r.receipt_content_type ?? 'application/octet-stream')
+						}
+					: null
+			}));
+		});
+	},
+
+	async getClubExpenseIban(actionId, entryId) {
+		const enc = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const [r] = await rows(
+				tx,
+				sql`SELECT recipient_iban_enc FROM accounting_entries
+				WHERE id = ${entryId} AND action_id = ${actionId} AND paid_by = 'club'`
+			);
+			return (r?.recipient_iban_enc as string | null) ?? null;
+		});
+		return enc ? core.crypto.forModule(MODULE_ID).decrypt(enc) : null;
+	},
+
+	async markClubExpensePaid(actionId, entryId, paid) {
+		const changed = await core.database.forModule(MODULE_ID).transaction(async (tx) =>
+			rows(
+				tx,
+				paid
+					? sql`UPDATE accounting_entries SET club_paid_at = now(), club_paid_via = 'treasury',
+							updated_at = now()
+						WHERE id = ${entryId} AND action_id = ${actionId} AND type = 'expense'
+							AND paid_by = 'club' AND club_paid_at IS NULL RETURNING amount_cents`
+					: sql`UPDATE accounting_entries SET club_paid_at = NULL, club_paid_via = NULL, updated_at = now()
+						WHERE id = ${entryId} AND action_id = ${actionId} AND club_paid_via = 'treasury'
+						RETURNING amount_cents`
+			)
+		);
+		if (changed.length) {
+			await core.audit.logFromContext(
+				core.auth.systemContext('treasury'),
+				paid ? 'actions.accounting.club_paid' : 'actions.accounting.club_paid_reverted',
+				{
+					target: actionId,
+					metadata: {
+						actionId,
+						entryId,
+						amountCents: Number(changed[0]!.amount_cents),
+						via: 'treasury'
+					}
+				}
+			);
+		}
+		return changed.length > 0;
 	},
 
 	async accountingReportPdf(actionId, withBank, auditCtx) {

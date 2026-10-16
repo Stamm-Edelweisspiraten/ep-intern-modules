@@ -5,8 +5,9 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.0.0, keine Abhängigkeiten.
-Kein anderes Modul greift derzeit auf Mitglieder zu (`actions` hat eigene Teilnehmende).
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.4.0, keine Abhängigkeiten.
+Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
+(`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
 ## Dateien (`src/lib/modules/members/`)
 | Datei | Inhalt |
@@ -19,8 +20,8 @@ Kein anderes Modul greift derzeit auf Mitglieder zu (`actions` hat eigene Teilne
 | `groups.endpoints.ts` | CRUD `/groups` inkl. Leiter, Namens-Eindeutigkeit |
 | `documents.endpoints.ts` | Datenschutz-/Anmeldedokument je Mitglied (multipart) |
 | `group-image.endpoints.ts` | Gruppenbild (multipart) |
-| `pages/MembersPage.svelte`, `MemberForm.svelte`, `GroupsPage.svelte` | UI |
-| `migrations/0001_init.sql`, `0002_members_v2.sql` | Schema |
+| `pages/MembersPage.svelte`, `MemberForm.svelte` (Tabs), `MemberView.svelte` (Sheet), `GroupsPage.svelte` | UI |
+| `migrations/0001_init.sql` … `0006_membership.sql` | Schema |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),
@@ -34,6 +35,10 @@ Kein anderes Modul greift derzeit auf Mitglieder zu (`actions` hat eigene Teilne
   (1 Zeile je Mitglied: `token` UNIQUE 32 Hex, `code_enc` verschlüsselt, `expires_at` = +90 Tage, `failed_attempts`, `locked_until`).
 - **0004**: `members.street`, `postal_code`, `city`, `country` (ISO-Alpha-2, Standard `DE`); alte Freitext-`address` wurde nach `street`
   kopiert und ist **nicht mehr in Gebrauch** (Spalte bleibt, `NOT NULL` aufgehoben, wird beim Speichern auf `NULL` gesetzt). API/DTO kennen kein `address` mehr.
+- **0006**: `members.entry_date`/`exit_date` (`date NULL`), `secondary_member boolean` (Standard `false`), `fee_levels text[]`
+  (Standard alle: `stamm,gau,landesmark,bund`). DTO/Input: `entryDate`, `exitDate`, `secondaryMember`, `feeLevels`
+  (= Ebenen, die das Mitglied **bei uns** zahlt). Nicht-Zweitmitglieder werden beim Speichern auf alle Ebenen normalisiert
+  und immer mit allen Ebenen ausgeliefert. Gelesen über `array_to_string(fee_levels, ',')` (treiberunabhängig).
 - Telefone/E-Mails/Gruppen werden bei jedem Update **komplett gelöscht und neu geschrieben** (Reihenfolge = `position`).
 
 ## Rechte
@@ -49,7 +54,7 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
 ## API (`/api/v1/modules/members/…`, Session oder API-Key, nicht öffentlich)
 | Methode + Pfad | Recht | Besonderheiten |
 |---|---|---|
-| GET `/members` | member.view | Query `search` (Vor-/Nach-/Pfadname ILIKE), `stage`, `groupId`, `limit` 1–200 (50), `offset`; `{items,total}` |
+| GET `/members` | member.view | Query `search` (Vor-/Nach-/Pfadname ILIKE), `stage`, `groupId`, `status` (`active` Standard = kein Austritt oder Austritt > heute, `left` = Austritt ≤ heute, `all`), `limit` 1–200 (50), `offset`; `{items,total}` |
 | GET `/members/:id` | member.view | 404 wenn fehlt |
 | POST `/members` | member.edit | Gruppen optional; `custom` = Werte der Zusatzfelder (nur aktive Schlüssel, sonst 422) |
 | PUT `/members/:id` | member.edit | `FOR UPDATE`; `custom` wird mit den gespeicherten Werten **zusammengeführt** (fehlend = unverändert, leer = gelöscht) |
@@ -68,7 +73,8 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
 - `GET /fields` (member.view), `PUT /fields` (`members.field.manage`, ersetzt die Liste; Seite „Zusatzfelder“ mit `FormBuilder`). Audit `members.field.updated`.
 - **Dienst `MembersService`** (`provides` in `module.ts`, Vertrag `contract.ts`): `listLinkedMembers(ctx)`, `getLinkedMember(ctx,id)` (404 wenn nicht mit `ctx.userId` verknüpft),
   `updateMemberFields(ctx,id,values)` (nur aktive Zusatzfelder, nur verknüpfte Mitglieder, Audit `members.member.fields_updated` mit Schlüsseln, ohne Werte), `listFieldDefinitions()`,
-  `listMemberContacts({ids?,search?,limit?})` (Name, Geburtsdatum, alle E-Mails, Anschrift – **ohne** Rechteprüfung; genutzt von der Kasse).
+  `listMemberContacts({ids?,search?,limit?})` (Name, Geburtsdatum, alle E-Mails, Anschrift, `entryDate`, `exitDate`, `secondaryMember`, `feeLevels` –
+  **ohne** Rechteprüfung und **ohne** Austritts-Filter (Aufrufer filtert); genutzt von der Kasse).
   Abruf nur über `core.modules.use<MembersService>('members', '<caller>')` (Aufrufer muss `members` in `dependencies` führen).
 - **Gesundheitsdaten (Ernährung, Allergien, Medikamente) liegen unverschlüsselt in `members.custom`** – Verschlüsselung/Sonderrecht wäre ein Folgeschritt (DSGVO).
 
@@ -107,12 +113,22 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
 - Geburtsdatum `YYYY-MM-DD`, echtes Datum, nicht in der Zukunft, Alter ≤ 120.
 - Telefon: `+?` Ziffern, 6–15 Ziffern, ≤ 30 Zeichen; E-Mail lower-case, `z.email`; je ≤ 10; **Duplikate** (Telefon nach
   Ziffern normalisiert, E-Mail exakt) → 422.
+- Eintritt/Austritt optional (`JJJJ-MM-TT`, leer → `null`), Austritt ≥ Eintritt (422 `exitDate`); Zweitmitglied braucht
+  ≥ 1 Ebene (422 `feeLevels`); Ebenen werden in fester Reihenfolge dedupliziert.
 - Gruppe: `meetingWeekday` 1–7 (optional), `meetingTime` `HH:MM`, `color` Hex (wird normalisiert), `leaderIds` 1–20.
 
 ## UI
-- `MembersPage`: Checkbox-Spalte + Sammelleiste (Gruppen hinzufügen/entfernen, Stand, Einwilligungen, Löschen; `BulkDialog`), Auswahl wird bei Filterwechsel verworfen. `DataTable` (Suche, Filter Stand/Gruppe via `SelectField`), Spalten Name, Stand, Gruppen (Farb-Badges),
+- `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberView`; Checkbox- und Aktionszelle stoppen den Klick.
+  Filter „Mitgliedschaft“ (Aktiv/Ausgetreten/Alle, URL-Parameter `status`, Standard aktiv); Badges „Zweitmitglied“, „ausgetreten“ in der Namenszelle.
+  Checkbox-Spalte + Sammelleiste (Gruppen hinzufügen/entfernen, Stand, Einwilligungen, Löschen; `BulkDialog`), Auswahl wird bei Filterwechsel verworfen. `DataTable` (Suche, Filter Stand/Gruppe via `SelectField`), Spalten Name, Stand, Gruppen (Farb-Badges),
   Geburtsdatum + Alter, „Darf gezeigt werden“ (Einwilligungen), Aktionen; Dialog `MemberForm` (`ContactListField`,
-  `MultiSelect` Gruppen, `FileField` für Dokumente, Einwilligungs-Schalter).
+  `MultiSelect` Gruppen, `FileField` für Dokumente, Einwilligungs-Checkboxen).
+- `MemberForm`: Tabs Person / Kontakt / Mitgliedschaft (Stand, Gruppen, Eintritt/Austritt, Schalter „Zweitmitglied“ →
+  Checkboxen „Beitrag bei uns zahlen für“) / Weitere Angaben (nur mit sichtbaren Zusatzfeldern) / Einwilligungen & Dokumente.
+  Öffnet auf `initialTab` (Standard „Person“); bei Fehlern Wechsel zum ersten Tab mit Fehler, roter Punkt an betroffenen Tabs;
+  Inhalt scrollt, Footer bleibt sichtbar, Mindesthöhe gegen Springen.
+- `MemberView`: Sheet rechts (nur Lesen) mit Avatar, Badges (Stand, Zweitmitglied, ausgetreten) und Abschnitten wie die Tabs
+  (`SummaryList`, tel:/mailto:-Links, Dokument-Downloads); Buttons „Bearbeiten“ (`member.edit`) und „Verknüpfte Konten“ (`link.view`).
 - `GroupsPage`: Tabelle Name, Typ, Leiter, Mitglieder, Treffpunkt, Treffen; Dialog mit `ColorPicker`, `MultiSelect`
   Leiter, `FileField` Bild. Buttons nach `can(permissions, …)` ein-/ausgeblendet.
 
@@ -124,7 +140,7 @@ Hinweis: `metadata.name` enthält den Klarnamen des Mitglieds – bewusst so umg
 
 ## Tests
 `tests/integration/members.test.ts` (Bootstrap ohne Gruppe, CRUD, Gruppenregeln 409/422, Farbe/Wochentag, Upload ohne
-Storage, 403/401/404, Audit) und `tests/unit/members-schemas.test.ts` (Alter, Datum, Farbe, `memberInput`, `groupInput`).
+Storage, 403/401/404, Audit, Mitgliedschaft: Eintritt/Austritt/Zweitmitglied, 422-Regeln, Statusfilter, `listMemberContacts`) und `tests/unit/members-schemas.test.ts` (Alter, Datum, Farbe, `memberInput`, `groupInput`).
 Upload-Erfolgspfad ist nicht getestet (kein S3; `tests/helpers/fake-storage.ts` wird hier nicht genutzt).
 
 ## Entscheidungen und Fallen

@@ -167,11 +167,17 @@
 		label: PARTICIPANT_ROLE_LABELS[r]
 	}));
 	const dietOptions = DIETS.map((d) => ({ value: d, label: DIET_LABELS[d] }));
-	const subsidyOptions = [
-		{ value: 'auto', label: 'Automatisch' },
+	// Bei gespeicherten Teilnehmenden ohne Festlegung das automatische Ergebnis zeigen
+	const autoLabel = $derived(
+		participant && participant.subsidyEligible === null
+			? `Automatisch (${participant.subsidyEffective ? 'ja' : 'nein'})`
+			: 'Automatisch'
+	);
+	const subsidyOptions = $derived([
+		{ value: 'auto', label: autoLabel },
 		{ value: 'yes', label: 'Ja, zuschussberechtigt' },
 		{ value: 'no', label: 'Nein, nicht berechtigt' }
-	];
+	]);
 	const bremenOptions = [
 		{ value: 'yes', label: 'Ja' },
 		{ value: 'no', label: 'Nein' }

@@ -20,7 +20,7 @@ import { ibanHash } from './bank';
 import { applyCounterparty } from './counterparty';
 import { notifyPaid } from './notify';
 import { learnPayerFromTransaction } from './payer-learning';
-import { linkTransactionToPayable, listPayables, syncReimbursementStatus } from './payables';
+import { linkTransactionToPayable, listPayables, syncActionPayableStatus } from './payables';
 import {
 	MAX_RECEIPT_BYTES,
 	MODULE_ID,
@@ -253,7 +253,7 @@ export const transactionEndpoints = [
 				);
 			}
 			if (payables.length) {
-				await syncReimbursementStatus(payables);
+				await syncActionPayableStatus(payables);
 				await core.audit.logFromContext(ctx, 'treasury.payable.linked', {
 					target: id,
 					metadata: { payableId: input.payableId }
@@ -398,7 +398,7 @@ export const transactionEndpoints = [
 				}
 				return group.map((t) => (t.receipt_path ? String(t.receipt_path) : null)).filter(Boolean);
 			});
-			await syncReimbursementStatus(linkedPayables);
+			await syncActionPayableStatus(linkedPayables);
 			for (const path of removed) {
 				await core.storage.remove(ctx, { module: MODULE_ID, path: path! }).catch(() => undefined);
 			}

@@ -269,6 +269,7 @@
 		entry={editEntry}
 		payees={payeeChoices}
 		{canViewPayouts}
+		viaTreasury={!!acc?.payoutsViaTreasury}
 		onsaved={load}
 	/>
 	<ConfirmDialog
@@ -287,6 +288,14 @@
 		description={`Danach können Buchungen nicht mehr geändert werden. Saldo: ${formatEuro(summary.balanceCents)}.${
 			summary.missingReceipts > 0
 				? ` Achtung: ${summary.missingReceipts} Ausgaben haben keinen Beleg.`
+				: ''
+		}${
+			summary.openClubPayments.count > 0
+				? ` ${summary.openClubPayments.count === 1 ? 'Eine Überweisung' : `${summary.openClubPayments.count} Überweisungen`} (${formatEuro(summary.openClubPayments.cents)}) ${summary.openClubPayments.count === 1 ? 'ist' : 'sind'} noch offen${acc?.payoutsViaTreasury ? ' – die Kasse überweist weiterhin' : ''}.`
+				: ''
+		}${
+			acc?.payoutsViaTreasury && summary.openReimbursementCents > 0
+				? ` Offene Auslagen (${formatEuro(summary.openReimbursementCents)}) gehen mit dem Abschluss an die Kasse.`
 				: ''
 		}`}
 		confirmLabel="Abschließen"

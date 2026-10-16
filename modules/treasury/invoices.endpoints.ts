@@ -45,6 +45,7 @@ import {
 import { notifyPaid, runReminderJob, sendManualReminders } from './notify';
 import {
 	CONTRIBUTIONS_CATEGORY_ID,
+	MEMBERSHIP_CATEGORY_ID,
 	INVOICE_STATUS_LABELS,
 	actionSettingsInput,
 	cancelInput,
@@ -568,7 +569,9 @@ export const invoiceEndpoints = [
 			await mdb().transaction(async (tx) => {
 				const cur = await lockInvoice(tx, id);
 				if (cur.source !== 'manual') {
-					throw errors.conflict('Rechnungen aus Aktionen werden storniert, nicht geloescht');
+					throw errors.conflict(
+						'Rechnungen aus Aktionen oder Jahresbeitraegen werden storniert, nicht geloescht'
+					);
 				}
 				if ((await paidOf(tx, id)) > 0) {
 					throw errors.conflict('Bezahlte Rechnungen koennen nur storniert werden');
@@ -707,7 +710,7 @@ export const invoiceEndpoints = [
 						category_id, action_id, created_by)
 					VALUES (${txId}, ${input.accountId}, ${input.bookedOn}, ${input.amountCents},
 						${input.counterparty ?? String(inv.row.recipient_name)}, ${`${String(inv.row.number)} ${String(inv.row.recipient_name)}`.slice(0, 300)},
-						${inv.row.source === 'action' ? CONTRIBUTIONS_CATEGORY_ID : null}, ${str(inv.row.action_id)}, ${ctx.userId})`
+						${inv.row.source === 'action' ? CONTRIBUTIONS_CATEGORY_ID : inv.row.source === 'annual' ? MEMBERSHIP_CATEGORY_ID : null}, ${str(inv.row.action_id)}, ${ctx.userId})`
 				);
 				await applyCounterparty(tx, txId, input);
 				return replaceAllocations(

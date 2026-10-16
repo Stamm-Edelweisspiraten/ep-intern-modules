@@ -216,7 +216,9 @@ export async function loadRawInvoices(
 		sql`SELECT i.id, i.number, i.source, i.action_id, i.recipient_name, i.recipient_email, i.note,
 			to_char(i.issued_on, 'YYYY-MM-DD') AS issued_on, to_char(i.due_on, 'YYYY-MM-DD') AS due_on,
 			i.reminders_paused, i.cancelled_at, i.cancel_reason, i.auto_cancelled, i.paid_notified_at,
-			i.created_at, i.updated_at,
+			i.created_at, i.updated_at, i.annual_run_id,
+			(SELECT r.year FROM annual_fee_runs r WHERE r.id = i.annual_run_id) AS annual_year,
+			(SELECT r.pdf_text FROM annual_fee_runs r WHERE r.id = i.annual_run_id) AS annual_pdf_text,
 			coalesce(i.payer_id, (SELECT pm.payer_id FROM invoice_lines l JOIN payer_members pm ON pm.member_id = l.member_id
 				WHERE l.invoice_id = i.id ORDER BY l.position LIMIT 1)) AS payer_id,
 			(SELECT max(r.level) FROM reminders r WHERE r.invoice_id = i.id) AS reminder_level,
@@ -231,7 +233,7 @@ export async function loadRawInvoices(
 	const lines = await rows(
 		tx,
 		sql`SELECT l.id, l.invoice_id, l.position, l.description, l.amount_cents, l.waived_cents, l.waive_reason,
-			l.member_id, l.participant_id, l.action_id, l.source_ref,
+			l.member_id, l.participant_id, l.action_id, l.source_ref, l.fee_level,
 			coalesce((SELECT sum(a.amount_cents) FROM allocations a WHERE a.line_id = l.id), 0) AS paid_cents
 		FROM invoice_lines l WHERE l.invoice_id IN (${ids}) ORDER BY l.position, l.id`
 	);

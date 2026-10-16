@@ -12,9 +12,27 @@ export interface ActionContributions {
 	openCents: number;
 }
 
+/** Zahlstand des Beitrags einer/eines Teilnehmenden (Posten der Rechnung aus der Aktion). */
+export interface ParticipantPayment {
+	participantId: string;
+	invoiceId: string;
+	invoiceNumber: string;
+	/** Soll nach Ermaessigung */
+	dueCents: number;
+	paidCents: number;
+	openCents: number;
+	/** `waived` = vollstaendig erlassen */
+	status: 'paid' | 'partial' | 'open' | 'waived';
+	/** JJJJ-MM-TT */
+	dueOn: string | null;
+	overdue: boolean;
+}
+
 export interface TreasuryService {
 	/** `null`, wenn die Kasse fuer diese Aktion keine Rechnungen fuehrt */
 	contributionsForAction(actionId: string): Promise<ActionContributions | null>;
+	/** Zahlstand je Teilnehmende*r (nur nicht stornierte Rechnungen aus der Aktion) */
+	participantPayments(actionId: string): Promise<ParticipantPayment[]>;
 	/**
 	 * Nach einer Anmeldung: Rechnung der Person sofort anlegen (Abgleich) und als PDF liefern
 	 * (Fassung 1, wird an der Rechnung gespeichert). `null` ohne Beitrag bzw. Rechnung.

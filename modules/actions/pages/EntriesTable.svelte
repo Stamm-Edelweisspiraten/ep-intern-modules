@@ -187,6 +187,22 @@
 						<Badge variant="secondary"><Check class="size-3" aria-hidden="true" /> Ausgezahlt</Badge
 						>
 					{/if}
+					{#if e.type === 'expense' && e.paidBy === 'club' && !isRefund(e)}
+						{#if e.recipient}<span>an {e.recipient.name}</span>{/if}
+						{#if e.clubPaidAt === null}
+							<Badge
+								variant="outline"
+								class="border-amber-500/50 text-amber-700 dark:text-amber-400"
+								title={e.purpose ?? undefined}>Überweisung offen</Badge
+							>
+						{:else if e.clubPaidVia === 'treasury'}
+							<Badge variant="secondary"
+								><Check class="size-3" aria-hidden="true" /> Überwiesen {new Date(
+									e.clubPaidAt
+								).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</Badge
+							>
+						{/if}
+					{/if}
 				</div>
 			</Table.Cell>
 			<Table.Cell
@@ -255,9 +271,11 @@
 								<DropdownMenu.Item onSelect={() => onedit(e)}>
 									<Pencil /> Bearbeiten
 								</DropdownMenu.Item>
-								<DropdownMenu.Item variant="destructive" onSelect={() => ondelete(e)}>
-									<Trash2 /> Löschen
-								</DropdownMenu.Item>
+								{#if e.clubPaidVia !== 'treasury'}
+									<DropdownMenu.Item variant="destructive" onSelect={() => ondelete(e)}>
+										<Trash2 /> Löschen
+									</DropdownMenu.Item>
+								{/if}
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 					{/if}

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import type { ActionContributions, TreasuryService } from './contract';
-import { mdb, num, rows } from './db';
+import type { ActionContributions, ParticipantPayment, TreasuryService } from './contract';
+import { mdb, num, rows, today } from './db';
 import { registrationDocument } from './documents';
 import { lineOpen, sourceRef } from './logic';
 import { loadBankData } from './notify';
@@ -37,6 +37,50 @@ export const treasuryService: TreasuryService = {
 			paidCents,
 			openCents
 		};
+	},
+
+	async participantPayments(actionId: string): Promise<ParticipantPayment[]> {
+		const lines = await mdb().transaction((tx) =>
+			rows(
+				tx,
+				sql`SELECT l.participant_id, l.invoice_id, i.number, l.amount_cents, l.waived_cents,
+					to_char(i.due_on, 'YYYY-MM-DD') AS due_on,
+					coalesce((SELECT sum(a.amount_cents) FROM allocations a WHERE a.line_id = l.id), 0) AS paid_cents
+				FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+				WHERE i.cancelled_at IS NULL AND l.participant_id IS NOT NULL
+					AND coalesce(l.action_id, i.action_id) = ${actionId}
+				ORDER BY i.created_at`
+			)
+		);
+		const t = today();
+		return lines.map((l) => {
+			const a = {
+				amountCents: num(l.amount_cents),
+				waivedCents: num(l.waived_cents),
+				paidCents: num(l.paid_cents)
+			};
+			const dueCents = Math.max(0, a.amountCents - a.waivedCents);
+			const openCents = lineOpen(a);
+			const dueOn = l.due_on == null ? null : String(l.due_on);
+			return {
+				participantId: String(l.participant_id),
+				invoiceId: String(l.invoice_id),
+				invoiceNumber: String(l.number),
+				dueCents,
+				paidCents: a.paidCents,
+				openCents,
+				status:
+					dueCents === 0
+						? 'waived'
+						: openCents === 0
+							? 'paid'
+							: a.paidCents > 0
+								? 'partial'
+								: 'open',
+				dueOn,
+				overdue: openCents > 0 && !!dueOn && dueOn < t
+			};
+		});
 	},
 
 	async invoiceForRegistration(actionId: string, participantId: string) {

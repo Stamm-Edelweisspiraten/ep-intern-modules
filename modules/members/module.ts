@@ -13,12 +13,13 @@ import m0002 from './migrations/0002_members_v2.sql?raw';
 import m0003 from './migrations/0003_user_links.sql?raw';
 import m0004 from './migrations/0004_address_fields.sql?raw';
 import m0005 from './migrations/0005_member_fields.sql?raw';
+import m0006 from './migrations/0006_membership.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.3.0',
+		version: '1.4.0',
 		dependencies: [],
 		permissions: [
 			'members.member.view',
@@ -78,7 +79,8 @@ export default defineModule({
 		{ name: '0002_members_v2', sql: m0002 },
 		{ name: '0003_user_links', sql: m0003 },
 		{ name: '0004_address_fields', sql: m0004 },
-		{ name: '0005_member_fields', sql: m0005 }
+		{ name: '0005_member_fields', sql: m0005 },
+		{ name: '0006_membership', sql: m0006 }
 	],
 	endpoints: [
 		...memberEndpoints,

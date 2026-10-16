@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import type { ParticipantPayment, TreasuryService } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import { effectiveSubsidyEligible } from './subsidy-eligibility';
 import {
@@ -20,6 +21,18 @@ const COLUMNS = sql`id, action_id, contact_email, name, group_label, to_char(bir
 	bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes, source, created_at, updated_at`;
 
 const iso = (v: unknown): string => new Date(String(v)).toISOString();
+
+/** Zahlstand aus der Kasse; `null`, wenn die Kasse nicht aktiv bzw. nicht erreichbar ist. */
+async function loadPayments(actionId: string): Promise<Map<string, ParticipantPayment> | null> {
+	const svc = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+	if (!svc) return null;
+	try {
+		return new Map((await svc.participantPayments(actionId)).map((p) => [p.participantId, p]));
+	} catch (e) {
+		console.error('[actions] Kasse nicht erreichbar:', e);
+		return null;
+	}
+}
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 
 function toParticipant(r: Record<string, unknown>, startsOn: string): Participant {
@@ -85,7 +98,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			return mdb().transaction(async (tx) => {
+			const list = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const rows = await rowsOf(
 					tx,
@@ -95,6 +108,10 @@ export const participantEndpoints: ApiEndpoint[] = [
 				const startsOn = await startsOnOf(tx, id);
 				return rows.map((r) => toParticipant(r, startsOn));
 			});
+			// Kasse erst nach der Transaktion (PGlite: keine verschachtelten Modul-Transaktionen)
+			const payments = await loadPayments(id);
+			if (!payments) return list;
+			return list.map((p) => ({ ...p, payment: payments.get(p.id) ?? null }));
 		}
 	} as ApiEndpoint,
 	{

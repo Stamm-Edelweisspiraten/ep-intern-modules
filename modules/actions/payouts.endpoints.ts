@@ -15,7 +15,8 @@ import {
 	numberExpenses,
 	payeeTotals,
 	summarize,
-	toPayoutCsv
+	toPayoutCsv,
+	toSummaryEntry
 } from './accounting';
 import { safeFilename } from './form-support';
 import { ibanLast, maskFromLast } from './iban';
@@ -175,15 +176,7 @@ export async function buildAccountingReport(
 	});
 
 	// Core-Services erst nach der Transaktion: IBAN entschluesseln, Belege laden.
-	const se: SummaryEntry[] = data.entries.map((e) => ({
-		type: e.type,
-		category: e.category,
-		amountCents: e.amountCents,
-		paidBy: e.paidBy,
-		payeeId: e.payee?.id ?? null,
-		hasReceipt: e.receipt !== null,
-		reimbursed: e.reimbursedAt !== null
-	}));
+	const se: SummaryEntry[] = data.entries.map(toSummaryEntry);
 	const totals = payeeTotals(se);
 	const ibanOf = (p: Record<string, unknown>): string | null => {
 		if (!p.iban_enc) return null;

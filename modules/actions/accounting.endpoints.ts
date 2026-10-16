@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
 import type { ActionContributions } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import {
@@ -14,7 +14,7 @@ import {
 import { payeeTotals, summarize } from './accounting';
 import { sanitizeName } from './action-archive';
 import { calculate } from './calculation';
-import { maskFromLast } from './iban';
+import { ibanLast, maskFromLast } from './iban';
 import { computeSubsidy } from './subsidy';
 import {
 	MAX_RECEIPT_BYTES,
@@ -23,6 +23,7 @@ import {
 	entryInput,
 	entryParams,
 	idParams,
+	needsTransfer,
 	type AccountingEntry,
 	type AccountingPayee,
 	type AccountingPlan,
@@ -113,32 +114,33 @@ function toSummaryEntries(rows: Record<string, unknown>[]): SummaryEntry[] {
 		paidBy: String(r.paid_by) as SummaryEntry['paidBy'],
 		payeeId: r.payee_id == null ? null : String(r.payee_id),
 		hasReceipt: r.receipt_path != null,
-		reimbursed: r.reimbursed_at != null
+		reimbursed: r.reimbursed_at != null,
+		clubOpen: r.type === 'expense' && r.paid_by === 'club' && r.club_paid_at == null
 	}));
 }
 
-interface LoadedState {
+export interface LoadedState {
 	state: AccountingState;
 	closedBy: string | null;
 }
 
-async function loadState(
+/** Abrechnung lesen (ohne Objektrechte); Empfaenger nur mit `canViewPayouts`. */
+export async function loadState(
 	tx: Tx,
-	ctx: RequestContext,
 	actionId: string,
-	treasury: ActionContributions | null
+	treasury: ActionContributions | null,
+	canViewPayouts: boolean
 ): Promise<LoadedState> {
 	const closed = await closedInfo(tx, actionId);
 	const entries = await loadEntries(tx, actionId);
 	const plan = await loadPlan(tx, actionId);
 	const raw = await rowsOf(
 		tx,
-		sql`SELECT type, category, amount_cents, paid_by, payee_id, receipt_path, reimbursed_at
+		sql`SELECT type, category, amount_cents, paid_by, payee_id, receipt_path, reimbursed_at, club_paid_at
 			FROM accounting_entries WHERE action_id = ${actionId}`
 	);
 	const summaryEntries = toSummaryEntries(raw);
 	const autoIncome = await loadAutoIncome(tx, actionId, summaryEntries, treasury);
-	const canViewPayouts = core.permissions.has(ctx, 'actions.payout.view');
 	let payees: AccountingPayee[] | null = null;
 	if (canViewPayouts) {
 		const totals = payeeTotals(summaryEntries);
@@ -220,6 +222,34 @@ async function validateEntry(tx: Tx, actionId: string, input: EntryInput): Promi
 }
 
 const REIMBURSED_MSG = 'Ausgezahlte Auslagen koennen nicht geaendert werden';
+const TRANSFERRED_MSG =
+	'Die Ausgabe wurde bereits von der Kasse ueberwiesen. Zum Aendern zuerst die Zahlung in der Kasse loeschen.';
+const crypt = () => core.crypto.forModule(MODULE_ID);
+
+/** Empfaengerdaten einer Stamm-Ausgabe fuer INSERT/UPDATE (alles `null` bei anderen Buchungen). */
+function recipientValues(
+	input: EntryInput,
+	encrypted: string | null,
+	current: Record<string, unknown> | null
+) {
+	const club = input.type === 'expense' && input.paidBy === 'club';
+	if (!club) {
+		return { name: null, enc: null, last: null, bic: null, purpose: null, paid: false };
+	}
+	const enc = encrypted ?? (current?.recipient_iban_enc as string | null | undefined) ?? null;
+	const last = input.iban
+		? ibanLast(input.iban)
+		: ((current?.recipient_iban_last4 as string | null | undefined) ?? null);
+	if (needsTransfer(input) && !enc) throw errors.validation({ iban: 'IBAN fehlt' });
+	return {
+		name: input.recipientName,
+		enc,
+		last,
+		bic: input.bic,
+		purpose: input.purpose,
+		paid: input.clubPaid
+	};
+}
 const REFUND_MSG = 'Bitte die Rueckzahlung ueber die Rueckzahlungsfunktion zuruecknehmen';
 
 export const accountingEndpoints: ApiEndpoint[] = [
@@ -235,7 +265,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 			const treasury = await loadTreasuryContributions(id);
 			const loaded = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
-				return loadState(tx, ctx, id, treasury);
+				return loadState(tx, id, treasury, core.permissions.has(ctx, 'actions.payout.view'));
 			});
 			const { state, closedBy } = loaded;
 			state.payoutsViaTreasury = await core.modules.isEnabled('treasury');
@@ -260,17 +290,21 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
 			const input = body as EntryInput;
+			const encrypted = input.iban ? crypt().encrypt(input.iban) : null;
 			const entry = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await validateEntry(tx, id, input);
+				const r = recipientValues(input, encrypted, null);
 				const entryId = crypto.randomUUID();
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
-							amount_cents, entry_date, paid_by, payee_id, created_by)
+							amount_cents, entry_date, paid_by, payee_id, created_by, recipient_name,
+							recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose, club_paid_at, club_paid_via)
 						VALUES (${entryId}, ${id}, ${input.type}, ${input.category}, ${input.description},
 							${input.amountCents}, ${input.entryDate}, ${input.paidBy}, ${input.payeeId},
-							${ctx.userId ?? null})`
+							${ctx.userId ?? null}, ${r.name}, ${r.enc}, ${r.last}, ${r.bic}, ${r.purpose},
+							${r.paid ? sql`now()` : sql`NULL`}, ${r.paid ? 'manual' : null})`
 				);
 				return loadOne(tx, id, entryId);
 			});
@@ -297,20 +331,26 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
 			const input = body as EntryInput;
+			const encrypted = input.iban ? crypt().encrypt(input.iban) : null;
 			const { entry, removedReceipt } = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);
 				if (cur.category === 'refund') throw errors.conflict(REFUND_MSG);
 				if (cur.reimbursed_at != null) throw errors.conflict(REIMBURSED_MSG);
+				if (cur.club_paid_via === 'treasury') throw errors.conflict(TRANSFERRED_MSG);
 				await validateEntry(tx, id, input);
+				const r = recipientValues(input, encrypted, cur);
 				// Einnahmen haben keine Belege
 				const dropReceipt = input.type === 'income' && cur.receipt_path != null;
 				await tx.execute(
 					sql`UPDATE accounting_entries SET type = ${input.type}, category = ${input.category},
 							description = ${input.description}, amount_cents = ${input.amountCents},
 							entry_date = ${input.entryDate}, paid_by = ${input.paidBy}, payee_id = ${input.payeeId},
-							reimbursed_at = NULL,
+							reimbursed_at = NULL, recipient_name = ${r.name}, recipient_iban_enc = ${r.enc},
+							recipient_iban_last4 = ${r.last}, recipient_bic = ${r.bic}, purpose = ${r.purpose},
+							club_paid_at = ${r.paid ? sql`COALESCE(club_paid_at, now())` : sql`NULL`},
+							club_paid_via = ${r.paid ? 'manual' : null},
 							receipt_path = ${dropReceipt ? null : (cur.receipt_path ?? null)},
 							receipt_name = ${dropReceipt ? null : (cur.receipt_name ?? null)},
 							receipt_content_type = ${dropReceipt ? null : (cur.receipt_content_type ?? null)},
@@ -354,6 +394,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				const cur = await lockEntry(tx, id, entryId);
 				if (cur.category === 'refund') throw errors.conflict(REFUND_MSG);
 				if (cur.reimbursed_at != null) throw errors.conflict(REIMBURSED_MSG);
+				if (cur.club_paid_via === 'treasury') throw errors.conflict(TRANSFERRED_MSG);
 				await tx.execute(sql`DELETE FROM accounting_entries WHERE id = ${entryId}`);
 				return {
 					path: cur.receipt_path == null ? null : String(cur.receipt_path),
@@ -377,6 +418,39 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				}
 			});
 			return { id: entryId };
+		}
+	} as ApiEndpoint,
+	{
+		method: 'GET',
+		path: '/actions/:id/accounting/entries/:entryId/iban',
+		summary: 'IBAN des Empfaengers einer Stamm-Ausgabe entschluesselt lesen',
+		tags: TAGS,
+		permission: 'actions.action.view',
+		params: entryParams,
+		handler: async ({ ctx, params }) => {
+			await core.permissions.require(ctx, 'actions.payout.view');
+			const { id, entryId } = params as { id: string; entryId: string };
+			const enc = await mdb().transaction(async (tx) => {
+				await requireAccess(tx, ctx, id, 'edit');
+				const [r] = await rowsOf(
+					tx,
+					sql`SELECT recipient_iban_enc FROM accounting_entries WHERE id = ${entryId} AND action_id = ${id}`
+				);
+				if (!r) throw errors.notFound('Buchung nicht gefunden');
+				return r.recipient_iban_enc == null ? null : String(r.recipient_iban_enc);
+			});
+			const iban = enc ? crypt().decrypt(enc) : '';
+			await core.audit.logFromContext(ctx, 'actions.accounting.iban_viewed', {
+				target: id,
+				metadata: { actionId: id, entryId }
+			});
+			return new Response(JSON.stringify({ data: { iban } }), {
+				status: 200,
+				headers: {
+					'content-type': 'application/json; charset=utf-8',
+					'cache-control': 'private, no-store'
+				}
+			});
 		}
 	} as ApiEndpoint,
 	{

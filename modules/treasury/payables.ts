@@ -63,7 +63,10 @@ export async function syncPayables(
 	const svc = await actionsService();
 	const reimbursements = await svc.listReimbursements();
 	const refunds = await svc.listRefundItems();
-	const actionIds = [...new Set([...reimbursements, ...refunds].map((r) => r.actionId))];
+	const clubExpenses = await svc.listClubExpenses();
+	const actionIds = [
+		...new Set([...reimbursements, ...refunds, ...clubExpenses].map((r) => r.actionId))
+	];
 	const actionNames = new Map(
 		(actionIds.length ? await svc.listActionRefs({ ids: actionIds }) : []).map((a) => [
 			a.id,
@@ -157,6 +160,21 @@ export async function syncPayables(
 					ibanEnc: origin?.enc ?? null
 				};
 			}),
+			// Stamm-Ausgaben: offen oder von der Kasse ueberwiesen (manuell bezahlte entfallen)
+			...clubExpenses
+				.filter((e) => e.paidVia !== 'manual')
+				.map((e) => ({
+					sourceRef: `expense:${e.actionId}:${e.entryId}`,
+					source: 'expense' as const,
+					actionId: e.actionId,
+					recipientName: e.recipientName ?? e.description,
+					description: (e.purpose ?? `${e.description} (${actionLabel(e.actionId)})`).slice(0, 200),
+					amountCents: e.amountCents,
+					payerId: null,
+					memberId: null,
+					ibanLast4: e.ibanLast ? e.ibanLast.slice(-4) : null,
+					bic: e.bic
+				})),
 			...summaries
 				.filter((s) => s.creditCents > 0)
 				.map((s) => ({
@@ -337,27 +355,34 @@ async function payableIban(id: string): Promise<string | null> {
 		const [, actionId, payeeId] = String(r.source_ref).split(':');
 		return (await actionsService()).getPayeeIban(actionId!, payeeId!);
 	}
+	if (r.source === 'expense') {
+		const [, actionId, entryId] = String(r.source_ref).split(':');
+		return (await actionsService()).getClubExpenseIban(actionId!, entryId!);
+	}
 	return decryptIban(r.iban_enc) ?? decryptIban(r.payer_enc);
 }
 
-/** Nach Zahlung/Loeschung: Auslagen in der Abrechnung als (nicht) ausgezahlt markieren */
-export async function syncReimbursementStatus(payableIds: string[]): Promise<void> {
+/**
+ * Nach Zahlung/Loeschung: Auslagen bzw. Stamm-Ausgaben in der Abrechnung als (nicht) bezahlt markieren.
+ */
+export async function syncActionPayableStatus(payableIds: string[]): Promise<void> {
 	if (!payableIds.length) return;
 	const found = await mdb().transaction((tx) =>
 		rows(
 			tx,
-			sql`SELECT p.source_ref, p.amount_cents, p.cancelled_at,
+			sql`SELECT p.source, p.source_ref, p.amount_cents, p.cancelled_at,
 				coalesce((SELECT sum(pp.amount_cents) FROM payable_payments pp WHERE pp.payable_id = p.id), 0) AS paid
-			FROM payables p WHERE p.id IN (${idList(payableIds)}) AND p.source = 'reimbursement'`
+			FROM payables p WHERE p.id IN (${idList(payableIds)}) AND p.source IN ('reimbursement', 'expense')`
 		)
 	);
 	if (!found.length) return;
 	const svc = await actionsService();
 	for (const r of found) {
-		const [, actionId, payeeId] = String(r.source_ref).split(':');
-		if (!actionId || !payeeId) continue;
+		const [, actionId, ref] = String(r.source_ref).split(':');
+		if (!actionId || !ref) continue;
 		const settled = num(r.paid) > 0 && num(r.paid) >= num(r.amount_cents);
-		await svc.markReimbursed(actionId, payeeId, settled);
+		if (r.source === 'expense') await svc.markClubExpensePaid(actionId, ref, settled);
+		else await svc.markReimbursed(actionId, ref, settled);
 	}
 }
 
@@ -365,7 +390,7 @@ export async function syncReimbursementStatus(payableIds: string[]): Promise<voi
 
 /**
  * Ausgabe einer Auszahlung zuordnen (bzw. mit `null` loesen). Liefert die betroffenen Auszahlungen,
- * damit danach `syncReimbursementStatus` laufen kann (ausserhalb der Transaktion).
+ * damit danach `syncActionPayableStatus` laufen kann (ausserhalb der Transaktion).
  */
 export async function linkTransactionToPayable(
 	tx: Tx,
@@ -610,7 +635,7 @@ export const payableEndpoints = [
 					VALUES (${crypto.randomUUID()}, ${id}, ${txId}, ${input.amountCents}, ${ctx.userId})`
 				);
 			});
-			await syncReimbursementStatus([id]);
+			await syncActionPayableStatus([id]);
 			await core.audit.logFromContext(ctx, 'treasury.payable.paid', {
 				target: id,
 				metadata: { transactionId: txId, amountCents: input.amountCents }
@@ -632,7 +657,7 @@ export const payableEndpoints = [
 			const touched = await mdb().transaction((tx) =>
 				linkTransactionToPayable(tx, id, payableId, ctx.userId)
 			);
-			await syncReimbursementStatus(touched);
+			await syncActionPayableStatus(touched);
 			await core.audit.logFromContext(ctx, 'treasury.payable.linked', {
 				target: id,
 				metadata: { payableId }
@@ -829,6 +854,22 @@ export const payableReceiptEndpoints = [
 					contentType: String(p.receipt_content_type)
 				});
 			}
+			if (p.source === 'expense') {
+				const [, actionId, entryId] = String(p.source_ref).split(':');
+				const exp = (await (await actionsService()).listClubExpenses()).find(
+					(e) => e.actionId === actionId && e.entryId === entryId
+				);
+				if (exp?.receipt) {
+					out.push({
+						id: exp.entryId,
+						label: exp.description,
+						date: exp.entryDate,
+						amountCents: exp.amountCents,
+						name: exp.receipt.name,
+						contentType: exp.receipt.contentType
+					});
+				}
+			}
 			if (p.source === 'reimbursement') {
 				const [, actionId, payeeId] = String(p.source_ref).split(':');
 				for (const r of await (
@@ -876,6 +917,11 @@ export const payableReceiptEndpoints = [
 			} else if (p.source === 'reimbursement') {
 				const [, actionId] = String(p.source_ref).split(':');
 				file = await (await actionsService()).downloadReceipt(actionId!, entryId);
+			} else if (p.source === 'expense') {
+				const [, actionId, ownEntry] = String(p.source_ref).split(':');
+				if (ownEntry === entryId) {
+					file = await (await actionsService()).downloadReceipt(actionId!, entryId);
+				}
 			}
 			if (!file) throw errors.notFound('Beleg nicht gefunden');
 			await core.audit.logFromContext(ctx, 'treasury.payable.receipt_viewed', {

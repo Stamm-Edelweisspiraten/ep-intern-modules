@@ -45,7 +45,7 @@ async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
 			sql`SELECT l.id AS line_id, l.invoice_id, l.source_ref, l.amount_cents, l.waived_cents, l.description,
 				l.member_id, i.cancelled_at, i.auto_cancelled
 			FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
-			WHERE l.source_ref IS NOT NULL`
+			WHERE l.source_ref LIKE 'action:%'`
 		);
 		const plan = planSync({
 			sources,

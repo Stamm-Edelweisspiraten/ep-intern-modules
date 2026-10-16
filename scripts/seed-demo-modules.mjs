@@ -110,6 +110,43 @@ for (const f of families) {
 }
 console.log('Mitglieder:', memberByName.size);
 
+// Mitgliedschaft: Eintritt, ein Zweitmitglied (zahlt nur Stamm) und ein Eintritt nach dem 28.02.
+const membership = {
+	'Lena Müller': { entryDate: '2022-09-01' },
+	'Jonas Müller': { entryDate: '2020-03-15' },
+	'Mia Müller': { entryDate: '2026-05-10' },
+	'Paul Schmidt': { entryDate: '2021-01-20' },
+	'Emma Schmidt': { entryDate: '2023-02-14' },
+	'Deniz Yılmaz': { entryDate: '2019-10-01', secondaryMember: true, feeLevels: ['stamm'] },
+	'Tim Becker': { entryDate: '2016-04-01' },
+	'Sophie Neumann': { entryDate: '2012-06-01' }
+};
+for (const [name, extra] of Object.entries(membership)) {
+	const m = memberByName.get(name);
+	if (!m || m.entryDate) continue;
+	const full = (await call('GET', `${M}/members/${m.id}`)).json?.data;
+	if (!full) continue;
+	const r = await call('PUT', `${M}/members/${m.id}`, {
+		firstName: full.firstName,
+		lastName: full.lastName,
+		scoutName: full.scoutName,
+		birthDate: full.birthDate,
+		street: full.street,
+		postalCode: full.postalCode,
+		city: full.city,
+		country: full.country,
+		phones: full.phones,
+		emails: full.emails,
+		stage: full.stage,
+		groupIds: full.groups.map((g) => g.id),
+		consentSocialMedia: full.consentSocialMedia,
+		consentWebsite: full.consentWebsite,
+		consentPrint: full.consentPrint,
+		...extra
+	});
+	if (r.json?.data) memberByName.set(name, r.json.data);
+}
+
 const groups = (await call('GET', `${M}/groups`)).json?.data ?? [];
 const groupList = Array.isArray(groups) ? groups : (groups.items ?? []);
 if (!groupList.some((g) => g.name === 'Meute Seeadler')) {
