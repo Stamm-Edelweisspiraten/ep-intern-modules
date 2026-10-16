@@ -10,9 +10,11 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Upload from '@lucide/svelte/icons/upload';
+	import Users from '@lucide/svelte/icons/users';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { PageHeader } from '$lib/components/layout';
 	import type {
@@ -53,9 +55,11 @@
 		bank: can(permissions, 'treasury.bank.view')
 	});
 
-	const TABS = ['overview', 'open', 'payables', 'transactions', 'invoices', 'payers', 'reports'];
+	const TABS = ['overview', 'open', 'payables', 'transactions', 'invoices', 'reports'];
 	const initialTab = page.url.searchParams.get('tab');
 	let tab = $state(initialTab && TABS.includes(initialTab) ? initialTab : 'overview');
+	/** Zahler & Familien: im „Mehr“-Menü als Seitenpanel (alte Links mit ?tab=payers öffnen es) */
+	let payersOpen = $state(initialTab === 'payers');
 
 	function setTab(v: string) {
 		tab = v;
@@ -114,10 +118,9 @@
 		allocateOpen = true;
 	}
 
-	async function afterTxSaved(t: Transaction) {
+	// Zuordnung passiert bereits im Buchungsdialog – kein zweiter Dialog danach
+	async function afterTxSaved() {
 		await changed();
-		// Neue Einnahme direkt zuordnen
-		if (!txEdit && t.amountCents > 0 && perm.editTx) allocate(t);
 	}
 
 	async function afterImport(r: ImportResult) {
@@ -165,43 +168,43 @@
 					<Upload /> Import
 				</Button>
 			{/if}
-			{#if perm.editTx || perm.editInvoice}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button {...props} variant="outline" aria-label="Weitere Aktionen">
-								Mehr <ChevronDown />
-							</Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-72">
-						{#if perm.editTx}
-							<DropdownMenu.Label class="text-xs text-muted-foreground"
-								>Buchungen</DropdownMenu.Label
-							>
-							<DropdownMenu.Item onclick={() => (transferOpen = true)}>
-								<ArrowLeftRight /> Umbuchung zwischen Konten
-							</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={() => (suggestionsOpen = true)}>
-								<Sparkles /> Zuordnungsvorschläge prüfen
-							</DropdownMenu.Item>
-						{/if}
-						{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
-						{#if perm.editInvoice}
-							<DropdownMenu.Label class="text-xs text-muted-foreground"
-								>Rechnungen</DropdownMenu.Label
-							>
-							<DropdownMenu.Item onclick={() => (invoiceOpen = true)}>
-								<FilePlus /> Neue Rechnung
-							</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={sync} disabled={syncing}>
-								<RefreshCw />
-								{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
-							</DropdownMenu.Item>
-						{/if}
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-			{/if}
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" aria-label="Weitere Aktionen">
+							Mehr <ChevronDown />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-72">
+					{#if perm.editTx}
+						<DropdownMenu.Label class="text-xs text-muted-foreground">Buchungen</DropdownMenu.Label>
+						<DropdownMenu.Item onclick={() => (transferOpen = true)}>
+							<ArrowLeftRight /> Umbuchung zwischen Konten
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={() => (suggestionsOpen = true)}>
+							<Sparkles /> Zuordnungsvorschläge prüfen
+						</DropdownMenu.Item>
+					{/if}
+					{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
+					{#if perm.editInvoice}
+						<DropdownMenu.Label class="text-xs text-muted-foreground">Rechnungen</DropdownMenu.Label
+						>
+						<DropdownMenu.Item onclick={() => (invoiceOpen = true)}>
+							<FilePlus /> Neue Rechnung
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={sync} disabled={syncing}>
+							<RefreshCw />
+							{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
+						</DropdownMenu.Item>
+					{/if}
+					{#if perm.editTx || perm.editInvoice}<DropdownMenu.Separator />{/if}
+					<DropdownMenu.Label class="text-xs text-muted-foreground">Familien</DropdownMenu.Label>
+					<DropdownMenu.Item onclick={() => (payersOpen = true)}>
+						<Users /> Zahler &amp; Familien
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		{/snippet}
 	</PageHeader>
 
@@ -212,7 +215,6 @@
 			<Tabs.Trigger value="payables">Auszahlungen</Tabs.Trigger>
 			<Tabs.Trigger value="transactions">Buchungen</Tabs.Trigger>
 			<Tabs.Trigger value="invoices">Rechnungen</Tabs.Trigger>
-			<Tabs.Trigger value="payers">Zahler</Tabs.Trigger>
 			{#if perm.report}<Tabs.Trigger value="reports">Berichte</Tabs.Trigger>{/if}
 		</Tabs.List>
 		<Tabs.Content value="overview">
@@ -245,9 +247,6 @@
 				<InvoicesTab {...shared} oncreate={() => (invoiceOpen = true)} onchanged={changed} />
 			{/if}
 		</Tabs.Content>
-		<Tabs.Content value="payers">
-			{#if tab === 'payers'}<PayersTab {...shared} onchanged={changed} />{/if}
-		</Tabs.Content>
 		<Tabs.Content value="reports">
 			{#if tab === 'reports' && perm.report}<ReportsTab {...shared} />{/if}
 		</Tabs.Content>
@@ -267,6 +266,23 @@
 	canUploadReceipt={perm.upload}
 	onsaved={afterTxSaved}
 />
+<Sheet.Root bind:open={payersOpen}>
+	<Sheet.Content
+		side="right"
+		class="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-3xl"
+	>
+		<Sheet.Header class="border-b">
+			<Sheet.Title>Zahler &amp; Familien</Sheet.Title>
+			<Sheet.Description>
+				Zahler entstehen automatisch, wenn du Zahlungen zuordnest oder erfasst – inklusive IBAN und
+				Kindern. Hier kannst du nachsehen, korrigieren und Sammelrechnungen erstellen.
+			</Sheet.Description>
+		</Sheet.Header>
+		<div class="p-4">
+			{#if payersOpen}<PayersTab {...shared} onchanged={changed} />{/if}
+		</div>
+	</Sheet.Content>
+</Sheet.Root>
 <TransferDialog bind:open={transferOpen} {accounts} onsaved={changed} />
 <ImportDialog bind:open={importOpen} {accounts} onimported={afterImport} />
 <SuggestionsDialog

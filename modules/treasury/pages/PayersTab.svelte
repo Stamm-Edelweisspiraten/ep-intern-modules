@@ -95,7 +95,7 @@
 	}
 </script>
 
-<div class="space-y-6">
+<div class="space-y-4">
 	{#if suggestions.length && perm.editInvoice}
 		<Card.Root class="border-primary/30">
 			<Card.Header>
@@ -131,9 +131,9 @@
 	{/if}
 
 	<div class="flex items-center justify-between gap-2">
-		<h2 class="text-lg font-semibold">Zahler ({payers.length})</h2>
+		<h3 class="font-semibold">Zahler ({payers.length})</h3>
 		{#if perm.editInvoice}
-			<Button onclick={() => create()}><Plus /> Zahler</Button>
+			<Button size="sm" variant="outline" onclick={() => create()}><Plus /> Zahler anlegen</Button>
 		{/if}
 	</div>
 
@@ -142,12 +142,12 @@
 			<Card.Content>
 				<EmptyState
 					title="Noch keine Zahler"
-					description="Fasse Geschwister zu einer Familie zusammen – z. B. über die Vorschläge oben."
+					description="Zahler entstehen automatisch beim Zuordnen von Zahlungen. Geschwister kannst du auch über die Vorschläge oben zusammenfassen."
 				/>
 			</Card.Content>
 		</Card.Root>
 	{:else}
-		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<div class="grid gap-4 sm:grid-cols-2">
 			{#each payers as p (p.id)}
 				<Card.Root>
 					<Card.Header class="flex flex-row items-start gap-2 space-y-0">

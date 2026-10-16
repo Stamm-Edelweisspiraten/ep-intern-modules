@@ -133,9 +133,8 @@
 			.filter(
 				(l) =>
 					l.lineId in amounts ||
-					(q
-						? normalizeName(`${l.invoiceNumber} ${l.recipientName} ${l.description}`).includes(q)
-						: suggestedIds.has(l.lineId))
+					!q ||
+					normalizeName(`${l.invoiceNumber} ${l.recipientName} ${l.description}`).includes(q)
 			)
 			.sort(
 				(a, b) =>
@@ -143,7 +142,7 @@
 					Number(suggestedIds.has(b.lineId)) - Number(suggestedIds.has(a.lineId)) ||
 					a.recipientName.localeCompare(b.recipientName, 'de')
 			)
-			.slice(0, 8);
+			.slice(0, 200);
 	});
 
 	const visiblePayables = $derived.by(() => {
@@ -152,11 +151,16 @@
 			.filter(
 				(p) =>
 					p.id === payableId ||
-					(q
-						? normalizeName(`${p.recipientName} ${p.description}`).includes(q)
-						: suggestedIds.has(p.id))
+					!q ||
+					normalizeName(`${p.recipientName} ${p.description} ${p.action?.name ?? ''}`).includes(q)
 			)
-			.slice(0, 8);
+			.sort(
+				(a, b) =>
+					Number(b.id === payableId) - Number(a.id === payableId) ||
+					Number(suggestedIds.has(b.id)) - Number(suggestedIds.has(a.id)) ||
+					a.recipientName.localeCompare(b.recipientName, 'de')
+			)
+			.slice(0, 200);
 	});
 
 	function toggleLine(l: OpenLine, checked: boolean) {
@@ -226,25 +230,47 @@
 	);
 </script>
 
-<fieldset class="space-y-3 rounded-md border p-3">
-	<legend class="px-1 text-sm font-medium">
-		{direction === 'income' ? 'Offenen Rechnungen zuordnen' : 'Offener Auszahlung zuordnen'}
-	</legend>
+<section
+	class="flex min-h-[22rem] flex-col gap-3 rounded-lg border bg-muted/30 p-4 lg:max-h-[calc(94vh-11rem)]"
+	aria-labelledby="bm-title"
+>
+	<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+		<h3 id="bm-title" class="font-semibold">
+			{direction === 'income' ? 'Offenen Rechnungen zuordnen' : 'Offener Auszahlung zuordnen'}
+		</h3>
+		{#if preview && total}
+			<span class="text-xs text-muted-foreground">
+				{total}
+				{direction === 'income' ? 'offene Posten' : 'offene Auszahlungen'}
+				{#if selectedCount}· {selectedCount} ausgewählt{/if}
+			</span>
+		{/if}
+	</div>
 
 	{#if !amountCents}
-		<p class="text-xs text-muted-foreground">
-			Gib einen Betrag ein – die Kasse schlägt dann passende {direction === 'income'
-				? 'Rechnungen'
-				: 'Auszahlungen'} vor.
-		</p>
+		<div
+			class="flex flex-1 flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-background/60 p-6 text-center text-sm text-muted-foreground"
+		>
+			<Sparkles class="size-5 text-primary" aria-hidden="true" />
+			<p>
+				Gib einen Betrag ein – die Kasse schlägt dann passende {direction === 'income'
+					? 'Rechnungen'
+					: 'Auszahlungen'} vor.
+			</p>
+			<p class="text-xs">Name, Verwendungszweck und IBAN machen den Vorschlag genauer.</p>
+		</div>
 	{:else if loading}
-		<Skeleton class="h-9 w-full" />
+		<div class="space-y-2">
+			<Skeleton class="h-12 w-full" />
+			<Skeleton class="h-12 w-full" />
+			<Skeleton class="h-12 w-full" />
+		</div>
 	{:else if error}
 		<p class="text-sm text-destructive" role="alert">{error}</p>
 	{:else if preview}
 		{#if suggestionText}
 			<div
-				class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-2 text-sm"
+				class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm"
 				role="note"
 			>
 				<Sparkles class="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -263,35 +289,45 @@
 		{/if}
 
 		{#if !total}
-			<p class="text-xs text-muted-foreground">
+			<div
+				class="flex flex-1 items-center justify-center rounded-md border border-dashed bg-background/60 p-6 text-center text-sm text-muted-foreground"
+			>
 				{direction === 'income'
 					? 'Es gibt keine offenen Rechnungen – die Einnahme wird ohne Zuordnung gespeichert.'
 					: 'Es gibt keine offenen Auszahlungen.'}
-			</p>
+			</div>
 		{:else}
 			<div class="flex flex-wrap items-center gap-2">
 				<Input
-					class="h-8 min-w-0 flex-1 basis-full sm:basis-0"
+					class="min-w-0 flex-1 basis-full bg-background sm:basis-0"
 					placeholder={direction === 'income'
-						? `Rechnung, Name oder Posten suchen (${total} offen) …`
-						: `Empfänger*in oder Grund suchen (${total} offen) …`}
+						? 'Rechnung, Name oder Posten suchen …'
+						: 'Empfänger*in, Grund oder Aktion suchen …'}
 					aria-label="Offene Posten durchsuchen"
 					bind:value={search}
 				/>
 				{#if direction === 'income' && selectedCount > 1}
-					<Button variant="outline" size="sm" onclick={spread}>Verteilen</Button>
+					<Button variant="outline" size="sm" onclick={spread}>Betrag verteilen</Button>
 				{/if}
 				{#if selectedCount}
-					<Button variant="ghost" size="sm" onclick={clear}>Leeren</Button>
+					<Button variant="ghost" size="sm" onclick={clear}>Auswahl leeren</Button>
 				{/if}
 			</div>
 
 			{#if direction === 'income'}
 				{#if visibleLines.length}
-					<ul class="divide-y rounded-md border" aria-label="Offene Rechnungsposten">
+					<ul
+						class="max-h-96 min-h-0 flex-1 divide-y overflow-y-auto rounded-md border bg-background lg:max-h-none"
+						aria-label="Offene Rechnungsposten"
+					>
 						{#each visibleLines as l (l.lineId)}
 							{@const checked = l.lineId in amounts}
-							<li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
+							<li
+								class={[
+									'flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5',
+									checked && 'bg-primary/5'
+								]}
+							>
 								<Checkbox
 									id={`bm-${l.lineId}`}
 									{checked}
@@ -305,12 +341,13 @@
 									<span class="flex items-center gap-2">
 										<span class="truncate font-medium">{l.description}</span>
 										{#if suggestedIds.has(l.lineId)}
-											<Badge variant="outline" class="shrink-0">Vorschlag</Badge>
+											<Badge variant="outline" class="shrink-0 border-primary/40 text-primary"
+												>Vorschlag</Badge
+											>
 										{/if}
 									</span>
 									<span class="block text-xs text-muted-foreground">
-										{l.invoiceNumber} · {l.recipientName} · fällig {fmtDate(l.dueOn)} · offen
-										<span class="tabular-nums">{formatEuro(l.openCents)}</span>
+										{l.invoiceNumber} · {l.recipientName} · fällig {fmtDate(l.dueOn)}
 									</span>
 								</label>
 								{#if checked}
@@ -324,16 +361,18 @@
 											amounts = { ...amounts, [l.lineId]: c };
 										}}
 									/>
+								{:else}
+									<span class="w-28 text-right text-sm text-muted-foreground tabular-nums">
+										{formatEuro(l.openCents)}
+									</span>
 								{/if}
 							</li>
 						{/each}
 					</ul>
 				{:else}
-					<p class="text-xs text-muted-foreground">
-						{search ? 'Keine Treffer.' : 'Kein passender Vorschlag – such oben nach der Rechnung.'}
-					</p>
+					<p class="py-6 text-center text-sm text-muted-foreground">Keine Treffer.</p>
 				{/if}
-				<div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+				<div class="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
 					<span class="space-x-3">
 						<span>Zugeordnet <strong class="tabular-nums">{formatEuro(allocated)}</strong></span>
 						<span class={rest < 0 ? 'text-destructive' : 'text-muted-foreground'}>
@@ -347,33 +386,47 @@
 						</span>
 					{/if}
 				</div>
-			{:else if visiblePayables.length}
-				<ul class="divide-y rounded-md border" aria-label="Offene Auszahlungen">
-					{#each visiblePayables as p (p.id)}
-						<li class="flex items-center gap-3 px-3 py-2">
-							<Checkbox
-								id={`bm-${p.id}`}
-								checked={p.id === payableId}
-								onCheckedChange={(v) => togglePayable(p, v === true)}
-								aria-label={`${p.recipientName} auswählen`}
-							/>
-							<label for={`bm-${p.id}`} class="min-w-0 flex-1 cursor-pointer text-sm">
-								<span class="flex items-center gap-2">
-									<span class="truncate font-medium">{p.recipientName}</span>
-									{#if suggestedIds.has(p.id)}
-										<Badge variant="outline" class="shrink-0">Vorschlag</Badge>
-									{/if}
-								</span>
-								<span class="block text-xs text-muted-foreground">
-									{p.description}{p.action ? ` · ${p.action.name}` : ''}{p.ibanMasked
-										? ` · ${p.ibanMasked}`
-										: ''}
-								</span>
-							</label>
-							<span class="text-sm tabular-nums">{formatEuro(p.openCents)}</span>
-						</li>
-					{/each}
-				</ul>
+			{:else}
+				{#if visiblePayables.length}
+					<ul
+						class="max-h-96 min-h-0 flex-1 divide-y overflow-y-auto rounded-md border bg-background lg:max-h-none"
+						aria-label="Offene Auszahlungen"
+					>
+						{#each visiblePayables as p (p.id)}
+							<li
+								class={[
+									'flex items-center gap-3 px-3 py-2.5',
+									p.id === payableId && 'bg-primary/5'
+								]}
+							>
+								<Checkbox
+									id={`bm-${p.id}`}
+									checked={p.id === payableId}
+									onCheckedChange={(v) => togglePayable(p, v === true)}
+									aria-label={`${p.recipientName} auswählen`}
+								/>
+								<label for={`bm-${p.id}`} class="min-w-0 flex-1 cursor-pointer text-sm">
+									<span class="flex items-center gap-2">
+										<span class="truncate font-medium">{p.recipientName}</span>
+										{#if suggestedIds.has(p.id)}
+											<Badge variant="outline" class="shrink-0 border-primary/40 text-primary"
+												>Vorschlag</Badge
+											>
+										{/if}
+									</span>
+									<span class="block text-xs text-muted-foreground">
+										{p.description}{p.action ? ` · ${p.action.name}` : ''}{p.ibanMasked
+											? ` · ${p.ibanMasked}`
+											: ''}
+									</span>
+								</label>
+								<span class="text-sm tabular-nums">{formatEuro(p.openCents)}</span>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="py-6 text-center text-sm text-muted-foreground">Keine Treffer.</p>
+				{/if}
 				{#if payableId}
 					{@const p = payables.find((x) => x.id === payableId)}
 					{#if p && p.openCents !== amountCents}
@@ -383,11 +436,7 @@
 						</p>
 					{/if}
 				{/if}
-			{:else}
-				<p class="text-xs text-muted-foreground">
-					{search ? 'Keine Treffer.' : 'Kein passender Vorschlag – such oben nach der Auszahlung.'}
-				</p>
 			{/if}
 		{/if}
 	{/if}
-</fieldset>
+</section>

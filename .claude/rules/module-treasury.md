@@ -40,7 +40,7 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 | `payables.ts` | Auszahlungen: `syncPayables` (Quellen aus `actions` + Guthaben), Endpoints, Rückkanal `syncReimbursementStatus` |
 | `bank.ts`, `iban.ts` | IBAN verschlüsseln/HMAC (`core.crypto.forModule('treasury').hash`), Prüfung, Maske `•••• 1234` |
 | `*.endpoints.ts` | `accounts`, `transactions`, `invoices` (inkl. Zahler, offene Posten, Aktionen), `import`, `reports` |
-| `pages/` | `TreasuryPage` (Tabs Übersicht · Offene Posten · Buchungen · Rechnungen · Zahler · Berichte · Einstellungen), `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
+| `pages/` | `TreasuryPage` (Tabs Übersicht · Offene Posten · Auszahlungen · Buchungen · Rechnungen · Berichte; „Zahler & Familien“ als Seitenpanel im „Mehr“-Menü, `?tab=payers` öffnet es), `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
 
 ## Datenmodell (Migration 0001)
 - `accounts` (kind giro|cash|other, `iban` Klartext – eigenes Vereinskonto, Anfangsbestand + Stichtag, `archived_at`).
@@ -120,7 +120,9 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
   Ausgabe + `payableId` → Auszahlung, beides in **derselben** DB-Transaktion (Fehler → keine Buchung); danach `finishAllocation`
   (Zahler lernen, Bestätigung, Audit) bzw. `syncReimbursementStatus`. Antwort `TransactionCreated` (`allocation`, `payableLinked`).
   Vorschau ohne Speichern: `POST /match-preview` (`suggestMatch` bzw. rein `suggestPayable`: IBAN-Ende/Name (2 Wörter) + Betrag → sicher).
-  UI: `BookingMatchSection` im `TransactionDialog` (nur neue Buchungen, sichere Vorschläge automatisch, solange nichts selbst gewählt),
+  UI: `TransactionDialog` breit zweispaltig (links Buchung, rechts `BookingMatchSection` mit allen offenen Posten, Vorschläge oben;
+  sichere Vorschläge automatisch, solange nichts selbst gewählt), „Weitere Buchung erfassen“ lässt den Dialog offen (Art, Konto,
+  Datum, Kategorie, Aktion bleiben). Nach dem Speichern öffnet sich **kein** Zuordnen-Dialog mehr;
   `PayerCombobox` (Autovervollständigung, auch in `MarkPaidDialog`). `applyCounterparty` liegt in `counterparty.ts`.
 - **Zahlung erfassen** (`mark-paid`) nimmt `counterpartyIban`/`payerId` und lernt danach den Zahler (`AllocationResult.payer`).
 - Tests: `tests/integration/treasury-booking-match.test.ts`, `tests/unit/treasury-payable-match.test.ts`.
