@@ -363,6 +363,46 @@ export async function syncReimbursementStatus(payableIds: string[]): Promise<voi
 
 // --- Endpoints -----------------------------------------------------------------
 
+/**
+ * Ausgabe einer Auszahlung zuordnen (bzw. mit `null` loesen). Liefert die betroffenen Auszahlungen,
+ * damit danach `syncReimbursementStatus` laufen kann (ausserhalb der Transaktion).
+ */
+export async function linkTransactionToPayable(
+	tx: Tx,
+	transactionId: string,
+	payableId: string | null,
+	userId: string | null
+): Promise<string[]> {
+	const [t] = await rows(
+		tx,
+		sql`SELECT amount_cents, transfer_id FROM transactions WHERE id = ${transactionId} FOR UPDATE`
+	);
+	if (!t) throw errors.notFound('Buchung nicht gefunden');
+	const before = await rows(
+		tx,
+		sql`SELECT payable_id FROM payable_payments WHERE transaction_id = ${transactionId}`
+	);
+	await tx.execute(sql`DELETE FROM payable_payments WHERE transaction_id = ${transactionId}`);
+	if (payableId) {
+		if (num(t.amount_cents) >= 0 || t.transfer_id) {
+			throw errors.conflict('Nur Ausgaben koennen einer Auszahlung zugeordnet werden');
+		}
+		const p = await lockPayable(tx, payableId);
+		if (p.cancelled_at) throw errors.conflict('Auszahlung ist storniert');
+		const [paid] = await rows(
+			tx,
+			sql`SELECT coalesce(sum(amount_cents), 0) AS s FROM payable_payments WHERE payable_id = ${payableId}`
+		);
+		const amount = Math.min(-num(t.amount_cents), num(p.amount_cents) - num(paid?.s));
+		if (amount <= 0) throw errors.conflict('Die Auszahlung ist bereits vollstaendig bezahlt');
+		await tx.execute(
+			sql`INSERT INTO payable_payments (id, payable_id, transaction_id, amount_cents, created_by)
+			VALUES (${crypto.randomUUID()}, ${payableId}, ${transactionId}, ${amount}, ${userId})`
+		);
+	}
+	return [...before.map((r) => String(r.payable_id)), ...(payableId ? [payableId] : [])];
+}
+
 async function lockPayable(tx: Tx, id: string) {
 	const [p] = await rows(tx, sql`SELECT * FROM payables WHERE id = ${id} FOR UPDATE`);
 	if (!p) throw errors.notFound('Auszahlung nicht gefunden');
@@ -589,36 +629,9 @@ export const payableEndpoints = [
 		handler: async ({ ctx, params, body }) => {
 			const { id } = params as { id: string };
 			const { payableId } = body as { payableId: string | null };
-			const touched = await mdb().transaction(async (tx) => {
-				const [t] = await rows(
-					tx,
-					sql`SELECT amount_cents, transfer_id FROM transactions WHERE id = ${id} FOR UPDATE`
-				);
-				if (!t) throw errors.notFound('Buchung nicht gefunden');
-				const before = await rows(
-					tx,
-					sql`SELECT payable_id FROM payable_payments WHERE transaction_id = ${id}`
-				);
-				await tx.execute(sql`DELETE FROM payable_payments WHERE transaction_id = ${id}`);
-				if (payableId) {
-					if (num(t.amount_cents) >= 0 || t.transfer_id) {
-						throw errors.conflict('Nur Ausgaben koennen einer Auszahlung zugeordnet werden');
-					}
-					const p = await lockPayable(tx, payableId);
-					if (p.cancelled_at) throw errors.conflict('Auszahlung ist storniert');
-					const [paid] = await rows(
-						tx,
-						sql`SELECT coalesce(sum(amount_cents), 0) AS s FROM payable_payments WHERE payable_id = ${payableId}`
-					);
-					const amount = Math.min(-num(t.amount_cents), num(p.amount_cents) - num(paid?.s));
-					if (amount <= 0) throw errors.conflict('Die Auszahlung ist bereits vollständig bezahlt');
-					await tx.execute(
-						sql`INSERT INTO payable_payments (id, payable_id, transaction_id, amount_cents, created_by)
-						VALUES (${crypto.randomUUID()}, ${payableId}, ${id}, ${amount}, ${ctx.userId})`
-					);
-				}
-				return [...before.map((r) => String(r.payable_id)), ...(payableId ? [payableId] : [])];
-			});
+			const touched = await mdb().transaction((tx) =>
+				linkTransactionToPayable(tx, id, payableId, ctx.userId)
+			);
 			await syncReimbursementStatus(touched);
 			await core.audit.logFromContext(ctx, 'treasury.payable.linked', {
 				target: id,

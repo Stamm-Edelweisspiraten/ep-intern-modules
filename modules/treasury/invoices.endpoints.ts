@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
 import { replaceAllocations } from './allocation';
 import { decryptIban, storeIban } from './bank';
+import { applyCounterparty } from './counterparty';
+import { learnPayerFromTransaction } from './payer-learning';
 import {
 	invoicePdfResponse,
 	listDocuments,
@@ -707,6 +709,7 @@ export const invoiceEndpoints = [
 						${input.counterparty ?? String(inv.row.recipient_name)}, ${`${String(inv.row.number)} ${String(inv.row.recipient_name)}`.slice(0, 300)},
 						${inv.row.source === 'action' ? CONTRIBUTIONS_CATEGORY_ID : null}, ${str(inv.row.action_id)}, ${ctx.userId})`
 				);
+				await applyCounterparty(tx, txId, input);
 				return replaceAllocations(
 					tx,
 					txId,
@@ -714,6 +717,13 @@ export const invoiceEndpoints = [
 					ctx.userId
 				);
 			});
+			// Zahler lernen (IBAN + Mitglieder der Rechnung), Fehler brechen die Zahlung nicht ab
+			let payer: AllocationResult['payer'] = null;
+			try {
+				payer = await learnPayerFromTransaction(ctx, txId);
+			} catch (e) {
+				console.error('[treasury] Zahler konnte nicht angelegt werden:', e);
+			}
 			const mail = await notifyPaid(r.invoiceIds, input.notify);
 			await core.audit.logFromContext(ctx, 'treasury.invoice.marked_paid', {
 				target: id,
@@ -723,6 +733,7 @@ export const invoiceEndpoints = [
 				transactionId: txId,
 				allocatedCents: r.allocatedCents,
 				unallocatedCents: 0,
+				payer,
 				...mail
 			} satisfies AllocationResult;
 		}

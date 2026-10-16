@@ -13,8 +13,10 @@
 		markPaidInput,
 		type Account,
 		type AllocationResult,
-		type InvoiceSummary
+		type InvoiceSummary,
+		type Payer
 	} from '../schemas';
+	import PayerCombobox from './PayerCombobox.svelte';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
 
 	let {
@@ -33,6 +35,9 @@
 	let bookedOn = $state(todayIso());
 	let amountCents = $state(0);
 	let counterparty = $state('');
+	let counterpartyIban = $state('');
+	let payerId = $state<string | null>(null);
+	let payers = $state<Payer[]>([]);
 	let notify = $state(true);
 	let busy = $state(false);
 	let error = $state('');
@@ -44,7 +49,10 @@
 		bookedOn = todayIso();
 		amountCents = invoice.openCents;
 		counterparty = invoice.recipientName;
+		counterpartyIban = '';
+		payerId = invoice.payer?.id ?? null;
 		notify = true;
+		void loadPayers();
 		error = '';
 		errors = {};
 	});
@@ -52,6 +60,16 @@
 	const accountOptions = $derived(
 		accounts.filter((a) => !a.archived).map((a) => ({ value: a.id, label: a.name }))
 	);
+
+	async function loadPayers() {
+		try {
+			payers = await apiFetch<Payer[]>(`${BASE}/payers`);
+		} catch {
+			payers = [];
+		}
+	}
+
+	const selectedPayer = $derived(payers.find((p) => p.id === payerId) ?? null);
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
@@ -61,6 +79,8 @@
 			bookedOn,
 			amountCents,
 			counterparty,
+			counterpartyIban: counterpartyIban.trim() ? counterpartyIban : undefined,
+			payerId,
 			notify
 		});
 		if (!parsed.success) {
@@ -74,9 +94,14 @@
 				method: 'POST',
 				body: JSON.stringify(parsed.data)
 			});
-			toast.success(
-				r.mailsSent ? `Zahlung erfasst, ${r.mailsSent} Bestätigung(en) gesendet` : 'Zahlung erfasst'
-			);
+			const parts = ['Zahlung erfasst'];
+			if (r.mailsSent) parts.push(`${r.mailsSent} Bestätigung(en) gesendet`);
+			if (r.payer) {
+				parts.push(
+					r.payer.created ? `Zahler „${r.payer.name}“ angelegt` : `Zahler „${r.payer.name}“ ergänzt`
+				);
+			}
+			toast.success(parts.join(' · '));
 			open = false;
 			await onsaved();
 		} catch (err) {
@@ -125,7 +150,29 @@
 				</FormField>
 			</div>
 			<FormField label="Gezahlt von" id="mp-counterparty" error={errors.counterparty}>
-				<Input id="mp-counterparty" bind:value={counterparty} maxlength={140} />
+				<PayerCombobox
+					id="mp-counterparty"
+					bind:value={counterparty}
+					bind:payerId
+					{payers}
+					onpick={() => (counterpartyIban = '')}
+				/>
+			</FormField>
+			<FormField
+				label="IBAN der Zahler*in"
+				id="mp-iban"
+				error={errors.counterpartyIban}
+				hint={selectedPayer?.ibanMasked
+					? `Beim Zahler „${selectedPayer.name}“ ist ${selectedPayer.ibanMasked} hinterlegt – leer lassen zum Übernehmen.`
+					: 'Optional, z. B. bei Überweisung. Die Kasse hinterlegt sie beim Zahler – Rückzahlungen gehen dann auf dieses Konto.'}
+			>
+				<Input
+					id="mp-iban"
+					bind:value={counterpartyIban}
+					autocomplete="off"
+					placeholder="DE00 0000 0000 0000 0000 00"
+					aria-invalid={!!errors.counterpartyIban}
+				/>
 			</FormField>
 			<div class="flex items-center gap-2">
 				<Switch id="mp-notify" bind:checked={notify} />

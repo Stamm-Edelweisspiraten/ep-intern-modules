@@ -198,6 +198,41 @@ export const transactionInput = z.object({
 export type TransactionInput = z.infer<typeof transactionInput>;
 export type TransactionFormInput = z.input<typeof transactionInput>;
 
+/** Neue Buchung, optional gleich zugeordnet (Einnahme → Rechnungsposten, Ausgabe → Auszahlung) */
+export const transactionCreateInput = transactionInput.extend({
+	allocations: z
+		.array(z.object({ lineId: id, amountCents: cents(1, 'Betrag muss größer als 0 sein') }))
+		.max(MAX_ALLOCATIONS)
+		.default([]),
+	payableId: id.nullish().transform((v) => v ?? null),
+	notify: z.boolean().default(true)
+});
+export type TransactionCreateInput = z.infer<typeof transactionCreateInput>;
+
+/** Vorschau für die Zuordnung einer noch nicht gespeicherten Buchung */
+export const matchPreviewInput = z.object({
+	amountCents: z.number().int().min(-MAX_AMOUNT_CENTS).max(MAX_AMOUNT_CENTS),
+	counterparty: z.string().max(140).nullish(),
+	purpose: z.string().max(300).nullish(),
+	/** ungeprüft: nur für den Abgleich, wird nicht gespeichert */
+	counterpartyIban: z.string().max(50).nullish(),
+	payerId: id.nullish()
+});
+export type MatchPreviewInput = z.infer<typeof matchPreviewInput>;
+
+export interface MatchPreview {
+	/** Einnahme: offene Posten + Vorschlag */
+	lines: OpenLine[];
+	suggestion: Omit<MatchSuggestion, 'transactionId'> | null;
+	/** Ausgabe: offene Auszahlungen + Vorschlag */
+	payables: Payable[];
+	payableSuggestion: {
+		payableId: string;
+		confidence: 'high' | 'medium' | 'low';
+		reason: string;
+	} | null;
+}
+
 export const transferInput = z
 	.object({
 		fromAccountId: id,
@@ -500,6 +535,9 @@ export const markPaidInput = z.object({
 	bookedOn: dateString,
 	amountCents: cents(1, 'Der Betrag muss größer als 0 sein'),
 	counterparty: optionalText(140),
+	/** IBAN der Zahler*in (optional; daraus lernt die Kasse den Zahler) */
+	counterpartyIban: optionalIbanEarly.optional(),
+	payerId: id.nullish().transform((v) => v ?? null),
 	notify: z.boolean().default(true)
 });
 export type MarkPaidInput = z.infer<typeof markPaidInput>;
@@ -514,6 +552,12 @@ export interface AllocationResult {
 	mailsSent: number;
 	mailErrors: number;
 }
+
+/** Antwort auf `POST /transactions`: Buchung plus Ergebnis der direkten Zuordnung */
+export type TransactionCreated = Transaction & {
+	allocation: AllocationResult | null;
+	payableLinked: boolean;
+};
 
 export interface OpenLine {
 	lineId: string;

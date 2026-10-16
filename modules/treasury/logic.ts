@@ -552,6 +552,83 @@ export function suggestMatch(
 	return null;
 }
 
+export interface PayableCandidate {
+	id: string;
+	recipientName: string;
+	description: string;
+	openCents: number;
+	/** letzte vier Zeichen der hinterlegten IBAN */
+	ibanLast4: string | null;
+}
+
+export interface PayableMatch {
+	payableId: string;
+	confidence: 'high' | 'medium' | 'low';
+	reason: string;
+}
+
+/**
+ * Vorschlag fuer eine Ausgabe: welche offene Auszahlung wird damit bezahlt?
+ * IBAN-Ende + Betrag → sicher; Name + Betrag → sicher; Name allein → wahrscheinlich;
+ * nur der Betrag (eindeutig) → unsicher.
+ */
+export function suggestPayable(
+	t: {
+		amountCents: number;
+		counterparty: string | null;
+		purpose: string | null;
+		ibanLast4?: string | null;
+	},
+	candidates: PayableCandidate[]
+): PayableMatch | null {
+	const amount = Math.abs(t.amountCents);
+	const open = candidates.filter((c) => c.openCents > 0);
+	if (!amount || !open.length) return null;
+	const hay = ` ${normalizeName(`${t.counterparty ?? ''} ${t.purpose ?? ''}`)} `;
+	const nameHit = (c: PayableCandidate) => {
+		const parts = normalizeName(c.recipientName)
+			.split(' ')
+			.filter((w) => w.length >= 3);
+		const hits = parts.filter((w) => hay.includes(` ${w} `)).length;
+		// mehrteilige Namen: zwei Woerter muessen passen (Vor- und Nachname, Firma + Ort …)
+		return parts.length > 0 && hits >= Math.min(2, parts.length);
+	};
+	const pick = (
+		list: PayableCandidate[],
+		confidence: PayableMatch['confidence'],
+		reason: string
+	): PayableMatch | null => {
+		if (!list.length) return null;
+		// bei mehreren Treffern den mit dem passenden (bzw. naechsten) Betrag
+		const best = [...list].sort(
+			(a, b) => Math.abs(a.openCents - amount) - Math.abs(b.openCents - amount)
+		)[0]!;
+		return { payableId: best.id, confidence, reason };
+	};
+	const last4 = t.ibanLast4?.toUpperCase() ?? null;
+	if (last4) {
+		const byIban = open.filter((c) => c.ibanLast4?.toUpperCase() === last4);
+		const exact = byIban.filter((c) => c.openCents === amount);
+		const r =
+			pick(exact, 'high', 'IBAN und Betrag passen') ??
+			pick(byIban, 'medium', 'IBAN der Empfänger*in passt');
+		if (r) return r;
+	}
+	const byName = open.filter(nameHit);
+	const r =
+		pick(
+			byName.filter((c) => c.openCents === amount),
+			'high',
+			'Name und Betrag passen'
+		) ?? pick(byName, 'medium', 'Name der Empfänger*in passt');
+	if (r) return r;
+	const byAmount = open.filter((c) => c.openCents === amount);
+	if (byAmount.length === 1) {
+		return { payableId: byAmount[0]!.id, confidence: 'low', reason: 'Nur der Betrag passt' };
+	}
+	return null;
+}
+
 // --- Mails ---------------------------------------------------------------------
 
 export interface MailInvoice {

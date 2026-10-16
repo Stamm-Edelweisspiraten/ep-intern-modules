@@ -8,15 +8,20 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		MAX_RECEIPT_BYTES,
 		RECEIPT_CONTENT_TYPES,
+		transactionCreateInput,
 		transactionInput,
 		type Account,
 		type Category,
 		type Payer,
-		type Transaction
+		type Transaction,
+		type TransactionCreated
 	} from '../schemas';
+	import BookingMatchSection from './BookingMatchSection.svelte';
+	import PayerCombobox from './PayerCombobox.svelte';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
 
 	let {
@@ -47,7 +52,9 @@
 	let counterparty = $state('');
 	let counterpartyIban = $state('');
 	let payerId = $state<string | null>(null);
-	let suggestOpen = $state(false);
+	let matchAmounts = $state<Record<string, number>>({});
+	let payableId = $state<string | null>(null);
+	let notify = $state(true);
 	let purpose = $state('');
 	let categoryId = $state<string | null>(null);
 	let actionId = $state<string | null>(null);
@@ -68,7 +75,9 @@
 		counterparty = t?.counterparty ?? '';
 		counterpartyIban = '';
 		payerId = t?.payer?.id ?? null;
-		suggestOpen = false;
+		matchAmounts = {};
+		payableId = null;
+		notify = true;
 		purpose = t?.purpose ?? '';
 		categoryId = t?.category?.id ?? null;
 		actionId = t?.action?.id ?? null;
@@ -108,7 +117,7 @@
 		e.preventDefault();
 		error = '';
 		errors = {};
-		const parsed = transactionInput.safeParse({
+		const base = {
 			accountId: accountId ?? undefined,
 			bookedOn,
 			amountCents: direction === 'expense' ? -amountCents : amountCents,
@@ -120,7 +129,25 @@
 			// leer = unverändert (bzw. IBAN des gewählten Zahlers)
 			counterpartyIban: counterpartyIban.trim() ? counterpartyIban : undefined,
 			payerId
-		});
+		};
+		const allocations = Object.entries(matchAmounts)
+			.filter(([, v]) => v > 0)
+			.map(([lineId, cents]) => ({ lineId, amountCents: cents }));
+		if (canMatch && direction === 'income') {
+			const sum = allocations.reduce((s, a) => s + a.amountCents, 0);
+			if (sum > amountCents) {
+				error = 'Es ist mehr zugeordnet als der Buchungsbetrag.';
+				return;
+			}
+		}
+		const parsed = transaction
+			? transactionInput.safeParse(base)
+			: transactionCreateInput.safeParse({
+					...base,
+					allocations: canMatch && direction === 'income' ? allocations : [],
+					payableId: canMatch && direction === 'expense' ? payableId : null,
+					notify
+				});
 		if (!parsed.success) {
 			errors = issuesToErrors(parsed.error.issues);
 			error = 'Bitte die markierten Felder prüfen.';
@@ -130,10 +157,12 @@
 		}
 		busy = true;
 		try {
-			let saved = await apiFetch<Transaction>(
+			const response = await apiFetch<Transaction | TransactionCreated>(
 				transaction ? `${BASE}/transactions/${transaction.id}` : `${BASE}/transactions`,
 				{ method: transaction ? 'PUT' : 'POST', body: JSON.stringify(parsed.data) }
 			);
+			let saved: Transaction = response;
+			const created = 'allocation' in response ? response : null;
 			try {
 				if (transaction?.receipt && removeReceipt && !file) {
 					await apiFetch(`${BASE}/transactions/${saved.id}/receipt`, { method: 'DELETE' });
@@ -151,7 +180,10 @@
 					`Beleg nicht gespeichert: ${err instanceof ApiClientError ? err.message : 'Fehler'}`
 				);
 			}
-			toast.success(transaction ? 'Buchung gespeichert' : 'Buchung angelegt');
+			toast.success(transaction ? 'Buchung gespeichert' : createdMessage(created));
+			if (created?.allocation?.mailErrors) {
+				toast.error(`${created.allocation.mailErrors} Mail(s) konnten nicht gesendet werden`);
+			}
 			open = false;
 			await onsaved(saved);
 		} catch (err) {
@@ -168,27 +200,25 @@
 		transaction?.receipt ? `/api/v1${BASE}/transactions/${transaction.id}/receipt` : null
 	);
 	const locked = $derived(!!transaction?.transferId);
+	/** Direkt zuordnen nur beim Anlegen; bestehende Buchungen über „Zuordnen“ in der Liste */
+	const canMatch = $derived(!transaction);
+
+	function createdMessage(c: TransactionCreated | null): string {
+		const parts = ['Buchung angelegt'];
+		const a = c?.allocation;
+		if (a?.allocatedCents) parts.push(`${formatEuro(a.allocatedCents)} zugeordnet`);
+		if (a?.paidInvoices) parts.push(`${a.paidInvoices} Rechnung(en) bezahlt`);
+		if (a?.mailsSent) parts.push(`${a.mailsSent} Bestätigung(en) gesendet`);
+		if (a?.payer) {
+			parts.push(
+				a.payer.created ? `Zahler „${a.payer.name}“ angelegt` : `Zahler „${a.payer.name}“ ergänzt`
+			);
+		}
+		if (c?.payableLinked) parts.push('Auszahlung als bezahlt verbucht');
+		return parts.join(' · ');
+	}
 
 	const selectedPayer = $derived(payers.find((p) => p.id === payerId) ?? null);
-	/** Vorschläge: Zahler-Name, Kontoinhaber oder Name eines Kindes passt zur Eingabe */
-	const suggestions = $derived.by(() => {
-		const q = counterparty.trim().toLowerCase();
-		if (q.length < 2 || direction !== 'income') return [];
-		return payers
-			.filter((p) =>
-				[p.name, p.accountHolder ?? '', ...p.members.map((m) => m.name)].some((n) =>
-					n.toLowerCase().includes(q)
-				)
-			)
-			.slice(0, 6);
-	});
-
-	function pickPayer(p: Payer) {
-		payerId = p.id;
-		counterparty = p.accountHolder ?? p.name;
-		counterpartyIban = '';
-		suggestOpen = false;
-	}
 </script>
 
 <Dialog.Root bind:open>
@@ -247,79 +277,55 @@
 				id="tx-counterparty"
 				error={errors.counterparty}
 			>
-				<div class="relative">
-					<Input
-						id="tx-counterparty"
-						bind:value={counterparty}
-						maxlength={140}
-						disabled={locked}
-						autocomplete="off"
-						role="combobox"
-						aria-expanded={suggestOpen && suggestions.length > 0}
-						aria-controls="tx-counterparty-list"
-						oninput={() => {
-							suggestOpen = true;
-							if (
-								selectedPayer &&
-								counterparty !== (selectedPayer.accountHolder ?? selectedPayer.name)
-							) {
-								payerId = null;
-							}
-						}}
-						onfocus={() => (suggestOpen = true)}
-						onblur={() => setTimeout(() => (suggestOpen = false), 150)}
-					/>
-					{#if suggestOpen && suggestions.length}
-						<ul
-							id="tx-counterparty-list"
-							role="listbox"
-							class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
-						>
-							{#each suggestions as p (p.id)}
-								<li role="option" aria-selected={p.id === payerId}>
-									<button
-										type="button"
-										class="flex w-full flex-col items-start rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
-										onmousedown={(e) => e.preventDefault()}
-										onclick={() => pickPayer(p)}
-									>
-										<span class="font-medium">{p.name}</span>
-										<span class="text-xs text-muted-foreground">
-											{[p.accountHolder, p.ibanMasked, p.members.map((m) => m.name).join(', ')]
-												.filter(Boolean)
-												.join(' · ')}
-										</span>
-									</button>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
+				<PayerCombobox
+					id="tx-counterparty"
+					bind:value={counterparty}
+					bind:payerId
+					{payers}
+					active={direction === 'income'}
+					disabled={locked}
+					onpick={() => (counterpartyIban = '')}
+				/>
 			</FormField>
-			{#if direction === 'income'}
-				<FormField
-					label="IBAN der Zahler*in"
+			<FormField
+				label={direction === 'income' ? 'IBAN der Zahler*in' : 'IBAN der Empfänger*in'}
+				id="tx-iban"
+				error={errors.counterpartyIban}
+				hint={direction === 'income' && selectedPayer
+					? `Zahler: ${selectedPayer.name}${selectedPayer.ibanMasked ? ` (${selectedPayer.ibanMasked} wird übernommen)` : ''}`
+					: transaction?.counterpartyIbanLast4
+						? `Hinterlegt: •••• ${transaction.counterpartyIbanLast4} – leer lassen für unverändert`
+						: direction === 'income'
+							? 'Optional. Beim Zuordnen zu Rechnungen legt die Kasse daraus automatisch den Zahler an.'
+							: 'Optional. Hilft beim Zuordnen zur passenden Auszahlung.'}
+			>
+				<Input
 					id="tx-iban"
-					error={errors.counterpartyIban}
-					hint={selectedPayer
-						? `Zahler: ${selectedPayer.name}${selectedPayer.ibanMasked ? ` (${selectedPayer.ibanMasked} wird übernommen)` : ''}`
-						: transaction?.counterpartyIbanLast4
-							? `Hinterlegt: •••• ${transaction.counterpartyIbanLast4} – leer lassen für unverändert`
-							: 'Optional. Beim Zuordnen zu Rechnungen legt die Kasse daraus automatisch den Zahler an.'}
-				>
-					<Input
-						id="tx-iban"
-						bind:value={counterpartyIban}
-						autocomplete="off"
-						placeholder="DE00 0000 0000 0000 0000 00"
-						disabled={locked}
-						aria-invalid={!!errors.counterpartyIban}
-					/>
-				</FormField>
-			{/if}
+					bind:value={counterpartyIban}
+					autocomplete="off"
+					placeholder="DE00 0000 0000 0000 0000 00"
+					disabled={locked}
+					aria-invalid={!!errors.counterpartyIban}
+				/>
+			</FormField>
 			<FormField label="Verwendungszweck" id="tx-purpose" error={errors.purpose}>
 				<Input id="tx-purpose" bind:value={purpose} maxlength={300} disabled={locked} />
 			</FormField>
+			{#if canMatch}
+				{#key direction}
+					<BookingMatchSection
+						direction={direction === 'expense' ? 'expense' : 'income'}
+						{amountCents}
+						{counterparty}
+						{purpose}
+						iban={counterpartyIban}
+						{payerId}
+						bind:amounts={matchAmounts}
+						bind:payableId
+						bind:notify
+					/>
+				{/key}
+			{/if}
 			<div class="grid gap-4 sm:grid-cols-2">
 				<FormField label="Kategorie" id="tx-category" error={errors.categoryId}>
 					<SelectField

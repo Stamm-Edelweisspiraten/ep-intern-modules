@@ -15,24 +15,31 @@ import {
 	toTransaction,
 	type RawTransaction
 } from './db';
-import { sanitizeName, suggestMatch } from './logic';
-import { storeIban } from './bank';
+import { sanitizeName, suggestMatch, suggestPayable } from './logic';
+import { ibanHash } from './bank';
+import { applyCounterparty } from './counterparty';
 import { notifyPaid } from './notify';
 import { learnPayerFromTransaction } from './payer-learning';
-import { syncReimbursementStatus } from './payables';
+import { linkTransactionToPayable, listPayables, syncReimbursementStatus } from './payables';
 import {
 	MAX_RECEIPT_BYTES,
 	MODULE_ID,
 	RECEIPT_CONTENT_TYPES,
 	allocateInput,
 	idParams,
+	matchPreviewInput,
+	transactionCreateInput,
 	transactionInput,
 	transactionListQuery,
 	transferInput,
 	type AllocateInput,
 	type AllocationResult,
+	type MatchPreview,
+	type MatchPreviewInput,
 	type MatchSuggestion,
 	type Transaction,
+	type TransactionCreated,
+	type TransactionCreateInput,
 	type TransactionInput,
 	type TransactionList,
 	type TransactionListQuery,
@@ -99,30 +106,6 @@ async function requireActionRef(actionId: string | null): Promise<void> {
 	}
 }
 
-/** IBAN der Gegenpartei und Zahler speichern; ohne eigene IBAN wird die des Zahlers uebernommen */
-async function applyCounterparty(tx: Tx, id: string, input: TransactionInput): Promise<void> {
-	if (input.payerId) {
-		const [p] = await rows(tx, sql`SELECT id FROM payers WHERE id = ${input.payerId}`);
-		if (!p) throw errors.validation([{ path: ['payerId'], message: 'Zahler nicht gefunden' }]);
-	}
-	await tx.execute(sql`UPDATE transactions SET payer_id = ${input.payerId} WHERE id = ${id}`);
-	const bank = storeIban(input.counterpartyIban);
-	if (bank) {
-		await tx.execute(
-			sql`UPDATE transactions SET counterparty_iban_enc = ${bank.enc}, counterparty_iban_hash = ${bank.hash},
-				counterparty_iban_last4 = ${bank.last4} WHERE id = ${id}`
-		);
-	}
-	if (input.payerId && !bank?.enc) {
-		await tx.execute(
-			sql`UPDATE transactions t SET counterparty_iban_enc = p.iban_enc, counterparty_iban_hash = p.iban_hash,
-				counterparty_iban_last4 = p.iban_last4
-			FROM payers p WHERE t.id = ${id} AND p.id = ${input.payerId} AND p.iban_enc IS NOT NULL
-				AND t.counterparty_iban_enc IS NULL`
-		);
-	}
-}
-
 async function lockTransaction(tx: Tx, id: string) {
 	const [t] = await rows(tx, sql`SELECT * FROM transactions WHERE id = ${id} FOR UPDATE`);
 	if (!t) throw errors.notFound('Buchung nicht gefunden');
@@ -136,6 +119,15 @@ export async function allocateAndNotify(
 	const r = await mdb().transaction((tx) =>
 		replaceAllocations(tx, input.transactionId, input.allocations, ctx.userId)
 	);
+	return finishAllocation(ctx, input, r);
+}
+
+/** Nach der Zuordnung (ausserhalb der Transaktion): Zahler lernen, Bestaetigungen senden, Audit */
+export async function finishAllocation(
+	ctx: RequestContext,
+	input: AllocateInput,
+	r: { invoiceIds: string[]; allocatedCents: number; amountCents: number }
+): Promise<AllocationResult> {
 	// Zahler aus der Buchung lernen (IBAN + Mitglieder der bezahlten Posten)
 	let payer: AllocationResult['payer'] = null;
 	if (input.allocations.length) {
@@ -212,12 +204,24 @@ export const transactionEndpoints = [
 		summary: 'Buchung anlegen',
 		tags: TAGS,
 		permission: EDIT,
-		body: transactionInput,
-		handler: async ({ ctx, body }) => {
-			const input = body as TransactionInput;
+		description:
+			'Optional gleich zuordnen: Einnahme mit `allocations` (Rechnungsposten), Ausgabe mit `payableId` (Auszahlung).',
+		body: transactionCreateInput,
+		handler: async ({ ctx, body }): Promise<TransactionCreated> => {
+			const input = body as TransactionCreateInput;
 			await requireActionRef(input.actionId);
+			if (input.allocations.length && input.amountCents < 0) {
+				throw errors.validation([
+					{ path: ['allocations'], message: 'Nur Einnahmen koennen Rechnungen zugeordnet werden' }
+				]);
+			}
+			if (input.payableId && input.amountCents > 0) {
+				throw errors.validation([
+					{ path: ['payableId'], message: 'Nur Ausgaben koennen Auszahlungen zugeordnet werden' }
+				]);
+			}
 			const id = crypto.randomUUID();
-			const raw = await mdb().transaction(async (tx) => {
+			const { raw, allocated, payables } = await mdb().transaction(async (tx) => {
 				await requireAccount(tx, input.accountId);
 				await requireCategory(tx, input.categoryId);
 				await tx.execute(
@@ -227,13 +231,96 @@ export const transactionEndpoints = [
 						${input.purpose}, ${input.categoryId}, ${input.actionId}, ${input.note}, ${ctx.userId})`
 				);
 				await applyCounterparty(tx, id, input);
-				return loadOne(tx, id);
+				// Zuordnung in derselben Transaktion: schlaegt sie fehl, entsteht auch keine Buchung
+				const allocated = input.allocations.length
+					? await replaceAllocations(tx, id, input.allocations, ctx.userId)
+					: null;
+				const payables = input.payableId
+					? await linkTransactionToPayable(tx, id, input.payableId, ctx.userId)
+					: [];
+				return { raw: await loadOne(tx, id), allocated, payables };
 			});
 			await core.audit.logFromContext(ctx, 'treasury.transaction.created', {
 				target: id,
 				metadata: { accountId: input.accountId, amountCents: input.amountCents }
 			});
-			return (await decorateTransactions([raw]))[0]!;
+			let allocation: AllocationResult | null = null;
+			if (allocated) {
+				allocation = await finishAllocation(
+					ctx,
+					{ transactionId: id, allocations: input.allocations, notify: input.notify },
+					allocated
+				);
+			}
+			if (payables.length) {
+				await syncReimbursementStatus(payables);
+				await core.audit.logFromContext(ctx, 'treasury.payable.linked', {
+					target: id,
+					metadata: { payableId: input.payableId }
+				});
+			}
+			// nach dem Lernen neu laden (Zahler/Kategorie koennen sich geaendert haben)
+			const fresh = allocated ? await mdb().transaction((tx) => loadOne(tx, id)) : raw;
+			const t = (await decorateTransactions([fresh]))[0]!;
+			return { ...t, allocation, payableLinked: payables.length > 0 };
+		}
+	},
+	{
+		method: 'POST',
+		path: '/match-preview',
+		summary: 'Zuordnungsvorschlag fuer eine noch nicht gespeicherte Buchung',
+		description:
+			'Einnahme: offene Rechnungsposten + Vorschlag. Ausgabe: offene Auszahlungen + Vorschlag. Speichert nichts.',
+		tags: TAGS,
+		permission: VIEW,
+		body: matchPreviewInput,
+		handler: async ({ ctx, body }): Promise<MatchPreview> => {
+			const input = body as MatchPreviewInput;
+			const empty: MatchPreview = {
+				lines: [],
+				suggestion: null,
+				payables: [],
+				payableSuggestion: null
+			};
+			const iban = ibanHash(input.counterpartyIban);
+			if (input.amountCents > 0) {
+				await syncIfStale(ctx);
+				const { open, match } = await loadMatchLines();
+				let payerId = input.payerId ?? null;
+				if (!payerId && iban) payerId = (await payerByIbanHash()).get(iban.hash) ?? null;
+				const m = suggestMatch(
+					{
+						amountCents: input.amountCents,
+						purpose: input.purpose ?? null,
+						counterparty: input.counterparty ?? null,
+						payerId
+					},
+					match
+				);
+				return { ...empty, lines: open, suggestion: m };
+			}
+			if (input.amountCents < 0) {
+				const payables = (await listPayables(sql`p.cancelled_at IS NULL`)).filter(
+					(p) => p.openCents > 0
+				);
+				const s = suggestPayable(
+					{
+						amountCents: input.amountCents,
+						counterparty: input.counterparty ?? null,
+						purpose: input.purpose ?? null,
+						ibanLast4: iban?.last4 ?? null
+					},
+					payables.map((p) => ({
+						id: p.id,
+						recipientName: p.recipientName,
+						description: p.description,
+						openCents: p.openCents,
+						ibanLast4: p.ibanMasked ? p.ibanMasked.slice(-4) : null
+					}))
+				);
+				return { ...empty, payables, payableSuggestion: s };
+			}
+			return empty;
 		}
 	},
 	{

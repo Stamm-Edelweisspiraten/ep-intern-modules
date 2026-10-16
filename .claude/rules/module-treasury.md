@@ -116,6 +116,14 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - **Ablage abgeschlossener Abrechnungen** (`closed-accountings.ts`, Tabelle `filed_accountings`): `GET /closed-accountings`,
   `GET /closed-accountings/:id/pdf`, `PUT /closed-accountings/:id/filed` (`treasury.report.view`); UI im Tab Berichte.
 - Tests: `tests/integration/treasury-stage3.test.ts`, `tests/unit/treasury-mail.test.ts`.
+- **Direkt zuordnen beim Anlegen** (`POST /transactions` mit `transactionCreateInput`): Einnahme + `allocations` → Posten,
+  Ausgabe + `payableId` → Auszahlung, beides in **derselben** DB-Transaktion (Fehler → keine Buchung); danach `finishAllocation`
+  (Zahler lernen, Bestätigung, Audit) bzw. `syncReimbursementStatus`. Antwort `TransactionCreated` (`allocation`, `payableLinked`).
+  Vorschau ohne Speichern: `POST /match-preview` (`suggestMatch` bzw. rein `suggestPayable`: IBAN-Ende/Name (2 Wörter) + Betrag → sicher).
+  UI: `BookingMatchSection` im `TransactionDialog` (nur neue Buchungen, sichere Vorschläge automatisch, solange nichts selbst gewählt),
+  `PayerCombobox` (Autovervollständigung, auch in `MarkPaidDialog`). `applyCounterparty` liegt in `counterparty.ts`.
+- **Zahlung erfassen** (`mark-paid`) nimmt `counterpartyIban`/`payerId` und lernt danach den Zahler (`AllocationResult.payer`).
+- Tests: `tests/integration/treasury-booking-match.test.ts`, `tests/unit/treasury-payable-match.test.ts`.
 
 ## Rechte
 | Schlüssel | Bedeutung |
