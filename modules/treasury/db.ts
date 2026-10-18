@@ -200,6 +200,8 @@ export function toTransaction(t: RawTransaction, actionNames: Map<string, string
 export interface RawInvoice {
 	row: Row;
 	lines: Row[];
+	/** Jahresbeitrag: Aufschlüsselung je Mitglied und Ebene (`annual_fee_items`), sonst leer */
+	annualItems: Row[];
 	reminderLevel: number;
 	lastReminderAt: string | null;
 	/** Fachliches Datum der letzten Erinnerung */
@@ -237,9 +239,15 @@ export async function loadRawInvoices(
 			coalesce((SELECT sum(a.amount_cents) FROM allocations a WHERE a.line_id = l.id), 0) AS paid_cents
 		FROM invoice_lines l WHERE l.invoice_id IN (${ids}) ORDER BY l.position, l.id`
 	);
+	const items = await rows(
+		tx,
+		sql`SELECT invoice_id, member_id, level, amount_cents FROM annual_fee_items
+		WHERE invoice_id IN (${ids}) ORDER BY position, id`
+	);
 	return list.map((row) => ({
 		row,
 		lines: lines.filter((l) => l.invoice_id === row.id),
+		annualItems: items.filter((i) => i.invoice_id === row.id),
 		reminderLevel: num(row.reminder_level),
 		lastReminderAt: isoOrNull(row.last_reminder_at),
 		lastReminderOn: str(row.last_reminder_on)
@@ -249,6 +257,8 @@ export async function loadRawInvoices(
 export interface NameMaps {
 	members: Map<string, string>;
 	memberEmails: Map<string, string[]>;
+	/** Abgewaehlte, abschaltbare Mail-Kategorien je Mitglied (fehlt = alle an) */
+	memberMailOptOut: Map<string, string[]>;
 	actions: Map<string, string>;
 	payers: Map<string, { name: string; email: string | null }>;
 }
@@ -263,11 +273,13 @@ export async function resolveNames(p: {
 	const actionIds = [...new Set(p.actionIds ?? [])];
 	const members = new Map<string, string>();
 	const memberEmails = new Map<string, string[]>();
+	const memberMailOptOut = new Map<string, string[]>();
 	const actions = new Map<string, string>();
 	if (memberIds.length) {
 		for (const m of await (await membersService()).listMemberContacts({ ids: memberIds })) {
 			members.set(m.id, `${m.firstName} ${m.lastName}`);
 			memberEmails.set(m.id, m.emails);
+			if (m.mailOptOut?.length) memberMailOptOut.set(m.id, m.mailOptOut);
 		}
 	}
 	if (actionIds.length) {
@@ -275,7 +287,7 @@ export async function resolveNames(p: {
 			actions.set(a.id, a.name);
 		}
 	}
-	return { members, memberEmails, actions, payers: p.payers ?? new Map() };
+	return { members, memberEmails, memberMailOptOut, actions, payers: p.payers ?? new Map() };
 }
 
 /** Zahler je hinterlegter IBAN (HMAC) – fuer Zuordnungsvorschlaege beim Import */
@@ -298,6 +310,7 @@ export function collectIds(invoices: RawInvoice[]): { memberIds: string[]; actio
 	const actionIds = new Set<string>();
 	for (const inv of invoices) {
 		if (inv.row.action_id) actionIds.add(String(inv.row.action_id));
+		for (const i of inv.annualItems) memberIds.add(String(i.member_id));
 		for (const l of inv.lines) {
 			if (l.member_id) memberIds.add(String(l.member_id));
 			if (l.action_id) actionIds.add(String(l.action_id));
@@ -378,14 +391,32 @@ export function toSummary(inv: RawInvoice, names: NameMaps, todayIso: string): I
 }
 
 /** Alle Empfaengeradressen einer Rechnung: Mitglieder der Posten, Rechnungs- und Zahler-Adresse */
-export function invoiceAddresses(inv: RawInvoice, names: NameMaps): string[] {
+export function invoiceAddresses(
+	inv: RawInvoice,
+	names: NameMaps,
+	/**
+	 * Abschaltbare Mail-Kategorie (z. B. `payment-confirmation`): Mitglieder, die sie abgewaehlt haben,
+	 * liefern keine Adresse. Haben ALLE Mitglieder der Posten abgewaehlt, entfallen auch Rechnungs- und
+	 * Zahleradresse. Eine gemeinsame Elternadresse (Geschwister) bleibt, solange mindestens ein Kind
+	 * nicht abgewaehlt hat. Ohne Kategorie (verbindliche Mails) wird nichts gefiltert.
+	 */
+	category?: string
+): string[] {
+	const optedOut = (memberId: string) =>
+		category !== undefined && (names.memberMailOptOut.get(memberId) ?? []).includes(category);
 	const out = new Set<string>();
+	const memberIds = new Set<string>();
 	for (const l of inv.lines) {
+		if (l.member_id) memberIds.add(String(l.member_id));
+		if (optedOut(String(l.member_id))) continue;
 		for (const e of names.memberEmails.get(String(l.member_id)) ?? []) out.add(e.toLowerCase());
 	}
-	if (inv.row.recipient_email) out.add(String(inv.row.recipient_email).toLowerCase());
-	const payer = inv.row.payer_id ? names.payers.get(String(inv.row.payer_id)) : undefined;
-	if (payer?.email) out.add(payer.email.toLowerCase());
+	const allOptedOut = memberIds.size > 0 && [...memberIds].every(optedOut);
+	if (!allOptedOut) {
+		if (inv.row.recipient_email) out.add(String(inv.row.recipient_email).toLowerCase());
+		const payer = inv.row.payer_id ? names.payers.get(String(inv.row.payer_id)) : undefined;
+		if (payer?.email) out.add(payer.email.toLowerCase());
+	}
 	return [...out];
 }
 

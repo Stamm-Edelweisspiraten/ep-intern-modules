@@ -44,6 +44,10 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 - **0009** `action_participants.subsidy_eligible boolean` (NULL = automatisch).
 - **0011** Stamm-Ausgaben: `accounting_entries.recipient_name`, `recipient_iban_enc` (verschlüsselt), `recipient_iban_last4`,
   `recipient_bic`, `purpose`, `club_paid_at` (NULL = offen), `club_paid_via` `manual|treasury`. Altdaten → bezahlt (`manual`).
+- **0012** `actions.is_past boolean NOT NULL DEFAULT false` („liegt bereits in der Vergangenheit“, nachträgliche Abrechnung).
+  API: `isPast` in `ActionSummary` (Liste + Detail) und `ReceivableSource`; POST-Default `false`, PUT ohne Feld = unverändert
+  (`actionUpdateInput`); Audit created/updated mit `isPast`; Archiv `action.isPast` optional (fehlt = false).
+- **0013** `accounting_entries.reimbursed_upfront boolean NOT NULL DEFAULT false` (beim Erfassen bereits erstattet; schützt vor Doppelzahlung bei Rücknahme einer Kassen-Zahlung).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
 ## Rechte
@@ -65,7 +69,7 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 |---|---|---|
 | `/actions`, `/actions/:id` | GET/POST(create)/PUT/DELETE | Name ≤ 150, Ende ≥ Start; Detail inkl. `fee`, `participantCount` |
 | `/actions/:id/shares[/:userId]`, `/users` | GET/PUT/DELETE, GET | Freigabe `read|edit`, nicht an Eigentümer*in; `/users` = Verzeichnissuche |
-| `/actions/:id/participants[/:pid]` | GET/POST/PUT/DELETE | `participants.csv` unter `/actions/:id/participants.csv` (Formel-Schutz) |
+| `/actions/:id/participants[/:pid]` | GET/POST/PUT/DELETE | `participants.csv` unter `/actions/:id/participants.csv` (Formel-Schutz); `participants.pdf` = Teilnehmendenliste (A4 quer, eine Zeile je Person, wählbare Spalten: `GET` = Voreinstellung „Fahrt“, `POST { selection }`; `GET /actions/:id/participants/pdf-columns` = Katalog; braucht zusätzlich `members.data.export`, Audit `actions.participants.sheet_generated` mit `count`, `columns`) |
 | `/actions/:id/calculation` | GET/PUT | PUT ersetzt alle Posten (≤ 100), Checkliste nur bekannte Schlüssel |
 | `/actions/:id/calculation/suggestions` | GET | Zählt Teilnehmende/Team/Bremen-Kinder/-Jugend aus der Liste, `incomplete[]`, Nächte aus Datum |
 | `/actions/:id/calculation/apply` | POST/DELETE | schreibt `recommendedPerPerson`/`…Team` nach `fee_cents`/`team_fee_cents`; 400 ungespeichert, 422 bei 0 Teilnehmenden |
@@ -167,6 +171,13 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
   `clubPaidAt`, `clubPaidVia`; `summary.openClubPayments {count, cents}` (Hinweis im Abschluss-Dialog, blockiert nicht).
 - PDF: „Stamm (offen)“. Export/Import: `entries[].transfer` (`recipientName`, `iban` nur mit `payout.view`, `bic`,
   `purpose`, `paidAt`); fehlt `transfer` (alte Archive) → bezahlt. Kategorie `refund` ist nie eine Stamm-Ausgabe in diesem Sinn.
+- **Auslage „bereits erstattet“** (Migration 0013 `reimbursed_upfront`): `entryInput.reimbursed` (Default false), nur Ausgabe + `paidBy='person'` (sonst 422, Pfad `reimbursed`);
+  POST setzt `reimbursed_at = now()` **und** `reimbursed_upfront = true` (offen 0 ⇒ keine Auszahlung in Kasse/payouts.csv). **PUT mit `reimbursed:true` auf offener Auslage → 422**
+  („Die Erstattung kann nur beim Anlegen gesetzt werden“, Pfad `reimbursed`); `false`/fehlend wirkungslos; geschlossene Abrechnung → 409 (`assertOpen` zuerst).
+  PUT/DELETE auf erstattete Einträge 409. `markReimbursed(…, true)` (Kasse zahlt) setzt nur nicht erstattete; `markReimbursed(…, false)` (Kassen-Zahlung gelöscht)
+  setzt **nur** `reimbursed_upfront = false`-Einträge zurück (vorab erstattete bleiben erstattet, sonst Doppelzahlung). `DELETE …/payees/:pid/reimburse` ist die
+  ausdrückliche Rücknahme der ganzen Person (`reimbursed_at = NULL` + `reimbursed_upfront = false`, danach editierbar). Archiv: `entries[].reimbursedUpfront` optional (fehlt = false,
+  nur mit `reimbursedAt`). Audit `entry_created.reimbursed` (Boolean). UI: erstattete Auslage im Dialog komplett gesperrt, Zeilenmenü „Ansehen“ ohne „Löschen“.
 - **Auslagen** (bezahlt von Person) gibt `listReimbursements` nur aus **abgeschlossenen** Abrechnungen an die Kasse.
 
 ## Abrechnung (`accounting.ts`)
@@ -235,7 +246,7 @@ Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlu
 
 ## Tests
 Integration: `actions.test.ts` (Zugriffsmatrix), `actions-calculation`, `actions-form` (+`public-endpoints.test.ts`),
-`actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`.
+`actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`, `actions-past` (isPast, vorab erstattete Auslagen), `actions-past-fixes` (Rücknahme durch die Kasse, PUT-422, Archiv).
 Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-report`, `refund`, `iban`, `actions-form-support`, `forms-*`,
 `pdf-attachments`, `pdf-letterhead`. Helfer: `tests/helpers/fake-storage.ts`, `setPdfRendererForTests`.
 
@@ -245,3 +256,10 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - Core-Services (`storage`, `crypto`, `audit`, `pdf`, `mail`) **außerhalb** der Modul-Transaktion (PGlite hängt sonst).
 - IBAN/Namen nie in Audit-`metadata`; `payouts.csv` Format vorläufig (ggf. SEPA-XML).
 - Zahlungseingänge je Teilnehmende*r: Modul `treasury` (siehe `rules/module-treasury.md`). Offen: Auszahlungsformat, `docs/` um `actions` ergänzen.
+
+## Teilnehmendenliste als PDF (`participants-sheet.endpoints.ts`)
+- Katalog = Mitglieder-Katalog (`members/sheet-columns.ts`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
+  Felddefinitionen über `core.modules.use('members')` (`listFieldDefinitions`), **nie** in der Modul-Transaktion.
+- Zeile: ohne Mitglied aus `action_participants` (Gruppe = `group_label`, Alter, E-Mail, `diet` → Ernährung, `allergies` → Allergien); mit `member_id` aus `listMemberSheets` (Notfall-Telefon, Zusatzfelder), Ernährung/Allergien/E-Mail aus beiden zusammengeführt.
+  `fee` = `fee_cents` bzw. `team_fee_cents` (Team), `notes` = Hinweise + Antworten des Anmeldeformulars (ohne `mf_*` bei Mitglied). Abschnitte „Teilnehmende“ und „Team“ (neue Seite).
+- Reihenfolge der Prüfung: Zugriff (`requireAccess read`, fremde Aktion 404) → `members.data.export` (403). POST-Body `{ selection? }` strikt (`listSelectionInput` aus `members/schemas.ts`), leere/zu lange Auswahl 422.

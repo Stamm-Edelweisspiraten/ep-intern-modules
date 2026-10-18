@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { apiFetch } from '$lib/sdk/client';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -13,7 +14,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable, FormField, MoneyInput } from '$lib/components/layout';
+	import { DataTable, FormField, MoneyInput, toastWithUndo } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		PAYABLE_SOURCES,
@@ -30,6 +31,7 @@
 		todayIso,
 		type SharedData
 	} from './helpers';
+	import HistorySheet from './HistorySheet.svelte';
 	import PayableDialog from './PayableDialog.svelte';
 
 	let {
@@ -73,6 +75,13 @@
 	// Überweisung buchen
 	let payOpen = $state(false);
 	let payItem = $state<Payable | null>(null);
+	// wie `history.endpoints.ts`: Berichts- UND Kassenrecht
+	const canHistory = $derived(
+		can((page.data.permissions ?? []) as string[], 'treasury.report.view') &&
+			can((page.data.permissions ?? []) as string[], 'treasury.cash.view')
+	);
+	let historyOpen = $state(false);
+	let historyItem = $state<Payable | null>(null);
 	let payAccount = $state<string | null>(null);
 	let payDate = $state(todayIso());
 	let payAmount = $state(0);
@@ -160,7 +169,17 @@
 				method: 'POST',
 				body: JSON.stringify({ cancelled })
 			});
-			toast.success(cancelled ? 'Auszahlung storniert' : 'Wieder aufgenommen');
+			const revert = async () => {
+				await apiFetch(`${BASE}/payables/${p.id}/cancel`, {
+					method: 'POST',
+					body: JSON.stringify({ cancelled: !cancelled })
+				});
+			};
+			toastWithUndo({
+				message: cancelled ? 'Auszahlung storniert' : 'Wieder aufgenommen',
+				undo: revert,
+				onundone: onchanged
+			});
 			await onchanged();
 		} catch (e) {
 			toast.error(errorMessage(e, 'Aktion fehlgeschlagen'));
@@ -191,6 +210,7 @@
 </script>
 
 <DataTable
+	mobile="cards"
 	caption="Ausstehende Überweisungen"
 	{loading}
 	{error}
@@ -294,6 +314,16 @@
 						{/snippet}
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content align="end">
+						{#if canHistory}
+							<DropdownMenu.Item
+								onclick={() => {
+									historyItem = p;
+									historyOpen = true;
+								}}
+							>
+								Verlauf anzeigen
+							</DropdownMenu.Item>
+						{/if}
 						{#if perm.bank && p.hasIban}
 							<DropdownMenu.Item onclick={() => showIban(p)}
 								>IBAN anzeigen und kopieren</DropdownMenu.Item
@@ -341,6 +371,13 @@
 		{/if}
 	{/snippet}
 </DataTable>
+
+<HistorySheet
+	bind:open={historyOpen}
+	kind="payable"
+	id={historyItem?.id ?? null}
+	title={historyItem?.recipientName ?? ''}
+/>
 
 <PayableDialog
 	bind:open={dialogOpen}
@@ -406,7 +443,7 @@
 					bind:value={payAccount}
 				/>
 			</FormField>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<FormField label="Betrag *" id="pp-amount">
 					<MoneyInput
 						id="pp-amount"

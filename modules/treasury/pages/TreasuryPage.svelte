@@ -239,6 +239,8 @@
 					onopen={(t) => setTab(t)}
 					onallocate={allocate}
 					onsuggestions={() => (suggestionsOpen = true)}
+					oncreate={() => editTransaction(null)}
+					onimport={() => (importOpen = true)}
 					onchanged={changed}
 				/>
 			{/if}

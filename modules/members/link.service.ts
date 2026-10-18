@@ -17,12 +17,17 @@ import {
 	linkUrl,
 	recipientLines
 } from './link';
+import { loadMailOptOut, membersService } from './fields.service';
 import {
 	LINK_DEFAULT_ROLE,
 	LINK_LOCK_MINUTES,
 	LINK_MAX_FAILED_ATTEMPTS,
 	MODULE_ID,
+	SENSITIVE_FIELD_KEYS,
+	type ContactEntry,
 	type LinkedUser,
+	type MailCategory,
+	type MyFieldDefinition,
 	type MemberLinks,
 	type MyMember,
 	type PublicLinkInfo
@@ -272,18 +277,182 @@ export async function myMembers(ctx: RequestContext): Promise<MyMember[]> {
 	const found = await mdb().transaction((tx) =>
 		rows(
 			tx,
-			sql`SELECT m.id, m.first_name, m.last_name, m.scout_name, l.relation
-				FROM member_user_links l JOIN members m ON m.id = l.member_id
+			sql`SELECT m.id, l.relation FROM member_user_links l JOIN members m ON m.id = l.member_id
 				WHERE l.user_id = ${userId} ORDER BY m.last_name, m.first_name, m.id`
 		)
 	);
-	return found.map((r) => ({
-		id: r.id as string,
-		firstName: r.first_name as string,
-		lastName: r.last_name as string,
-		scoutName: (r.scout_name as string | null) ?? null,
-		relation: (r.relation as string | null) ?? null
-	}));
+	const data = await membersService.listLinkedMembers(ctx);
+	return found.flatMap((r) => {
+		const d = data.find((x) => x.id === r.id);
+		if (!d) return [];
+		return [
+			{
+				id: d.id,
+				firstName: d.firstName,
+				lastName: d.lastName,
+				scoutName: d.scoutName,
+				relation: (r.relation as string | null) ?? null,
+				birthDate: d.birthDate,
+				groups: d.groups,
+				phones: d.phones,
+				emails: d.emails,
+				custom: d.custom,
+				mailOptOut: d.mailOptOut
+			}
+		];
+	});
+}
+
+/** Aktive Zusatzfelder; Gesundheitsfelder sind als `sensitive` markiert */
+export async function myFieldDefinitions(): Promise<{ fields: MyFieldDefinition[] }> {
+	const defs = await membersService.listFieldDefinitions();
+	return {
+		fields: defs.map((d) => ({
+			key: d.key,
+			field: d.field,
+			sensitive: SENSITIVE_FIELD_KEYS.includes(d.key)
+		}))
+	};
+}
+
+const phoneKey = (v: string) => v.replace(/[^\d+]/g, '');
+
+/**
+ * Eltern ändern Telefone/E-Mails eines verknüpften Mitglieds. Der Link-JOIN mit `FOR UPDATE` ist die
+ * Besitzprüfung (fremd → 404). Angefasst werden NUR `member_phones`/`member_emails`. Gab es vorher
+ * mindestens eine E-Mail, muss mindestens eine bleiben (die Kasse braucht eine Adresse).
+ */
+export async function updateLinkedContacts(
+	ctx: RequestContext,
+	memberId: string,
+	input: { phones: ContactEntry[]; emails: ContactEntry[] }
+): Promise<{ phones: ContactEntry[]; emails: ContactEntry[] }> {
+	if (!ctx.userId) throw errors.unauthenticated();
+	const userId = ctx.userId;
+	const counts = await mdb().transaction(async (tx) => {
+		const link = await rows(
+			tx,
+			sql`SELECT m.id, m.first_name FROM member_user_links l JOIN members m ON m.id = l.member_id
+				WHERE l.user_id = ${userId} AND l.member_id = ${memberId} FOR UPDATE OF m`
+		);
+		if (!link[0]) throw errors.notFound('Mitglied nicht gefunden');
+		const oldPhones = await rows(
+			tx,
+			sql`SELECT value FROM member_phones WHERE member_id = ${memberId}`
+		);
+		const oldEmails = await rows(
+			tx,
+			sql`SELECT value FROM member_emails WHERE member_id = ${memberId}`
+		);
+		if (oldEmails.length > 0 && input.emails.length === 0) {
+			throw errors.validation(
+				{ emails: 'Mindestens eine E-Mail-Adresse muss bleiben' },
+				'Mindestens eine E-Mail-Adresse muss bleiben'
+			);
+		}
+		await tx.execute(sql`DELETE FROM member_phones WHERE member_id = ${memberId}`);
+		await tx.execute(sql`DELETE FROM member_emails WHERE member_id = ${memberId}`);
+		for (const [i, p] of input.phones.entries()) {
+			await tx.execute(
+				sql`INSERT INTO member_phones (id, member_id, name, value, position)
+					VALUES (${crypto.randomUUID()}, ${memberId}, ${p.name}, ${p.value}, ${i})`
+			);
+		}
+		for (const [i, p] of input.emails.entries()) {
+			await tx.execute(
+				sql`INSERT INTO member_emails (id, member_id, name, value, position)
+					VALUES (${crypto.randomUUID()}, ${memberId}, ${p.name}, ${p.value}, ${i})`
+			);
+		}
+		const diff = (before: string[], after: string[]) => ({
+			added: after.filter((v) => !before.includes(v)).length,
+			removed: before.filter((v) => !after.includes(v)).length
+		});
+		const ph = diff(
+			oldPhones.map((r) => phoneKey(r.value as string)),
+			input.phones.map((p) => phoneKey(p.value))
+		);
+		const em = diff(
+			oldEmails.map((r) => r.value as string),
+			input.emails.map((p) => p.value)
+		);
+		return {
+			phonesAdded: ph.added,
+			phonesRemoved: ph.removed,
+			emailsAdded: em.added,
+			emailsRemoved: em.removed,
+			oldEmails: oldEmails.map((r) => String(r.value)),
+			firstName: String(link[0].first_name ?? '')
+		};
+	});
+	const { oldEmails, firstName, ...auditCounts } = counts;
+	await core.audit.logFromContext(ctx, 'members.member.contacts_updated', {
+		target: memberId,
+		metadata: { memberId, ...auditCounts }
+	});
+	// Aenderte sich die E-Mail-Liste, warnen wir die BISHERIGEN Adressen (ohne die neuen zu nennen).
+	// Nach der Transaktion; Mailfehler duerfen das Speichern nie scheitern lassen.
+	if (auditCounts.emailsAdded + auditCounts.emailsRemoved > 0 && oldEmails.length) {
+		const systemName = String((await core.settings.get('core.system.name')) ?? 'EP Intern');
+		for (const to of [...new Set(oldEmails.map((e) => e.toLowerCase()))]) {
+			try {
+				await core.mail.send({
+					to,
+					subject: `${systemName}: E-Mail-Adressen geändert`,
+					text: `Die E-Mail-Adressen von ${firstName} wurden über ein verknüpftes Konto geändert. Warst du das nicht, melde dich bei der Stammesleitung.`
+				});
+			} catch (err) {
+				console.error(
+					'[members] Hinweismail zur Kontaktänderung fehlgeschlagen:',
+					(err as Error)?.message
+				);
+			}
+		}
+	}
+	return { phones: input.phones, emails: input.emails };
+}
+
+/**
+ * Schaltet eine abschaltbare Mail-Kategorie für ein Mitglied an/aus. Nur Abwahlen werden gespeichert
+ * (an = Zeile löschen). `own`: nur verknüpfte Mitglieder des Kontos (fremd → 404), sonst jedes Mitglied.
+ */
+export async function setMailPref(
+	ctx: RequestContext,
+	memberId: string,
+	category: MailCategory,
+	enabled: boolean,
+	own: boolean
+): Promise<{ mailOptOut: MailCategory[] }> {
+	if (own && !ctx.userId) throw errors.unauthenticated();
+	const userId = ctx.userId;
+	const result = await mdb().transaction(async (tx) => {
+		const found = own
+			? await rows(
+					tx,
+					sql`SELECT m.id FROM member_user_links l JOIN members m ON m.id = l.member_id
+						WHERE l.user_id = ${userId} AND l.member_id = ${memberId} FOR UPDATE OF m`
+				)
+			: await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
+		if (!found[0]) throw errors.notFound('Mitglied nicht gefunden');
+		if (enabled) {
+			await tx.execute(
+				sql`DELETE FROM member_mail_prefs WHERE member_id = ${memberId} AND category = ${category}`
+			);
+		} else {
+			await tx.execute(
+				sql`INSERT INTO member_mail_prefs (member_id, category, enabled, updated_at, updated_by)
+					VALUES (${memberId}, ${category}, false, now(), ${userId})
+					ON CONFLICT (member_id, category) DO UPDATE
+					SET enabled = false, updated_at = now(), updated_by = EXCLUDED.updated_by`
+			);
+		}
+		return (await loadMailOptOut(tx, [memberId])).get(memberId) ?? [];
+	});
+	await core.audit.logFromContext(ctx, 'members.member.mail_pref_updated', {
+		target: memberId,
+		metadata: { memberId, category, enabled }
+	});
+	return { mailOptOut: result };
 }
 
 // --- Öffentlicher Ablauf (Link + Code) --------------------------------------

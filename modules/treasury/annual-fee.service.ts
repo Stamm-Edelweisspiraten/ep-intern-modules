@@ -271,9 +271,14 @@ async function planInTx(
 			{ id: String(r.id), name: String(r.name), email: str(r.email) }
 		])
 	);
+	// Aufschlüsselung (neu) und Posten je Ebene (ältere Rechnungen mit `fee_level`)
 	const refs = await rows(
 		tx,
-		sql`SELECT source_ref FROM invoice_lines WHERE source_ref LIKE ${`annual:${run.year}:%`}`
+		sql`SELECT source_ref FROM invoice_lines
+			WHERE source_ref LIKE ${`annual:${run.year}:%`} AND fee_level IS NOT NULL
+		UNION ALL
+		SELECT 'annual:' || year::text || ':' || member_id || ':' || level AS source_ref
+			FROM annual_fee_items WHERE year = ${run.year}`
 	);
 	const plan = planAnnualInvoices({
 		members: contacts.map(toAnnualMember),
@@ -381,7 +386,7 @@ async function previewSnapshot(
 				name: m.name,
 				firstName: byId.get(m.memberId)?.firstName ?? m.name,
 				levels: Object.fromEntries(
-					inv.lines.filter((l) => l.memberId === m.memberId).map((l) => [l.level, l.amountCents])
+					inv.items.filter((l) => l.memberId === m.memberId).map((l) => [l.level, l.amountCents])
 				),
 				totalCents: m.totalCents
 			}))
@@ -543,13 +548,20 @@ export async function sendRun(
 				VALUES (${invoiceId}, ${n.number}, ${n.year}, ${n.seq}, 'annual', ${run.id}, ${inv.payerId},
 					${inv.recipientName}, ${inv.recipientEmail}, ${todayIso}, ${dueOn}, ${ctx.userId})`
 			);
-			let position = 0;
-			for (const l of inv.lines) {
+			// EIN offener Posten (Stammesbeitrag = Summe); die Aufschlüsselung liegt in `annual_fee_items`
+			for (const [position, l] of inv.lines.entries()) {
 				await tx.execute(
 					sql`INSERT INTO invoice_lines (id, invoice_id, position, description, amount_cents, member_id,
-						source_ref, fee_level)
-					VALUES (${crypto.randomUUID()}, ${invoiceId}, ${position++}, ${l.description}, ${l.amountCents},
-						${l.memberId}, ${l.sourceRef}, ${l.level})`
+						source_ref)
+					VALUES (${crypto.randomUUID()}, ${invoiceId}, ${position}, ${l.description}, ${l.amountCents},
+						${l.memberId}, ${`annual:${run.year}:invoice:${invoiceId}`})`
+				);
+			}
+			for (const [position, it] of inv.items.entries()) {
+				await tx.execute(
+					sql`INSERT INTO annual_fee_items (id, invoice_id, year, member_id, level, amount_cents, position)
+					VALUES (${crypto.randomUUID()}, ${invoiceId}, ${run.year}, ${it.memberId}, ${it.level},
+						${it.amountCents}, ${position})`
 				);
 			}
 			ids.push(invoiceId);

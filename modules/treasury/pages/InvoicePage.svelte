@@ -16,7 +16,13 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, EmptyState, PageHeader, SummaryList } from '$lib/components/layout';
+	import {
+		ConfirmDialog,
+		EmptyState,
+		PageHeader,
+		SummaryList,
+		toastWithUndo
+	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		DOCUMENT_REASON_LABELS,
@@ -38,6 +44,7 @@
 	import InvoiceDialog from './InvoiceDialog.svelte';
 	import LineDialog from './LineDialog.svelte';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
+	import HistoryCard from './HistoryCard.svelte';
 
 	let { params }: ModulePageProps = $props();
 	const id = $derived(params.id ?? '');
@@ -46,6 +53,10 @@
 	const canDelete = $derived(can(permissions, 'treasury.invoice.delete'));
 	const canSend = $derived(can(permissions, 'treasury.invoice.send'));
 	const canPay = $derived(can(permissions, 'treasury.transaction.edit'));
+	// wie `history.endpoints.ts`: Berichts- UND Kassenrecht
+	const canHistory = $derived(
+		can(permissions, 'treasury.report.view') && can(permissions, 'treasury.cash.view')
+	);
 
 	let inv = $state<InvoiceDetail | null>(null);
 	let loading = $state(true);
@@ -96,14 +107,30 @@
 	let deleteOpen = $state(false);
 	let busy = $state(false);
 
-	async function post(path: string, body: unknown, success: string) {
+	async function post(
+		path: string,
+		body: unknown,
+		success: string,
+		undoPath?: string,
+		undoBody: unknown = {}
+	) {
 		busy = true;
 		try {
 			inv = await apiFetch<InvoiceDetail>(`${BASE}/invoices/${id}${path}`, {
 				method: 'POST',
 				body: JSON.stringify(body)
 			});
-			toast.success(success);
+			if (undoPath) {
+				toastWithUndo({
+					message: success,
+					undo: () =>
+						apiFetch(`${BASE}/invoices/${id}${undoPath}`, {
+							method: 'POST',
+							body: JSON.stringify(undoBody)
+						}),
+					onundone: load
+				});
+			} else toast.success(success);
 		} catch (e) {
 			toast.error(errorMessage(e, 'Aktion fehlgeschlagen'));
 		} finally {
@@ -485,6 +512,9 @@
 					{/if}
 				</Card.Content>
 			</Card.Root>
+			{#if canHistory}
+				<HistoryCard kind="invoice" id={inv.id} class="lg:col-span-2" />
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -509,7 +539,7 @@
 	description="Die Rechnung wird nicht mehr als offen geführt. Bereits Bezahltes bleibt als Guthaben sichtbar."
 	confirmLabel="Stornieren"
 	destructive
-	onconfirm={() => post('/cancel', { reason: null }, 'Rechnung storniert')}
+	onconfirm={() => post('/cancel', { reason: null }, 'Rechnung storniert', '/reactivate')}
 />
 <ConfirmDialog
 	bind:open={deleteOpen}

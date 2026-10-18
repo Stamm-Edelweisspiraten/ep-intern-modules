@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { core, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { listRuns } from './annual-fee.service';
 import type { PdfBlock } from '$lib/sdk/types';
 import {
 	NEEDS_ALLOCATION_SQL,
@@ -8,7 +9,8 @@ import {
 	loadTransactionsWhere,
 	mdb,
 	num,
-	rows
+	rows,
+	today
 } from './db';
 import { loadSummaries } from './invoices.endpoints';
 import { loadBankData } from './notify';
@@ -17,6 +19,7 @@ import { centsToCsv, csvDocument, formatDateDe } from './logic';
 import {
 	reportQuery,
 	type Overview,
+	type OverviewTask,
 	type PeriodReport,
 	type ReportQuery,
 	type ReportRow
@@ -36,6 +39,47 @@ async function openStats() {
 		invoiceCount: summaries.filter((i) => i.openCents > 0).length
 	};
 }
+
+const DAY_MS = 86_400_000;
+const daysUntil = (iso: string, todayIso: string) =>
+	Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`)) / DAY_MS);
+
+/** Beitragslauf als Aufgabe (nur mit Recht `annual-fee.view`); nichts zu tun → null */
+async function annualTask(ctx: RequestContext): Promise<OverviewTask | null> {
+	if (!core.permissions.has(ctx, 'treasury.annual-fee.view')) return null;
+	const todayIso = today();
+	const year = Number(todayIso.slice(0, 4));
+	const runs = await listRuns();
+	const open = runs
+		.filter((r) => r.status !== 'sent' && r.year >= year - 1)
+		.sort((a, b) => a.year - b.year)[0];
+	const base = { count: 0, cents: null, tab: 'annual' as const };
+	if (open?.status === 'scheduled') {
+		return {
+			...base,
+			kind: 'annual-scheduled',
+			severity: 'info',
+			year: open.year,
+			date: open.sendOn
+		};
+	}
+	if (open) {
+		const soon = daysUntil(open.dueOn, todayIso) <= 14;
+		return {
+			...base,
+			kind: 'annual-draft',
+			severity: soon ? 'warning' : 'info',
+			year: open.year,
+			date: open.dueOn
+		};
+	}
+	if (!runs.some((r) => r.year === year)) {
+		return { ...base, kind: 'annual-missing', severity: 'info', year, date: null };
+	}
+	return null;
+}
+
+const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const;
 
 async function overview(ctx: RequestContext): Promise<Overview> {
 	await syncIfStale(ctx);
@@ -59,7 +103,59 @@ async function overview(ctx: RequestContext): Promise<Overview> {
 	const stats = await openStats();
 	const payables = (await listPayables()).filter((p) => p.openCents > 0);
 	const bank = await loadBankData();
+	const bankMissing = !bank.iban || !bank.holder;
+	const none = { count: 0, cents: null, year: null, date: null };
+	const tasks: OverviewTask[] = [];
+	if (bankMissing) {
+		tasks.push({ ...none, kind: 'bank-missing', severity: 'warning', tab: null });
+	}
+	if (data.unallocatedCount > 0) {
+		tasks.push({
+			...none,
+			kind: 'unallocated',
+			severity: 'warning',
+			count: data.unallocatedCount,
+			cents: data.unallocatedCents,
+			tab: 'transactions'
+		});
+	}
+	if (stats.overdueCount > 0) {
+		tasks.push({
+			...none,
+			kind: 'overdue',
+			severity: 'critical',
+			count: stats.overdueCount,
+			cents: stats.overdueCents,
+			tab: 'open'
+		});
+	}
+	const payablesOverdue = payables.filter((p) => p.overdue);
+	if (payablesOverdue.length) {
+		tasks.push({
+			...none,
+			kind: 'payables-overdue',
+			severity: 'critical',
+			count: payablesOverdue.length,
+			cents: payablesOverdue.reduce((s, p) => s + p.openCents, 0),
+			tab: 'payables'
+		});
+	}
+	const noIban = payables.filter((p) => !p.hasIban);
+	if (noIban.length) {
+		tasks.push({
+			...none,
+			kind: 'payables-no-iban',
+			severity: 'warning',
+			count: noIban.length,
+			cents: noIban.reduce((s, p) => s + p.openCents, 0),
+			tab: 'payables'
+		});
+	}
+	const annual = await annualTask(ctx);
+	if (annual) tasks.push(annual);
+	tasks.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 	return {
+		tasks,
 		accounts: data.accounts.filter((a) => !a.archived || a.balanceCents !== 0),
 		balanceCents: data.accounts.reduce((s, a) => s + a.balanceCents, 0),
 		openCents: stats.openCents,
@@ -72,7 +168,7 @@ async function overview(ctx: RequestContext): Promise<Overview> {
 		lastSyncAt: data.lastSyncAt,
 		payableCents: payables.reduce((s, p) => s + p.openCents, 0),
 		payableCount: payables.length,
-		bankMissing: !bank.iban || !bank.holder
+		bankMissing
 	};
 }
 

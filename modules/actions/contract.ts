@@ -28,6 +28,8 @@ export interface ReceivableSource {
 	/** JJJJ-MM-TT */
 	startsOn: string;
 	endsOn: string | null;
+	/** Aktion liegt bereits in der Vergangenheit (nachtraegliche Abrechnung) */
+	isPast: boolean;
 	/** Beitrag je Teilnehmende*r (Cent) */
 	feeCents: number;
 	/** Beitrag je Teammitglied (Cent, `null` = zahlt nicht) */

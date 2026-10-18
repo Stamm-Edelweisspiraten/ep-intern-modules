@@ -428,7 +428,7 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 				money(cents(p.openCents) + cents(p.reimbursedCents)),
 				status(p)
 			]),
-			totalRow: ['Summe', '', money(payeesTotal), '']
+			totalRow: [{ text: 'Summe', colspan: 2 }, money(payeesTotal), '']
 		});
 	}
 

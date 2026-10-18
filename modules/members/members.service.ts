@@ -121,6 +121,20 @@ export async function loadMember(tx: Tx, id: string): Promise<Member | null> {
 	return (await hydrate(tx, found))[0] ?? null;
 }
 
+/** Laedt Member-DTOs zu IDs (Reihenfolge wie `ids`, unbekannte entfallen). */
+export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]> {
+	if (!ids.length) return [];
+	const list = sql.join(
+		ids.map((i) => sql`${i}`),
+		sql`, `
+	);
+	const found = await hydrate(
+		tx,
+		await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id IN (${list})`)
+	);
+	return ids.map((i) => found.find((m) => m.id === i)).filter((m): m is Member => !!m);
+}
+
 /** Laedt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
 export async function getMember(id: string): Promise<Member> {
 	const m = await core.database.forModule(MODULE_ID).transaction((tx) => loadMember(tx, id));

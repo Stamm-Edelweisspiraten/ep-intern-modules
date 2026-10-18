@@ -155,6 +155,8 @@ const actionSchema = z.strictObject({
 	startsTime: actionInput.shape.startsTime,
 	endsOn: actionInput.shape.endsOn,
 	endsTime: actionInput.shape.endsTime,
+	/** Fehlt bei aelteren Archiven (= false) */
+	isPast: z.boolean().optional(),
 	feeCents: cents(0, MAX_AMOUNT_CENTS).nullable(),
 	teamFeeCents: cents(0, MAX_AMOUNT_CENTS).nullable()
 });
@@ -252,6 +254,8 @@ const entrySchema = z
 			})
 			.nullable(),
 		reimbursedAt: isoStamp.nullable(),
+		/** Beim Erfassen bereits erstattet (fehlt = false); nur zusammen mit `reimbursedAt`. */
+		reimbursedUpfront: z.boolean().optional(),
 		/**
 		 * Nur Ausgaben des Stammes: Empfaenger der Ueberweisung und Zahlstatus. Fehlt das Feld (aeltere
 		 * Archive), gilt die Ausgabe als bezahlt. `iban` nur mit `actions.payout.view` beim Export.
@@ -289,6 +293,9 @@ const entrySchema = z
 		}
 		if (e.receipt && e.type !== 'expense') bad('receipt', 'Belege gibt es nur bei Ausgaben');
 		if (e.reimbursedAt && e.paidBy !== 'person') bad('reimbursedAt', 'Nur bei Auslagen');
+		if (e.reimbursedUpfront && !e.reimbursedAt) {
+			bad('reimbursedUpfront', 'Nur bei erstatteten Auslagen');
+		}
 		if (e.transfer && (e.type !== 'expense' || e.paidBy !== 'club')) {
 			bad('transfer', 'Nur bei Ausgaben des Stammes');
 		}

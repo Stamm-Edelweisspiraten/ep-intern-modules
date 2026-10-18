@@ -269,9 +269,10 @@
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content align="end">
 								<DropdownMenu.Item onSelect={() => onedit(e)}>
-									<Pencil /> Bearbeiten
+									<Pencil />
+									{e.reimbursedAt || e.clubPaidVia === 'treasury' ? 'Ansehen' : 'Bearbeiten'}
 								</DropdownMenu.Item>
-								{#if e.clubPaidVia !== 'treasury'}
+								{#if e.clubPaidVia !== 'treasury' && !e.reimbursedAt}
 									<DropdownMenu.Item variant="destructive" onSelect={() => ondelete(e)}>
 										<Trash2 /> Löschen
 									</DropdownMenu.Item>

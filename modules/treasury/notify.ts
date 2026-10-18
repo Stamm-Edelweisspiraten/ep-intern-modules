@@ -118,7 +118,8 @@ async function sendGrouped(
 	return stats;
 }
 
-const addressesOf = (inv: RawInvoice, names: NameMaps) => invoiceAddresses(inv, names);
+const addressesOf = (inv: RawInvoice, names: NameMaps, category?: string) =>
+	invoiceAddresses(inv, names, category);
 
 /**
  * Bestaetigung fuer vollstaendig bezahlte Rechnungen (einmalig, `paid_notified_at`). Mit
@@ -151,7 +152,11 @@ export async function notifyPaid(
 		SETTING_KEYS.paidBody
 	]);
 	let stats: SendStats | null = null;
-	const items = paid.map((inv) => ({ inv, addresses: addressesOf(inv, names) }));
+	// Nur die Zahlungsbestaetigung ist abschaltbar (Abwahl je Mitglied); ohne Adresse gilt sie als erledigt
+	const items = paid.map((inv) => ({
+		inv,
+		addresses: addressesOf(inv, names, 'payment-confirmation')
+	}));
 	if (notify && s[SETTING_KEYS.paidMailEnabled] !== false) {
 		const bank = await loadBankData();
 		stats = await sendGrouped(items, (group) =>

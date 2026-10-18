@@ -87,7 +87,7 @@
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<FormField label="Von *" id="tr-from" error={errors.fromAccountId}>
 					<SelectField id="tr-from" label="Von Konto" {options} bind:value={fromAccountId} />
 				</FormField>

@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
-	import { apiFetch } from '$lib/sdk/client';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -22,6 +23,7 @@
 		transactionTitle,
 		type SharedData
 	} from './helpers';
+	import HistorySheet from './HistorySheet.svelte';
 
 	let {
 		accounts,
@@ -40,6 +42,13 @@
 	} = $props();
 
 	const LIMIT = 50;
+	// wie `history.endpoints.ts`: Berichts- UND Kassenrecht
+	const canHistory = $derived(
+		can((page.data.permissions ?? []) as string[], 'treasury.report.view') &&
+			can((page.data.permissions ?? []) as string[], 'treasury.cash.view')
+	);
+	let historyOpen = $state(false);
+	let historyTx = $state<Transaction | null>(null);
 	let accountId = $state<string | null>(null);
 	let categoryId = $state<string | null>(null);
 	let filter = $state<'all' | 'income' | 'expense' | 'unassigned'>('all');
@@ -159,6 +168,7 @@
 </script>
 
 <DataTable
+	mobile="cards"
 	caption="Buchungen"
 	{loading}
 	{error}
@@ -301,6 +311,16 @@
 						{#if t.receipt}
 							<DropdownMenu.Item onclick={() => receipt(t)}>Beleg öffnen</DropdownMenu.Item>
 						{/if}
+						{#if canHistory}
+							<DropdownMenu.Item
+								onclick={() => {
+									historyTx = t;
+									historyOpen = true;
+								}}
+							>
+								Verlauf anzeigen
+							</DropdownMenu.Item>
+						{/if}
 						{#if perm.deleteTx}
 							<DropdownMenu.Separator />
 							<DropdownMenu.Item
@@ -387,6 +407,13 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<HistorySheet
+	bind:open={historyOpen}
+	kind="transaction"
+	id={historyTx?.id ?? null}
+	title={historyTx ? transactionTitle(historyTx) : ''}
+/>
 
 <ConfirmDialog
 	bind:open={deleteOpen}

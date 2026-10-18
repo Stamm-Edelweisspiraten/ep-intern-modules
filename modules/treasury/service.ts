@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { ActionContributions, ParticipantPayment, TreasuryService } from './contract';
-import { mdb, num, rows, today } from './db';
+import { actionsService, mdb, num, rows, today } from './db';
 import { registrationDocument } from './documents';
 import { lineOpen, sourceRef } from './logic';
 import { loadBankData } from './notify';
@@ -84,6 +84,11 @@ export const treasuryService: TreasuryService = {
 	},
 
 	async invoiceForRegistration(actionId: string, participantId: string) {
+		// Vergangene Aktionen: keine Rechnung (Anmeldebestaetigung ohne Zahlungsblock)
+		const [source] = await (
+			await actionsService()
+		).listReceivableSources({ actionIds: [actionId] });
+		if (source?.isPast) return null;
 		await syncActions(null);
 		const [line] = await mdb().transaction((tx) =>
 			rows(

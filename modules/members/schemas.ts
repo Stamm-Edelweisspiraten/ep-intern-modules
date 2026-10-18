@@ -1,5 +1,6 @@
 /** API-Vertrag des Moduls "members": Zod-Schemas fuer Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
+import { LIST_MAX_COLUMNS } from '$lib/pdf-lists/types';
 
 export const MODULE_ID = 'members';
 
@@ -521,6 +522,40 @@ export const linkLettersInput = z
 	})
 	.strict();
 
+/** Mitgliedsdaten-PDF (`POST /members/sheets.pdf`, `POST /groups/sheets.pdf`) */
+export const SHEETS_MAX_IDS = 200;
+/** Auswahl der Listenspalten (Schlüssel prüft der Server gegen den Katalog; ohne Auswahl gilt „Fahrt“) */
+export const listSelectionInput = z
+	.object({
+		preset: z.string().max(40).optional(),
+		columns: z
+			.array(z.string().min(1).max(60))
+			.min(1, 'Mindestens eine Spalte wählen')
+			.max(LIST_MAX_COLUMNS, `Höchstens ${LIST_MAX_COLUMNS} Spalten`),
+		hideEmpty: z.boolean().default(true)
+	})
+	.strict();
+export const memberSheetsInput = z
+	.object({
+		ids: z
+			.array(id)
+			.min(1, 'Mindestens ein Mitglied auswählen')
+			.max(SHEETS_MAX_IDS, `Höchstens ${SHEETS_MAX_IDS} Mitglieder auf einmal`)
+			.transform((ids) => [...new Set(ids)]),
+		selection: listSelectionInput.optional()
+	})
+	.strict();
+export const groupSheetsInput = z
+	.object({
+		groupIds: z
+			.array(id)
+			.min(1, 'Mindestens eine Gruppe wählen')
+			.max(20, 'Höchstens 20 Gruppen auf einmal')
+			.transform((ids) => [...new Set(ids)]),
+		selection: listSelectionInput.optional()
+	})
+	.strict();
+
 export interface LinkedUser {
 	id: string;
 	name: string;
@@ -543,7 +578,61 @@ export interface MyMember {
 	lastName: string;
 	scoutName: string | null;
 	relation: string | null;
+	/** JJJJ-MM-TT */
+	birthDate: string;
+	groups: { id: string; name: string }[];
+	phones: ContactEntry[];
+	emails: ContactEntry[];
+	/** Werte der Zusatzfelder (Schlüssel → Wert) */
+	custom: Record<string, import('$lib/forms').FormValue>;
+	/** Abgewählte, abschaltbare Mail-Kategorien */
+	mailOptOut: MailCategory[];
 }
+
+/** Zusatzfeld mit Kennzeichen, ob es Gesundheitsdaten enthält */
+export interface MyFieldDefinition {
+	key: string;
+	field: import('$lib/forms').FieldDefinition;
+	sensitive: boolean;
+}
+/** Zusatzfelder mit Gesundheitsbezug (Vorlagen) */
+export const SENSITIVE_FIELD_KEYS: readonly string[] = [
+	'ernaehrung',
+	'allergien',
+	'medikamente',
+	'gesundheit',
+	'zecken',
+	'tetanus',
+	'krankenkasse'
+];
+
+// --- Mail-Einstellungen je Mitglied ---------------------------------------------
+
+/** Abschaltbare Kategorien (Standard: an; nur Abwahlen werden gespeichert) */
+export const MAIL_CATEGORIES = ['payment-confirmation', 'action-info'] as const;
+export type MailCategory = (typeof MAIL_CATEGORIES)[number];
+/** Verbindliche Mails (nicht abschaltbar): Rechnungen, Jahresbeitrag, Erinnerungen, Anmeldebestätigung */
+export const MANDATORY_MAIL = ['invoice', 'annual-fee', 'reminder', 'registration'] as const;
+
+export const mailPrefInput = z
+	.object({
+		category: z.string().refine((c) => (MAIL_CATEGORIES as readonly string[]).includes(c), {
+			message: 'Diese Mail-Kategorie ist verbindlich oder unbekannt und nicht abschaltbar'
+		}) as unknown as z.ZodType<MailCategory>,
+		enabled: z.boolean()
+	})
+	.strict();
+
+export const myContactsInput = z
+	.object({
+		phones: z.array(phoneEntry).max(10, 'Höchstens 10 Telefonnummern'),
+		emails: z.array(emailEntry).max(10, 'Höchstens 10 E-Mail-Adressen')
+	})
+	.strict()
+	.superRefine((m, ctx) => {
+		noDuplicates(m.phones, ctx, 'phones');
+		noDuplicates(m.emails, ctx, 'emails');
+	});
 
 // --- Zusatzfelder -------------------------------------------------------------
 
@@ -571,6 +660,8 @@ export const customValue = z.union([
 	z.null()
 ]);
 export const customValues = z.record(z.string().max(40), customValue);
+/** `PUT /my/members/:id/fields` */
+export const myFieldsInput = z.object({ values: customValues }).strict();
 
 export interface MemberFieldDef {
 	key: string;

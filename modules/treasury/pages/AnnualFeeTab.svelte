@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -29,11 +31,13 @@
 		todayIso,
 		type SharedData
 	} from './helpers';
+	import AnnualChecklist from './AnnualChecklist.svelte';
 	import AnnualMessageCard from './AnnualMessageCard.svelte';
 	import AnnualPreviewCard from './AnnualPreviewCard.svelte';
 	import AnnualRatesCard from './AnnualRatesCard.svelte';
 	import AnnualRecipientsCard from './AnnualRecipientsCard.svelte';
 	import AnnualSendCard from './AnnualSendCard.svelte';
+	import AnnualSteps, { type Step } from './AnnualSteps.svelte';
 
 	let {
 		version,
@@ -360,6 +364,42 @@
 		await onchanged();
 	}
 
+	// --- Geführter Ablauf: Sätze → Texte → Vorschau → Senden ----------------------------
+
+	/** 0 Sätze · 1 Texte · 2 Vorschau · 3 Senden */
+	let step = $state(0);
+	const LAST_STEP = 3;
+	// Beim Wechsel des Laufs: neuer Lauf beginnt vorn, bereits versendeter beim Senden-Schritt (Status, Nachberechnung)
+	$effect(() => {
+		const id = runId;
+		const sent = untrack(() => runStatus === 'sent');
+		untrack(() => (step = id && sent ? LAST_STEP : 0));
+	});
+
+	const previewWarns = $derived(
+		!!preview &&
+			previewMode === 'run' &&
+			(preview.withoutEmail.length > 0 || preview.payerSuggestions > 0 || !preview.invoices.length)
+	);
+	const steps = $derived.by<Step[]>(() => {
+		const sent = runStatus === 'sent';
+		const done = (i: number): Step['state'] => (sent || step > i ? 'done' : 'todo');
+		return [
+			{ label: 'Beiträge', hint: 'Sätze je Ebene', state: done(0) },
+			{ label: 'Texte', hint: 'Mail und PDF', state: done(1) },
+			{
+				label: 'Vorschau',
+				hint: preview ? `${preview.invoices.length} Rechnungen` : 'Empfänger prüfen',
+				state: previewWarns && !sent ? 'warn' : done(2)
+			},
+			{
+				label: 'Senden',
+				hint: run ? ANNUAL_RUN_STATUS_LABELS[run.status] : '',
+				state: sent ? 'done' : 'todo'
+			}
+		];
+	});
+
 	const runOptions = $derived(
 		runs.map((r) => ({
 			value: r.id,
@@ -470,8 +510,39 @@
 		</Card.Root>
 
 		{#if run && draft}
-			<div class="grid gap-6 lg:grid-cols-2">
+			<AnnualSteps {steps} current={step} onselect={(i) => (step = i)} />
+
+			{#if step === 0}
 				<AnnualRatesCard bind:rates={draft.rates} disabled={!editable} />
+			{:else if step === 1}
+				<AnnualMessageCard
+					bind:subject={draft.mailSubject}
+					bind:body={draft.mailBody}
+					bind:pdfText={draft.pdfText}
+					disabled={!editable}
+					{errors}
+				/>
+			{:else if step === 2}
+				<AnnualPreviewCard
+					runId={run.id}
+					invoices={preview?.invoices ?? []}
+					mode={previewMode}
+					loading={previewLoading}
+					{stamp}
+					{showEmails}
+				/>
+				<AnnualRecipientsCard
+					{preview}
+					mode={previewMode}
+					loading={previewLoading}
+					error={previewError}
+					{showEmails}
+					onretry={() => runId && void loadPreview(runId, previewMode)}
+				/>
+			{:else}
+				{#if run.status !== 'sent'}
+					<AnnualChecklist {preview} loading={previewLoading} onreview={() => (step = 2)} />
+				{/if}
 				<AnnualSendCard
 					{run}
 					{preview}
@@ -485,33 +556,19 @@
 					onchanged={afterAction}
 					onopeninvoices={() => onopen('invoices')}
 				/>
+			{/if}
+
+			<div class="flex items-center justify-between gap-2">
+				<Button variant="outline" disabled={step === 0} onclick={() => (step -= 1)}>
+					<ArrowLeft /> Zurück
+				</Button>
+				{#if step < LAST_STEP}
+					<Button onclick={() => (step += 1)}>
+						Weiter: {steps[step + 1]?.label}
+						<ArrowRight />
+					</Button>
+				{/if}
 			</div>
-
-			<AnnualMessageCard
-				bind:subject={draft.mailSubject}
-				bind:body={draft.mailBody}
-				bind:pdfText={draft.pdfText}
-				disabled={!editable}
-				{errors}
-			/>
-
-			<AnnualPreviewCard
-				runId={run.id}
-				invoices={preview?.invoices ?? []}
-				mode={previewMode}
-				loading={previewLoading}
-				{stamp}
-				{showEmails}
-			/>
-
-			<AnnualRecipientsCard
-				{preview}
-				mode={previewMode}
-				loading={previewLoading}
-				error={previewError}
-				{showEmails}
-				onretry={() => runId && void loadPreview(runId, previewMode)}
-			/>
 		{/if}
 	</div>
 {/if}

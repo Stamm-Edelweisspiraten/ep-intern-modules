@@ -94,45 +94,62 @@ const time = z
 	.transform((v) => (v ? v : null));
 const optionalDate = date.nullish().transform((v) => (v ? v : null));
 
+const actionFields = {
+	name: text(150),
+	description: optionalText(5000, true),
+	location: optionalText(200),
+	startsOn: date,
+	startsTime: time,
+	endsOn: optionalDate,
+	endsTime: time
+};
+
+const checkActionDates = (
+	a: {
+		startsOn: string;
+		endsOn: string | null;
+		startsTime: string | null;
+		endsTime: string | null;
+	},
+	ctx: z.RefinementCtx
+) => {
+	if (a.endsOn && a.endsOn < a.startsOn) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsOn'],
+			message: 'Das Enddatum liegt vor dem Startdatum'
+		});
+	}
+	if (a.endsTime && !a.endsOn) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsTime'],
+			message: 'Für eine Uhrzeit wird ein Enddatum benötigt'
+		});
+	}
+	if (
+		a.endsOn &&
+		a.endsOn === a.startsOn &&
+		a.startsTime &&
+		a.endsTime &&
+		a.endsTime < a.startsTime
+	) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsTime'],
+			message: 'Das Ende liegt vor dem Beginn'
+		});
+	}
+};
+
+/** POST: `isPast` (Aktion liegt bereits in der Vergangenheit), Standard `false`. */
 export const actionInput = z
-	.object({
-		name: text(150),
-		description: optionalText(5000, true),
-		location: optionalText(200),
-		startsOn: date,
-		startsTime: time,
-		endsOn: optionalDate,
-		endsTime: time
-	})
-	.superRefine((a, ctx) => {
-		if (a.endsOn && a.endsOn < a.startsOn) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsOn'],
-				message: 'Das Enddatum liegt vor dem Startdatum'
-			});
-		}
-		if (a.endsTime && !a.endsOn) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsTime'],
-				message: 'Für eine Uhrzeit wird ein Enddatum benötigt'
-			});
-		}
-		if (
-			a.endsOn &&
-			a.endsOn === a.startsOn &&
-			a.startsTime &&
-			a.endsTime &&
-			a.endsTime < a.startsTime
-		) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsTime'],
-				message: 'Das Ende liegt vor dem Beginn'
-			});
-		}
-	});
+	.object({ ...actionFields, isPast: z.boolean().default(false) })
+	.superRefine(checkActionDates);
+/** PUT: fehlt `isPast`, bleibt der gespeicherte Wert unveraendert. */
+export const actionUpdateInput = z
+	.object({ ...actionFields, isPast: z.boolean().optional() })
+	.superRefine(checkActionDates);
 export type ActionInput = z.infer<typeof actionInput>;
 export type ActionFormInput = z.input<typeof actionInput>;
 
@@ -208,6 +225,8 @@ export interface ActionSummary {
 		canShare: boolean;
 	};
 	participantCount: number;
+	/** Aktion liegt bereits in der Vergangenheit (nachtraegliche Abrechnung) */
+	isPast: boolean;
 	/** Uebernommener Beitrag aus der Kalkulation oder `null` */
 	fee: AppliedFee | null;
 	createdAt: string;
@@ -852,6 +871,12 @@ export const entryInput = z
 		 * an den Empfaenger. Fehlt das Feld, gilt die Ausgabe als bezahlt (Verhalten vor der Kasse).
 		 */
 		clubPaid: z.boolean().default(true),
+		/**
+		 * Nur Auslagen (Ausgabe, bezahlt von Person): `true` = bereits erstattet (`reimbursed_at` wird beim
+		 * Anlegen gesetzt). Beim Aendern wird das Feld ignoriert; die Erstattung aendert nur der Endpoint
+		 * `DELETE …/payees/:id/reimburse`.
+		 */
+		reimbursed: z.boolean().default(false),
 		recipientName: optionalText(100),
 		/** Fehlt beim Bearbeiten = gespeicherte IBAN bleibt */
 		iban: z
@@ -902,6 +927,13 @@ export const entryInput = z
 				code: 'custom',
 				path: ['payeeId'],
 				message: 'Nur bei „Person“ angeben'
+			});
+		}
+		if (e.reimbursed && !(e.type === 'expense' && e.paidBy === 'person')) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['reimbursed'],
+				message: 'Nur Auslagen koennen bereits erstattet sein'
 			});
 		}
 		if (e.type === 'expense' && e.paidBy === 'club' && !e.clubPaid) {

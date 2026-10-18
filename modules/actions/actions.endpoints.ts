@@ -11,6 +11,7 @@ import { requireAccess, rowsOf, visibleActionsFilter } from './access';
 import {
 	actionInput,
 	actionListQuery,
+	actionUpdateInput,
 	idParams,
 	shareInput,
 	shareParams,
@@ -32,7 +33,7 @@ const strOrNull = (v: unknown): string | null => (v == null ? null : String(v));
 const COLUMNS = sql`a.id, a.name, a.description, a.location,
 	to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on, a.starts_time,
 	to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, a.ends_time,
-	a.owner_id, a.created_at, a.updated_at,
+	a.owner_id, a.is_past, a.created_at, a.updated_at,
 		a.fee_cents, a.team_fee_cents, a.fee_applied_at, a.fee_applied_by,
 	(SELECT count(*)::int FROM action_participants p WHERE p.action_id = a.id) AS participant_count`;
 
@@ -115,6 +116,7 @@ async function buildSummaries(ctx: RequestContext, data: SummaryData): Promise<A
 			owner: userRef(owners, String(r.owner_id)),
 			access: { level, isOwner, canShare: editAll || isOwner },
 			participantCount: Number(r.participant_count),
+			isPast: r.is_past === true || r.is_past === 't',
 			fee:
 				r.fee_cents == null
 					? null
@@ -210,16 +212,16 @@ export const actionEndpoints: ApiEndpoint[] = [
 			const data = await mdb().transaction(async (tx) => {
 				await tx.execute(
 					sql`INSERT INTO actions (id, name, description, location, starts_on, starts_time,
-							ends_on, ends_time, owner_id)
+							ends_on, ends_time, owner_id, is_past)
 						VALUES (${id}, ${body.name}, ${body.description}, ${body.location}, ${body.startsOn},
-							${body.startsTime}, ${body.endsOn}, ${body.endsTime}, ${ownerId})`
+							${body.startsTime}, ${body.endsOn}, ${body.endsTime}, ${ownerId}, ${body.isPast})`
 				);
 				return loadOne(ctx, tx, id);
 			});
 			const result = await summaryOf(ctx, data);
 			await core.audit.logFromContext(ctx, 'actions.action.created', {
 				target: id,
-				metadata: { name: result.name }
+				metadata: { name: result.name, isPast: result.isPast }
 			});
 			return result;
 		}
@@ -231,7 +233,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		tags,
 		permission: 'actions.action.view',
 		params: idParams,
-		body: actionInput,
+		body: actionUpdateInput,
 		handler: async ({ ctx, params, body }) => {
 			const data = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'edit');
@@ -239,7 +241,8 @@ export const actionEndpoints: ApiEndpoint[] = [
 					sql`UPDATE actions SET name = ${body.name}, description = ${body.description},
 							location = ${body.location}, starts_on = ${body.startsOn},
 							starts_time = ${body.startsTime}, ends_on = ${body.endsOn},
-							ends_time = ${body.endsTime}, updated_at = now()
+							ends_time = ${body.endsTime},
+							is_past = COALESCE(${body.isPast ?? null}::boolean, is_past), updated_at = now()
 						WHERE id = ${params.id}`
 				);
 				return loadOne(ctx, tx, params.id);
@@ -247,7 +250,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 			const result = await summaryOf(ctx, data);
 			await core.audit.logFromContext(ctx, 'actions.action.updated', {
 				target: params.id,
-				metadata: { name: result.name }
+				metadata: { name: result.name, isPast: result.isPast }
 			});
 			return result;
 		}

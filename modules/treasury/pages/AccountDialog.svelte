@@ -109,7 +109,7 @@
 					<Input id="ac-iban" bind:value={iban} maxlength={40} autocomplete="off" />
 				</FormField>
 			{/if}
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<FormField label="Anfangsbestand" id="ac-opening" error={errors.openingBalanceCents}>
 					<MoneyInput id="ac-opening" label="Anfangsbestand" bind:cents={opening} />
 				</FormField>

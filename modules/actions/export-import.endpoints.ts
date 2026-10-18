@@ -108,7 +108,7 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 		tx,
 		sql`SELECT name, description, location, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
 				starts_time, to_char(ends_on, 'YYYY-MM-DD') AS ends_on, ends_time,
-				fee_cents, team_fee_cents
+				fee_cents, team_fee_cents, is_past
 			FROM actions WHERE id = ${id}`
 	);
 	if (!action) throw errors.notFound('Aktion nicht gefunden');
@@ -138,8 +138,8 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 			tx,
 			sql`SELECT id, type, category, description, amount_cents,
 					to_char(entry_date, 'YYYY-MM-DD') AS entry_date, paid_by, payee_id,
-					receipt_path, receipt_name, receipt_content_type, reimbursed_at, recipient_name,
-					recipient_iban_enc, recipient_bic, purpose, club_paid_at
+					receipt_path, receipt_name, receipt_content_type, reimbursed_at, reimbursed_upfront,
+					recipient_name, recipient_iban_enc, recipient_bic, purpose, club_paid_at
 				FROM accounting_entries WHERE action_id = ${id} ORDER BY entry_date, created_at, id`
 		),
 		refund: await loadRefundSnapshot(tx, id),
@@ -230,6 +230,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			startsTime: str(rows.action.starts_time),
 			endsOn: str(rows.action.ends_on),
 			endsTime: str(rows.action.ends_time),
+			isPast: rows.action.is_past === true || rows.action.is_past === 't',
 			feeCents: rows.action.fee_cents == null ? null : Number(rows.action.fee_cents),
 			teamFeeCents: rows.action.team_fee_cents == null ? null : Number(rows.action.team_fee_cents)
 		},
@@ -316,6 +317,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			payeeRef: e.payee_id == null ? null : (yid.get(String(e.payee_id)) ?? null),
 			receipt: receiptOf.get(String(e.id)) as ArchiveDocument['entries'][number]['receipt'],
 			reimbursedAt: iso(e.reimbursed_at),
+			...(e.reimbursed_upfront === true ? { reimbursedUpfront: true } : {}),
 			transfer:
 				e.type === 'expense' && e.paid_by === 'club' && e.category !== 'refund'
 					? {
@@ -552,11 +554,11 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 			const a = doc.action;
 			await tx.execute(
 				sql`INSERT INTO actions (id, name, description, location, starts_on, starts_time, ends_on,
-						ends_time, owner_id, fee_cents, team_fee_cents, fee_applied_at, fee_applied_by)
+						ends_time, owner_id, fee_cents, team_fee_cents, fee_applied_at, fee_applied_by, is_past)
 					VALUES (${actionId}, ${a.name}, ${a.description}, ${a.location}, ${a.startsOn},
 						${a.startsTime}, ${a.endsOn}, ${a.endsTime}, ${ownerId}, ${a.feeCents},
 						${a.teamFeeCents}, ${a.feeCents == null ? null : now},
-						${a.feeCents == null ? null : ownerId})`
+						${a.feeCents == null ? null : ownerId}, ${a.isPast ?? false})`
 			);
 
 			const c = doc.calculation;
@@ -637,13 +639,13 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
 							amount_cents, entry_date, paid_by, payee_id, receipt_path, receipt_name,
-							receipt_content_type, reimbursed_at, created_by, created_at, updated_at,
+							receipt_content_type, reimbursed_at, reimbursed_upfront, created_by, created_at, updated_at,
 							recipient_name, recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose,
 							club_paid_at, club_paid_via)
 						VALUES (${eids.get(e.id)!}, ${actionId}, ${e.type}, ${e.category}, ${e.description},
 							${e.amountCents}, ${e.entryDate}, ${e.paidBy},
 							${e.payeeRef ? yids.get(e.payeeRef)! : null}, ${r?.path ?? null},
-							${r?.name ?? null}, ${r?.contentType ?? null}, ${e.reimbursedAt}, ${ownerId},
+							${r?.name ?? null}, ${r?.contentType ?? null}, ${e.reimbursedAt}, ${e.reimbursedUpfront === true}, ${ownerId},
 							${stamp(i)}, ${stamp(i)}, ${t?.recipientName ?? null}, ${iban?.enc ?? null},
 							${iban?.last ?? null}, ${t?.bic ?? null}, ${t?.purpose ?? null}, ${paidAt},
 							${paidAt ? 'manual' : null})`

@@ -300,11 +300,12 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
 							amount_cents, entry_date, paid_by, payee_id, created_by, recipient_name,
-							recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose, club_paid_at, club_paid_via)
+							recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose, club_paid_at, club_paid_via, reimbursed_at, reimbursed_upfront)
 						VALUES (${entryId}, ${id}, ${input.type}, ${input.category}, ${input.description},
 							${input.amountCents}, ${input.entryDate}, ${input.paidBy}, ${input.payeeId},
 							${ctx.userId ?? null}, ${r.name}, ${r.enc}, ${r.last}, ${r.bic}, ${r.purpose},
-							${r.paid ? sql`now()` : sql`NULL`}, ${r.paid ? 'manual' : null})`
+							${r.paid ? sql`now()` : sql`NULL`}, ${r.paid ? 'manual' : null},
+							${input.reimbursed ? sql`now()` : sql`NULL`}, ${input.reimbursed})`
 				);
 				return loadOne(tx, id, entryId);
 			});
@@ -314,7 +315,8 @@ export const accountingEndpoints: ApiEndpoint[] = [
 					entryId: entry.id,
 					type: input.type,
 					category: input.category,
-					amountCents: input.amountCents
+					amountCents: input.amountCents,
+					reimbursed: input.reimbursed
 				}
 			});
 			return entry;
@@ -340,6 +342,11 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				if (cur.reimbursed_at != null) throw errors.conflict(REIMBURSED_MSG);
 				if (cur.club_paid_via === 'treasury') throw errors.conflict(TRANSFERRED_MSG);
 				await validateEntry(tx, id, input);
+				if (input.reimbursed) {
+					throw errors.validation({
+						reimbursed: 'Die Erstattung kann nur beim Anlegen gesetzt werden'
+					});
+				}
 				const r = recipientValues(input, encrypted, cur);
 				// Einnahmen haben keine Belege
 				const dropReceipt = input.type === 'income' && cur.receipt_path != null;

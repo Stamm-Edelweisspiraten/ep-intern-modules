@@ -59,6 +59,8 @@ export interface AnnualSnapshot {
 		levels: Partial<Record<FeeLevel, number>>;
 		totalCents: number;
 	}[];
+	/** Ermäßigung auf den einen Posten (Cent); die Tabelle zeigt den Nennbetrag je Mitglied */
+	waivedCents?: number;
 }
 
 export interface InvoiceSnapshot {
@@ -134,15 +136,12 @@ function annualSnapshot(
 	if (inv.row.source !== 'annual' || inv.row.annual_year == null) return undefined;
 	const members: AnnualSnapshot['members'] = [];
 	const byId = new Map<string, AnnualSnapshot['members'][number]>();
-	for (const l of inv.lines) {
-		const memberId = String(l.member_id ?? '');
+	const memberOf = (memberId: string, fallback: string) => {
 		let m = byId.get(memberId);
 		if (!m) {
 			const c = contacts.get(memberId);
 			m = {
-				name: c
-					? `${c.firstName} ${c.lastName}`
-					: (names.members.get(memberId) ?? String(l.description)),
+				name: c ? `${c.firstName} ${c.lastName}` : (names.members.get(memberId) ?? fallback),
 				firstName: c?.firstName ?? (names.members.get(memberId) ?? '').split(' ')[0] ?? '',
 				levels: {},
 				totalCents: 0
@@ -150,15 +149,36 @@ function annualSnapshot(
 			byId.set(memberId, m);
 			members.push(m);
 		}
-		const cents = num(l.amount_cents) - num(l.waived_cents);
-		const level = str(l.fee_level) as FeeLevel | null;
-		if (level && FEE_LEVELS.includes(level)) m.levels[level] = (m.levels[level] ?? 0) + cents;
+		return m;
+	};
+	const add = (m: AnnualSnapshot['members'][number], level: string | null, cents: number) => {
+		if (level && (FEE_LEVELS as readonly string[]).includes(level)) {
+			m.levels[level as FeeLevel] = (m.levels[level as FeeLevel] ?? 0) + cents;
+		}
 		m.totalCents += cents;
+	};
+	let waivedCents = 0;
+	if (inv.annualItems.length) {
+		// Ein Posten (Stammesbeitrag); Aufschlüsselung aus `annual_fee_items`, Ermäßigung separat
+		for (const it of inv.annualItems) {
+			add(memberOf(String(it.member_id), ''), str(it.level), num(it.amount_cents));
+		}
+		waivedCents = inv.lines.reduce((s, l) => s + num(l.waived_cents), 0);
+	} else {
+		// Ältere Rechnungen: ein Posten je Mitglied und Ebene
+		for (const l of inv.lines) {
+			add(
+				memberOf(String(l.member_id ?? ''), String(l.description)),
+				str(l.fee_level),
+				num(l.amount_cents) - num(l.waived_cents)
+			);
+		}
 	}
 	return {
 		year: num(inv.row.annual_year),
 		pdfText: String(inv.row.annual_pdf_text ?? ''),
-		members
+		members,
+		...(waivedCents > 0 ? { waivedCents } : {})
 	};
 }
 
@@ -176,7 +196,9 @@ export async function buildSnapshot(
 	const actionId = str(inv.row.action_id) ?? str(inv.lines.find((l) => l.action_id)?.action_id);
 	const annual = inv.row.source === 'annual';
 	const memberIds = [
-		...new Set(inv.lines.filter((l) => l.member_id).map((l) => String(l.member_id)))
+		...new Set(
+			[...inv.annualItems, ...inv.lines].filter((l) => l.member_id).map((l) => String(l.member_id))
+		)
 	];
 	const contactIds = annual ? memberIds : memberIds.slice(0, 1);
 	const contacts = new Map(
@@ -235,12 +257,17 @@ ${intro}`
 			columns: ['Mitglied', ...FEE_LEVELS.map((l) => FEE_LEVEL_LABELS[l]), 'Summe'],
 			align: ['left', 'right', 'right', 'right', 'right', 'right'],
 			widths: [3, 1, 1, 1.3, 1, 1.2],
-			rows: a.members.map((m) => [
-				m.name,
-				...FEE_LEVELS.map((l) => (m.levels[l] != null ? eur(m.levels[l]!) : '–')),
-				eur(m.totalCents)
-			]),
-			totalRow: ['Rechnungsbetrag', '', '', '', '', eur(s.totalCents)]
+			rows: [
+				...a.members.map((m) => [
+					m.name,
+					...FEE_LEVELS.map((l) => (m.levels[l] != null ? eur(m.levels[l]!) : '–')),
+					eur(m.totalCents)
+				]),
+				...(a.waivedCents
+					? [[{ text: 'Ermäßigung', colspan: FEE_LEVELS.length + 1 }, `− ${eur(a.waivedCents)}`]]
+					: [])
+			],
+			totalRow: [{ text: 'Rechnungsbetrag', colspan: FEE_LEVELS.length + 1 }, eur(s.totalCents)]
 		}
 	];
 }
@@ -814,7 +841,7 @@ export async function payerStatementResponse(
 				align: ['left', 'left', 'left', 'right'],
 				widths: [1.2, 4, 1.2, 1.2],
 				rows: rowsOut,
-				totalRow: ['', 'Summe offen', '', eur(total)]
+				totalRow: [{ text: 'Summe offen', colspan: 3 }, eur(total)]
 			},
 			...(await paymentBlocks({
 				bank,

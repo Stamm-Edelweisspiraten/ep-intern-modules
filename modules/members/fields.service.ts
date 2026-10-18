@@ -18,6 +18,7 @@ import {
 	MEMBER_FIELD_PRESETS,
 	MEMBER_FIELD_TYPES,
 	MODULE_ID,
+	type MailCategory,
 	type MemberFieldDef
 } from './schemas';
 
@@ -189,6 +190,28 @@ async function linkedRows(tx: Tx, userId: string, memberId?: string): Promise<Ro
 	);
 }
 
+/** Abgewählte Mail-Kategorien je Mitglied (nur Mitglieder mit mindestens einer Abwahl im Ergebnis) */
+export async function loadMailOptOut(
+	tx: Tx,
+	memberIds: string[]
+): Promise<Map<string, MailCategory[]>> {
+	const out = new Map<string, MailCategory[]>();
+	if (!memberIds.length) return out;
+	const found = await rows(
+		tx,
+		sql`SELECT member_id, category FROM member_mail_prefs
+			WHERE enabled = false AND member_id IN (${sql.join(
+				memberIds.map((v) => sql`${v}`),
+				sql`, `
+			)}) ORDER BY category`
+	);
+	for (const r of found) {
+		const id = r.member_id as string;
+		out.set(id, [...(out.get(id) ?? []), r.category as MailCategory]);
+	}
+	return out;
+}
+
 async function toLinked(tx: Tx, list: Row[]): Promise<LinkedMemberData[]> {
 	if (!list.length) return [];
 	const ids = sql.join(
@@ -202,9 +225,24 @@ async function toLinked(tx: Tx, list: Row[]): Promise<LinkedMemberData[]> {
 	);
 	const emails = await rows(
 		tx,
-		sql`SELECT member_id, value FROM member_emails WHERE member_id IN (${ids}) ORDER BY position, id`
+		sql`SELECT member_id, name, value FROM member_emails WHERE member_id IN (${ids}) ORDER BY position, id`
 	);
+	const phones = await rows(
+		tx,
+		sql`SELECT member_id, name, value FROM member_phones WHERE member_id IN (${ids}) ORDER BY position, id`
+	);
+	const optOut = await loadMailOptOut(
+		tx,
+		list.map((r) => r.id as string)
+	);
+	const entries = (src: Row[], memberId: unknown) =>
+		src
+			.filter((e) => e.member_id === memberId)
+			.map((e) => ({ name: (e.name as string | null) ?? null, value: e.value as string }));
 	return list.map((r) => ({
+		phones: entries(phones, r.id),
+		emails: entries(emails, r.id),
+		mailOptOut: optOut.get(r.id as string) ?? [],
 		id: r.id as string,
 		firstName: r.first_name as string,
 		lastName: r.last_name as string,
@@ -254,7 +292,12 @@ async function memberContacts(
 			sql`, `
 		)}) ORDER BY position, id`
 	);
+	const optOut = await loadMailOptOut(
+		tx,
+		list.map((r) => r.id as string)
+	);
 	return list.map((r) => ({
+		mailOptOut: optOut.get(r.id as string) ?? [],
 		id: r.id as string,
 		firstName: r.first_name as string,
 		lastName: r.last_name as string,
@@ -276,7 +319,8 @@ async function memberContacts(
 	}));
 }
 
-export const membersService: MembersService = {
+/** `listMemberSheets` ergänzt `module.ts` (liegt in `sheets.service.ts`, Importzyklus vermeiden) */
+export const membersService: Omit<MembersService, 'listMemberSheets'> = {
 	listMemberContacts(query) {
 		return mdb().transaction((tx) => memberContacts(tx, query));
 	},

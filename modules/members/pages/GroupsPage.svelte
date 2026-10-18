@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
+	import FileDown from '@lucide/svelte/icons/file-down';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import X from '@lucide/svelte/icons/x';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { tick } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -20,8 +23,12 @@
 		EntityAvatar,
 		FileField,
 		FormField,
-		PageHeader
+		MobileActionBar,
+		PageHeader,
+		PdfExportDialog
 	} from '$lib/components/layout';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
+	import { downloadPdf } from './download';
 	import {
 		GROUP_IMAGE_CONTENT_TYPES,
 		GROUP_TYPES,
@@ -40,8 +47,69 @@
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canEdit = $derived(can(permissions, 'members.group.edit'));
 	const canDelete = $derived(can(permissions, 'members.group.delete'));
+	const canExport = $derived(
+		can(permissions, 'members.data.export') && can(permissions, 'members.member.view')
+	);
 
 	let groups = $state<Group[]>([]);
+
+	// --- Mitgliedsdaten-PDF (Seite je Gruppe) ---------------------------------------
+	let selected = $state<string[]>([]);
+	let sheetsBusy = $state(false);
+	const allSelected = $derived(groups.length > 0 && groups.every((g) => selected.includes(g.id)));
+	const someSelected = $derived(!allSelected && groups.some((g) => selected.includes(g.id)));
+	const SHEETS_MAX_GROUPS = 20;
+
+	function toggle(id: string, on: boolean) {
+		if (on && selected.length >= SHEETS_MAX_GROUPS && !selected.includes(id)) {
+			toast.error(`Höchstens ${SHEETS_MAX_GROUPS} Gruppen auf einmal`);
+			return;
+		}
+		selected = on ? [...new Set([...selected, id])] : selected.filter((i) => i !== id);
+	}
+	function toggleAll(on: boolean) {
+		selected = on ? groups.map((g) => g.id).slice(0, SHEETS_MAX_GROUPS) : [];
+	}
+	let sheetsOpen = $state(false);
+	let sheetCatalog = $state<ListCatalog | null>(null);
+	/** Ziel des Dialogs: gewählte Gruppen bzw. eine einzelne Zeile */
+	let sheetTarget = $state<{ ids: string[]; fileName: string }>({
+		ids: [],
+		fileName: 'Gruppen.pdf'
+	});
+	const sheetCount = $derived(
+		groups.filter((g) => sheetTarget.ids.includes(g.id)).reduce((s, g) => s + g.memberCount, 0)
+	);
+
+	/** Öffnet den Spalten-Dialog; der Katalog (inkl. Zusatzfelder) kommt vom Server */
+	async function openSheets(ids: string[], fileName: string) {
+		sheetTarget = { ids, fileName };
+		if (!sheetCatalog) {
+			try {
+				sheetCatalog = await apiFetch<ListCatalog>('/modules/members/members/sheet-columns');
+			} catch (e) {
+				toast.error(e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden');
+				return;
+			}
+		}
+		sheetsOpen = true;
+	}
+	async function groupSheets(selection: ListSelection) {
+		sheetsBusy = true;
+		try {
+			await downloadPdf(
+				'/api/v1/modules/members/groups/sheets.pdf',
+				{ method: 'POST', body: JSON.stringify({ groupIds: sheetTarget.ids, selection }) },
+				sheetTarget.fileName
+			);
+			toast.success('Mitgliederliste erzeugt');
+			sheetsOpen = false;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			sheetsBusy = false;
+		}
+	}
 	let members = $state<MemberRef[]>([]);
 	let loading = $state(true);
 	let loadError = $state('');
@@ -302,81 +370,135 @@
 	{/snippet}
 </PageHeader>
 
-<DataTable
-	caption="Gruppen"
-	{loading}
-	error={loadError}
-	empty={groups.length === 0}
-	emptyTitle="Noch keine Gruppen"
-	emptyDescription="Lege die erste Sippe oder Meute an."
->
-	{#snippet toolbar()}
-		{#if !loading && !loadError && members.length === 0}
-			<p class="w-full rounded-md border bg-muted/40 p-3 text-sm" role="status">
-				Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
-			</p>
-		{/if}
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			<Table.Head>Name</Table.Head>
-			<Table.Head>Typ</Table.Head>
-			<Table.Head>Leiter</Table.Head>
-			<Table.Head class="text-right">Mitglieder</Table.Head>
-			<Table.Head>Treffpunkt</Table.Head>
-			<Table.Head>Treffen</Table.Head>
-			{#if canEdit || canDelete}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
-		</Table.Row>
-	{/snippet}
-	{#each groups as g (g.id)}
-		<Table.Row>
-			<Table.Cell class="font-medium">
-				<div class="flex items-center gap-3">
-					<EntityAvatar name={g.name} src={g.hasImage ? imageUrl(g) : null} color={g.color} />
-					<span>{g.name}</span>
-				</div>
-			</Table.Cell>
-			<Table.Cell>
-				<Badge variant={g.type === 'sippe' ? 'default' : 'secondary'}>
-					{GROUP_TYPE_LABELS[g.type]}
-				</Badge>
-			</Table.Cell>
-			<Table.Cell>{g.leaders.map(personName).join(', ') || '–'}</Table.Cell>
-			<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
-			<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
-			<Table.Cell>{meetingText(g)}</Table.Cell>
-			{#if canEdit || canDelete}
-				<Table.Cell class="text-right">
-					<div class="flex justify-end gap-1">
-						{#if canEdit}
-							<Button
-								size="icon"
-								variant="ghost"
-								aria-label="Gruppe {g.name} bearbeiten"
-								onclick={() => openEdit(g)}
-							>
-								<Pencil class="size-4" />
-							</Button>
-						{/if}
-						{#if canDelete}
-							<Button
-								size="icon"
-								variant="ghost"
-								aria-label="Gruppe {g.name} löschen"
-								onclick={() => {
-									toDelete = g;
-									deleteOpen = true;
-								}}
-							>
-								<Trash2 class="size-4" />
-							</Button>
-						{/if}
+<div class={selected.length ? 'pb-20 sm:pb-0' : ''}>
+	<DataTable
+		caption="Gruppen"
+		mobile="cards"
+		{loading}
+		error={loadError}
+		empty={groups.length === 0}
+		emptyTitle="Noch keine Gruppen"
+		emptyDescription="Lege die erste Sippe oder Meute an."
+	>
+		{#snippet toolbar()}
+			{#if !loading && !loadError && members.length === 0}
+				<p class="w-full rounded-md border bg-muted/40 p-3 text-sm" role="status">
+					Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+				</p>
+			{/if}
+			<MobileActionBar
+				show={canExport && selected.length > 0}
+				label="Sammelaktionen"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
+			>
+				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={sheetsBusy}
+					onclick={() => openSheets(selected, 'Gruppen.pdf')}
+				>
+					<FileDown />
+					{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederlisten (PDF)'}
+				</Button>
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</MobileActionBar>
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				{#if canExport}
+					<Table.Head class="w-10">
+						<Checkbox
+							aria-label="Alle Gruppen auswählen"
+							checked={allSelected}
+							indeterminate={someSelected}
+							onCheckedChange={(v) => toggleAll(v === true)}
+						/>
+					</Table.Head>
+				{/if}
+				<Table.Head>Name</Table.Head>
+				<Table.Head>Typ</Table.Head>
+				<Table.Head>Leiter</Table.Head>
+				<Table.Head class="text-right">Mitglieder</Table.Head>
+				<Table.Head>Treffpunkt</Table.Head>
+				<Table.Head>Treffen</Table.Head>
+				{#if canEdit || canDelete || canExport}<Table.Head class="text-right">Aktionen</Table.Head
+					>{/if}
+			</Table.Row>
+		{/snippet}
+		{#each groups as g (g.id)}
+			<Table.Row data-state={selected.includes(g.id) ? 'selected' : undefined}>
+				{#if canExport}
+					<Table.Cell>
+						<Checkbox
+							aria-label={`Gruppe ${g.name} auswählen`}
+							checked={selected.includes(g.id)}
+							onCheckedChange={(v) => toggle(g.id, v === true)}
+						/>
+					</Table.Cell>
+				{/if}
+				<Table.Cell class="font-medium">
+					<div class="flex items-center gap-3">
+						<EntityAvatar name={g.name} src={g.hasImage ? imageUrl(g) : null} color={g.color} />
+						<span>{g.name}</span>
 					</div>
 				</Table.Cell>
-			{/if}
-		</Table.Row>
-	{/each}
-</DataTable>
+				<Table.Cell>
+					<Badge variant={g.type === 'sippe' ? 'default' : 'secondary'}>
+						{GROUP_TYPE_LABELS[g.type]}
+					</Badge>
+				</Table.Cell>
+				<Table.Cell>{g.leaders.map(personName).join(', ') || '–'}</Table.Cell>
+				<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
+				<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
+				<Table.Cell>{meetingText(g)}</Table.Cell>
+				{#if canEdit || canDelete || canExport}
+					<Table.Cell class="text-right">
+						<div class="flex justify-end gap-1">
+							{#if canExport}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Mitgliederliste der Gruppe {g.name} als PDF"
+									title="Mitgliederliste (PDF)"
+									disabled={sheetsBusy}
+									onclick={() => openSheets([g.id], `Gruppe-${g.name}.pdf`)}
+								>
+									<FileDown class="size-4" />
+								</Button>
+							{/if}
+							{#if canEdit}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Gruppe {g.name} bearbeiten"
+									onclick={() => openEdit(g)}
+								>
+									<Pencil class="size-4" />
+								</Button>
+							{/if}
+							{#if canDelete}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Gruppe {g.name} löschen"
+									onclick={() => {
+										toDelete = g;
+										deleteOpen = true;
+									}}
+								>
+									<Trash2 class="size-4" />
+								</Button>
+							{/if}
+						</div>
+					</Table.Cell>
+				{/if}
+			</Table.Row>
+		{/each}
+	</DataTable>
+</div>
 
 <Dialog.Root bind:open={formOpen}>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -534,3 +656,15 @@
 	destructive
 	onconfirm={confirmDelete}
 />
+
+{#if sheetCatalog}
+	<PdfExportDialog
+		bind:open={sheetsOpen}
+		title="Mitgliederliste der Gruppe(n)"
+		catalog={sheetCatalog}
+		count={sheetCount}
+		storageKey="pdf-list:groups"
+		busy={sheetsBusy}
+		onexport={groupSheets}
+	/>
+{/if}

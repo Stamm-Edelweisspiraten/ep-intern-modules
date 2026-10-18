@@ -204,7 +204,7 @@
 						aria-invalid={!!errors.recipientEmail}
 					/>
 				</FormField>
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					{#if !fixedLines}
 						<FormField label="Datum *" id="inv-issued" error={errors.issuedOn}>
 							<Input id="inv-issued" type="date" bind:value={issuedOn} />

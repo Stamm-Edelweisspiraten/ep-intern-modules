@@ -15,7 +15,7 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable } from '$lib/components/layout';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { InvoiceSummary, OpenItems, OpenItemsGroup } from '../schemas';
 	import {
@@ -97,6 +97,11 @@
 
 	let payOpen = $state(false);
 	let payInvoice = $state<InvoiceSummary | null>(null);
+
+	// Mailversand ist nicht rückholbar → vorher bestätigen
+	let confirmRemind = $state<InvoiceSummary | null>(null);
+	let confirmRemindOpen = $state(false);
+	let confirmAllOpen = $state(false);
 
 	async function remind(i: InvoiceSummary) {
 		busy = true;
@@ -189,6 +194,7 @@
 	{/if}
 
 	<DataTable
+		mobile="cards"
 		caption="Offene Posten"
 		{loading}
 		{error}
@@ -240,7 +246,12 @@
 				</Button>
 				<Button variant="outline" size="sm" onclick={exportCsv}><Download /> CSV</Button>
 				{#if perm.send}
-					<Button variant="outline" size="sm" onclick={runReminders} disabled={busy}>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => (confirmAllOpen = true)}
+						disabled={busy}
+					>
 						<Bell /> Erinnerungen senden
 					</Button>
 				{/if}
@@ -381,7 +392,13 @@
 											</DropdownMenu.Item>
 										{/if}
 										{#if perm.send}
-											<DropdownMenu.Item onclick={() => remind(i)} disabled={busy}>
+											<DropdownMenu.Item
+												onclick={() => {
+													confirmRemind = i;
+													confirmRemindOpen = true;
+												}}
+												disabled={busy}
+											>
 												Erinnerung senden
 											</DropdownMenu.Item>
 										{/if}
@@ -397,3 +414,21 @@
 </div>
 
 <MarkPaidDialog bind:open={payOpen} invoice={payInvoice} {accounts} onsaved={onchanged} />
+<ConfirmDialog
+	bind:open={confirmRemindOpen}
+	title="Erinnerung senden?"
+	description={confirmRemind
+		? `Die Zahlungserinnerung für ${confirmRemind.number} geht sofort per E-Mail raus und kann nicht zurückgeholt werden.`
+		: ''}
+	confirmLabel="Erinnerung senden"
+	onconfirm={() => {
+		if (confirmRemind) void remind(confirmRemind);
+	}}
+/>
+<ConfirmDialog
+	bind:open={confirmAllOpen}
+	title="Fällige Erinnerungen senden?"
+	description="Alle heute fälligen Zahlungserinnerungen gehen sofort per E-Mail raus und können nicht zurückgeholt werden."
+	confirmLabel="Erinnerungen senden"
+	onconfirm={runReminders}
+/>

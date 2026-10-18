@@ -617,7 +617,36 @@ export interface OpenItems {
 	totals: { openCents: number; overdueCents: number; creditCents: number; invoiceCount: number };
 }
 
+export const OVERVIEW_TASK_KINDS = [
+	'bank-missing',
+	'unallocated',
+	'overdue',
+	'payables-overdue',
+	'payables-no-iban',
+	'annual-draft',
+	'annual-scheduled',
+	'annual-missing'
+] as const;
+export type OverviewTaskKind = (typeof OVERVIEW_TASK_KINDS)[number];
+
+/** Offene Aufgabe der Kasse (Texte baut die Oberfläche aus `kind` und den Zahlen) */
+export interface OverviewTask {
+	kind: OverviewTaskKind;
+	severity: 'info' | 'warning' | 'critical';
+	/** Anzahl betroffener Einträge (Buchungen, Rechnungen, Überweisungen); 0 = nicht zählbar */
+	count: number;
+	cents: number | null;
+	/** Beitragsjahr (Jahresbeitrag) */
+	year: number | null;
+	/** Frist bzw. geplanter Versand (`YYYY-MM-DD`) */
+	date: string | null;
+	/** Ziel-Tab der Kasse; null = Einstellungen */
+	tab: 'transactions' | 'open' | 'payables' | 'annual' | null;
+}
+
 export interface Overview {
+	/** Aufgaben, wichtigste zuerst (leer = alles erledigt) */
+	tasks: OverviewTask[];
 	accounts: Account[];
 	balanceCents: number;
 	openCents: number;
@@ -718,6 +747,8 @@ export interface ActionReceivables {
 	feeCents: number;
 	teamFeeCents: number | null;
 	excluded: boolean;
+	/** Aktion liegt in der Vergangenheit (Posten eingefroren, keine neuen Rechnungen) */
+	isPast: boolean;
 	dueOn: string | null;
 	invoiceCount: number;
 	totalCents: number;

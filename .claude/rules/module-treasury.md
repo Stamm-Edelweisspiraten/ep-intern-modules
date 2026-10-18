@@ -148,8 +148,12 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - **Lauf** für Jahr Y: Stichtag = `created_on` (Anlagedatum). Mitglied am Tag D: (Eintritt fehlt oder ≤ D) und (Austritt fehlt oder > D).
   Eintritt im Jahr Y **nach dem 28.02.** (29.02. zählt als danach) → nur Stamm. Zweitmitglieder zahlen nur `feeLevels`
   (spät: nur Stamm, falls enthalten). 0 € → übersprungen (`skipped`). Frist: 31.03.Y, sonst heute + `minDays`.
-- **Eine Sammelrechnung je Zahler** (`payer_members`), sonst je Mitglied; Posten je Mitglied × Ebene,
-  `source_ref = annual:<Y>:<mitglied>:<ebene>` (Idempotenz: Mitglied mit vorhandenem Posten wird übersprungen, auch storniert).
+- **Eine Sammelrechnung je Zahler** (`payer_members`), sonst je Mitglied, mit genau **einem offenen Posten**
+  „Jahresbeitrag Y – Stammesbeitrag“ = Summe aller Mitglieder und Ebenen (eine Überweisung; Migration 0006, 2026-10-17).
+  Die Aufschlüsselung Mitglied × Ebene liegt in `annual_fee_items` (PDF-Tabelle, Idempotenz über `annual:<Y>:<mitglied>:<ebene>`;
+  Mitglied mit vorhandener Aufschlüsselung wird übersprungen, auch storniert). Der Posten trägt `member_id` nur bei einem Mitglied,
+  `source_ref = annual:<Y>:invoice:<rechnung>`. Ermäßigung gilt auf den Posten; im PDF eine Zeile „Ermäßigung“. Ältere Rechnungen
+  (Posten je Ebene mit `fee_level`) bleiben gültig und werden weiter gelesen.
 - **Nachberechnung** (`catch-up`, erst nach Versand): Mitglieder irgendwann im Jahr Y ohne Posten – gleiche Regel.
 - Versand: Rechnungen in EINER Transaktion (`nextInvoiceNumber`), danach `sendDocuments(…, 'annual', { subjectTpl, bodyTpl })`
   mit PDF an alle `invoiceAddresses`; Vars `{jahr}`, `{mitglieder}` zusätzlich. Geplanter Versand per Job `annual-fees` (stündlich,
@@ -172,6 +176,23 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
   Rate-Limit 30/min auf `preview.pdf`, `send`, `catch-up`, `resend`.
 - Audit `treasury.annual-fee.created|updated|deleted|scheduled|sent|catch-up|resent` (nur IDs/Zähler/Beträge).
 - Tests: `tests/unit/annual-fee.test.ts`, `tests/integration/treasury-annual-fee.test.ts`.
+
+## Mail-Abwahl je Mitglied (2026-10-17)
+- `members` liefert `MemberContact.mailOptOut`; `NameMaps.memberMailOptOut` (`resolveNames`). `invoiceAddresses(inv, names, category?)` filtert nur bei Kategorie:
+  abgewählte Mitglieder liefern keine Adresse; haben **alle** Mitglieder der Posten abgewählt, entfallen auch Rechnungs- und Zahleradresse. Eine gemeinsame Elternadresse
+  (Geschwister) bleibt, solange mindestens ein Kind nicht abgewählt hat.
+- **Nur `notifyPaid`** übergibt `'payment-confirmation'`. Erinnerungen, Rechnungen, Jahresbeitrag, Änderung/Storno bleiben ungefiltert (verbindlich).
+  Rechnung ohne Adresse gilt weiter als benachrichtigt (`paid_notified_at` gesetzt). Test: `tests/integration/members-own.test.ts`.
+
+## Vergangene Aktionen (`ReceivableSource.isPast`, 2026-10-18)
+- `planSync` **friert** Aktionen mit `isPast` ein: keine neuen Rechnungen, bestehende Zeilen (offen/bezahlt/storniert) werden weder
+  aktualisiert noch auto-storniert noch reaktiviert (Zeilen werden über `action:<id>:…` der eingefrorenen Menge zugeordnet). Flag weg → normal.
+  Ausgeschlossene Aktionen (`action_settings.excluded`) behalten ihr Verhalten (Storno).
+- `TreasuryService.invoiceForRegistration` liefert für vergangene Aktionen `null` (Anmeldebestätigung ohne Rechnungs-PDF/Zahlungsblock;
+  `isPast` per `listReceivableSources({ actionIds })`).
+- `GET /actions` (`ActionReceivables`) hat `isPast: boolean`; Aktion bleibt in der Liste, Zahlen aus vorhandenen Rechnungen.
+- Unverändert: Ist-statt-Soll (`contributionsForAction`), Auszahlungen (`syncPayables`: Auslage/Ausgabe/Rückzahlung/Guthaben).
+- Tests: `tests/integration/treasury-past.test.ts`, Unit `planSync` in `tests/unit/treasury-logic.test.ts`.
 
 ## Rechte
 | Schlüssel | Bedeutung |

@@ -22,7 +22,11 @@
 	import AccountingEntryDialog from './AccountingEntryDialog.svelte';
 	import PayoutsSection from './PayoutsSection.svelte';
 
-	let { actionId, canEdit }: { actionId: string; canEdit: boolean } = $props();
+	let {
+		actionId,
+		canEdit,
+		isPast = false
+	}: { actionId: string; canEdit: boolean; isPast?: boolean } = $props();
 
 	const base = $derived(`/modules/actions/actions/${actionId}/accounting`);
 
@@ -267,6 +271,7 @@
 		bind:open={entryOpen}
 		{actionId}
 		entry={editEntry}
+		{isPast}
 		payees={payeeChoices}
 		{canViewPayouts}
 		viaTreasury={!!acc?.payoutsViaTreasury}

@@ -3,6 +3,8 @@
 	import { toast } from 'svelte-sonner';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -26,6 +28,9 @@
 	let startsTime = $state('');
 	let endsOn = $state('');
 	let endsTime = $state('');
+	let isPast = $state(false);
+	// Nach manueller Wahl keine automatische Vorbelegung mehr
+	let pastTouched = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
@@ -40,9 +45,22 @@
 		startsTime = a?.startsTime ?? '';
 		endsOn = a?.endsOn ?? '';
 		endsTime = a?.endsTime ?? '';
+		isPast = a?.isPast ?? false;
+		pastTouched = !!a;
 		error = '';
 		fieldErrors = {};
 		busy = false;
+	});
+
+	const todayIso = () => {
+		const d = new Date();
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	};
+	// Beim Anlegen: liegt die Aktion (Ende, sonst Start) in der Vergangenheit, wird die Checkbox
+	// vorgeschlagen – eine laufende mehrtaegige Aktion zaehlt nicht als vergangen
+	$effect(() => {
+		if (!open || action || pastTouched || !startsOn) return;
+		isPast = (endsOn || startsOn) < todayIso();
 	});
 
 	const ids: Record<string, string> = {
@@ -96,7 +114,8 @@
 			startsOn,
 			startsTime: startsTime || null,
 			endsOn: endsOn || null,
-			endsTime: endsTime || null
+			endsTime: endsTime || null,
+			isPast
 		});
 		if (!parsed.success) {
 			const errs: Record<string, string> = {};
@@ -213,6 +232,24 @@
 						aria-describedby={fieldErrors.endsTime ? 'a-ends-time-error' : undefined}
 					/>
 				</FormField>
+			</div>
+			<div class="flex items-start gap-2">
+				<Checkbox
+					id="a-is-past"
+					checked={isPast}
+					onCheckedChange={(v) => {
+						isPast = v === true;
+						pastTouched = true;
+					}}
+					class="mt-0.5"
+				/>
+				<div class="grid gap-0.5">
+					<Label for="a-is-past">Diese Aktion liegt bereits in der Vergangenheit</Label>
+					<p class="text-xs text-muted-foreground">
+						Für Anmeldungen werden keine offenen Posten in der Kasse angelegt. Ausgaben kannst du
+						direkt als bereits erstattet bzw. bezahlt erfassen.
+					</p>
+				</div>
 			</div>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

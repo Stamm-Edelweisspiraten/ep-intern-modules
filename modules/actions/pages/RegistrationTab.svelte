@@ -18,12 +18,14 @@
 
 	let {
 		actionId,
+		isPast = false,
 		canEdit,
 		onchanged,
 		onopencalculation,
 		onopenparticipants
 	}: {
 		actionId: string;
+		isPast?: boolean;
 		canEdit: boolean;
 		onchanged?: () => void;
 		onopencalculation?: () => void;
@@ -217,6 +219,13 @@
 </script>
 
 <div class="flex flex-col gap-4">
+	{#if isPast}
+		<p class="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" role="note">
+			Diese Aktion liegt in der Vergangenheit: Für Anmeldungen werden keine Rechnungen in der Kasse
+			angelegt, die Bestätigungs-Mail enthält keine Zahlungsaufforderung. Der Disclaimer-Text
+			enthält ggf. weiterhin Beitrag und Kontodaten.
+		</p>
+	{/if}
 	{#if loading && !draft}
 		<div class="grid gap-4 lg:grid-cols-2" aria-busy="true">
 			<Skeleton class="h-96 w-full" />

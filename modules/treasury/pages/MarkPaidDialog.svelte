@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput } from '$lib/components/layout';
+	import { FormField, MoneyInput, toastWithUndo } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		markPaidInput,
@@ -101,7 +102,16 @@
 					r.payer.created ? `Zahler „${r.payer.name}“ angelegt` : `Zahler „${r.payer.name}“ ergänzt`
 				);
 			}
-			toast.success(parts.join(' · '));
+			// Rückgängig = Buchung löschen: nur anbieten, wenn das Recht dafür da ist
+			const canUndo = can((page.data.permissions ?? []) as string[], 'treasury.transaction.delete');
+			if (r.mailsSent || !canUndo) toast.success(parts.join(' · '));
+			else {
+				toastWithUndo({
+					message: parts.join(' · '),
+					undo: () => apiFetch(`${BASE}/transactions/${r.transactionId}`, { method: 'DELETE' }),
+					onundone: onsaved
+				});
+			}
 			open = false;
 			await onsaved();
 		} catch (err) {
@@ -135,7 +145,7 @@
 					invalid={!!errors.accountId}
 				/>
 			</FormField>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<FormField label="Betrag *" id="mp-amount" error={errors.amountCents}>
 					<MoneyInput
 						id="mp-amount"

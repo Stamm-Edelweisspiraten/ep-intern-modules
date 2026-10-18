@@ -1,13 +1,18 @@
-import { defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import type { FormValue } from '$lib/forms';
+import { membersService } from './fields.service';
 import {
 	buildLinkLetters,
 	claimLink,
 	ensureLinkCode,
 	listMemberLinks,
+	myFieldDefinitions,
 	myMembers,
 	publicLinkInfo,
 	registerWithLink,
-	unlinkUser
+	setMailPref,
+	unlinkUser,
+	updateLinkedContacts
 } from './link.service';
 import {
 	idParams,
@@ -15,7 +20,10 @@ import {
 	linkLettersInput,
 	linkRegisterInput,
 	linkTokenParams,
-	linkUserParams
+	linkUserParams,
+	mailPrefInput,
+	myContactsInput,
+	myFieldsInput
 } from './schemas';
 
 const tags = ['Mitglieder'];
@@ -82,17 +90,83 @@ export const linkEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, body }) => pdfResponse(await buildLinkLetters(ctx, body.ids))
 	}),
 
-	// Eigene Mitglieder (Basis fuer Eltern-Funktionen anderer Module). Nur mit Anmeldung, daher
-	// als „oeffentlicher“ Endpunkt mit Pflicht zur Session im Handler.
+	// Eigene Mitglieder (Profil, Eltern-Funktionen). Recht `members.own.view`/`.edit` (Rolle „Mitglied“).
 	defineEndpoint({
 		method: 'GET',
 		path: '/my/members',
-		summary: 'Mit dem eigenen Konto verknuepfte Mitglieder',
+		summary: 'Mit dem eigenen Konto verknuepfte Mitglieder (Kontakte, Zusatzfelder, Mail-Abwahlen)',
 		tags,
-		permission: null,
-		public: true,
+		permission: 'members.own.view',
 		rateLimit: { limit: 60, windowSec: 60 },
 		handler: ({ ctx }) => myMembers(ctx)
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/my/fields',
+		summary: 'Aktive Zusatzfelder fuer die eigenen Mitglieder',
+		tags,
+		permission: 'members.own.view',
+		rateLimit: { limit: 60, windowSec: 60 },
+		handler: () => myFieldDefinitions()
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/my/members/:id/fields',
+		summary: 'Zusatzfelder eines verknuepften Mitglieds aendern',
+		tags,
+		permission: 'members.own.edit',
+		rateLimit: { limit: 10, windowSec: 600 },
+		params: idParams,
+		body: myFieldsInput,
+		handler: async ({ ctx, params, body }) => {
+			await core.permissions.require(ctx, 'members.own.view');
+			return {
+				changed: await membersService.updateMemberFields(
+					ctx,
+					params.id,
+					body.values as Record<string, FormValue>
+				)
+			};
+		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/my/members/:id/contacts',
+		summary: 'Telefone und E-Mail-Adressen eines verknuepften Mitglieds aendern',
+		tags,
+		permission: 'members.own.edit',
+		rateLimit: { limit: 10, windowSec: 600 },
+		params: idParams,
+		body: myContactsInput,
+		handler: async ({ ctx, params, body }) => {
+			await core.permissions.require(ctx, 'members.own.view');
+			return updateLinkedContacts(ctx, params.id, body);
+		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/my/members/:id/mail-prefs',
+		summary: 'Abschaltbare Mail-Kategorie eines verknuepften Mitglieds an/aus',
+		tags,
+		permission: 'members.own.edit',
+		rateLimit: { limit: 10, windowSec: 600 },
+		params: idParams,
+		body: mailPrefInput,
+		handler: async ({ ctx, params, body }) => {
+			await core.permissions.require(ctx, 'members.own.view');
+			return setMailPref(ctx, params.id, body.category, body.enabled, true);
+		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/members/:id/mail-prefs',
+		summary: 'Abschaltbare Mail-Kategorie eines Mitglieds an/aus (Verwaltung)',
+		tags,
+		permission: 'members.member.edit',
+		params: idParams,
+		body: mailPrefInput,
+		handler: ({ ctx, params, body }) =>
+			setMailPref(ctx, params.id, body.category, body.enabled, false)
 	}),
 
 	// Oeffentlicher Ablauf (Link aus dem Brief + Code)

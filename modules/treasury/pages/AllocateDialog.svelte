@@ -10,7 +10,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MoneyInput } from '$lib/components/layout';
+	import { MoneyInput, toastWithUndo } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { distribute, normalizeName } from '../logic';
 	import type { AllocationResult, MatchSuggestion, OpenLine, Transaction } from '../schemas';
@@ -129,6 +129,11 @@
 			return;
 		}
 		busy = true;
+		const txId = transaction.id;
+		const previous = transaction.allocations.map((a) => ({
+			lineId: a.lineId,
+			amountCents: a.amountCents
+		}));
 		try {
 			const r = await apiFetch<AllocationResult>(
 				`${BASE}/transactions/${transaction.id}/allocations`,
@@ -142,7 +147,19 @@
 					r.payer.created ? `Zahler „${r.payer.name}“ angelegt` : `Zahler „${r.payer.name}“ ergänzt`
 				);
 			}
-			toast.success(parts.join(' · '));
+			if (r.mailsSent) toast.success(parts.join(' · '));
+			else {
+				// Rückweg: vorherige Zuordnung wiederherstellen (ohne Mail)
+				toastWithUndo({
+					message: parts.join(' · '),
+					undo: () =>
+						apiFetch(`${BASE}/transactions/${txId}/allocations`, {
+							method: 'PUT',
+							body: JSON.stringify({ allocations: previous, notify: false })
+						}),
+					onundone: onsaved
+				});
+			}
 			if (r.mailErrors) toast.error(`${r.mailErrors} Mail(s) konnten nicht gesendet werden`);
 			open = false;
 			await onsaved();
@@ -249,7 +266,7 @@
 								</label>
 								{#if checked}
 									<MoneyInput
-										class="w-32"
+										class="w-28 shrink-0 sm:w-32"
 										label={`Betrag für ${l.description}`}
 										cents={amounts[l.lineId] ?? 0}
 										max={l.openCents}

@@ -39,7 +39,7 @@ export const actionsService: ActionsService = {
 			const actions = await rows(
 				tx,
 				sql`SELECT a.id, a.name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
-					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, a.fee_cents, a.team_fee_cents
+					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, a.fee_cents, a.team_fee_cents, a.is_past
 				FROM actions a WHERE a.fee_applied_at IS NOT NULL AND a.fee_cents IS NOT NULL ${filter}
 				ORDER BY a.starts_on, a.id`
 			);
@@ -54,6 +54,7 @@ export const actionsService: ActionsService = {
 			);
 			return actions.map((a): ReceivableSource => ({
 				...ref(a),
+				isPast: a.is_past === true || a.is_past === 't',
 				feeCents: Number(a.fee_cents),
 				teamFeeCents: a.team_fee_cents == null ? null : Number(a.team_fee_cents),
 				participants: people
@@ -138,7 +139,7 @@ export const actionsService: ActionsService = {
 							AND type = 'expense' AND reimbursed_at IS NULL RETURNING amount_cents`
 					: sql`UPDATE accounting_entries SET reimbursed_at = NULL, updated_at = now()
 						WHERE action_id = ${actionId} AND payee_id = ${payeeId} AND paid_by = 'person'
-							AND reimbursed_at IS NOT NULL RETURNING amount_cents`
+							AND reimbursed_at IS NOT NULL AND reimbursed_upfront = false RETURNING amount_cents`
 			)
 		);
 		if (changed.length) {

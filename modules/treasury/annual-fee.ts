@@ -11,7 +11,9 @@
  * - Eintritt im Beitragsjahr nach dem 28.02. (der 29.02. zählt als danach) → nur Stammesbeitrag.
  * - Zweitmitglieder zahlen nur ihre `feeLevels`; bei spätem Eintritt nur `stamm`, falls enthalten.
  * - Posten mit 0 € entfallen; Mitglieder ohne Betrag landen in `skipped`.
- * - Idempotenz: Mitglieder mit vorhandenem Posten `annual:<jahr>:<mitglied>:…` werden übersprungen.
+ * - Eine Rechnung hat genau EINEN Posten (Stammesbeitrag = Summe aller Ebenen/Mitglieder); die Aufschlüsselung
+ *   steht in `items`. Idempotenz: Mitglieder mit vorhandener Aufschlüsselung `annual:<jahr>:<mitglied>:<ebene>`
+ *   (auch ältere Rechnungen mit Posten je Ebene) werden übersprungen.
  */
 import type {
 	AnnualPreview,
@@ -49,10 +51,21 @@ export interface PlannedLine {
 	sourceRef: string;
 }
 
+/** Der EINE offene Posten einer Jahresbeitrags-Rechnung: Gesamtsumme aller Ebenen und Mitglieder */
+export interface PlannedTotalLine {
+	/** nur bei genau einem Mitglied gesetzt (Filter, Adresse), sonst null */
+	memberId: string | null;
+	description: string;
+	amountCents: number;
+}
+
 export type PlannedInvoice = AnnualPreviewInvoice & {
 	/** E-Mail der Rechnung (Zahler bzw. erste Adresse des Mitglieds) */
 	recipientEmail: string | null;
-	lines: PlannedLine[];
+	/** Rechnungsposten: genau einer (Stammesbeitrag = Summe) */
+	lines: PlannedTotalLine[];
+	/** Aufschlüsselung je Mitglied und Ebene (PDF, Idempotenz) */
+	items: PlannedLine[];
 };
 
 export type AnnualPlan = Omit<AnnualPreview, 'invoices' | 'payerSuggestions'> & {
@@ -121,9 +134,12 @@ export function levelsFor(
 export const memberName = (m: Pick<AnnualMember, 'firstName' | 'lastName'>) =>
 	`${m.firstName} ${m.lastName}`.trim();
 
-export function annualLineDescription(year: number, level: FeeLevel, name: string): string {
+export function annualItemDescription(year: number, level: FeeLevel, name: string): string {
 	return `Jahresbeitrag ${year} ${FEE_LEVEL_LABELS[level]} – ${name}`.slice(0, 200);
 }
+
+/** Bezeichnung des einen Rechnungspostens */
+export const annualTotalDescription = (year: number) => `Jahresbeitrag ${year} – Stammesbeitrag`;
 
 const cmp = (a: string, b: string) => a.localeCompare(b, 'de');
 
@@ -166,7 +182,7 @@ export function planAnnualInvoices(p: {
 			memberId: m.id,
 			level,
 			amountCents: p.rates[level],
-			description: annualLineDescription(p.year, level, name),
+			description: annualItemDescription(p.year, level, name),
 			sourceRef: annualRef(p.year, m.id, level)
 		}));
 		const member: AnnualPreviewMember = {
@@ -189,12 +205,13 @@ export function planAnnualInvoices(p: {
 				emailCount: 0,
 				members: [],
 				lines: [],
+				items: [],
 				totalCents: 0
 			};
 			groups.set(key, inv);
 		}
 		inv.members.push(member);
-		inv.lines.push(...lines);
+		inv.items.push(...lines);
 		inv.totalCents += member.totalCents;
 		const emails = new Set(inv.emails);
 		for (const e of [...(payer?.email ? [payer.email] : []), ...m.emails]) {
@@ -202,6 +219,15 @@ export function planAnnualInvoices(p: {
 		}
 		inv.emails = [...emails];
 		inv.emailCount = inv.emails.length;
+	}
+	for (const inv of groups.values()) {
+		inv.lines = [
+			{
+				memberId: inv.members.length === 1 ? inv.members[0]!.memberId : null,
+				description: annualTotalDescription(p.year),
+				amountCents: inv.totalCents
+			}
+		];
 	}
 	const invoices = [...groups.values()].sort(
 		(a, b) => cmp(a.recipientName, b.recipientName) || cmp(a.key, b.key)

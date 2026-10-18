@@ -5,6 +5,7 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Download from '@lucide/svelte/icons/download';
+	import FileDown from '@lucide/svelte/icons/file-down';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
@@ -22,6 +23,7 @@
 		DataTable,
 		EmptyState,
 		PageHeader,
+		PdfExportDialog,
 		ShareMenu,
 		type ShareCandidate
 	} from '$lib/components/layout';
@@ -36,6 +38,8 @@
 		type Participant,
 		type ShareLevel
 	} from '../schemas';
+	import { downloadPdf } from '$lib/components/layout/download';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { fmtPeriod } from './format';
 	import { formatEuro } from '$lib/components/layout/money';
 	import ActionForm from './ActionForm.svelte';
@@ -79,9 +83,47 @@
 	);
 	const base = $derived(`/modules/actions/actions/${id}`);
 	/** Kasse aktiv: Teilnehmende tragen einen Zahlstand (auch `null` = keine Rechnung) */
-	const showPayments = $derived(participants.some((p) => p.payment !== undefined));
+	const showPayments = $derived(
+		participants.some((p) => !!p.payment) ||
+			(!action?.isPast && participants.some((p) => p.payment !== undefined))
+	);
 	const canOpenInvoices = $derived(can(permissions, 'treasury.cash.view'));
+	const canExportSheets = $derived(can(permissions, 'members.data.export'));
+	let sheetsBusy = $state(false);
+	let sheetsOpen = $state(false);
+	let sheetCatalog = $state<ListCatalog | null>(null);
+
+	/** Öffnet den Spalten-Dialog; der Katalog (Mitglieds- + Aktionsspalten) kommt vom Server */
+	async function openSheets() {
+		if (!sheetCatalog) {
+			try {
+				sheetCatalog = await apiFetch<ListCatalog>(`${base}/participants/pdf-columns`);
+			} catch (e) {
+				toast.error(e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden');
+				return;
+			}
+		}
+		sheetsOpen = true;
+	}
+	async function participantSheets(selection: ListSelection) {
+		sheetsBusy = true;
+		try {
+			await downloadPdf(
+				`/api/v1${base}/participants.pdf`,
+				{ method: 'POST', body: JSON.stringify({ selection }) },
+				'Teilnehmende.pdf'
+			);
+			sheetsOpen = false;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			sheetsBusy = false;
+		}
+	}
 	const paymentSummary = $derived.by(() => {
+		if (!showPayments && action?.isPast) {
+			return 'Liegt in der Vergangenheit – keine Rechnungen in der Kasse.';
+		}
 		if (!showPayments) return undefined;
 		const withInvoice = participants.filter((p) => p.payment);
 		if (!withInvoice.length) return 'Noch keine Beitragsrechnungen in der Kasse.';
@@ -263,6 +305,7 @@
 		description={`${fmtPeriod(action)}${action.location ? ` · ${action.location}` : ''}`}
 	>
 		{#snippet actions()}
+			{#if action?.isPast}<Badge variant="outline">Vergangen</Badge>{/if}
 			{#if shares}
 				<ShareMenu
 					shares={shares.shares}
@@ -399,6 +442,7 @@
 		<Tabs.Content value="participants">
 			<DataTable
 				caption="Teilnehmende"
+				mobile="cards"
 				title="Teilnehmende"
 				description={paymentSummary}
 				loading={partLoading}
@@ -411,6 +455,12 @@
 					<Button variant="outline" href={`/api/v1${base}/participants.csv`} download>
 						<Download /> CSV exportieren
 					</Button>
+					{#if canExportSheets}
+						<Button variant="outline" disabled={sheetsBusy} onclick={openSheets}>
+							<FileDown />
+							{sheetsBusy ? 'Erzeuge PDF …' : 'Teilnehmerliste (PDF)'}
+						</Button>
+					{/if}
 					{#if canEdit}
 						<Button onclick={openAddParticipant}><UserPlus /> Teilnehmende*n hinzufügen</Button>
 					{/if}
@@ -478,7 +528,7 @@
 
 		<Tabs.Content value="accounting">
 			{#if tab === 'accounting'}
-				<AccountingTab actionId={action.id} {canEdit} />
+				<AccountingTab actionId={action.id} {canEdit} isPast={action.isPast} />
 			{/if}
 		</Tabs.Content>
 
@@ -486,6 +536,7 @@
 			{#if tab === 'registration'}
 				<RegistrationTab
 					actionId={action.id}
+					isPast={action.isPast}
 					{canEdit}
 					onchanged={loadAction}
 					onopencalculation={() => (tab = 'calculation')}
@@ -539,4 +590,15 @@
 		destructive
 		onconfirm={confirmDeleteParticipant}
 	/>
+	{#if sheetCatalog}
+		<PdfExportDialog
+			bind:open={sheetsOpen}
+			title="Teilnehmerliste (PDF)"
+			catalog={sheetCatalog}
+			count={participants.length}
+			storageKey="pdf-list:action"
+			busy={sheetsBusy}
+			onexport={participantSheets}
+		/>
+	{/if}
 {/if}

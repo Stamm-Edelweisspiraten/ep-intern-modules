@@ -19,10 +19,13 @@
 		ColorBadge,
 		ConfirmDialog,
 		DataTable,
+		MobileActionBar,
 		PageHeader,
 		Pagination,
+		PdfExportDialog,
 		SearchInput
 	} from '$lib/components/layout';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import {
 		BULK_MAX_IDS,
@@ -38,7 +41,6 @@
 	import { downloadPdf } from './download';
 	import LinksDialog from './LinksDialog.svelte';
 	import MemberForm from './MemberForm.svelte';
-	import MemberView from './MemberView.svelte';
 
 	const PAGE_SIZE = 20;
 
@@ -47,6 +49,7 @@
 	const canDelete = $derived(can(permissions, 'members.member.delete'));
 	const canLinkView = $derived(can(permissions, 'members.link.view'));
 	const canLinkManage = $derived(can(permissions, 'members.link.manage'));
+	const canExport = $derived(can(permissions, 'members.data.export'));
 	const canUpload = $derived(can(permissions, 'members.storage.write'));
 	const canRemoveDoc = $derived(can(permissions, 'members.storage.delete'));
 
@@ -73,15 +76,19 @@
 	let editMember = $state<Member | null>(null);
 	let deleteOpen = $state(false);
 	let deleteMember = $state<Member | null>(null);
-	let viewOpen = $state(false);
-	let viewMember = $state<Member | null>(null);
+	/** Zeilenklick öffnet den Bearbeiten-Dialog als gesperrte Ansicht */
+	let formReadonly = $state(false);
+	// Verknuepfungen koennen sich bei offener Ansicht aendern: Zaehler aus der frisch geladenen Liste
+	const formLinkCount = $derived(
+		items.find((x) => x.id === editMember?.id)?.linkCount ?? editMember?.linkCount ?? 0
+	);
 
 	// --- Sammelaktionen ---------------------------------------------------------
 	let selected = $state<string[]>([]);
 	let bulkOpen = $state(false);
 	let bulkMode = $state<BulkMode>('add-groups');
 	let bulkDeleteOpen = $state(false);
-	const showSelect = $derived(canEdit || canDelete || canLinkManage);
+	const showSelect = $derived(canEdit || canDelete || canLinkManage || canExport);
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
@@ -113,6 +120,7 @@
 	let linksOpen = $state(false);
 	let linksMember = $state<Member | null>(null);
 	let lettersBusy = $state(false);
+	let sheetsBusy = $state(false);
 	function openLinks(m: Member) {
 		linksMember = m;
 		linksOpen = true;
@@ -131,6 +139,41 @@
 			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
 		} finally {
 			lettersBusy = false;
+		}
+	}
+
+	let sheetsOpen = $state(false);
+	let sheetCatalog = $state<ListCatalog | null>(null);
+	let sheetCatalogError = $state('');
+
+	/** Öffnet den Spalten-Dialog; der Katalog (inkl. Zusatzfelder) kommt vom Server */
+	async function openSheets() {
+		sheetCatalogError = '';
+		sheetsOpen = true;
+		if (sheetCatalog) return;
+		try {
+			sheetCatalog = await apiFetch<ListCatalog>('/modules/members/members/sheet-columns');
+		} catch (e) {
+			sheetCatalogError = e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden';
+			toast.error(sheetCatalogError);
+			sheetsOpen = false;
+		}
+	}
+
+	async function bulkSheets(selection: ListSelection) {
+		sheetsBusy = true;
+		try {
+			await downloadPdf(
+				'/api/v1/modules/members/members/sheets.pdf',
+				{ method: 'POST', body: JSON.stringify({ ids: selected, selection }) },
+				'Mitgliederliste.pdf'
+			);
+			toast.success(`Liste mit ${selected.length} Mitgliedern erzeugt`);
+			sheetsOpen = false;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			sheetsBusy = false;
 		}
 	}
 
@@ -188,9 +231,6 @@
 				if (stale) return;
 				items = r.items;
 				total = r.total;
-				// Offene Ansicht mit frischen Daten versorgen (z. B. nach Aenderung der Verknuepfungen)
-				const shown = viewMember;
-				if (shown) viewMember = r.items.find((x) => x.id === shown.id) ?? shown;
 				loadError = '';
 			})
 			.catch((e) => {
@@ -224,17 +264,21 @@
 
 	function openCreate() {
 		editMember = null;
+		formReadonly = false;
 		loadGroups();
 		formOpen = true;
 	}
 	function openEdit(m: Member) {
 		editMember = m;
+		formReadonly = false;
 		loadGroups();
 		formOpen = true;
 	}
 	function openView(m: Member) {
-		viewMember = m;
-		viewOpen = true;
+		editMember = m;
+		formReadonly = true;
+		loadGroups();
+		formOpen = true;
 	}
 	function rowKey(e: KeyboardEvent, m: Member) {
 		if (e.target !== e.currentTarget) return;
@@ -283,46 +327,47 @@
 	{/snippet}
 </PageHeader>
 
-<DataTable
-	caption="Mitglieder"
-	{loading}
-	error={loadError}
-	empty={!items.length}
-	emptyTitle="Keine Mitglieder gefunden"
-	emptyDescription={search || stage || groupId || status !== 'active'
-		? 'Passe Suche oder Filter an.'
-		: 'Es wurden noch keine Mitglieder angelegt.'}
->
-	{#snippet toolbar()}
-		<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
-		<SelectField
-			label="Nach Mitgliedschaft filtern"
-			class="w-auto"
-			options={statusOptions}
-			value={status}
-			onchange={(v) => setFilter('status', v && v !== 'active' ? v : '')}
-		/>
-		<SelectField
-			label="Nach Stand filtern"
-			emptyLabel="Alle Stände"
-			class="w-auto"
-			options={stageOptions}
-			value={stage || null}
-			onchange={(v) => setFilter('stage', v ?? '')}
-		/>
-		<SelectField
-			label="Nach Gruppe filtern"
-			emptyLabel="Alle Gruppen"
-			class="w-auto"
-			options={groupOptions}
-			value={groupId || null}
-			onchange={(v) => setFilter('groupId', v ?? '')}
-		/>
-		{#if selected.length}
-			<div
-				class="flex w-full flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2"
-				role="region"
-				aria-label="Sammelaktionen"
+<div class={selected.length ? 'pb-20 sm:pb-0' : ''}>
+	<DataTable
+		caption="Mitglieder"
+		mobile="cards"
+		{loading}
+		error={loadError}
+		empty={!items.length}
+		emptyTitle="Keine Mitglieder gefunden"
+		emptyDescription={search || stage || groupId || status !== 'active'
+			? 'Passe Suche oder Filter an.'
+			: 'Es wurden noch keine Mitglieder angelegt.'}
+	>
+		{#snippet toolbar()}
+			<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
+			<SelectField
+				label="Nach Mitgliedschaft filtern"
+				class="w-auto"
+				options={statusOptions}
+				value={status}
+				onchange={(v) => setFilter('status', v && v !== 'active' ? v : '')}
+			/>
+			<SelectField
+				label="Nach Stand filtern"
+				emptyLabel="Alle Stände"
+				class="w-auto"
+				options={stageOptions}
+				value={stage || null}
+				onchange={(v) => setFilter('stage', v ?? '')}
+			/>
+			<SelectField
+				label="Nach Gruppe filtern"
+				emptyLabel="Alle Gruppen"
+				class="w-auto"
+				options={groupOptions}
+				value={groupId || null}
+				onchange={(v) => setFilter('groupId', v ?? '')}
+			/>
+			<MobileActionBar
+				show={selected.length > 0}
+				label="Sammelaktionen"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
 			>
 				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
 				{#if canEdit}
@@ -345,6 +390,12 @@
 						{lettersBusy ? 'Erzeuge PDF …' : 'Verknüpfungs-Briefe (PDF)'}
 					</Button>
 				{/if}
+				{#if canExport}
+					<Button size="sm" variant="outline" disabled={sheetsBusy} onclick={openSheets}>
+						<FileDown />
+						{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederliste (PDF)'}
+					</Button>
+				{/if}
 				{#if canDelete}
 					<Button size="sm" variant="destructive" onclick={() => (bulkDeleteOpen = true)}>
 						<Trash2 /> Löschen
@@ -353,129 +404,143 @@
 				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
 					<X /> Auswahl aufheben
 				</Button>
-			</div>
-		{/if}
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			{#if showSelect}
-				<Table.Head class="w-10">
-					<Checkbox
-						aria-label="Alle Mitglieder dieser Seite auswählen"
-						checked={allOnPage}
-						indeterminate={someOnPage}
-						onCheckedChange={(v) => togglePage(v === true)}
-					/>
-				</Table.Head>
-			{/if}
-			<Table.Head>Name</Table.Head>
-			<Table.Head>Stand</Table.Head>
-			<Table.Head>Gruppen</Table.Head>
-			<Table.Head>Geburtsdatum</Table.Head>
-			<Table.Head>Darf gezeigt werden</Table.Head>
-			{#if canEdit || canDelete || canLinkView}<Table.Head class="text-right">Aktionen</Table.Head
-				>{/if}
-		</Table.Row>
-	{/snippet}
-	{#each items as m (m.id)}
-		<Table.Row
-			data-state={selected.includes(m.id) ? 'selected' : undefined}
-			class="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-			tabindex={0}
-			aria-label={`${m.firstName} ${m.lastName} anzeigen`}
-			onclick={() => openView(m)}
-			onkeydown={(e) => rowKey(e, m)}
-		>
-			{#if showSelect}
-				<Table.Cell onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
-					<Checkbox
-						aria-label={`${m.firstName} ${m.lastName} auswählen`}
-						checked={selected.includes(m.id)}
-						onCheckedChange={(v) => toggle(m.id, v === true)}
-					/>
+			</MobileActionBar>
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				{#if showSelect}
+					<Table.Head class="w-10">
+						<Checkbox
+							aria-label="Alle Mitglieder dieser Seite auswählen"
+							checked={allOnPage}
+							indeterminate={someOnPage}
+							onCheckedChange={(v) => togglePage(v === true)}
+						/>
+					</Table.Head>
+				{/if}
+				<Table.Head>Name</Table.Head>
+				<Table.Head>Stand</Table.Head>
+				<Table.Head>Gruppen</Table.Head>
+				<Table.Head>Geburtsdatum</Table.Head>
+				<Table.Head>Darf gezeigt werden</Table.Head>
+				{#if canEdit || canDelete || canLinkView}<Table.Head class="text-right">Aktionen</Table.Head
+					>{/if}
+			</Table.Row>
+		{/snippet}
+		{#each items as m (m.id)}
+			<Table.Row
+				data-state={selected.includes(m.id) ? 'selected' : undefined}
+				class="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				tabindex={0}
+				aria-label={`${m.firstName} ${m.lastName} anzeigen`}
+				onclick={() => openView(m)}
+				onkeydown={(e) => rowKey(e, m)}
+			>
+				{#if showSelect}
+					<Table.Cell onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+						<Checkbox
+							aria-label={`${m.firstName} ${m.lastName} auswählen`}
+							checked={selected.includes(m.id)}
+							onCheckedChange={(v) => toggle(m.id, v === true)}
+						/>
+					</Table.Cell>
+				{/if}
+				<Table.Cell class="font-medium">
+					{m.firstName}
+					{m.lastName}
+					{#if m.scoutName}<span class="text-muted-foreground">„{m.scoutName}“</span>{/if}
+					{#if m.secondaryMember}<Badge variant="outline" class="ml-1">Zweitmitglied</Badge>{/if}
+					{#if isLeft(m)}<Badge variant="destructive" class="ml-1">ausgetreten</Badge>{/if}
 				</Table.Cell>
-			{/if}
-			<Table.Cell class="font-medium">
-				{m.firstName}
-				{m.lastName}
-				{#if m.scoutName}<span class="text-muted-foreground">„{m.scoutName}“</span>{/if}
-				{#if m.secondaryMember}<Badge variant="outline" class="ml-1">Zweitmitglied</Badge>{/if}
-				{#if isLeft(m)}<Badge variant="destructive" class="ml-1">ausgetreten</Badge>{/if}
-			</Table.Cell>
-			<Table.Cell><Badge variant="secondary">{STAGE_LABELS[m.stage]}</Badge></Table.Cell>
-			<Table.Cell>
-				<div class="flex flex-wrap gap-1">
-					{#each m.groups as g (g.id)}
-						<ColorBadge color={g.color}>{g.name}</ColorBadge>
-					{/each}
-					{#if !m.groups.length}<span class="text-muted-foreground">–</span>{/if}
-				</div>
-			</Table.Cell>
-			<Table.Cell class="whitespace-nowrap">{fmtDate(m.birthDate)}{fmtAge(m.birthDate)}</Table.Cell>
-			<Table.Cell>
-				<ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-					{#each consents as c (c.key)}
-						{@const on = m[c.key]}
-						<li class="flex items-center gap-1" class:text-muted-foreground={!on}>
-							{#if on}
-								<Check class="size-3.5 text-primary" aria-hidden="true" />
-							{:else}
-								<Minus class="size-3.5" aria-hidden="true" />
-							{/if}
-							{c.label}<span class="sr-only">: {on ? 'ja' : 'nein'}</span>
-						</li>
-					{/each}
-				</ul>
-			</Table.Cell>
-			{#if canEdit || canDelete || canLinkView}
-				<Table.Cell
-					class="text-right"
-					onclick={(e) => e.stopPropagation()}
-					onkeydown={(e) => e.stopPropagation()}
-				>
-					<div class="flex justify-end gap-2">
-						{#if canLinkView}
-							<Button
-								size="icon"
-								variant="outline"
-								class="relative"
-								aria-label={`Verknüpfte Konten von ${m.firstName} ${m.lastName} (${m.linkCount})`}
-								title={`Verknüpfte Konten: ${m.linkCount}`}
-								onclick={() => openLinks(m)}
-								><Link2 />
-								{#if m.linkCount}
-									<span
-										class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-[10px] text-primary-foreground"
-										aria-hidden="true">{m.linkCount}</span
-									>
-								{/if}
-							</Button>
-						{/if}
-						{#if canEdit}
-							<Button
-								size="icon"
-								variant="outline"
-								aria-label={`${m.firstName} ${m.lastName} bearbeiten`}
-								onclick={() => openEdit(m)}><Pencil /></Button
-							>
-						{/if}
-						{#if canDelete}
-							<Button
-								size="icon"
-								variant="destructive"
-								aria-label={`${m.firstName} ${m.lastName} löschen`}
-								onclick={() => openDelete(m)}><Trash2 /></Button
-							>
-						{/if}
+				<Table.Cell><Badge variant="secondary">{STAGE_LABELS[m.stage]}</Badge></Table.Cell>
+				<Table.Cell>
+					<div class="flex flex-wrap gap-1">
+						{#each m.groups as g (g.id)}
+							<ColorBadge color={g.color}>{g.name}</ColorBadge>
+						{/each}
+						{#if !m.groups.length}<span class="text-muted-foreground">–</span>{/if}
 					</div>
 				</Table.Cell>
-			{/if}
-		</Table.Row>
-	{/each}
-	{#snippet footer()}
-		{#if items.length}<Pagination {total} limit={PAGE_SIZE} {offset} />{/if}
-	{/snippet}
-</DataTable>
+				<Table.Cell class="whitespace-nowrap"
+					>{fmtDate(m.birthDate)}{fmtAge(m.birthDate)}</Table.Cell
+				>
+				<Table.Cell>
+					<ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+						{#each consents as c (c.key)}
+							{@const on = m[c.key]}
+							<li class="flex items-center gap-1" class:text-muted-foreground={!on}>
+								{#if on}
+									<Check class="size-3.5 text-primary" aria-hidden="true" />
+								{:else}
+									<Minus class="size-3.5" aria-hidden="true" />
+								{/if}
+								{c.label}<span class="sr-only">: {on ? 'ja' : 'nein'}</span>
+							</li>
+						{/each}
+					</ul>
+				</Table.Cell>
+				{#if canEdit || canDelete || canLinkView}
+					<Table.Cell
+						class="text-right"
+						onclick={(e) => e.stopPropagation()}
+						onkeydown={(e) => e.stopPropagation()}
+					>
+						<div class="flex justify-end gap-2">
+							{#if canLinkView}
+								<Button
+									size="icon"
+									variant="outline"
+									class="relative"
+									aria-label={`Verknüpfte Konten von ${m.firstName} ${m.lastName} (${m.linkCount})`}
+									title={`Verknüpfte Konten: ${m.linkCount}`}
+									onclick={() => openLinks(m)}
+									><Link2 />
+									{#if m.linkCount}
+										<span
+											class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-[10px] text-primary-foreground"
+											aria-hidden="true">{m.linkCount}</span
+										>
+									{/if}
+								</Button>
+							{/if}
+							{#if canEdit}
+								<Button
+									size="icon"
+									variant="outline"
+									aria-label={`${m.firstName} ${m.lastName} bearbeiten`}
+									onclick={() => openEdit(m)}><Pencil /></Button
+								>
+							{/if}
+							{#if canDelete}
+								<Button
+									size="icon"
+									variant="destructive"
+									aria-label={`${m.firstName} ${m.lastName} löschen`}
+									onclick={() => openDelete(m)}><Trash2 /></Button
+								>
+							{/if}
+						</div>
+					</Table.Cell>
+				{/if}
+			</Table.Row>
+		{/each}
+		{#snippet footer()}
+			{#if items.length}<Pagination {total} limit={PAGE_SIZE} {offset} />{/if}
+		{/snippet}
+	</DataTable>
+</div>
+
+{#if sheetCatalog}
+	<PdfExportDialog
+		bind:open={sheetsOpen}
+		title="Mitgliederliste (PDF)"
+		catalog={sheetCatalog}
+		count={selected.length}
+		storageKey="pdf-list:members"
+		busy={sheetsBusy}
+		onexport={bulkSheets}
+	/>
+{/if}
 
 <LinksDialog
 	bind:open={linksOpen}
@@ -484,24 +549,17 @@
 	onchanged={() => reloadTick++}
 />
 
-<MemberView
-	bind:open={viewOpen}
-	member={viewMember}
-	{canEdit}
-	{canLinkView}
-	onedit={(m) => {
-		viewOpen = false;
-		openEdit(m);
-	}}
-	onlinks={(m) => openLinks(m)}
-/>
-
 <MemberForm
 	bind:open={formOpen}
 	member={editMember}
+	bind:readonly={formReadonly}
 	{groups}
 	{canUpload}
 	{canRemoveDoc}
+	{canEdit}
+	{canLinkView}
+	linkCount={formLinkCount}
+	onlinks={(m) => openLinks(m)}
 	onsaved={() => {
 		reloadTick++;
 	}}

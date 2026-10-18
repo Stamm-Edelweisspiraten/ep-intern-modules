@@ -219,6 +219,8 @@ export interface SyncSource {
 	startsOn: string;
 	feeCents: number;
 	teamFeeCents: number | null;
+	/** Aktion liegt in der Vergangenheit: Abgleich fasst ihre Posten nicht mehr an (eingefroren) */
+	isPast?: boolean;
 	participants: SyncSourceParticipant[];
 }
 
@@ -279,8 +281,15 @@ export function planSync(p: {
 	minDays: number;
 }): SyncPlan {
 	const desired = new Map<string, DesiredLine>();
+	// Vergangene Aktionen sind eingefroren: weder neue Posten noch Aenderungen/Storno/Reaktivierung
+	const frozen = new Set<string>();
+	for (const s of p.sources) if (s.isPast && !p.excludedActionIds.has(s.id)) frozen.add(s.id);
+	const frozenRef = (ref: string) => {
+		const m = /^action:([^:]+):/.exec(ref);
+		return !!m && frozen.has(m[1]!);
+	};
 	for (const s of p.sources) {
-		if (p.excludedActionIds.has(s.id)) continue;
+		if (p.excludedActionIds.has(s.id) || s.isPast) continue;
 		for (const part of s.participants) {
 			const amount = part.role === 'team' ? (s.teamFeeCents ?? 0) : s.feeCents;
 			if (!(amount > 0)) continue;
@@ -308,6 +317,7 @@ export function planSync(p: {
 	const seen = new Set<string>();
 	for (const e of p.existing) {
 		seen.add(e.sourceRef);
+		if (frozenRef(e.sourceRef)) continue;
 		const want = desired.get(e.sourceRef);
 		if (!want) {
 			if (!e.cancelled) plan.cancel.push({ invoiceId: e.invoiceId });

@@ -115,7 +115,8 @@ function reimburseEndpoint(method: 'POST' | 'DELETE'): ApiEndpoint {
 							WHERE action_id = ${id} AND payee_id = ${payeeId} AND paid_by = 'person'
 								AND type = 'expense' AND reimbursed_at IS NULL
 							RETURNING amount_cents`
-						: sql`UPDATE accounting_entries SET reimbursed_at = NULL, updated_at = now()
+						: sql`UPDATE accounting_entries SET reimbursed_at = NULL, reimbursed_upfront = false,
+									updated_at = now()
 							WHERE action_id = ${id} AND payee_id = ${payeeId} AND paid_by = 'person'
 								AND reimbursed_at IS NOT NULL
 							RETURNING amount_cents`

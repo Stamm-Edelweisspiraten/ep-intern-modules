@@ -82,6 +82,7 @@
 </script>
 
 <DataTable
+	mobile="cards"
 	caption="Rechnungen"
 	{loading}
 	{error}

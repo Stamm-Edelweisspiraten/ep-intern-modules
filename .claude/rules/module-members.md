@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.4.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.6.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -18,9 +18,10 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `members.service.ts` | `listMembers/getMember/createMember/updateMember/deleteMember`, `hydrate` (Telefone/E-Mails/Gruppen), Audit |
 | `members.endpoints.ts` | CRUD `/members` |
 | `groups.endpoints.ts` | CRUD `/groups` inkl. Leiter, Namens-Eindeutigkeit |
+| `member-list.ts` / `sheet-columns.ts` (rein) / `sheets.service.ts` / `sheets.endpoints.ts` | Mitgliedsdaten-PDF: Spalten-Katalog + Zeilen, `composeListBlocks`, Formatierer (`formatDateDe`, `ageOn`, `formatFieldValue`), Erzeugung für Mitglieder bzw. je Gruppe, Katalog-Endpoint, Dienst `listMemberSheets` |
 | `documents.endpoints.ts` | Datenschutz-/Anmeldedokument je Mitglied (multipart) |
 | `group-image.endpoints.ts` | Gruppenbild (multipart) |
-| `pages/MembersPage.svelte`, `MemberForm.svelte` (Tabs), `MemberView.svelte` (Sheet), `GroupsPage.svelte` | UI |
+| `pages/MembersPage.svelte`, `MemberForm.svelte` (Tabs, auch Ansicht), `GroupsPage.svelte` | UI |
 | `migrations/0001_init.sql` … `0006_membership.sql` | Schema |
 
 ## Datenmodell
@@ -47,6 +48,8 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `members.member.view` / `.edit` / `.delete` | Mitglieder lesen (auch Dokument-Download) / anlegen+ändern+Dokumente hoch/löschen / löschen |
 | `members.group.view` / `.edit` / `.delete` | Gruppen lesen (auch Bild) / anlegen+ändern+Bild / löschen |
 | `members.link.view` / `.manage` | verknüpfte Konten + Codestatus sehen / Code erzeugen, Briefe (PDF), Verknüpfung lösen |
+| `members.own.view` / `.edit` | Eigene (verknüpfte) Mitglieder sehen / Kontakte, Zusatzfelder, Mail-Einstellungen ändern (`.edit` setzt `.view` voraus, Handler prüfen beides); Manifest `defaultRoleGrants` vergibt beide an die Rolle „Mitglied“ |
+| `members.data.export` | Mitgliedsdaten-PDF (inkl. Telefone, Gesundheits-Zusatzfelder) erzeugen – auch `GET /actions/:id/participants.pdf`; zusätzlich `members.member.view` (+ `members.group.view` bei Gruppen) |
 | `members.storage.read` / `.write` / `.delete` | Core-Storage-Rechte (Upload braucht `.write`, Entfernen `.delete`); in der UI `canUpload`/`canRemoveDoc` |
 
 Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
@@ -65,6 +68,25 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
 | POST `/members/bulk` | member.edit (`delete`: zusätzlich member.delete) | Body `{ action: add-groups\|remove-groups\|set-stage\|set-consent\|delete, ids (1–200), … }`; Antwort `{ affected, skipped[{id,name,reason}] }`; unbekannte ID → 404 (nichts geändert); `remove-groups` lässt ≥ 1 Gruppe übrig, `delete` überspringt einzige Leiter (409-Grund); Audit `members.member.bulk_updated` ohne Namen |
 | POST/GET/DELETE `/members/:id/documents/:kind` | edit/view/edit | `kind` = `privacy`\|`registration`; Upload multipart Feld `file`, PDF/JPEG/PNG/WebP ≤ 10 MB; ersetzt altes |
 | POST/GET/DELETE `/groups/:id/image` | edit/view/edit | JPEG/PNG/WebP ≤ 2 MB; GET ohne Bild 404 |
+
+### Mitgliedsdaten-PDF (Listen, A4 quer, wählbare Spalten, 2026-10-17)
+- Layout: Vorlage `stamm-briefkopf-quer` (Fallback `compact` quer, `listTemplateInput` in `member-list.ts`), **eine Zeile je Person** in einer Gitter-Tabelle; Abschnitt = Überschrift +
+  Info (Anzahl, Stand, bei sensiblen Spalten „Vertraulich …“); je Gruppe neue Seite. Datenblatt-Layout (Karte je Person) entfällt. Layout/Auswahl-Logik in `$lib/pdf-lists`
+  (`normalizeSelection`, `visibleColumns`, `buildSectionedListBlocks`), im Modul gebündelt als `composeListBlocks` (`member-list.ts`, rein).
+- Katalog (`sheet-columns.ts`, rein): `buildMemberCatalog(defs)` = Basisspalten (`name`, `scoutName`, `stage`, `groups`, `age`, `birthDate`, `entryDate`, `address`, `phone`,
+  `emergencyPhone`, `email`, `consents`) + je Zusatzfeld `field.<schlüssel>` (Gruppe `health`, `sensitive`; `field.juleica` Gruppe `person`, nicht sensibel). `emergencyPhone` = Nummer mit
+  „Notfall“ in der Bezeichnung, sonst die erste. Voreinstellungen `fahrt` (Voreinstellung: Name, Gruppe, Alter, Notfall-Telefon, Ernährung, Allergien, Medikamente), `kontakt`, `gesundheit`, `minimal`
+  (`LIST_PRESET_KEYS`, auf vorhandene Spalten gekürzt). `rowFromMember(m, defs, today)` liefert alle Spalten als fertigen Text. Leere Spalten entfallen bei `hideEmpty` (Standard).
+- API (alle `members.data.export`, zusätzlich im Handler `members.member.view`, bei Gruppen `members.group.view` → sonst 403; PDF `private, no-store`):
+  `GET /members/sheet-columns` → `{ columns: ListColumn[], presets: ListPreset[] }`;
+  `POST /members/sheets.pdf` `{ ids (1–200), selection? }` (Reihenfolge = ids, unbekannt 404), `POST /groups/sheets.pdf` `{ groupIds (1–20), selection? }` (Seite je Gruppe, nur aktuelle Mitglieder,
+  Mehrfachmitglieder in jeder Gruppe). `selection = { preset?, columns (1–40), hideEmpty (Standard true) }` strikt; fehlt sie oder sind alle Schlüssel unbekannt → Voreinstellung `fahrt`.
+  Audit `members.member.sheet_generated` / `members.group.sheet_generated` (nur Zähler: `count`, `groups`, `columns`).
+  Falle: `sheetEndpoints` stehen in `module.ts` **vor** `memberEndpoints`, sonst fängt `GET /members/:id` den Pfad `/members/sheet-columns` ab (erster Treffer gewinnt).
+- Dienst `MembersService.listMemberSheets(ids)` (`sheets.service.ts`, in `module.ts` an `provides` gehängt – nicht in `fields.service.ts`, Importzyklus): Telefone, Anschrift, Gruppen, `custom`; **ohne Rechteprüfung**, der Aufrufer prüft `members.data.export`.
+  Genutzt von `actions` (`participants-sheet.endpoints.ts`).
+- UI: Bulk-Leiste Mitglieder „Mitgliedsdaten (PDF)“; `GroupsPage` mit Auswahl-Checkboxen, Bulk „Mitglieder der Gruppen (PDF)“ und Zeilenaktion; Spaltenauswahl per `PdfExportDialog`; `downloadPdf` liegt in `$lib/components/layout/download.ts`.
+- Tests: `tests/unit/member-list.test.ts`, `tests/integration/members-sheets.test.ts`, `tests/integration/actions-participants-pdf.test.ts`. Falle: `listAudit({action})` entfernt `_` aus dem Präfix → Präfix ohne Unterstrich suchen (`members.member.sheet`).
 
 ### Zusatzfelder und Dienst für andere Module (`fields.service.ts`, `contract.ts`, `pages/FieldsPage.svelte`)
 - Migration **0005**: `member_field_defs (key PK, position, active, preset, definition jsonb)`, `members.custom jsonb`. Vorlagen (Seed, `preset`, Schlüssel/Typ fest, nicht löschbar,
@@ -97,7 +119,7 @@ verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem Code eine
 | POST `/members/:id/link-code` | link.manage | neuer Code + Token, Zähler/Sperre zurück |
 | DELETE `/members/:id/links/:userId` | link.manage | Verknüpfung lösen (404 wenn nicht vorhanden) |
 | GET `/members/:id/link-letter.pdf`, POST `/members/link-letters.pdf` `{ids ≤ 100}` | link.manage | PDF bzw. ein zusammengeführtes PDF (Reihenfolge = ids; unbekannte ID → 404); rohe Response → Status 200 |
-| GET `/my/members` | angemeldet (public + Session-Pflicht) | eigene Mitglieder – Basis für Eltern-Funktionen anderer Module |
+| GET `/my/members` | own.view | eigene Mitglieder, siehe „Eigene Mitglieder im Profil“ |
 | GET `/public/link/:token` | öffentlich | nur Vorname + `viewer`; unbekannt/abgelaufen 404 |
 | POST `/public/link/:token/claim` | öffentlich + Session | `{code, relation?}`; ohne Anmeldung 401, falscher/gesperrter Code 403 |
 | POST `/public/link/:token/register` | öffentlich | `{code,name,email,password≥12,relation?}` → Konto mit Rolle „Mitglied“ (`core.users.registerWithRole`), 409 bei vorhandener E-Mail |
@@ -105,6 +127,24 @@ Schutz: 10 Fehlversuche je Mitglied → 60 min Sperre (Zähler wird vor dem Werf
 Öffentliche Seite `/p/members/verknuepfen/<token>`: Code, „Ich habe ein Konto“ (Login mit `redirectTo`, Code in `sessionStorage`) oder „Neues Konto“.
 UI: Zeilenaktion „Verknüpfte Konten“ (Badge `linkCount`) → `LinksDialog`; Sammelleiste „Verknüpfungs-Briefe (PDF)“ (`downloadPdf`).
 Audit: `members.link.code_created|created|registered|removed|letters_generated` (nur IDs/Zähler).
+
+### Eigene Mitglieder im Profil (Migration 0008, 2026-10-17)
+Alle Endpoints: Session/API-Key, **nicht** öffentlich, Recht `members.own.*`; fremdes Mitglied → 404. Eltern ändern **nicht**: Name, Geburtsdatum, Stand, Gruppen,
+Einwilligungen, Ein-/Austritt, Adresse, Dokumente.
+| Methode + Pfad | Recht | Antwort / Besonderheiten |
+|---|---|---|
+| GET `/my/members` | own.view (60/min) | `[{id, firstName, lastName, scoutName, relation, birthDate, groups[{id,name}], phones[{name,value}], emails[{name,value}], custom, mailOptOut[]}]` |
+| GET `/my/fields` | own.view (60/min) | `{fields:[{key, field: FieldDefinition, sensitive}]}` – aktive Zusatzfelder; `sensitive` = Gesundheitsfelder (`SENSITIVE_FIELD_KEYS`) |
+| PUT `/my/members/:id/fields` | own.edit (10/600 s) | `{values}` → `{changed: string[]}`; unbekannt/inaktiv 422; Audit `members.member.fields_updated` |
+| PUT `/my/members/:id/contacts` | own.edit (10/600 s) | `{phones, emails}` (je ≤ 10, Duplikate 422) → `{phones, emails}`. `updateLinkedContacts`: Link-JOIN `FOR UPDATE` = Besitzprüfung; war vorher ≥ 1 E-Mail da, muss ≥ 1 bleiben (422). Audit `members.member.contacts_updated` nur Zähler `{phonesAdded, phonesRemoved, emailsAdded, emailsRemoved}` |
+| PUT `/my/members/:id/mail-prefs` | own.edit (10/600 s) | `{category:'payment-confirmation'|'action-info', enabled}` → `{mailOptOut}`; verbindliche/unbekannte Kategorie 422 |
+| PUT `/members/:id/mail-prefs` | member.edit | gleiche Logik für jedes Mitglied (Verwaltung) |
+- `GET /my/members` verlangt jetzt `members.own.view` (früher nur Anmeldung). `actions` nutzt den Dienst (`listLinkedMembers`), nicht den Endpoint – unberührt.
+- **Mail-Einstellungen**: Tabelle `member_mail_prefs(member_id FK CASCADE, category CHECK, enabled, updated_at, updated_by)`; **nur Abwahlen** (`enabled=false`) werden gespeichert,
+  „an“ löscht die Zeile. `MAIL_CATEGORIES` (abschaltbar: `payment-confirmation`, `action-info`) / `MANDATORY_MAIL` (`invoice`, `annual-fee`, `reminder`, `registration`) in `schemas.ts`.
+  `MemberContact.mailOptOut` und `LinkedMemberData.{phones,emails,mailOptOut}` im Dienstvertrag. Audit `members.member.mail_pref_updated` (`category`, `enabled`).
+  Migrationsnummer 0008 (0007 ist in `members` unbenutzt).
+- Tests: `tests/integration/members-own.test.ts` (Zugriffsmatrix, Kontakte, Felder, Mail-Prefs, Rate-Limit, Zahlungsbestätigung in der Kasse).
 
 Ohne S3 antworten Upload/Download mit `503 unavailable`. Storage-Pfad `<id>/<kind>-<uuid>-<bereinigter Name>`;
 bei DB-Fehler nach Upload wird die Datei wieder entfernt.
@@ -118,7 +158,7 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
 - Gruppe: `meetingWeekday` 1–7 (optional), `meetingTime` `HH:MM`, `color` Hex (wird normalisiert), `leaderIds` 1–20.
 
 ## UI
-- `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberView`; Checkbox- und Aktionszelle stoppen den Klick.
+- `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberForm` als Ansicht (`readonly`); Checkbox- und Aktionszelle stoppen den Klick.
   Filter „Mitgliedschaft“ (Aktiv/Ausgetreten/Alle, URL-Parameter `status`, Standard aktiv); Badges „Zweitmitglied“, „ausgetreten“ in der Namenszelle.
   Checkbox-Spalte + Sammelleiste (Gruppen hinzufügen/entfernen, Stand, Einwilligungen, Löschen; `BulkDialog`), Auswahl wird bei Filterwechsel verworfen. `DataTable` (Suche, Filter Stand/Gruppe via `SelectField`), Spalten Name, Stand, Gruppen (Farb-Badges),
   Geburtsdatum + Alter, „Darf gezeigt werden“ (Einwilligungen), Aktionen; Dialog `MemberForm` (`ContactListField`,
@@ -127,8 +167,10 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
   Checkboxen „Beitrag bei uns zahlen für“) / Weitere Angaben (nur mit sichtbaren Zusatzfeldern) / Einwilligungen & Dokumente.
   Öffnet auf `initialTab` (Standard „Person“); bei Fehlern Wechsel zum ersten Tab mit Fehler, roter Punkt an betroffenen Tabs;
   Inhalt scrollt, Footer bleibt sichtbar, Mindesthöhe gegen Springen.
-- `MemberView`: Sheet rechts (nur Lesen) mit Avatar, Badges (Stand, Zweitmitglied, ausgetreten) und Abschnitten wie die Tabs
-  (`SummaryList`, tel:/mailto:-Links, Dokument-Downloads); Buttons „Bearbeiten“ (`member.edit`) und „Verknüpfte Konten“ (`link.view`).
+- Ansicht = `MemberForm` mit `readonly` (bindable): gleiche Tabs, alle Felder über `<fieldset disabled>` gesperrt (gut lesbar,
+  ohne Abblenden), Titel = Name + Badges (Stand, Zweitmitglied, ausgetreten), Kontaktlisten mit `ContactListField readonly`,
+  Gruppen als Farb-Badges, Dokumente nur als Link; Footer „Verknüpfte Konten (n)“ (`link.view`), „Schließen“, „Bearbeiten“
+  (`member.edit`, schaltet im selben Dialog frei, Tab bleibt). Früheres Sheet `MemberView` ist entfallen (2026-10-17, Wunsch des Nutzers).
 - `GroupsPage`: Tabelle Name, Typ, Leiter, Mitglieder, Treffpunkt, Treffen; Dialog mit `ColorPicker`, `MultiSelect`
   Leiter, `FileField` Bild. Buttons nach `can(permissions, …)` ein-/ausgeblendet.
 

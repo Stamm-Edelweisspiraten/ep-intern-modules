@@ -1,4 +1,5 @@
 import type { FieldDefinition, FormValue } from '$lib/forms';
+import type { MailCategory } from './schemas';
 
 /**
  * Vertrag der Dienste, die `members` abhängigen Modulen anbietet (`ModuleDefinition.provides`).
@@ -20,6 +21,10 @@ export interface LinkedMemberData {
 	country: string;
 	/** Werte der Zusatzfelder (Schlüssel → Wert) */
 	custom: Record<string, FormValue>;
+	phones: { name: string | null; value: string }[];
+	emails: { name: string | null; value: string }[];
+	/** Abgewählte, abschaltbare Mail-Kategorien */
+	mailOptOut: MailCategory[];
 }
 
 export interface MemberFieldDefinition {
@@ -45,6 +50,35 @@ export interface MemberContact {
 	secondaryMember: boolean;
 	/** Ebenen, die bei uns gezahlt werden: Teilmenge von `stamm|gau|landesmark|bund` (bei Nicht-Zweitmitgliedern alle) */
 	feeLevels: ('stamm' | 'gau' | 'landesmark' | 'bund')[];
+	/** Abgewählte, abschaltbare Mail-Kategorien (Standard: leer = alle an) */
+	mailOptOut: MailCategory[];
+}
+
+/** Alle Daten eines Mitglieds für Datenblätter (PDF) – inkl. Telefone und Zusatzfelder (Gesundheit) */
+export interface MemberSheetData {
+	id: string;
+	firstName: string;
+	lastName: string;
+	scoutName: string | null;
+	/** JJJJ-MM-TT */
+	birthDate: string;
+	/** Beschriftung des Stands (z. B. „Wölfling“) */
+	stage: string;
+	street: string;
+	postalCode: string;
+	city: string;
+	/** ISO-3166-Alpha-2 */
+	country: string;
+	phones: { name: string | null; value: string }[];
+	emails: { name: string | null; value: string }[];
+	groups: { id: string; name: string }[];
+	consentSocialMedia: boolean;
+	consentWebsite: boolean;
+	consentPrint: boolean;
+	entryDate: string | null;
+	exitDate: string | null;
+	/** Werte der Zusatzfelder (Schlüssel → Wert) */
+	custom: Record<string, FormValue>;
 }
 
 export interface MembersService {
@@ -72,4 +106,9 @@ export interface MembersService {
 	}): Promise<MemberContact[]>;
 	/** Aktive Zusatzfelder (für den Formular-Builder anderer Module) */
 	listFieldDefinitions(): Promise<MemberFieldDefinition[]>;
+	/**
+	 * Datenblätter (inkl. Telefone, Zusatzfelder) ohne Rechteprüfung – der AUFRUFER prüft sein Recht
+	 * (`members.data.export`). Reihenfolge wie `ids` (≤ 200), unbekannte IDs entfallen.
+	 */
+	listMemberSheets(ids: string[]): Promise<MemberSheetData[]>;
 }

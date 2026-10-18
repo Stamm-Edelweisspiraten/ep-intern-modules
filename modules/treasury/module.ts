@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
 import { accountEndpoints } from './accounts.endpoints';
 import { annualFeeEndpoints } from './annual-fee.endpoints';
+import { historyEndpoints } from './history.endpoints';
 import { runScheduledAnnualFees } from './annual-fee.service';
 import { importEndpoints } from './import.endpoints';
 import { invoiceEndpoints } from './invoices.endpoints';
@@ -10,6 +11,7 @@ import m0002 from './migrations/0002_extensions.sql?raw';
 import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
 import m0004 from './migrations/0004_club_expenses.sql?raw';
 import m0005 from './migrations/0005_annual_fees.sql?raw';
+import m0006 from './migrations/0006_annual_fee_items.sql?raw';
 import { runReminderJob } from './notify';
 import { closedAccountingEndpoints } from './closed-accountings';
 import { payableEndpoints, payableReceiptEndpoints } from './payables';
@@ -208,7 +210,8 @@ export default defineModule({
 		{ name: '0002_extensions', sql: m0002 },
 		{ name: '0003_payer_from_bookings', sql: m0003 },
 		{ name: '0004_club_expenses', sql: m0004 },
-		{ name: '0005_annual_fees', sql: m0005 }
+		{ name: '0005_annual_fees', sql: m0005 },
+		{ name: '0006_annual_fee_items', sql: m0006 }
 	],
 	jobs: [
 		{
@@ -245,6 +248,7 @@ export default defineModule({
 		...closedAccountingEndpoints,
 		...importEndpoints,
 		...reportEndpoints,
-		...annualFeeEndpoints
+		...annualFeeEndpoints,
+		...historyEndpoints
 	]
 });

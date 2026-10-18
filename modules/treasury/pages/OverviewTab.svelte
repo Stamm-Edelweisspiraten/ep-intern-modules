@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Info from '@lucide/svelte/icons/info';
 	import Landmark from '@lucide/svelte/icons/landmark';
+	import Plus from '@lucide/svelte/icons/plus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Upload from '@lucide/svelte/icons/upload';
 	import Wallet from '@lucide/svelte/icons/wallet';
 	import { apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
@@ -18,6 +25,7 @@
 		ACCOUNT_KIND_LABELS,
 		type ActionReceivables,
 		type Overview,
+		type OverviewTask,
 		type Transaction
 	} from '../schemas';
 	import {
@@ -36,11 +44,17 @@
 		onopen,
 		onallocate,
 		onsuggestions,
+		oncreate,
+		onimport,
 		onchanged
 	}: SharedData & {
 		onopen: (tab: string) => void;
 		onallocate: (t: Transaction) => void;
 		onsuggestions: () => void;
+		/** Neue Buchung erfassen */
+		oncreate: () => void;
+		/** CSV-Import öffnen */
+		onimport: () => void;
 		onchanged: () => void | Promise<void>;
 	} = $props();
 
@@ -99,6 +113,70 @@
 		}
 	}
 
+	const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+	/** Titel, Erklärung und Knopf einer Aufgabe */
+	function taskView(t: OverviewTask): { title: string; hint: string; action: string } {
+		const money = t.cents != null ? ` (${formatEuro(t.cents)})` : '';
+		switch (t.kind) {
+			case 'bank-missing':
+				return {
+					title: 'Kontodaten fehlen',
+					hint: 'Ohne Kontoinhaber und IBAN enthalten Rechnungen, Mails und Bestätigungen keine Zahlungsdaten.',
+					action: 'Einstellungen öffnen'
+				};
+			case 'unallocated':
+				return {
+					title: `${plural(t.count, 'Einnahme wartet', 'Einnahmen warten')} auf Zuordnung${money}`,
+					hint: 'Ordne die Zahlung einer Rechnung zu, damit sie als bezahlt gilt.',
+					action: perm.editTx ? 'Vorschläge prüfen' : 'Buchungen ansehen'
+				};
+			case 'overdue':
+				return {
+					title: `${plural(t.count, 'Rechnung ist', 'Rechnungen sind')} überfällig${money}`,
+					hint: 'Erinnerungen laufen automatisch; du kannst auch selbst erinnern.',
+					action: 'Offene Posten'
+				};
+			case 'payables-overdue':
+				return {
+					title: `${plural(t.count, 'Überweisung ist', 'Überweisungen sind')} überfällig${money}`,
+					hint: 'Diese Auszahlungen sollten schnell raus.',
+					action: 'Auszahlungen'
+				};
+			case 'payables-no-iban':
+				return {
+					title: `${plural(t.count, 'Überweisung hat', 'Überweisungen haben')} keine IBAN${money}`,
+					hint: 'Ohne IBAN lässt sich nicht überweisen.',
+					action: 'Auszahlungen'
+				};
+			case 'annual-draft':
+				return {
+					title: `Beitragslauf ${t.year} ist noch nicht versendet`,
+					hint: t.date
+						? `Zahlungsfrist ${fmtDate(t.date)}.`
+						: 'Sätze prüfen und Rechnungen senden.',
+					action: 'Beitragslauf öffnen'
+				};
+			case 'annual-scheduled':
+				return {
+					title: `Beitragslauf ${t.year} ist geplant`,
+					hint: t.date ? `Versand am ${fmtDate(t.date)}.` : 'Der Versand ist geplant.',
+					action: 'Ansehen'
+				};
+			case 'annual-missing':
+				return {
+					title: `Für ${t.year} gibt es noch keinen Beitragslauf`,
+					hint: 'Lege den Lauf an, wenn die Jahresbeiträge berechnet werden sollen.',
+					action: 'Beitragslauf anlegen'
+				};
+		}
+	}
+
+	function runTask(t: OverviewTask) {
+		if (t.kind === 'unallocated' && perm.editTx) onsuggestions();
+		else if (t.tab) onopen(t.tab);
+	}
+
 	const pct = (a: ActionReceivables) =>
 		a.totalCents > 0 ? Math.min(100, Math.round((a.paidCents / a.totalCents) * 100)) : 0;
 </script>
@@ -116,20 +194,62 @@
 	</Card.Root>
 {:else if data}
 	<div class="space-y-6">
-		{#if data.bankMissing}
-			<div
-				class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/50 bg-amber-50 px-4 py-3 text-sm dark:bg-amber-950/30"
-				role="alert"
-			>
-				<span>
-					<strong>Kontodaten fehlen.</strong> Rechnungen, Mails und Anmeldebestätigungen enthalten erst
-					dann IBAN und GiroCode, wenn Kontoinhaber und IBAN in den Kassen-Einstellungen stehen.
-				</span>
-				<Button size="sm" variant="outline" href="/modules/treasury/settings"
-					>Einstellungen öffnen</Button
-				>
-			</div>
-		{/if}
+		<Card.Root
+			class={data.tasks.some((t) => t.severity === 'critical') ? 'border-destructive/40' : ''}
+		>
+			<Card.Header class="flex flex-row flex-wrap items-center justify-between gap-2">
+				<div class="space-y-1">
+					<Card.Title>Das ist zu tun</Card.Title>
+					<Card.Description
+						>Offene Aufgaben der Kasse – ein Klick führt direkt hin.</Card.Description
+					>
+				</div>
+				{#if perm.editTx}
+					<div class="flex flex-wrap gap-2">
+						<Button onclick={oncreate}><Plus /> Zahlung erfassen</Button>
+						<Button variant="outline" onclick={onimport}><Upload /> CSV importieren</Button>
+					</div>
+				{/if}
+			</Card.Header>
+			<Card.Content>
+				{#if !data.tasks.length}
+					<div class="flex items-center gap-3 text-sm" role="status">
+						<CircleCheck class="size-5 shrink-0 text-emerald-600" aria-hidden="true" />
+						<span><strong>Alles erledigt.</strong> Im Moment ist nichts offen.</span>
+					</div>
+				{:else}
+					<ul class="divide-y">
+						{#each data.tasks as t (t.kind)}
+							{@const v = taskView(t)}
+							<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+								{#if t.severity === 'critical'}
+									<CircleAlert class="size-5 shrink-0 text-destructive" aria-label="Dringend" />
+								{:else if t.severity === 'warning'}
+									<TriangleAlert class="size-5 shrink-0 text-amber-600" aria-label="Wichtig" />
+								{:else}
+									<Info class="size-5 shrink-0 text-muted-foreground" aria-label="Hinweis" />
+								{/if}
+								<div class="min-w-48 flex-1">
+									<div class="font-medium">{v.title}</div>
+									<div class="text-xs text-muted-foreground">{v.hint}</div>
+								</div>
+								{#if t.kind === 'bank-missing'}
+									<Button size="sm" variant="outline" href="/modules/treasury/settings">
+										{v.action}
+										<ArrowRight />
+									</Button>
+								{:else}
+									<Button size="sm" variant="outline" onclick={() => runTask(t)}>
+										{v.action}
+										<ArrowRight />
+									</Button>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</Card.Content>
+		</Card.Root>
 		<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
 			<Card.Root>
 				<Card.Content>
@@ -270,6 +390,7 @@
 											</div>
 										</div>
 										{#if a.excluded}<Badge variant="outline">ausgeschlossen</Badge>{/if}
+										{#if a.isPast}<Badge variant="outline">vergangen</Badge>{/if}
 										{#if a.overdueCents > 0}
 											<Badge variant="destructive">{formatEuro(a.overdueCents)} überfällig</Badge>
 										{/if}

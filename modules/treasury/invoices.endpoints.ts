@@ -123,7 +123,8 @@ function invoiceWhere(q: InvoiceListQuery) {
 	}
 	if (q.memberId) {
 		conds.push(
-			sql`EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.member_id = ${q.memberId})`
+			sql`(EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.member_id = ${q.memberId})
+				OR EXISTS (SELECT 1 FROM annual_fee_items a WHERE a.invoice_id = i.id AND a.member_id = ${q.memberId}))`
 		);
 	}
 	return sql.join(conds, sql` AND `);
@@ -385,6 +386,7 @@ async function actionReceivables(ctx: RequestContext): Promise<ActionReceivables
 			feeCents: s.feeCents,
 			teamFeeCents: s.teamFeeCents,
 			excluded: Boolean(st?.excluded),
+			isPast: Boolean(s.isPast),
 			dueOn: str(st?.due_on),
 			invoiceCount: own.length,
 			totalCents: own.reduce((a, i) => a + i.totalCents, 0),

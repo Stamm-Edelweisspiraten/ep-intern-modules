@@ -5,7 +5,10 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import Link2 from '@lucide/svelte/icons/link-2';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -13,7 +16,7 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ContactListField, FileField, FormField } from '$lib/components/layout';
+	import { ColorBadge, ContactListField, FileField, FormField } from '$lib/components/layout';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FormRenderer } from '$lib/components/forms';
 	import type { FieldDefinition, FormValues } from '$lib/forms';
@@ -46,6 +49,11 @@
 		canUpload,
 		canRemoveDoc,
 		initialTab = 'person',
+		readonly = $bindable(false),
+		canEdit = false,
+		canLinkView = false,
+		linkCount = 0,
+		onlinks,
 		onsaved
 	}: {
 		open?: boolean;
@@ -55,14 +63,23 @@
 		canRemoveDoc: boolean;
 		/** Tab beim Öffnen (Standard „Person“) */
 		initialTab?: MemberFormTab;
+		/** Nur Ansicht: alle Felder gesperrt, „Bearbeiten“ schaltet im selben Dialog frei */
+		readonly?: boolean;
+		canEdit?: boolean;
+		canLinkView?: boolean;
+		linkCount?: number;
+		onlinks?: (m: Member) => void;
 		onsaved: () => void | Promise<void>;
 	} = $props();
+
+	const viewing = $derived(readonly && !!member);
 
 	const base = '/api/v1/modules/members/members';
 	const accept = DOCUMENT_CONTENT_TYPES.join(',');
 	const maxMb = MAX_DOCUMENT_BYTES / 1024 / 1024;
 	const hasGroups = $derived(groups.length > 0);
 	const today = new Date().toISOString().slice(0, 10);
+	const left = $derived(!!member?.exitDate && member.exitDate <= today);
 	const groupOptions = $derived(
 		groups.map((g) => ({ value: g.id, label: g.name, description: GROUP_TYPE_LABELS[g.type] }))
 	);
@@ -310,6 +327,7 @@
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
+		if (viewing) return;
 		error = '';
 		fieldErrors = {};
 		// Leere Zeilen verwerfen; Zuordnung neuer -> urspruenglicher Index fuer Fehler merken
@@ -403,6 +421,13 @@
 		}
 	}
 
+	/** Von der Ansicht in die Bearbeitung wechseln (gleicher Dialog, aktueller Tab bleibt). */
+	async function startEdit() {
+		readonly = false;
+		await tick();
+		document.getElementById(fieldIds[TAB_FIELDS[tab][0] ?? ''] ?? '')?.focus();
+	}
+
 	const docs = DOCUMENT_KINDS.map((kind) => ({ kind, label: DOCUMENT_LABELS[kind] }));
 	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 	const consentItems = [
@@ -445,8 +470,21 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="flex max-h-[90vh] flex-col sm:max-w-2xl">
 		<Dialog.Header>
-			<Dialog.Title>{member ? 'Mitglied bearbeiten' : 'Mitglied anlegen'}</Dialog.Title>
-			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
+			{#if viewing && member}
+				<Dialog.Title class="flex flex-wrap items-center gap-2">
+					{member.firstName}
+					{member.lastName}
+					<Badge variant="secondary">{STAGE_LABELS[member.stage]}</Badge>
+					{#if member.secondaryMember}<Badge variant="outline">Zweitmitglied</Badge>{/if}
+					{#if left}<Badge variant="destructive">ausgetreten</Badge>{/if}
+				</Dialog.Title>
+				<Dialog.Description>
+					Nur Ansicht{canEdit ? ' – zum Ändern auf „Bearbeiten“ klicken.' : '.'}
+				</Dialog.Description>
+			{:else}
+				<Dialog.Title>{member ? 'Mitglied bearbeiten' : 'Mitglied anlegen'}</Dialog.Title>
+				<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
+			{/if}
 		</Dialog.Header>
 
 		<form class="flex min-h-0 flex-1 flex-col gap-4" onsubmit={submit} novalidate>
@@ -467,238 +505,286 @@
 				</Tabs.List>
 
 				<div class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1 sm:min-h-[26rem]">
-					<Tabs.Content value="person" class="space-y-4">
-						<div class="grid gap-4 sm:grid-cols-2">
-							<FormField label="Vorname *" id="m-first" error={fieldErrors.firstName}>
-								<Input
-									id="m-first"
-									aria-invalid={!!fieldErrors.firstName}
-									aria-describedby={fieldErrors.firstName ? 'm-first-error' : undefined}
-									bind:value={firstName}
-									required
-									maxlength={100}
-								/>
-							</FormField>
-							<FormField label="Nachname *" id="m-last" error={fieldErrors.lastName}>
-								<Input
-									id="m-last"
-									aria-invalid={!!fieldErrors.lastName}
-									aria-describedby={fieldErrors.lastName ? 'm-last-error' : undefined}
-									bind:value={lastName}
-									required
-									maxlength={100}
-								/>
-							</FormField>
-							<FormField label="Fahrtenname" id="m-scout" error={fieldErrors.scoutName}>
-								<Input
-									id="m-scout"
-									aria-invalid={!!fieldErrors.scoutName}
-									aria-describedby={fieldErrors.scoutName ? 'm-scout-error' : undefined}
-									bind:value={scoutName}
-									maxlength={100}
-								/>
-							</FormField>
-							<FormField label="Geburtsdatum *" id="m-birth" error={fieldErrors.birthDate}>
-								<div class="flex items-center gap-2">
+					<!-- Ansicht: das deaktivierte fieldset sperrt alle Felder; gesperrte Felder bleiben gut lesbar -->
+					<fieldset
+						disabled={viewing}
+						class={[
+							'min-w-0',
+							viewing &&
+								'[&_:disabled]:cursor-default [&_:disabled]:opacity-100 [&_input:disabled]:bg-muted/40 [&_label]:opacity-100 [&_textarea:disabled]:bg-muted/40'
+						]}
+					>
+						<Tabs.Content value="person" class="space-y-4">
+							<div class="grid gap-4 sm:grid-cols-2">
+								<FormField label="Vorname *" id="m-first" error={fieldErrors.firstName}>
 									<Input
-										id="m-birth"
-										type="date"
-										max={today}
-										bind:value={birthDate}
+										id="m-first"
+										aria-invalid={!!fieldErrors.firstName}
+										aria-describedby={fieldErrors.firstName ? 'm-first-error' : undefined}
+										bind:value={firstName}
 										required
-										aria-invalid={!!fieldErrors.birthDate}
-										aria-describedby={fieldErrors.birthDate ? 'm-birth-error' : undefined}
+										maxlength={100}
 									/>
-									{#if age !== null && age >= 0}
-										<span class="text-sm whitespace-nowrap text-muted-foreground" aria-live="polite"
-											>({age}&nbsp;{age === 1 ? 'Jahr' : 'Jahre'})</span
-										>
-									{/if}
-								</div>
-							</FormField>
-						</div>
-						<AddressFields
-							bind:street
-							bind:postalCode
-							bind:city
-							bind:country
-							errors={fieldErrors}
-						/>
-					</Tabs.Content>
-
-					<Tabs.Content value="contact" class="space-y-4">
-						<ContactListField
-							id="m-phones"
-							label="Telefonnummern"
-							type="tel"
-							valueLabel="Telefonnummer"
-							valuePlaceholder="Telefonnummer"
-							bind:items={phones}
-							errors={rowErrors('phones')}
-							listError={fieldErrors.phones}
-						/>
-						<ContactListField
-							id="m-emails"
-							label="E-Mail-Adressen"
-							type="email"
-							valueLabel="E-Mail-Adresse"
-							valuePlaceholder="E-Mail-Adresse"
-							bind:items={emails}
-							errors={rowErrors('emails')}
-							listError={fieldErrors.emails}
-						/>
-					</Tabs.Content>
-
-					<Tabs.Content value="membership" class="space-y-4">
-						<FormField label="Stand *" id="m-stage" error={fieldErrors.stage}>
-							<SelectField
-								id="m-stage"
-								label="Stand"
-								placeholder="Bitte wählen"
-								options={stageOptions}
-								bind:value={stage}
-								invalid={!!fieldErrors.stage}
-							/>
-						</FormField>
-
-						<div class="space-y-1.5">
-							{#if hasGroups}
-								<MultiSelect
-									id="m-groups"
-									label="Gruppen"
-									options={groupOptions}
-									bind:value={groupIds}
-									placeholder="Gruppen auswählen (optional)"
-									searchPlaceholder="Gruppe suchen …"
-									emptyText="Keine Gruppe gefunden."
-									invalid={!!fieldErrors.groupIds}
-								/>
-							{:else}
-								<p class="text-sm font-medium">Gruppen</p>
-								<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
-							{/if}
-							{#if fieldErrors.groupIds}
-								<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
-							{/if}
-						</div>
-
-						<div class="grid gap-4 sm:grid-cols-2">
-							{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
-							{@render dateInput('m-exit', 'exitDate', 'Austritt')}
-						</div>
-						<p class="-mt-2 text-xs text-muted-foreground">
-							Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter „Ausgetreten“.
-						</p>
-
-						<div class="space-y-3 rounded-md border p-3">
-							<div class="flex items-center justify-between gap-4">
-								<label for="m-secondary" class="space-y-0.5">
-									<span class="block text-sm font-medium">Zweitmitglied</span>
-									<span class="block text-xs text-muted-foreground">
-										Hauptmitgliedschaft in einem anderen Stamm.
-									</span>
-								</label>
-								<Switch id="m-secondary" bind:checked={secondaryMember} />
-							</div>
-							{#if secondaryMember}
-								<fieldset class="space-y-2">
-									<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
-									<div class="flex flex-wrap gap-x-5 gap-y-2">
-										{#each FEE_LEVELS as level (level)}
-											<div class="flex items-center gap-2">
-												<Checkbox
-													id={`m-fee-${level}`}
-													checked={feeLevels.includes(level)}
-													aria-invalid={!!fieldErrors.feeLevels}
-													onCheckedChange={(v) => toggleLevel(level, v === true)}
-												/>
-												<label for={`m-fee-${level}`} class="text-sm">
-													{FEE_LEVEL_LABELS[level]}
-												</label>
-											</div>
-										{/each}
+								</FormField>
+								<FormField label="Nachname *" id="m-last" error={fieldErrors.lastName}>
+									<Input
+										id="m-last"
+										aria-invalid={!!fieldErrors.lastName}
+										aria-describedby={fieldErrors.lastName ? 'm-last-error' : undefined}
+										bind:value={lastName}
+										required
+										maxlength={100}
+									/>
+								</FormField>
+								<FormField label="Fahrtenname" id="m-scout" error={fieldErrors.scoutName}>
+									<Input
+										id="m-scout"
+										aria-invalid={!!fieldErrors.scoutName}
+										aria-describedby={fieldErrors.scoutName ? 'm-scout-error' : undefined}
+										bind:value={scoutName}
+										maxlength={100}
+									/>
+								</FormField>
+								<FormField label="Geburtsdatum *" id="m-birth" error={fieldErrors.birthDate}>
+									<div class="flex items-center gap-2">
+										<Input
+											id="m-birth"
+											type="date"
+											max={today}
+											bind:value={birthDate}
+											required
+											aria-invalid={!!fieldErrors.birthDate}
+											aria-describedby={fieldErrors.birthDate ? 'm-birth-error' : undefined}
+										/>
+										{#if age !== null && age >= 0}
+											<span
+												class="text-sm whitespace-nowrap text-muted-foreground"
+												aria-live="polite">({age}&nbsp;{age === 1 ? 'Jahr' : 'Jahre'})</span
+											>
+										{/if}
 									</div>
-									<p class="text-xs text-muted-foreground">
-										Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
-									</p>
-									{#if fieldErrors.feeLevels}
-										<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
-									{/if}
-								</fieldset>
-							{/if}
-						</div>
-					</Tabs.Content>
-
-					{#if visibleCustomFields.length}
-						<Tabs.Content value="custom" class="space-y-3">
-							<p class="text-xs text-muted-foreground">Alle Angaben sind freiwillig.</p>
-							<FormRenderer
-								definition={{ version: 1, fields: customFields }}
-								bind:values={custom}
-								idPrefix="m-custom"
-								errors={Object.fromEntries(
-									Object.entries(fieldErrors)
-										.filter(([k]) => k.startsWith('custom.'))
-										.map(([k, v]) => [k.slice(7), v])
-								)}
+								</FormField>
+							</div>
+							<AddressFields
+								bind:street
+								bind:postalCode
+								bind:city
+								bind:country
+								errors={fieldErrors}
 							/>
 						</Tabs.Content>
-					{/if}
 
-					<Tabs.Content value="consent" class="space-y-6">
-						<fieldset class="space-y-2">
-							<legend class="text-sm font-medium">Darf gezeigt werden auf</legend>
-							<div class="flex flex-wrap gap-x-5 gap-y-2">
-								{#each consentItems as c (c.id)}
-									<div class="flex items-center gap-2">
-										{#if c.key === 'consentSocialMedia'}
-											<Checkbox id={c.id} bind:checked={consentSocialMedia} />
-										{:else if c.key === 'consentWebsite'}
-											<Checkbox id={c.id} bind:checked={consentWebsite} />
+						<Tabs.Content value="contact" class="space-y-4">
+							<ContactListField
+								id="m-phones"
+								label="Telefonnummern"
+								type="tel"
+								valueLabel="Telefonnummer"
+								valuePlaceholder="Telefonnummer"
+								bind:items={phones}
+								readonly={viewing}
+								emptyText="Keine Telefonnummer hinterlegt."
+								errors={rowErrors('phones')}
+								listError={fieldErrors.phones}
+							/>
+							<ContactListField
+								id="m-emails"
+								label="E-Mail-Adressen"
+								type="email"
+								valueLabel="E-Mail-Adresse"
+								valuePlaceholder="E-Mail-Adresse"
+								bind:items={emails}
+								readonly={viewing}
+								emptyText="Keine E-Mail-Adresse hinterlegt."
+								errors={rowErrors('emails')}
+								listError={fieldErrors.emails}
+							/>
+						</Tabs.Content>
+
+						<Tabs.Content value="membership" class="space-y-4">
+							<FormField label="Stand *" id="m-stage" error={fieldErrors.stage}>
+								<SelectField
+									id="m-stage"
+									label="Stand"
+									placeholder="Bitte wählen"
+									options={stageOptions}
+									bind:value={stage}
+									invalid={!!fieldErrors.stage}
+								/>
+							</FormField>
+
+							<div class="space-y-1.5">
+								{#if viewing}
+									<p class="text-sm font-medium">Gruppen</p>
+									<div
+										id="m-groups"
+										class="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-muted/40 px-2 py-1 text-sm"
+									>
+										{#each member?.groups ?? [] as g (g.id)}
+											<ColorBadge color={g.color}>{g.name}</ColorBadge>
 										{:else}
-											<Checkbox id={c.id} bind:checked={consentPrint} />
+											<span class="text-muted-foreground">Keine Gruppe</span>
+										{/each}
+									</div>
+								{:else if hasGroups}
+									<MultiSelect
+										id="m-groups"
+										label="Gruppen"
+										options={groupOptions}
+										bind:value={groupIds}
+										placeholder="Gruppen auswählen (optional)"
+										searchPlaceholder="Gruppe suchen …"
+										emptyText="Keine Gruppe gefunden."
+										invalid={!!fieldErrors.groupIds}
+									/>
+								{:else}
+									<p class="text-sm font-medium">Gruppen</p>
+									<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
+								{/if}
+								{#if fieldErrors.groupIds}
+									<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
+								{/if}
+							</div>
+
+							<div class="grid gap-4 sm:grid-cols-2">
+								{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
+								{@render dateInput('m-exit', 'exitDate', 'Austritt')}
+							</div>
+							<p class="-mt-2 text-xs text-muted-foreground" hidden={viewing}>
+								Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter
+								„Ausgetreten“.
+							</p>
+
+							<div class="space-y-3 rounded-md border p-3">
+								<div class="flex items-center justify-between gap-4">
+									<label for="m-secondary" class="space-y-0.5">
+										<span class="block text-sm font-medium">Zweitmitglied</span>
+										<span class="block text-xs text-muted-foreground">
+											Hauptmitgliedschaft in einem anderen Stamm.
+										</span>
+									</label>
+									<Switch id="m-secondary" bind:checked={secondaryMember} />
+								</div>
+								{#if secondaryMember}
+									<fieldset class="space-y-2">
+										<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
+										<div class="flex flex-wrap gap-x-5 gap-y-2">
+											{#each FEE_LEVELS as level (level)}
+												<div class="flex items-center gap-2">
+													<Checkbox
+														id={`m-fee-${level}`}
+														checked={feeLevels.includes(level)}
+														aria-invalid={!!fieldErrors.feeLevels}
+														onCheckedChange={(v) => toggleLevel(level, v === true)}
+													/>
+													<label for={`m-fee-${level}`} class="text-sm">
+														{FEE_LEVEL_LABELS[level]}
+													</label>
+												</div>
+											{/each}
+										</div>
+										<p class="text-xs text-muted-foreground">
+											Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
+										</p>
+										{#if fieldErrors.feeLevels}
+											<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
 										{/if}
-										<label for={c.id} class="text-sm">{c.label}</label>
+									</fieldset>
+								{/if}
+							</div>
+						</Tabs.Content>
+
+						{#if visibleCustomFields.length}
+							<Tabs.Content value="custom" class="space-y-3">
+								{#if !viewing}
+									<p class="text-xs text-muted-foreground">Alle Angaben sind freiwillig.</p>
+								{/if}
+								<FormRenderer
+									readonly={viewing}
+									definition={{ version: 1, fields: customFields }}
+									bind:values={custom}
+									idPrefix="m-custom"
+									errors={Object.fromEntries(
+										Object.entries(fieldErrors)
+											.filter(([k]) => k.startsWith('custom.'))
+											.map(([k, v]) => [k.slice(7), v])
+									)}
+								/>
+							</Tabs.Content>
+						{/if}
+
+						<Tabs.Content value="consent" class="space-y-6">
+							<fieldset class="space-y-2">
+								<legend class="text-sm font-medium">Darf gezeigt werden auf</legend>
+								<div class="flex flex-wrap gap-x-5 gap-y-2">
+									{#each consentItems as c (c.id)}
+										<div class="flex items-center gap-2">
+											{#if c.key === 'consentSocialMedia'}
+												<Checkbox id={c.id} bind:checked={consentSocialMedia} />
+											{:else if c.key === 'consentWebsite'}
+												<Checkbox id={c.id} bind:checked={consentWebsite} />
+											{:else}
+												<Checkbox id={c.id} bind:checked={consentPrint} />
+											{/if}
+											<label for={c.id} class="text-sm">{c.label}</label>
+										</div>
+									{/each}
+								</div>
+							</fieldset>
+
+							<div class="grid gap-4 sm:grid-cols-2">
+								{#each docs as d (d.kind)}
+									{@const name = docNames[d.kind]}
+									<div class="space-y-2">
+										<label for={`m-doc-${d.kind}`} class="text-sm font-medium">{d.label}</label>
+										<FileField
+											id={`m-doc-${d.kind}`}
+											bind:file={files[d.kind]}
+											{accept}
+											maxBytes={MAX_DOCUMENT_BYTES}
+											existingName={member ? name : null}
+											existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
+											canUpload={canUpload && !viewing}
+											canRemove={canRemoveDoc && !viewing}
+											onremove={() => removeDoc(d.kind)}
+										/>
+										{#if canUpload && !viewing}
+											<p class="text-xs text-muted-foreground">
+												{name ? 'Eine neue Datei ersetzt die vorhandene. ' : ''}PDF oder Bild, max. {maxMb}
+												MB{member ? '' : '; wird nach dem Anlegen hochgeladen'}.
+											</p>
+										{:else if !name}
+											<p class="text-sm text-muted-foreground">Kein Dokument hinterlegt.</p>
+										{/if}
 									</div>
 								{/each}
 							</div>
-						</fieldset>
-
-						<div class="grid gap-4 sm:grid-cols-2">
-							{#each docs as d (d.kind)}
-								{@const name = docNames[d.kind]}
-								<div class="space-y-2">
-									<label for={`m-doc-${d.kind}`} class="text-sm font-medium">{d.label}</label>
-									<FileField
-										id={`m-doc-${d.kind}`}
-										bind:file={files[d.kind]}
-										{accept}
-										maxBytes={MAX_DOCUMENT_BYTES}
-										existingName={member ? name : null}
-										existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
-										{canUpload}
-										canRemove={canRemoveDoc}
-										onremove={() => removeDoc(d.kind)}
-									/>
-									{#if canUpload}
-										<p class="text-xs text-muted-foreground">
-											{name ? 'Eine neue Datei ersetzt die vorhandene. ' : ''}PDF oder Bild, max. {maxMb}
-											MB{member ? '' : '; wird nach dem Anlegen hochgeladen'}.
-										</p>
-									{:else if !name}
-										<p class="text-sm text-muted-foreground">Kein Dokument hinterlegt.</p>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					</Tabs.Content>
+						</Tabs.Content>
+					</fieldset>
 				</div>
 			</Tabs.Root>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				{#if viewing && member}
+					{#if canLinkView && onlinks}
+						<Button
+							type="button"
+							variant="outline"
+							class="sm:mr-auto"
+							onclick={() => member && onlinks(member)}
+						>
+							<Link2 /> Verknüpfte Konten ({linkCount})
+						</Button>
+					{/if}
+					<Button type="button" variant="outline" onclick={() => (open = false)}>Schließen</Button>
+					{#if canEdit}
+						<Button type="button" onclick={startEdit}><Pencil /> Bearbeiten</Button>
+					{/if}
+				{:else}
+					<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
+					<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				{/if}
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

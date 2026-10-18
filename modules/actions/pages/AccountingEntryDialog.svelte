@@ -35,6 +35,7 @@
 		payees,
 		canViewPayouts,
 		viaTreasury = false,
+		isPast = false,
 		onsaved
 	}: {
 		open?: boolean;
@@ -45,6 +46,8 @@
 		canViewPayouts: boolean;
 		/** Kasse aktiv: offene Stamm-Ausgaben werden dort überwiesen */
 		viaTreasury?: boolean;
+		/** Vergangene Aktion: neue Buchungen starten als erstattet bzw. bezahlt */
+		isPast?: boolean;
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
@@ -59,6 +62,7 @@
 	let paidBy = $state<string | null>('club');
 	let payeeId = $state<string | null>(null);
 	let clubPaid = $state(false);
+	let reimbursed = $state(false);
 	let recipientName = $state('');
 	let iban = $state('');
 	let bic = $state('');
@@ -81,8 +85,9 @@
 		entryDate = e?.entryDate ?? today();
 		paidBy = e?.paidBy ?? 'club';
 		payeeId = e?.payee?.id ?? null;
-		// Neue Stamm-Ausgaben sind offen, bis sie überwiesen sind
-		clubPaid = e ? e.clubPaidAt !== null : false;
+		// Neue Stamm-Ausgaben sind offen, bis sie überwiesen sind (vergangene Aktion: bereits bezahlt)
+		clubPaid = e ? e.clubPaidAt !== null : isPast;
+		reimbursed = e ? e.reimbursedAt !== null : isPast;
 		recipientName = e?.recipient?.name ?? '';
 		iban = '';
 		bic = e?.recipient?.bic ?? '';
@@ -114,7 +119,8 @@
 	const isExpense = $derived(type === 'expense');
 	const isClubExpense = $derived(isExpense && paidBy === 'club');
 	/** Von der Kasse überwiesen: nur Ansicht */
-	const locked = $derived(entry?.clubPaidVia === 'treasury');
+	const locked = $derived(entry?.clubPaidVia === 'treasury' || !!entry?.reimbursedAt);
+	const isReimbursedEntry = $derived(!!entry?.reimbursedAt);
 	const savedIban = $derived(entry?.recipient?.ibanMasked ?? null);
 
 	function onTypeChange() {
@@ -179,6 +185,7 @@
 			paidBy: isExpense ? (paidBy ?? 'club') : 'club',
 			payeeId: isExpense && paidBy === 'person' ? payeeId : null,
 			clubPaid: isClubExpense ? clubPaid : true,
+			reimbursed: isExpense && paidBy === 'person' ? reimbursed : false,
 			recipientName: isClubExpense ? recipientName : null,
 			iban: isClubExpense && iban.trim() ? iban : null,
 			bic: isClubExpense ? bic : null,
@@ -269,6 +276,7 @@
 						bind:value={type}
 						onchange={onTypeChange}
 						invalid={!!fieldErrors.type}
+						disabled={locked}
 					/>
 				</FormField>
 				<FormField label="Kategorie *" id="acc-category" error={fieldErrors.category}>
@@ -278,6 +286,7 @@
 						options={categoryOptions}
 						bind:value={category}
 						invalid={!!fieldErrors.category}
+						disabled={locked}
 					/>
 				</FormField>
 			</div>
@@ -295,6 +304,7 @@
 					bind:value={description}
 					required
 					maxlength={200}
+					disabled={locked}
 					aria-invalid={!!fieldErrors.description}
 					aria-describedby={fieldErrors.description ? 'acc-description-error' : undefined}
 				/>
@@ -306,6 +316,7 @@
 						label="Betrag"
 						bind:cents={amountCents}
 						invalid={!!fieldErrors.amountCents}
+						disabled={locked}
 					/>
 				</FormField>
 				<FormField label="Datum *" id="acc-date" error={fieldErrors.entryDate}>
@@ -313,6 +324,7 @@
 						id="acc-date"
 						type="date"
 						bind:value={entryDate}
+						disabled={locked}
 						aria-invalid={!!fieldErrors.entryDate}
 						aria-describedby={fieldErrors.entryDate ? 'acc-date-error' : undefined}
 					/>
@@ -327,6 +339,7 @@
 						options={paidByOptions}
 						bind:value={paidBy}
 						invalid={!!fieldErrors.paidBy}
+						disabled={locked}
 					/>
 				</FormField>
 				{#if paidBy === 'person'}
@@ -347,15 +360,48 @@
 									bind:value={payeeId}
 									placeholder="Person wählen …"
 									invalid={!!fieldErrors.payeeId}
+									disabled={locked}
 								/>
 							</div>
 							{#if canViewPayouts}
-								<Button type="button" variant="outline" onclick={() => (payeeOpen = true)}>
+								<Button
+									type="button"
+									variant="outline"
+									disabled={locked}
+									onclick={() => (payeeOpen = true)}
+								>
 									<UserPlus /> Neue Person
 								</Button>
 							{/if}
 						</div>
 					</FormField>
+					{#if !entry || isReimbursedEntry}
+						<div class="flex items-start gap-2">
+							<Checkbox
+								id="acc-reimbursed"
+								checked={reimbursed}
+								onCheckedChange={(v) => (reimbursed = v === true)}
+								disabled={locked}
+								class="mt-0.5"
+							/>
+							<div class="grid gap-0.5">
+								<Label for="acc-reimbursed">Person wurde bereits erstattet</Label>
+								<p class="text-xs text-muted-foreground">
+									Die Kasse legt dafür keine Überweisung an.
+								</p>
+							</div>
+						</div>
+					{/if}
+					{#if isReimbursedEntry}
+						<p
+							class="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+							role="note"
+						>
+							Diese Auslage ist bereits erstattet und deshalb gesperrt. Zum Ändern nimm die
+							Erstattung der Person unter „Auslagen &amp; Auszahlung“ zurück. Das betrifft alle
+							Auslagen dieser Person und braucht das Recht „Auszahlungen“.
+						</p>
+					{/if}
 				{/if}
 				{#if isClubExpense}
 					<div class="flex items-start gap-2">
