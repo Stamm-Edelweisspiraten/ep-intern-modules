@@ -27,7 +27,15 @@ import {
 	str,
 	today
 } from './db';
-import { annualVars, renderInvoicePdf, sendDocuments, type InvoiceSnapshot } from './documents';
+import {
+	allAdults,
+	annualVars,
+	isAdultOn,
+	renderInvoicePdf,
+	sendDocuments,
+	withoutMemberHint,
+	type InvoiceSnapshot
+} from './documents';
 import { suggestPayers } from './logic';
 import { composeMail } from './mail-compose';
 import { loadBankData } from './notify';
@@ -385,6 +393,7 @@ async function previewSnapshot(
 			members: inv.members.map((m) => ({
 				name: m.name,
 				firstName: byId.get(m.memberId)?.firstName ?? m.name,
+				adult: byId.has(m.memberId) ? isAdultOn(byId.get(m.memberId)!.birthDate, today()) : false,
 				levels: Object.fromEntries(
 					inv.items.filter((l) => l.memberId === m.memberId).map((l) => [l.level, l.amountCents])
 				),
@@ -423,9 +432,10 @@ export async function previewMail(
 	const inv = pickInvoice(plan, key);
 	const snapshot = await previewSnapshot(run, inv, contacts);
 	const vars = annualVars(snapshot, snapshot.annual!);
+	const hint = (t: string) => (allAdults(snapshot.annual) ? withoutMemberHint(t) : t);
 	const mail = composeMail({
-		subjectTpl: run.mailSubject,
-		bodyTpl: run.mailBody,
+		subjectTpl: hint(run.mailSubject),
+		bodyTpl: hint(run.mailBody),
 		invoices: [
 			{
 				number: snapshot.number,

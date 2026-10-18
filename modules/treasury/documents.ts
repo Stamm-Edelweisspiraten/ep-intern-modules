@@ -55,6 +55,8 @@ export interface AnnualSnapshot {
 	members: {
 		name: string;
 		firstName: string;
+		/** Zum Rechnungsdatum volljährig (alte Snapshots: fehlt = nicht volljährig) */
+		adult?: boolean;
 		/** Cent je Ebene (nach Ermäßigung); fehlende Ebene = nicht berechnet */
 		levels: Partial<Record<FeeLevel, number>>;
 		totalCents: number;
@@ -127,6 +129,26 @@ function addressLines(inv: RawInvoice, contact: Contact | undefined): string[] {
 		.map((l) => l.slice(0, 60));
 }
 
+/** Volljährig (ab 18) am Stichtag `on`; beide `JJJJ-MM-TT` */
+export function isAdultOn(birthDate: string, on: string): boolean {
+	const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+	const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(on);
+	if (!b || !t) return false;
+	let age = Number(t[1]) - Number(b[1]);
+	if (t[2]! + t[3]! < b[2]! + b[3]!) age -= 1;
+	return age >= 18;
+}
+
+/** Sind alle abgerechneten Mitglieder volljährig? Dann entfällt in Mails „für {mitglieder}“. */
+export function allAdults(a: AnnualSnapshot | undefined): boolean {
+	return !!a && a.members.length > 0 && a.members.every((m) => m.adult);
+}
+
+/** Entfernt den Hinweis „für {mitglieder}“ aus einer Vorlage (Volljährige zahlen für sich selbst) */
+export function withoutMemberHint(tpl: string): string {
+	return tpl.replace(/[ \t]+für \{mitglieder\}/g, '');
+}
+
 /** Aufschlüsselung je Mitglied und Ebene (Reihenfolge der Posten) */
 function annualSnapshot(
 	inv: RawInvoice,
@@ -141,6 +163,7 @@ function annualSnapshot(
 		if (!m) {
 			const c = contacts.get(memberId);
 			m = {
+				adult: c ? isAdultOn(c.birthDate, String(inv.row.issued_on)) : false,
 				name: c ? `${c.firstName} ${c.lastName}` : (names.members.get(memberId) ?? fallback),
 				firstName: c?.firstName ?? (names.members.get(memberId) ?? '').split(' ')[0] ?? '',
 				levels: {},
@@ -282,6 +305,8 @@ export async function paymentBlocks(p: {
 	amountCents: number;
 	purpose: string;
 	dueOn: string | null;
+	/** Platzsparend (eine Seite): ohne Betrag/Frist-Zeilen (stehen schon oben), kleinerer GiroCode */
+	compact?: boolean;
 }): Promise<PdfBlock[]> {
 	if (!p.bank.iban || !p.bank.holder) {
 		return [
@@ -295,15 +320,15 @@ export async function paymentBlocks(p: {
 	const rows: string[][] = [
 		['Empfänger', p.bank.holder],
 		['IBAN', formatIban(p.bank.iban)],
-		...(p.bank.bic || p.bank.name
+		...(!p.compact && (p.bank.bic || p.bank.name)
 			? [['Bank / BIC', [p.bank.name, p.bank.bic].filter(Boolean).join(' · ')]]
 			: []),
-		['Betrag', eur(p.amountCents)],
-		...(p.dueOn ? [['Zahlbar bis', formatDateDe(p.dueOn)]] : []),
+		...(p.compact ? [] : [['Betrag', eur(p.amountCents)]]),
+		...(p.dueOn && !p.compact ? [['Zahlbar bis', formatDateDe(p.dueOn)]] : []),
 		['Verwendungszweck', p.purpose]
 	];
 	const blocks: PdfBlock[] = [
-		{ type: 'heading', text: 'Zahlung', level: 2 },
+		...(p.compact ? [] : ([{ type: 'heading', text: 'Zahlung', level: 2 }] as PdfBlock[])),
 		{
 			type: 'table',
 			variant: 'grid',
@@ -326,13 +351,17 @@ export async function paymentBlocks(p: {
 				{
 					type: 'image',
 					dataUrl: await core.qr.dataUrl(epc, { widthPx: 320 }),
-					widthMm: 26,
+					widthMm: p.compact ? 20 : 26,
 					alt: 'GiroCode'
 				},
-				{
-					type: 'paragraph',
-					text: 'GiroCode: mit der Banking-App scannen – alle Angaben sind ausgefüllt.'
-				}
+				...(p.compact
+					? []
+					: ([
+							{
+								type: 'paragraph',
+								text: 'GiroCode: mit der Banking-App scannen – alle Angaben sind ausgefüllt.'
+							}
+						] as PdfBlock[]))
 			);
 		} catch {
 			/* ohne QR-Code weiter */
@@ -362,9 +391,10 @@ export async function renderInvoicePdf(
 		...(s.cancelled ? [] : [formatDateDe(s.dueOn)]),
 		...(version && version > 1 ? [String(version)] : [])
 	];
-	const content: PdfBlock[] = [
-		{ type: 'table', variant: 'grid', columns: infoCols, rows: [infoRow] }
-	];
+	// Jahresbeitrag: alles auf einer Seite – Eckdaten als eine Zeile statt Tabelle
+	const content: PdfBlock[] = s.annual
+		? [{ type: 'paragraph', text: infoCols.map((c, i) => `${c}: ${infoRow[i]}`).join(' · ') }]
+		: [{ type: 'table', variant: 'grid', columns: infoCols, rows: [infoRow] }];
 	if (s.annual) {
 		content.push(...annualBlocks(s, s.annual));
 	} else {
@@ -416,7 +446,8 @@ export async function renderInvoicePdf(
 					bank: s.bank,
 					amountCents: openCents,
 					purpose: invoicePurpose(s),
-					dueOn: s.dueOn
+					dueOn: s.dueOn,
+					compact: !!s.annual
 				}))
 			);
 		} else {
@@ -429,7 +460,10 @@ export async function renderInvoicePdf(
 	}
 	content.push({
 		type: 'paragraph',
-		text: 'Bei Fragen zur Rechnung melde dich gern bei der Kasse. Gut Pfad!'
+		text:
+			(s.annual && !s.cancelled && openCents > 0 && s.bank.iban && s.bank.holder
+				? 'Den GiroCode kannst du mit der Banking-App scannen. '
+				: '') + 'Bei Fragen zur Rechnung melde dich gern bei der Kasse. Gut Pfad!'
 	});
 	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'stamm-brief');
 	const pdf = await core.pdf.generate(ctx, {
@@ -590,10 +624,14 @@ export async function sendDocuments(
 			: reason === 'changed'
 				? 'Geänderte Rechnung'
 				: 'Rechnung';
+		const hint = (t: string) => (allAdults(snapshot.annual) ? withoutMemberHint(t) : t);
 		const mail = composeMail({
-			subjectTpl:
-				overrides.subjectTpl || String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT),
-			bodyTpl: overrides.bodyTpl || String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY),
+			subjectTpl: hint(
+				overrides.subjectTpl || String(s[SETTING_KEYS.invoiceSubject] || DEFAULT_INVOICE_SUBJECT)
+			),
+			bodyTpl: hint(
+				overrides.bodyTpl || String(s[SETTING_KEYS.invoiceBody] || DEFAULT_INVOICE_BODY)
+			),
 			invoices: [
 				{
 					number: snapshot.number,
