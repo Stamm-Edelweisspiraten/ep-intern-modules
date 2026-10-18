@@ -122,7 +122,7 @@ export async function allocateAndNotify(
 	return finishAllocation(ctx, input, r);
 }
 
-/** Nach der Zuordnung (ausserhalb der Transaktion): Zahler lernen, Bestaetigungen senden, Audit */
+/** Nach der Zuordnung (außerhalb der Transaktion): Zahler lernen, Bestätigungen senden, Audit */
 export async function finishAllocation(
 	ctx: RequestContext,
 	input: AllocateInput,
@@ -212,12 +212,12 @@ export const transactionEndpoints = [
 			await requireActionRef(input.actionId);
 			if (input.allocations.length && input.amountCents < 0) {
 				throw errors.validation([
-					{ path: ['allocations'], message: 'Nur Einnahmen koennen Rechnungen zugeordnet werden' }
+					{ path: ['allocations'], message: 'Nur Einnahmen können Rechnungen zugeordnet werden' }
 				]);
 			}
 			if (input.payableId && input.amountCents > 0) {
 				throw errors.validation([
-					{ path: ['payableId'], message: 'Nur Ausgaben koennen Auszahlungen zugeordnet werden' }
+					{ path: ['payableId'], message: 'Nur Ausgaben können Auszahlungen zugeordnet werden' }
 				]);
 			}
 			const id = crypto.randomUUID();
@@ -231,7 +231,7 @@ export const transactionEndpoints = [
 						${input.purpose}, ${input.categoryId}, ${input.actionId}, ${input.note}, ${ctx.userId})`
 				);
 				await applyCounterparty(tx, id, input);
-				// Zuordnung in derselben Transaktion: schlaegt sie fehl, entsteht auch keine Buchung
+				// Zuordnung in derselben Transaktion: schlägt sie fehl, entsteht auch keine Buchung
 				const allocated = input.allocations.length
 					? await replaceAllocations(tx, id, input.allocations, ctx.userId)
 					: null;
@@ -259,7 +259,7 @@ export const transactionEndpoints = [
 					metadata: { payableId: input.payableId }
 				});
 			}
-			// nach dem Lernen neu laden (Zahler/Kategorie koennen sich geaendert haben)
+			// nach dem Lernen neu laden (Zahler/Kategorie können sich geändert haben)
 			const fresh = allocated ? await mdb().transaction((tx) => loadOne(tx, id)) : raw;
 			const t = (await decorateTransactions([fresh]))[0]!;
 			return { ...t, allocation, payableLinked: payables.length > 0 };
@@ -268,7 +268,7 @@ export const transactionEndpoints = [
 	{
 		method: 'POST',
 		path: '/match-preview',
-		summary: 'Zuordnungsvorschlag fuer eine noch nicht gespeicherte Buchung',
+		summary: 'Zuordnungsvorschlag für eine noch nicht gespeicherte Buchung',
 		description:
 			'Einnahme: offene Rechnungsposten + Vorschlag. Ausgabe: offene Auszahlungen + Vorschlag. Speichert nichts.',
 		tags: TAGS,
@@ -326,7 +326,7 @@ export const transactionEndpoints = [
 	{
 		method: 'PUT',
 		path: '/transactions/:id',
-		summary: 'Buchung aendern',
+		summary: 'Buchung ändern',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -338,7 +338,7 @@ export const transactionEndpoints = [
 			const raw = await mdb().transaction(async (tx) => {
 				const cur = await lockTransaction(tx, id);
 				if (cur.transfer_id) {
-					throw errors.conflict('Umbuchungen bitte loeschen und neu anlegen');
+					throw errors.conflict('Umbuchungen bitte löschen und neu anlegen');
 				}
 				await requireAccount(tx, input.accountId);
 				await requireCategory(tx, input.categoryId);
@@ -371,7 +371,7 @@ export const transactionEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/transactions/:id',
-		summary: 'Buchung loeschen (Umbuchung: beide Seiten; Zuordnungen entfallen)',
+		summary: 'Buchung löschen (Umbuchung: beide Seiten; Zuordnungen entfallen)',
 		tags: TAGS,
 		permission: 'treasury.transaction.delete',
 		params: idParams,
@@ -444,7 +444,7 @@ export const transactionEndpoints = [
 		path: '/transactions/:id/allocations',
 		summary: 'Zuordnung einer Einnahme zu Rechnungsposten ersetzen (auch Sammelzahlungen)',
 		description:
-			'Leere Liste entfernt alle Zuordnungen. Vollstaendig bezahlte Rechnungen erhalten einmalig eine Bestaetigungs-Mail (notify).',
+			'Leere Liste entfernt alle Zuordnungen. Vollständig bezahlte Rechnungen erhalten einmalig eine Bestätigungs-Mail (notify).',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -458,7 +458,7 @@ export const transactionEndpoints = [
 	{
 		method: 'GET',
 		path: '/transactions/:id/suggestion',
-		summary: 'Zuordnungsvorschlag fuer eine Einnahme',
+		summary: 'Zuordnungsvorschlag für eine Einnahme',
 		tags: TAGS,
 		permission: VIEW,
 		params: idParams,
@@ -485,7 +485,7 @@ export const transactionEndpoints = [
 	{
 		method: 'GET',
 		path: '/open-lines',
-		summary: 'Offene Rechnungsposten fuer die Zuordnung',
+		summary: 'Offene Rechnungsposten für die Zuordnung',
 		tags: TAGS,
 		permission: VIEW,
 		query: z.object({ transactionId: z.uuid().optional() }),
@@ -505,7 +505,7 @@ export const transactionEndpoints = [
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
 			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungueltige Formulardaten');
+				throw errors.badRequest('Ungültige Formulardaten');
 			});
 			const file = form.get('file');
 			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
@@ -514,7 +514,7 @@ export const transactionEndpoints = [
 				throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
 			}
 			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei ueberschreitet 10 MB');
+			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei überschreitet 10 MB');
 			const old = await mdb().transaction(async (tx) => {
 				const cur = await lockTransaction(tx, id);
 				return cur.receipt_path == null ? null : String(cur.receipt_path);

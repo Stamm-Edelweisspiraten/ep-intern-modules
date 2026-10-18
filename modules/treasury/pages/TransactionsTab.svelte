@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -11,9 +12,16 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ConfirmDialog, DataTable, FormField } from '$lib/components/layout';
+	import { ConfirmDialog, DataTable, FormField, toastWithUndo } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import type { Payable, PayableList, Transaction, TransactionList } from '../schemas';
+	import type {
+		AllocationResult,
+		MatchSuggestion,
+		Payable,
+		PayableList,
+		Transaction,
+		TransactionList
+	} from '../schemas';
 	import {
 		BASE,
 		errorMessage,
@@ -23,7 +31,9 @@
 		transactionTitle,
 		type SharedData
 	} from './helpers';
+	import FilterChips from './FilterChips.svelte';
 	import HistorySheet from './HistorySheet.svelte';
+	import type { FamilyRef } from './navigation';
 
 	let {
 		accounts,
@@ -33,12 +43,15 @@
 		onedit,
 		onallocate,
 		onsuggestions,
-		onchanged
+		onchanged,
+		onfamily
 	}: SharedData & {
 		onedit: (t: Transaction) => void;
 		onallocate: (t: Transaction) => void;
 		onsuggestions: () => void;
 		onchanged: () => void | Promise<void>;
+		/** Familie (Zahler) öffnen */
+		onfamily?: (ref: FamilyRef) => void;
 	} = $props();
 
 	const LIMIT = 50;
@@ -55,6 +68,8 @@
 	let search = $state('');
 	let offset = $state(0);
 	let data = $state<TransactionList | null>(null);
+	/** Anzahl „Ohne Zuordnung“ bei sonst gleichen Filtern (null = unbekannt) */
+	let unassignedCount = $state<number | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 
@@ -79,7 +94,19 @@
 		loading = !data;
 		error = '';
 		try {
-			data = await apiFetch<TransactionList>(`${BASE}/transactions?${q}`);
+			const params = new URLSearchParams(q);
+			const isUnassigned = params.get('filter') === 'unassigned';
+			params.set('filter', 'unassigned');
+			params.set('limit', '1');
+			params.set('offset', '0');
+			const [list, count] = await Promise.all([
+				apiFetch<TransactionList>(`${BASE}/transactions?${q}`),
+				isUnassigned
+					? null
+					: apiFetch<TransactionList>(`${BASE}/transactions?${params}`).catch(() => null)
+			]);
+			data = list;
+			unassignedCount = isUnassigned ? list.total : (count?.total ?? null);
 		} catch (e) {
 			error = errorMessage(e, 'Buchungen konnten nicht geladen werden');
 		} finally {
@@ -88,12 +115,125 @@
 	}
 
 	const reset = () => (offset = 0);
-	const filters = [
+	type Filter = typeof filter;
+	const filterOptions = $derived<{ value: Filter; label: string; count?: number | null }[]>([
 		{ value: 'all', label: 'Alle' },
 		{ value: 'income', label: 'Einnahmen' },
 		{ value: 'expense', label: 'Ausgaben' },
-		{ value: 'unassigned', label: 'Nicht zugeordnet' }
-	] as const;
+		{ value: 'unassigned', label: 'Ohne Zuordnung', count: unassignedCount }
+	]);
+
+	// --- Zuordnungsvorschlag direkt in der Zeile -------------------------------------
+	// Lazy: erst wenn die Zeile sichtbar ist; je Buchung höchstens eine Anfrage (Cache bis
+	// zur nächsten Änderung), höchstens zwei Anfragen gleichzeitig.
+	type SuggestionState = MatchSuggestion | null | 'loading';
+	let suggestions = $state<Record<string, SuggestionState>>({});
+	let acceptingId = $state<string | null>(null);
+	const queue: Transaction[] = [];
+	let running = 0;
+	const MAX_PARALLEL = 2;
+
+	const suggestionKey = (t: Transaction) => `${t.id}:${t.unallocatedCents}`;
+	const canInline = (t: Transaction) =>
+		perm.editTx && t.needsAllocation && t.amountCents > 0 && !t.transferId;
+
+	// Nach jeder Änderung (Version) können sich offene Posten verschoben haben → neu fragen
+	$effect(() => {
+		void version;
+		suggestions = {};
+		queue.length = 0;
+	});
+
+	function requestSuggestion(t: Transaction) {
+		const key = suggestionKey(t);
+		if (key in suggestions) return;
+		suggestions[key] = 'loading';
+		queue.push(t);
+		pump();
+	}
+
+	function pump() {
+		while (running < MAX_PARALLEL && queue.length) {
+			const t = queue.shift()!;
+			const key = suggestionKey(t);
+			running++;
+			apiFetch<MatchSuggestion | null>(`${BASE}/transactions/${t.id}/suggestion`)
+				.then((s) => {
+					if (suggestions[key] === 'loading') suggestions[key] = s;
+				})
+				.catch(() => {
+					if (suggestions[key] === 'loading') suggestions[key] = null;
+				})
+				.finally(() => {
+					running--;
+					pump();
+				});
+		}
+	}
+
+	/** Svelte-Action: Vorschlag laden, sobald die Zeile in den sichtbaren Bereich kommt */
+	function lazySuggestion(node: HTMLElement, t: Transaction) {
+		let current = t;
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((e) => e.isIntersecting)) requestSuggestion(current);
+			},
+			{ rootMargin: '200px' }
+		);
+		observer.observe(node);
+		return {
+			update(next: Transaction) {
+				current = next;
+				// neu beobachten, damit eine sichtbare Zeile nach einer Änderung erneut fragt
+				observer.disconnect();
+				observer.observe(node);
+			},
+			destroy: () => observer.disconnect()
+		};
+	}
+
+	/** Nur sichere/wahrscheinliche Vorschläge per Klick übernehmen – unsichere über den Dialog */
+	function usableSuggestion(t: Transaction): MatchSuggestion | null {
+		const s = suggestions[suggestionKey(t)];
+		return s && s !== 'loading' && s.confidence !== 'low' ? s : null;
+	}
+
+	const confidenceLabel = { high: 'sicher', medium: 'wahrscheinlich', low: 'unsicher' } as const;
+
+	async function acceptSuggestion(t: Transaction, s: MatchSuggestion) {
+		acceptingId = t.id;
+		const previous = t.allocations.map((a) => ({ lineId: a.lineId, amountCents: a.amountCents }));
+		try {
+			const r = await apiFetch<AllocationResult>(`${BASE}/transactions/${t.id}/allocations`, {
+				method: 'PUT',
+				body: JSON.stringify({ allocations: [...previous, ...s.allocations], notify: true })
+			});
+			const parts = [`${formatEuro(r.allocatedCents)} zugeordnet (${s.invoiceNumbers.join(', ')})`];
+			if (r.paidInvoices) parts.push(`${r.paidInvoices} Rechnung(en) vollständig bezahlt`);
+			if (r.mailsSent) parts.push(`${r.mailsSent} Bestätigung(en) gesendet`);
+			if (r.mailsSent) {
+				// Bestätigung ist schon verschickt – Rückgängig wäre irreführend (wie im Zuordnen-Dialog)
+				toast.success(parts.join(' · '));
+			} else {
+				toastWithUndo({
+					message: parts.join(' · '),
+					undo: () =>
+						apiFetch(`${BASE}/transactions/${t.id}/allocations`, {
+							method: 'PUT',
+							body: JSON.stringify({ allocations: previous, notify: false })
+						}),
+					undone: 'Zuordnung aufgehoben',
+					onundone: onchanged
+				});
+			}
+			if (r.mailErrors) toast.error(`${r.mailErrors} Mail(s) konnten nicht gesendet werden`);
+			await onchanged();
+		} catch (e) {
+			toast.error(errorMessage(e, 'Zuordnung fehlgeschlagen'));
+		} finally {
+			acceptingId = null;
+		}
+	}
 	const accountOptions = $derived(accounts.map((a) => ({ value: a.id, label: a.name })));
 	const categoryOptions = $derived(categories.map((c) => ({ value: c.id, label: c.name })));
 
@@ -179,21 +319,12 @@
 		: 'Erfasse Buchungen von Hand oder importiere einen Kontoauszug als CSV.'}
 >
 	{#snippet toolbar()}
-		<div class="flex flex-wrap gap-1" role="group" aria-label="Buchungen filtern">
-			{#each filters as f (f.value)}
-				<Button
-					size="sm"
-					variant={filter === f.value ? 'default' : 'outline'}
-					aria-pressed={filter === f.value}
-					onclick={() => {
-						filter = f.value;
-						reset();
-					}}
-				>
-					{f.label}
-				</Button>
-			{/each}
-		</div>
+		<FilterChips
+			options={filterOptions}
+			bind:value={filter}
+			label="Buchungen filtern"
+			onchange={reset}
+		/>
 		<SelectField
 			class="w-44"
 			size="sm"
@@ -249,6 +380,26 @@
 						/>{/if}
 				</div>
 				{#if t.purpose}<div class="truncate text-xs text-muted-foreground">{t.purpose}</div>{/if}
+				{#if t.payer}
+					{@const payer = t.payer}
+					<div class="truncate text-xs text-muted-foreground">
+						Familie:
+						{#if onfamily}
+							<button
+								type="button"
+								class="rounded-sm font-medium text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								onclick={(e) => {
+									e.stopPropagation();
+									onfamily({ payerId: payer.id });
+								}}
+							>
+								{payer.name}
+							</button>
+						{:else}
+							<span class="font-medium text-foreground">{payer.name}</span>
+						{/if}
+					</div>
+				{/if}
 				<div class="mt-1 flex flex-wrap gap-1">
 					{#if t.category}<Badge variant="outline">{t.category.name}</Badge>{/if}
 					{#if t.action}<Badge variant="outline">{t.action.name}</Badge>{/if}
@@ -272,6 +423,59 @@
 					<div class="mt-1 text-xs text-amber-700 dark:text-amber-400">
 						{formatEuro(t.unallocatedCents)} nicht zugeordnet
 					</div>
+					{#if canInline(t)}
+						{@const s = usableSuggestion(t)}
+						<div class="mt-1.5" use:lazySuggestion={t}>
+							{#if s}
+								<div
+									class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs"
+								>
+									<Sparkles class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+									<span class="min-w-0 flex-1" title={s.reason}>
+										<span class="font-medium">→ {s.invoiceNumbers.join(', ')}</span>
+										<span class="text-muted-foreground">
+											· {formatEuro(s.allocations.reduce((sum, a) => sum + a.amountCents, 0))}
+											· {confidenceLabel[s.confidence]}
+										</span>
+										<span class="block truncate text-muted-foreground">{s.reason}</span>
+									</span>
+									<div class="flex gap-1">
+										<Button
+											size="xs"
+											disabled={!!acceptingId}
+											onclick={(e) => {
+												e.stopPropagation();
+												void acceptSuggestion(t, s);
+											}}
+										>
+											{acceptingId === t.id ? 'Speichert …' : 'Übernehmen'}
+										</Button>
+										<Button
+											size="xs"
+											variant="ghost"
+											onclick={(e) => {
+												e.stopPropagation();
+												onallocate(t);
+											}}
+										>
+											Anpassen
+										</Button>
+									</div>
+								</div>
+							{:else}
+								<Button
+									size="xs"
+									variant="outline"
+									onclick={(e) => {
+										e.stopPropagation();
+										onallocate(t);
+									}}
+								>
+									Zuordnen
+								</Button>
+							{/if}
+						</div>
+					{/if}
 				{:else if t.unallocatedCents > 0 && t.allocations.length}
 					<div class="mt-1 text-xs text-muted-foreground">
 						Rest {formatEuro(t.unallocatedCents)}

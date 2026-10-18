@@ -1,11 +1,11 @@
 import type { SubsidyInput, SubsidyLine, SubsidyResult } from './schemas';
 
-/** Zuschusssaetze der Richtlinie 2026 in Cent je Person und Nacht. */
+/** Zuschusssätze der Richtlinie 2026 in Cent je Person und Nacht. */
 export const SUBSIDY_RATES_2026 = {
 	external: {
 		children: 1300,
 		youth: 1400,
-		/** 4 bis 14 Naechte, keine Konfi-Fahrt */
+		/** 4 bis 14 Nächte, keine Konfi-Fahrt */
 		longChildren: 1500,
 		longYouth: 1600
 	},

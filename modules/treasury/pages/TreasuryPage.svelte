@@ -10,11 +10,9 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Upload from '@lucide/svelte/icons/upload';
-	import Users from '@lucide/svelte/icons/users';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { PageHeader } from '$lib/components/layout';
 	import type {
@@ -26,24 +24,32 @@
 		Transaction
 	} from '../schemas';
 	import { BASE, errorMessage } from './helpers';
-	import AccountingsTab from './AccountingsTab.svelte';
-	import AnnualFeeTab from './AnnualFeeTab.svelte';
 	import AllocateDialog from './AllocateDialog.svelte';
+	import FamilySheet from './FamilySheet.svelte';
 	import ImportDialog from './ImportDialog.svelte';
+	import IncomeSection from './IncomeSection.svelte';
 	import InvoiceDialog from './InvoiceDialog.svelte';
-	import InvoicesTab from './InvoicesTab.svelte';
-	import OpenItemsTab from './OpenItemsTab.svelte';
+	import OutgoingSection from './OutgoingSection.svelte';
 	import OverviewTab from './OverviewTab.svelte';
-	import PayablesTab from './PayablesTab.svelte';
-	import PayersTab from './PayersTab.svelte';
 	import ReportsTab from './ReportsTab.svelte';
 	import SuggestionsDialog from './SuggestionsDialog.svelte';
 	import TransactionDialog from './TransactionDialog.svelte';
 	import TransactionsTab from './TransactionsTab.svelte';
 	import TransferDialog from './TransferDialog.svelte';
+	import {
+		SECTIONS,
+		SECTION_LABELS,
+		resolveLocation,
+		type FamilyRef,
+		type IncomeView,
+		type OutgoingView,
+		type Section,
+		type TreasuryLocation,
+		type TreasuryPerm
+	} from './navigation';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
-	const perm = $derived({
+	const perm = $derived<TreasuryPerm>({
 		editTx: can(permissions, 'treasury.transaction.edit'),
 		deleteTx: can(permissions, 'treasury.transaction.delete'),
 		editInvoice: can(permissions, 'treasury.invoice.edit'),
@@ -59,26 +65,58 @@
 	const annualView = $derived(can(permissions, 'treasury.annual-fee.view'));
 	const annualManage = $derived(can(permissions, 'treasury.annual-fee.manage'));
 
-	const TABS = [
-		'overview',
-		'open',
-		'payables',
-		'accountings',
-		'transactions',
-		'invoices',
-		'annual',
-		'reports'
-	];
-	const initialTab = page.url.searchParams.get('tab');
-	let tab = $state(initialTab && TABS.includes(initialTab) ? initialTab : 'overview');
-	/** Zahler & Familien: im „Mehr“-Menü als Seitenpanel (alte Links mit ?tab=payers öffnen es) */
-	let payersOpen = $state(initialTab === 'payers');
+	// Bereich + Unteransicht aus der URL; alte Links (`?tab=open`, `?tab=payers` …) werden umgeleitet
+	const initial = resolveLocation(
+		page.url.searchParams.get('tab'),
+		page.url.searchParams.get('view')
+	);
+	let section = $state<Section>(initial.section);
+	let incomeView = $state<IncomeView>(
+		initial.section === 'income' ? (initial.view as IncomeView) : 'open'
+	);
+	let outgoingView = $state<OutgoingView>(
+		initial.section === 'outgoing' ? (initial.view as OutgoingView) : 'payables'
+	);
 
-	function setTab(v: string) {
-		tab = v;
+	const visibleSections = $derived(SECTIONS.filter((s) => s !== 'reports' || perm.report));
+	/** ohne Berichtsrecht nie „Berichte“ anzeigen */
+	const activeSection = $derived<Section>(
+		section === 'reports' && !perm.report ? 'overview' : section
+	);
+
+	function syncUrl() {
 		const url = new URL(page.url);
-		url.searchParams.set('tab', v);
+		url.searchParams.set('tab', section);
+		if (section === 'income') url.searchParams.set('view', incomeView);
+		else if (section === 'outgoing') url.searchParams.set('view', outgoingView);
+		else url.searchParams.delete('view');
 		replaceState(url, {});
+	}
+
+	function go(loc: TreasuryLocation) {
+		section = loc.section;
+		if (loc.section === 'income' && loc.view) incomeView = loc.view as IncomeView;
+		if (loc.section === 'outgoing' && loc.view) outgoingView = loc.view as OutgoingView;
+		syncUrl();
+	}
+
+	/** Navigation über Bereichs- oder alte Tab-Namen (z. B. `open`, `invoices` aus der Übersicht) */
+	function open(tab: string) {
+		go(resolveLocation(tab));
+	}
+
+	/** Bereich wechseln; die zuletzt gewählte Unteransicht bleibt erhalten */
+	function setSection(v: string) {
+		section = resolveLocation(v).section;
+		syncUrl();
+	}
+
+	// Familienansicht (Seitenpanel), aus allen Bereichen per `onfamily` erreichbar
+	let familyOpen = $state(false);
+	let familyTarget = $state<FamilyRef | null>(null);
+	function openFamily(ref: FamilyRef) {
+		familyTarget = ref;
+		familyOpen = true;
 	}
 
 	let accounts = $state<Account[]>([]);
@@ -157,8 +195,33 @@
 		}
 	}
 
-	const shared = $derived({ accounts, categories, actions, members, payers, perm, version });
+	const shared = $derived({
+		accounts,
+		categories,
+		actions,
+		members,
+		payers,
+		perm,
+		version,
+		onfamily: openFamily
+	});
+
+	/** Tastenkürzel „n“: neue Buchung (nicht beim Tippen, nicht über offenen Dialogen/Menüs) */
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key !== 'n' && e.key !== 'N') return;
+		if (e.ctrlKey || e.altKey || e.metaKey || e.repeat || e.defaultPrevented) return;
+		if (!perm.editTx || txOpen) return;
+		const el = e.target instanceof HTMLElement ? e.target : null;
+		if (el && (el.isContentEditable || el.closest('input, textarea, select, [contenteditable]'))) {
+			return;
+		}
+		if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+		e.preventDefault();
+		editTransaction(null);
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="space-y-6">
 	<PageHeader
@@ -176,67 +239,72 @@
 				</Button>
 			{/if}
 			{#if perm.editTx}
-				<Button onclick={() => editTransaction(null)}><Plus /> Buchung</Button>
+				<Button
+					onclick={() => editTransaction(null)}
+					title="Neue Buchung (N)"
+					aria-keyshortcuts="n"
+				>
+					<Plus /> Buchung
+					<kbd
+						class="ml-0.5 hidden rounded border border-current/30 px-1 font-mono text-[10px] leading-4 opacity-70 sm:inline"
+						aria-hidden="true">N</kbd
+					>
+				</Button>
 				<Button variant="outline" onclick={() => (importOpen = true)}>
 					<Upload /> Import
 				</Button>
 			{/if}
-			<DropdownMenu.Root>
-				<DropdownMenu.Trigger>
-					{#snippet child({ props })}
-						<Button {...props} variant="outline" aria-label="Weitere Aktionen">
-							Mehr <ChevronDown />
-						</Button>
-					{/snippet}
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-72">
-					{#if perm.editTx}
-						<DropdownMenu.Label class="text-xs text-muted-foreground">Buchungen</DropdownMenu.Label>
-						<DropdownMenu.Item onclick={() => (transferOpen = true)}>
-							<ArrowLeftRight /> Umbuchung zwischen Konten
-						</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={() => (suggestionsOpen = true)}>
-							<Sparkles /> Zuordnungsvorschläge prüfen
-						</DropdownMenu.Item>
-					{/if}
-					{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
-					{#if perm.editInvoice}
-						<DropdownMenu.Label class="text-xs text-muted-foreground">Rechnungen</DropdownMenu.Label
-						>
-						<DropdownMenu.Item onclick={() => (invoiceOpen = true)}>
-							<FilePlus /> Neue Rechnung
-						</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={sync} disabled={syncing}>
-							<RefreshCw />
-							{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
-						</DropdownMenu.Item>
-					{/if}
-					{#if perm.editTx || perm.editInvoice}<DropdownMenu.Separator />{/if}
-					<DropdownMenu.Label class="text-xs text-muted-foreground">Familien</DropdownMenu.Label>
-					<DropdownMenu.Item onclick={() => (payersOpen = true)}>
-						<Users /> Zahler &amp; Familien
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
+			{#if perm.editTx || perm.editInvoice}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="outline" aria-label="Weitere Aktionen">
+								Mehr <ChevronDown />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end" class="w-72">
+						{#if perm.editTx}
+							<DropdownMenu.Label class="text-xs text-muted-foreground"
+								>Buchungen</DropdownMenu.Label
+							>
+							<DropdownMenu.Item onclick={() => (transferOpen = true)}>
+								<ArrowLeftRight /> Umbuchung zwischen Konten
+							</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={() => (suggestionsOpen = true)}>
+								<Sparkles /> Zuordnungsvorschläge prüfen
+							</DropdownMenu.Item>
+						{/if}
+						{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
+						{#if perm.editInvoice}
+							<DropdownMenu.Label class="text-xs text-muted-foreground"
+								>Rechnungen</DropdownMenu.Label
+							>
+							<DropdownMenu.Item onclick={() => (invoiceOpen = true)}>
+								<FilePlus /> Neue Rechnung
+							</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={sync} disabled={syncing}>
+								<RefreshCw />
+								{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
+							</DropdownMenu.Item>
+						{/if}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			{/if}
 		{/snippet}
 	</PageHeader>
 
-	<Tabs.Root value={tab} onValueChange={(v) => setTab(v)}>
-		<Tabs.List variant="line" class="mb-4 h-auto flex-wrap">
-			<Tabs.Trigger value="overview">Übersicht</Tabs.Trigger>
-			<Tabs.Trigger value="open">Offene Posten</Tabs.Trigger>
-			<Tabs.Trigger value="payables">Auszahlungen</Tabs.Trigger>
-			{#if perm.report}<Tabs.Trigger value="accountings">Abrechnungen</Tabs.Trigger>{/if}
-			<Tabs.Trigger value="transactions">Buchungen</Tabs.Trigger>
-			<Tabs.Trigger value="invoices">Rechnungen</Tabs.Trigger>
-			{#if annualView}<Tabs.Trigger value="annual">Jahresbeitrag</Tabs.Trigger>{/if}
-			{#if perm.report}<Tabs.Trigger value="reports">Berichte</Tabs.Trigger>{/if}
+	<Tabs.Root value={activeSection} onValueChange={(v) => setSection(v)}>
+		<Tabs.List variant="line" class="mb-4 h-auto w-full flex-wrap justify-start">
+			{#each visibleSections as s (s)}
+				<Tabs.Trigger value={s} class="flex-none px-2 sm:px-3">{SECTION_LABELS[s]}</Tabs.Trigger>
+			{/each}
 		</Tabs.List>
 		<Tabs.Content value="overview">
-			{#if tab === 'overview'}
+			{#if activeSection === 'overview'}
 				<OverviewTab
 					{...shared}
-					onopen={(t) => setTab(t)}
+					onopen={open}
 					onallocate={allocate}
 					onsuggestions={() => (suggestionsOpen = true)}
 					oncreate={() => editTransaction(null)}
@@ -245,11 +313,32 @@
 				/>
 			{/if}
 		</Tabs.Content>
-		<Tabs.Content value="open">
-			{#if tab === 'open'}<OpenItemsTab {...shared} onchanged={changed} />{/if}
+		<Tabs.Content value="income">
+			{#if activeSection === 'income'}
+				<IncomeSection
+					{...shared}
+					view={incomeView}
+					{annualView}
+					{annualManage}
+					onview={(v) => go({ section: 'income', view: v })}
+					onopen={open}
+					oncreateinvoice={() => (invoiceOpen = true)}
+					onchanged={changed}
+				/>
+			{/if}
+		</Tabs.Content>
+		<Tabs.Content value="outgoing">
+			{#if activeSection === 'outgoing'}
+				<OutgoingSection
+					{...shared}
+					view={outgoingView}
+					onview={(v) => go({ section: 'outgoing', view: v })}
+					onchanged={changed}
+				/>
+			{/if}
 		</Tabs.Content>
 		<Tabs.Content value="transactions">
-			{#if tab === 'transactions'}
+			{#if activeSection === 'transactions'}
 				<TransactionsTab
 					{...shared}
 					onedit={editTransaction}
@@ -259,29 +348,8 @@
 				/>
 			{/if}
 		</Tabs.Content>
-		<Tabs.Content value="invoices">
-			{#if tab === 'invoices'}
-				<InvoicesTab {...shared} oncreate={() => (invoiceOpen = true)} onchanged={changed} />
-			{/if}
-		</Tabs.Content>
-		<Tabs.Content value="accountings">
-			{#if tab === 'accountings' && perm.report}<AccountingsTab {...shared} />{/if}
-		</Tabs.Content>
-		<Tabs.Content value="annual">
-			{#if tab === 'annual' && annualView}
-				<AnnualFeeTab
-					{...shared}
-					canManage={annualManage}
-					onopen={(t) => setTab(t)}
-					onchanged={changed}
-				/>
-			{/if}
-		</Tabs.Content>
 		<Tabs.Content value="reports">
-			{#if tab === 'reports' && perm.report}<ReportsTab {...shared} />{/if}
-		</Tabs.Content>
-		<Tabs.Content value="payables">
-			{#if tab === 'payables'}<PayablesTab {...shared} onchanged={changed} />{/if}
+			{#if activeSection === 'reports' && perm.report}<ReportsTab {...shared} />{/if}
 		</Tabs.Content>
 	</Tabs.Root>
 </div>
@@ -296,23 +364,16 @@
 	canUploadReceipt={perm.upload}
 	onsaved={afterTxSaved}
 />
-<Sheet.Root bind:open={payersOpen}>
-	<Sheet.Content
-		side="right"
-		class="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-3xl"
-	>
-		<Sheet.Header class="border-b">
-			<Sheet.Title>Zahler &amp; Familien</Sheet.Title>
-			<Sheet.Description>
-				Zahler entstehen automatisch, wenn du Zahlungen zuordnest oder erfasst – inklusive IBAN und
-				Kindern. Hier kannst du nachsehen, korrigieren und Sammelrechnungen erstellen.
-			</Sheet.Description>
-		</Sheet.Header>
-		<div class="p-4">
-			{#if payersOpen}<PayersTab {...shared} onchanged={changed} />{/if}
-		</div>
-	</Sheet.Content>
-</Sheet.Root>
+<FamilySheet
+	bind:open={familyOpen}
+	target={familyTarget}
+	{accounts}
+	{payers}
+	{members}
+	{perm}
+	onchanged={changed}
+	onfamily={openFamily}
+/>
 <TransferDialog bind:open={transferOpen} {accounts} onsaved={changed} />
 <ImportDialog bind:open={importOpen} {accounts} onimported={afterImport} />
 <SuggestionsDialog

@@ -67,10 +67,10 @@
 		}
 	}
 
-	// Beim Oeffnen frisch laden und Modus zuruecksetzen
+	// Beim Öffnen frisch laden und Modus zurücksetzen
 	$effect(() => {
 		if (!open) return;
-		// nur auf `open` reagieren: load() liest mode/count, das darf den Effekt nicht erneut ausloesen
+		// nur auf `open` reagieren: load() liest mode/count, das darf den Effekt nicht erneut auslösen
 		untrack(() => {
 			mode = 'auto';
 			names = [];

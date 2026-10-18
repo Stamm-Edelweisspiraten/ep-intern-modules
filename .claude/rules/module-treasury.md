@@ -41,7 +41,7 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 | `bank.ts`, `iban.ts` | IBAN verschlüsseln/HMAC (`core.crypto.forModule('treasury').hash`), Prüfung, Maske `•••• 1234` |
 | `*.endpoints.ts` | `accounts`, `transactions`, `invoices` (inkl. Zahler, offene Posten, Aktionen), `import`, `reports` |
 | `closed-accountings.ts` | Abgeschlossene Abrechnungen: Liste, Detail, Belege, PDF, Ablage |
-| `pages/` | `TreasuryPage` (Tabs Übersicht · Offene Posten · Auszahlungen · Abrechnungen · Buchungen · Rechnungen · Berichte; `AccountingPage`; „Zahler & Familien“ als Seitenpanel im „Mehr“-Menü, `?tab=payers` öffnet es), `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
+| `pages/` | `TreasuryPage` (Bereiche aus `navigation.ts`: Übersicht · Eingänge · Ausgänge · Buchungen · Berichte; `?tab=<bereich>&view=<unteransicht>`, alte Tab-Namen über `resolveLocation`), `IncomeSection` (Offene Posten · Rechnungen · Familien · Jahresbeitrag), `OutgoingSection` (Auszahlungen · Abrechnungen), `FamilySheet` (Familienkonto, aus allen Bereichen per `onfamily`), `StatusBadge`/`FilterChips` (einheitlich in allen Tabellen), `BulkPayDialog`/`BulkActions.ts` (Sammelaktionen), `AccountingPage`, `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
 
 ## Datenmodell (Migration 0001)
 - `accounts` (kind giro|cash|other, `iban` Klartext – eigenes Vereinskonto, Anfangsbestand + Stichtag, `archived_at`).
@@ -221,6 +221,7 @@ Empfänger-Adressen im Rechnungsdetail nur mit `invoice.edit` oder `invoice.send
 | `/invoices/:id/cancel|reactivate|mark-paid|remind`, `…/lines/:lineId`, `…/pdf` | POST, PUT, GET | PDF Vorlage `stamm-brief` mit Adresse des Mitglieds |
 | `/open-items[.csv]` | GET | `groupBy=payer|action`, `overdue=1`, `search` |
 | `/payers[/:id]`, `/payers/suggestions`, `/members`, `/action-refs` | … | Geschwister-Vorschläge über gleiche E-Mail/Anschrift |
+| `/family-account?payerId=…\|memberId=…` | GET | `FamilyAccount` (`family.endpoints.ts`): Zahler, Kinder, alle Rechnungen, Zahlungen, Auszahlungen, Summen; Mitglied mit Zahler → dessen Konto; genau ein Parameter (422) |
 | `/import/preview`, `/import` | POST | multipart `file`, `accountId`, optional `mapping` (JSON); 422 mit `details.headers`, wenn Spalten fehlen |
 | `/sync`, `/reminders/run` | POST | Abgleich bzw. Erinnerungsjob sofort |
 | `/report[.pdf|.csv]` | GET | `from`, `to`; Anfangs-/Endbestand je Konto, Kategorie, Aktion, offene Forderungen (Stand heute) |
@@ -248,3 +249,11 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTr
 - Demo: Die Demo-DB hatte zwischenzeitlich echte SMTP-Daten; vor Tests mit Mails `node scripts/setup-demo-mail.mjs` (Mailpit) prüfen.
 - Offen/bewusst nicht: keine Jahressperre, kein SEPA/FinTS, bereits bezahlte Stamm-Ausgaben erzeugen keine Kassenbuchung,
   feste Fälligkeit zurücksetzen ändert bestehende Rechnungen nicht, Guthaben wird nicht automatisch verrechnet.
+
+## Zwischenabrechnungen aus Aktionen (Snapshot-Modell, 2026-10-18)
+- Auslagen sind freigegeben, sobald eine ZA sie enthält oder die Abrechnung abgeschlossen ist: **eine** Auszahlung je (Aktion, Person),
+  Schlüssel `reimb:<aktion>:<person>`, Beschreibung „Auslagen <Aktion>“; neue Auslagen in späteren ZAs lassen dieselbe Auszahlung wachsen.
+  Rückkanal `markReimbursed(…, null)`; Erstattung wird nur zurückgenommen, wenn an der Auszahlung gar nichts bezahlt ist (keine Doppelzahlung).
+- Altdaten mit ZA-Schlüssel `reimb:<aktion>:<person>:<interimId>`: unbezahlte storniert der Abgleich, bezahlte bleiben (Rückkanal No-op).
+- Tab „Abrechnungen“: Aktionen mit ZA als „Zwischenabgerechnet (N)“, PDF ansehen/herunterladen je ZA
+  (`GET /closed-accountings/:id/interims/:interimId/pdf`). Tests: `tests/integration/treasury-interim.test.ts`.

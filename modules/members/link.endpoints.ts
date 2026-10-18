@@ -41,7 +41,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/members/:id/links',
-		summary: 'Verknuepfte Benutzer und Codestatus eines Mitglieds',
+		summary: 'Verknüpfte Benutzer und Codestatus eines Mitglieds',
 		tags,
 		permission: 'members.link.view',
 		params: idParams,
@@ -50,7 +50,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/members/:id/link-code',
-		summary: 'Neuen Verknuepfungscode erzeugen (alter Link/Code wird ungueltig)',
+		summary: 'Neuen Verknüpfungscode erzeugen (alter Link/Code wird ungültig)',
 		tags,
 		permission: 'members.link.manage',
 		params: idParams,
@@ -62,7 +62,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'DELETE',
 		path: '/members/:id/links/:userId',
-		summary: 'Verknuepfung eines Benutzers loesen',
+		summary: 'Verknüpfung eines Benutzers lösen',
 		tags,
 		permission: 'members.link.manage',
 		params: linkUserParams,
@@ -74,7 +74,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/members/:id/link-letter.pdf',
-		summary: 'Verknuepfungsbrief als PDF (QR-Code, Link, Code)',
+		summary: 'Verknüpfungsbrief als PDF (QR-Code, Link, Code)',
 		tags,
 		permission: 'members.link.manage',
 		params: idParams,
@@ -83,7 +83,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/members/link-letters.pdf',
-		summary: 'Verknuepfungsbriefe mehrerer Mitglieder als ein PDF',
+		summary: 'Verknüpfungsbriefe mehrerer Mitglieder als ein PDF',
 		tags,
 		permission: 'members.link.manage',
 		body: linkLettersInput,
@@ -94,7 +94,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/my/members',
-		summary: 'Mit dem eigenen Konto verknuepfte Mitglieder (Kontakte, Zusatzfelder, Mail-Abwahlen)',
+		summary: 'Mit dem eigenen Konto verknüpfte Mitglieder (Kontakte, Zusatzfelder, Mail-Abwahlen)',
 		tags,
 		permission: 'members.own.view',
 		rateLimit: { limit: 60, windowSec: 60 },
@@ -103,7 +103,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/my/fields',
-		summary: 'Aktive Zusatzfelder fuer die eigenen Mitglieder',
+		summary: 'Aktive Zusatzfelder für die eigenen Mitglieder',
 		tags,
 		permission: 'members.own.view',
 		rateLimit: { limit: 60, windowSec: 60 },
@@ -112,7 +112,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/my/members/:id/fields',
-		summary: 'Zusatzfelder eines verknuepften Mitglieds aendern',
+		summary: 'Zusatzfelder eines verknüpften Mitglieds ändern',
 		tags,
 		permission: 'members.own.edit',
 		rateLimit: { limit: 10, windowSec: 600 },
@@ -132,7 +132,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/my/members/:id/contacts',
-		summary: 'Telefone und E-Mail-Adressen eines verknuepften Mitglieds aendern',
+		summary: 'Telefone und E-Mail-Adressen eines verknüpften Mitglieds ändern',
 		tags,
 		permission: 'members.own.edit',
 		rateLimit: { limit: 10, windowSec: 600 },
@@ -146,7 +146,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/my/members/:id/mail-prefs',
-		summary: 'Abschaltbare Mail-Kategorie eines verknuepften Mitglieds an/aus',
+		summary: 'Abschaltbare Mail-Kategorie eines verknüpften Mitglieds an/aus',
 		tags,
 		permission: 'members.own.edit',
 		rateLimit: { limit: 10, windowSec: 600 },
@@ -169,11 +169,11 @@ export const linkEndpoints: ApiEndpoint[] = [
 			setMailPref(ctx, params.id, body.category, body.enabled, false)
 	}),
 
-	// Oeffentlicher Ablauf (Link aus dem Brief + Code)
+	// Öffentlicher Ablauf (Link aus dem Brief + Code)
 	defineEndpoint({
 		method: 'GET',
 		path: '/public/link/:token',
-		summary: 'Oeffentliche Verknuepfungsseite: Basisinfo zum Link',
+		summary: 'Öffentliche Verknüpfungsseite: Basisinfo zum Link',
 		tags,
 		permission: null,
 		public: true,
@@ -184,7 +184,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/public/link/:token/claim',
-		summary: 'Angemeldetes Konto per Code mit dem Mitglied verknuepfen',
+		summary: 'Angemeldetes Konto per Code mit dem Mitglied verknüpfen',
 		tags,
 		permission: null,
 		public: true,
@@ -196,7 +196,7 @@ export const linkEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/public/link/:token/register',
-		summary: 'Neues Konto per Code anlegen und mit dem Mitglied verknuepfen',
+		summary: 'Neues Konto per Code anlegen und mit dem Mitglied verknüpfen',
 		tags,
 		permission: null,
 		public: true,

@@ -134,7 +134,7 @@ export async function createRun(ctx: RequestContext, year: number): Promise<Annu
 			ON CONFLICT (year) DO NOTHING RETURNING id`
 		);
 		if (!inserted.length) {
-			throw errors.conflict('Fuer dieses Jahr gibt es bereits einen Beitragslauf');
+			throw errors.conflict('Für dieses Jahr gibt es bereits einen Beitragslauf');
 		}
 	});
 	await core.audit.logFromContext(ctx, 'treasury.annual-fee.created', {
@@ -147,7 +147,7 @@ export async function createRun(ctx: RequestContext, year: number): Promise<Annu
 function requireEditable(run: AnnualRun): void {
 	if (run.status === 'sent') {
 		throw errors.conflict(
-			'Der Beitragslauf ist bereits versendet und kann nicht mehr geaendert werden'
+			'Der Beitragslauf ist bereits versendet und kann nicht mehr geändert werden'
 		);
 	}
 }
@@ -163,7 +163,7 @@ export async function updateRun(
 	const unscheduled = await mdb().transaction(async (tx) => {
 		const run = await loadRun(tx, id, true);
 		requireEditable(run);
-		// Geplanter Versand wurde mit `invoice.send` freigegeben: Inhaltsaenderung → wieder Entwurf
+		// Geplanter Versand wurde mit `invoice.send` freigegeben: Inhaltsänderung → wieder Entwurf
 		await tx.execute(
 			sql`UPDATE annual_fee_runs SET
 				status = 'draft', send_on = NULL,
@@ -191,7 +191,7 @@ export async function deleteRun(ctx: RequestContext, id: string): Promise<void> 
 	const year = await mdb().transaction(async (tx) => {
 		const run = await loadRun(tx, id, true);
 		if (run.status === 'sent' || run.invoiceCount > 0) {
-			throw errors.conflict('Versendete Beitragslaeufe koennen nicht geloescht werden');
+			throw errors.conflict('Versendete Beitragsläufe können nicht gelöscht werden');
 		}
 		await tx.execute(sql`DELETE FROM annual_fee_runs WHERE id = ${id}`);
 		return run.year;
@@ -240,15 +240,15 @@ const toAnnualMember = (c: MemberContact): AnnualMember => ({
 	feeLevels: (c.feeLevels ?? FEE_LEVELS) as FeeLevel[]
 });
 
-/** Obergrenze von `listMemberContacts` (ohne Blaettern) */
+/** Obergrenze von `listMemberContacts` (ohne Blättern) */
 export const MAX_ANNUAL_CONTACTS = 1000;
 
 async function loadContacts(): Promise<MemberContact[]> {
 	const list = await (await membersService()).listMemberContacts({ limit: MAX_ANNUAL_CONTACTS });
-	// Abgeschnittene Liste wuerde Mitglieder stillschweigend nicht abrechnen → lieber abbrechen
+	// Abgeschnittene Liste würde Mitglieder stillschweigend nicht abrechnen → lieber abbrechen
 	if (list.length >= MAX_ANNUAL_CONTACTS) {
 		throw errors.conflict(
-			`Der Jahresbeitrag unterstuetzt derzeit hoechstens ${MAX_ANNUAL_CONTACTS - 1} Mitglieder (inkl. ausgetretener)`
+			`Der Jahresbeitrag unterstützt derzeit höchstens ${MAX_ANNUAL_CONTACTS - 1} Mitglieder (inkl. ausgetretener)`
 		);
 	}
 	return list;
@@ -311,7 +311,7 @@ async function loadPlan(
 	});
 }
 
-/** Empfaenger-Adressen nur fuer Versand-/Bearbeitungsrechte (wie im Rechnungsdetail) */
+/** Empfänger-Adressen nur für Versand-/Bearbeitungsrechte (wie im Rechnungsdetail) */
 export const canSeeAddresses = (ctx: RequestContext) =>
 	core.permissions.has(ctx, 'treasury.invoice.send') ||
 	core.permissions.has(ctx, 'treasury.invoice.edit');
@@ -343,7 +343,7 @@ export async function previewRun(
 
 function pickInvoice(plan: AnnualPlan, key?: string): PlannedInvoice {
 	const inv = key ? plan.invoices.find((i) => i.key === key) : plan.invoices[0];
-	if (!inv) throw errors.notFound('Keine Rechnung fuer die Vorschau');
+	if (!inv) throw errors.notFound('Keine Rechnung für die Vorschau');
 	return inv;
 }
 
@@ -451,7 +451,7 @@ export async function previewMail(
 const EMPTY_SEND = { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
 const SEND_CHUNK = 25;
 
-/** Nicht stornierte Rechnungen des Laufs ohne zugestellte Fassung (Zaehler und Wiederholung) */
+/** Nicht stornierte Rechnungen des Laufs ohne zugestellte Fassung (Zähler und Wiederholung) */
 async function unsentInvoiceIds(runId: string, only?: string[]): Promise<string[]> {
 	if (only && !only.length) return [];
 	const found = await mdb().transaction((tx) =>
@@ -469,7 +469,7 @@ async function unsentInvoiceIds(runId: string, only?: string[]): Promise<string[
 
 /**
  * Versendet Rechnungen in Paketen. Ein Fehler (z. B. PDF) bricht nicht den ganzen Versand ab:
- * nicht versendete Rechnungen des Pakets zaehlen als Fehler und koennen per `resend` nachgeholt werden.
+ * nicht versendete Rechnungen des Pakets zählen als Fehler und können per `resend` nachgeholt werden.
  */
 async function sendInChunks(
 	ctx: RequestContext,
@@ -507,7 +507,7 @@ async function storeResult(id: string, result: AnnualSendResult): Promise<void> 
 /**
  * Erzeugt die Rechnungen eines Laufs (`run`) bzw. der Nachberechnung (`catch-up`) und versendet sie.
  * `run`: nur aus Entwurf/geplant (sonst 409), setzt danach `sent`. `catch-up`: nur nach dem Versand.
- * `scheduledOnly` (Job): nur, wenn der Lauf unter Sperre noch geplant und faellig ist – sonst `null`.
+ * `scheduledOnly` (Job): nur, wenn der Lauf unter Sperre noch geplant und fällig ist – sonst `null`.
  */
 export async function sendRun(
 	ctx: RequestContext,
@@ -577,7 +577,7 @@ export async function sendRun(
 		return { ids, totalCents, members, run };
 	});
 	if (!created) return null;
-	// Ab hier sind die Rechnungen gespeichert: Versandfehler nur zaehlen (Wiederholung per `resend`)
+	// Ab hier sind die Rechnungen gespeichert: Versandfehler nur zählen (Wiederholung per `resend`)
 	const sent = created.ids.length
 		? await sendInChunks(ctx, id, created.ids, created.run.mailSubject, created.run.mailBody)
 		: EMPTY_SEND;

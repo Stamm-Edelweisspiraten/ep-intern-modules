@@ -118,7 +118,7 @@
 	);
 	const isExpense = $derived(type === 'expense');
 	const isClubExpense = $derived(isExpense && paidBy === 'club');
-	/** Von der Kasse überwiesen: nur Ansicht */
+	/** Von der Kasse überwiesen oder bereits erstattet: nur Ansicht */
 	const locked = $derived(entry?.clubPaidVia === 'treasury' || !!entry?.reimbursedAt);
 	const isReimbursedEntry = $derived(!!entry?.reimbursedAt);
 	const savedIban = $derived(entry?.recipient?.ibanMasked ?? null);
@@ -262,7 +262,13 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
 		<Dialog.Header>
-			<Dialog.Title>{entry ? 'Buchung bearbeiten' : 'Buchung hinzufügen'}</Dialog.Title>
+			<Dialog.Title
+				>{entry
+					? locked
+						? 'Buchung ansehen'
+						: 'Buchung bearbeiten'
+					: 'Buchung hinzufügen'}</Dialog.Title
+			>
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
 		</Dialog.Header>
 

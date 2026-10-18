@@ -4,6 +4,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import UsersRound from '@lucide/svelte/icons/users-round';
 	import { apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -12,6 +13,7 @@
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { Payer, PayerFormInput, PayerSuggestion } from '../schemas';
 	import { BASE, errorMessage, openApiFile, type SharedData } from './helpers';
+	import type { FamilyRef } from './navigation';
 	import PayerDialog from './PayerDialog.svelte';
 
 	let {
@@ -19,8 +21,13 @@
 		members,
 		perm,
 		version,
-		onchanged
-	}: SharedData & { onchanged: () => void | Promise<void> } = $props();
+		onchanged,
+		onfamily
+	}: SharedData & {
+		onchanged: () => void | Promise<void>;
+		/** Familienkonto öffnen (Klick auf den Namen) */
+		onfamily?: (ref: FamilyRef) => void;
+	} = $props();
 
 	let suggestions = $state<PayerSuggestion[]>([]);
 	let dialogOpen = $state(false);
@@ -152,7 +159,20 @@
 				<Card.Root>
 					<Card.Header class="flex flex-row items-start gap-2 space-y-0">
 						<div class="min-w-0 flex-1">
-							<Card.Title class="truncate text-base">{p.name}</Card.Title>
+							<Card.Title class="truncate text-base">
+								{#if onfamily}
+									<button
+										type="button"
+										class="max-w-full truncate text-left underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+										aria-label={`Familienkonto ${p.name} öffnen`}
+										onclick={() => onfamily({ payerId: p.id })}
+									>
+										{p.name}
+									</button>
+								{:else}
+									{p.name}
+								{/if}
+							</Card.Title>
 							{#if p.email}<Card.Description class="truncate">{p.email}</Card.Description>{/if}
 						</div>
 						{#if perm.editInvoice}
@@ -207,11 +227,18 @@
 								{/if}
 								{#if p.creditCents}<span>Guthaben {formatEuro(p.creditCents)}</span>{/if}
 							</div>
-							{#if p.openCents > 0}
-								<Button size="sm" variant="outline" onclick={() => statement(p)}>
-									<FileText /> Sammelrechnung
-								</Button>
-							{/if}
+							<div class="flex flex-wrap gap-2">
+								{#if onfamily}
+									<Button size="sm" variant="ghost" onclick={() => onfamily({ payerId: p.id })}>
+										<UsersRound /> Familienkonto
+									</Button>
+								{/if}
+								{#if p.openCents > 0}
+									<Button size="sm" variant="outline" onclick={() => statement(p)}>
+										<FileText /> Sammelrechnung
+									</Button>
+								{/if}
+							</div>
 						</div>
 					</Card.Content>
 				</Card.Root>

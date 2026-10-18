@@ -1,8 +1,8 @@
 /**
- * Ausstehende Ueberweisungen (Verbindlichkeiten des Stammes): manuelle Eingangsrechnungen sowie
- * automatisch aus Auslagen der Aktions-Abrechnungen, gebuchten Rueckzahlungen und Guthaben.
- * Bezahlt wird ueber eine Ausgabe-Buchung (`payable_payments`); Auslagen werden danach in der
- * Abrechnung als ausgezahlt markiert (Rueckkanal ueber `ActionsService.markReimbursed`).
+ * Ausstehende Überweisungen (Verbindlichkeiten des Stammes): manuelle Eingangsrechnungen sowie
+ * automatisch aus Auslagen der Aktions-Abrechnungen, gebuchten Rückzahlungen und Guthaben.
+ * Bezahlt wird über eine Ausgabe-Buchung (`payable_payments`); Auslagen werden danach in der
+ * Abrechnung als ausgezahlt markiert (Rückkanal über `ActionsService.markReimbursed`).
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -28,7 +28,10 @@ import {
 	csvDocument,
 	formatDateDe,
 	matchMember,
+	parseReimbursementRef,
 	planPayables,
+	reimbursementDescription,
+	reimbursementRef,
 	sanitizeName,
 	type PayableDesired,
 	type PayableExisting
@@ -56,7 +59,7 @@ const REFUND_CATEGORY = 'cat-rueckzahlung';
 
 // --- Abgleich ------------------------------------------------------------------
 
-/** Erzeugt/aktualisiert automatische Auszahlungen. Dienste vor der Transaktion, Aenderungen in einer. */
+/** Erzeugt/aktualisiert automatische Auszahlungen. Dienste vor der Transaktion, Änderungen in einer. */
 export async function syncPayables(
 	members: MemberContact[]
 ): Promise<{ created: number; updated: number; cancelled: number }> {
@@ -122,13 +125,15 @@ export async function syncPayables(
 
 		const desired: PayableDesired[] = [
 			...reimbursements.map((r) => {
-				const ref = `reimb:${r.actionId}:${r.payeeId}`;
+				// Eine Auszahlung je (Aktion, Person) – egal ob aus Zwischenabrechnung oder Abschluss.
+				// Alte ZA-Schlüssel (`reimb:<a>:<p>:<za>`) fehlen hier und werden, solange unbezahlt, storniert.
+				const ref = reimbursementRef(r.actionId, r.payeeId);
 				return {
 					sourceRef: ref,
 					source: 'reimbursement' as const,
 					actionId: r.actionId,
 					recipientName: r.name,
-					description: `Auslagen ${actionLabel(r.actionId)}`.slice(0, 200),
+					description: reimbursementDescription(r.name, actionLabel(r.actionId)),
 					// In der Kasse bereits Gezahltes + in der Abrechnung noch offen
 					amountCents: (paidByRef.get(ref) ?? 0) + r.openCents,
 					payerId: null,
@@ -160,7 +165,7 @@ export async function syncPayables(
 					ibanEnc: origin?.enc ?? null
 				};
 			}),
-			// Stamm-Ausgaben: offen oder von der Kasse ueberwiesen (manuell bezahlte entfallen)
+			// Stamm-Ausgaben: offen oder von der Kasse überwiesen (manuell bezahlte entfallen)
 			...clubExpenses
 				.filter((e) => e.paidVia !== 'manual')
 				.map((e) => ({
@@ -340,7 +345,7 @@ async function onePayable(id: string): Promise<Payable> {
 	return p;
 }
 
-/** Klartext-IBAN je Quelle: eigene (manuell), Abrechnung (Auslagen) oder Zahler (Rueckzahlung/Guthaben) */
+/** Klartext-IBAN je Quelle: eigene (manuell), Abrechnung (Auslagen) oder Zahler (Rückzahlung/Guthaben) */
 async function payableIban(id: string): Promise<string | null> {
 	const r = await mdb().transaction(async (tx) => {
 		const [p] = await rows(
@@ -363,7 +368,7 @@ async function payableIban(id: string): Promise<string | null> {
 }
 
 /**
- * Nach Zahlung/Loeschung: Auslagen bzw. Stamm-Ausgaben in der Abrechnung als (nicht) bezahlt markieren.
+ * Nach Zahlung/Löschung: Auslagen bzw. Stamm-Ausgaben in der Abrechnung als (nicht) bezahlt markieren.
  */
 export async function syncActionPayableStatus(payableIds: string[]): Promise<void> {
 	if (!payableIds.length) return;
@@ -378,19 +383,33 @@ export async function syncActionPayableStatus(payableIds: string[]): Promise<voi
 	if (!found.length) return;
 	const svc = await actionsService();
 	for (const r of found) {
-		const [, actionId, ref] = String(r.source_ref).split(':');
-		if (!actionId || !ref) continue;
 		const settled = num(r.paid) > 0 && num(r.paid) >= num(r.amount_cents);
-		if (r.source === 'expense') await svc.markClubExpensePaid(actionId, ref, settled);
-		else await svc.markReimbursed(actionId, ref, settled);
+		if (r.source === 'expense') {
+			const [, actionId, entryId] = String(r.source_ref).split(':');
+			if (actionId && entryId) await svc.markClubExpensePaid(actionId, entryId, settled);
+			continue;
+		}
+		// Auslagen: eine Auszahlung je (Aktion, Person), `interimId: null` = alle freigegebenen Auslagen.
+		// Alt-Schlüssel mit ZA liefern die interimId weiter (Backend: No-op).
+		const ref = parseReimbursementRef(String(r.source_ref));
+		if (!ref) continue;
+		// Die Auszahlung wächst mit neuen Auslagen (z. B. aus einer weiteren Zwischenabrechnung). Ist sie
+		// nur teilweise bezahlt, bleiben bereits erstattete Auslagen erstattet – sonst würden sie im
+		// nächsten Abgleich erneut offen und doppelt ausgezahlt. Zurückgenommen wird erst, wenn nichts
+		// mehr bezahlt ist.
+		if (settled) {
+			await svc.markReimbursed(ref.actionId, ref.payeeId, true, ref.interimId);
+		} else if (num(r.paid) <= 0) {
+			await svc.markReimbursed(ref.actionId, ref.payeeId, false, ref.interimId);
+		}
 	}
 }
 
 // --- Endpoints -----------------------------------------------------------------
 
 /**
- * Ausgabe einer Auszahlung zuordnen (bzw. mit `null` loesen). Liefert die betroffenen Auszahlungen,
- * damit danach `syncActionPayableStatus` laufen kann (ausserhalb der Transaktion).
+ * Ausgabe einer Auszahlung zuordnen (bzw. mit `null` lösen). Liefert die betroffenen Auszahlungen,
+ * damit danach `syncActionPayableStatus` laufen kann (außerhalb der Transaktion).
  */
 export async function linkTransactionToPayable(
 	tx: Tx,
@@ -410,7 +429,7 @@ export async function linkTransactionToPayable(
 	await tx.execute(sql`DELETE FROM payable_payments WHERE transaction_id = ${transactionId}`);
 	if (payableId) {
 		if (num(t.amount_cents) >= 0 || t.transfer_id) {
-			throw errors.conflict('Nur Ausgaben koennen einer Auszahlung zugeordnet werden');
+			throw errors.conflict('Nur Ausgaben können einer Auszahlung zugeordnet werden');
 		}
 		const p = await lockPayable(tx, payableId);
 		if (p.cancelled_at) throw errors.conflict('Auszahlung ist storniert');
@@ -419,7 +438,7 @@ export async function linkTransactionToPayable(
 			sql`SELECT coalesce(sum(amount_cents), 0) AS s FROM payable_payments WHERE payable_id = ${payableId}`
 		);
 		const amount = Math.min(-num(t.amount_cents), num(p.amount_cents) - num(paid?.s));
-		if (amount <= 0) throw errors.conflict('Die Auszahlung ist bereits vollstaendig bezahlt');
+		if (amount <= 0) throw errors.conflict('Die Auszahlung ist bereits vollständig bezahlt');
 		await tx.execute(
 			sql`INSERT INTO payable_payments (id, payable_id, transaction_id, amount_cents, created_by)
 			VALUES (${crypto.randomUUID()}, ${payableId}, ${transactionId}, ${amount}, ${userId})`
@@ -445,7 +464,7 @@ export const payableEndpoints = [
 	{
 		method: 'GET',
 		path: '/payables',
-		summary: 'Ausstehende Ueberweisungen (Auslagen, Rueckzahlungen, Guthaben, Eingangsrechnungen)',
+		summary: 'Ausstehende Überweisungen (Auslagen, Rückzahlungen, Guthaben, Eingangsrechnungen)',
 		tags: TAGS,
 		permission: 'treasury.cash.view',
 		query: payableListQuery,
@@ -502,7 +521,7 @@ export const payableEndpoints = [
 	{
 		method: 'PUT',
 		path: '/payables/:id',
-		summary: 'Auszahlung aendern (automatische: nur Faelligkeit und Notiz)',
+		summary: 'Auszahlung ändern (automatische: nur Fälligkeit und Notiz)',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -571,7 +590,7 @@ export const payableEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/payables/:id',
-		summary: 'Manuelle Auszahlung ohne Zahlung loeschen',
+		summary: 'Manuelle Auszahlung ohne Zahlung löschen',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -586,7 +605,7 @@ export const payableEndpoints = [
 					sql`SELECT count(*)::int AS n FROM payable_payments WHERE payable_id = ${id}`
 				);
 				if (num(paid?.n) > 0)
-					throw errors.conflict('Bereits bezahlte Auszahlungen koennen nicht geloescht werden');
+					throw errors.conflict('Bereits bezahlte Auszahlungen können nicht gelöscht werden');
 				await tx.execute(sql`DELETE FROM payables WHERE id = ${id}`);
 				return str(cur.receipt_path);
 			});
@@ -598,7 +617,7 @@ export const payableEndpoints = [
 	{
 		method: 'POST',
 		path: '/payables/:id/pay',
-		summary: 'Ueberweisung buchen (Ausgabe) und der Auszahlung zuordnen',
+		summary: 'Überweisung buchen (Ausgabe) und der Auszahlung zuordnen',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -646,7 +665,7 @@ export const payableEndpoints = [
 	{
 		method: 'PUT',
 		path: '/transactions/:id/payable',
-		summary: 'Ausgabe (z. B. aus dem Import) einer Auszahlung zuordnen bzw. loesen',
+		summary: 'Ausgabe (z. B. aus dem Import) einer Auszahlung zuordnen bzw. lösen',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -668,7 +687,7 @@ export const payableEndpoints = [
 	{
 		method: 'GET',
 		path: '/payables/:id/iban',
-		summary: 'IBAN der Empfaenger*in im Klartext (auditiert)',
+		summary: 'IBAN der Empfänger*in im Klartext (auditiert)',
 		tags: TAGS,
 		permission: 'treasury.bank.view',
 		params: idParams,
@@ -686,7 +705,7 @@ export const payableEndpoints = [
 	{
 		method: 'GET',
 		path: '/payables.csv',
-		summary: 'Offene Auszahlungen als Ueberweisungsliste (IBAN nur mit treasury.bank.view)',
+		summary: 'Offene Auszahlungen als Überweisungsliste (IBAN nur mit treasury.bank.view)',
 		tags: TAGS,
 		permission: 'treasury.cash.view',
 		handler: async ({ ctx }) => {
@@ -734,7 +753,7 @@ export const payableEndpoints = [
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
 			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungueltige Formulardaten');
+				throw errors.badRequest('Ungültige Formulardaten');
 			});
 			const file = form.get('file');
 			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
@@ -743,7 +762,7 @@ export const payableEndpoints = [
 				throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
 			}
 			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei ueberschreitet 10 MB');
+			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei überschreitet 10 MB');
 			const old = await mdb().transaction(async (tx) =>
 				str((await lockPayable(tx, id)).receipt_path)
 			);
@@ -871,10 +890,11 @@ export const payableReceiptEndpoints = [
 				}
 			}
 			if (p.source === 'reimbursement') {
-				const [, actionId, payeeId] = String(p.source_ref).split(':');
+				const ref = parseReimbursementRef(String(p.source_ref));
+				if (!ref) return out;
 				for (const r of await (
 					await actionsService()
-				).listReimbursementReceipts(actionId!, payeeId!)) {
+				).listReimbursementReceipts(ref.actionId, ref.payeeId, ref.interimId)) {
 					out.push({
 						id: r.entryId,
 						label: r.description,

@@ -1,5 +1,5 @@
 /**
- * Zahlungsbestaetigungen und Zahlungserinnerungen. Mails gehen gesammelt je Empfaengeradresse
+ * Zahlungsbestätigungen und Zahlungserinnerungen. Mails gehen gesammelt je Empfängeradresse
  * (Geschwister bekommen EINE Mail). Versand immer NACH der Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
@@ -35,7 +35,7 @@ import {
 
 const num = (v: unknown) => Number(v ?? 0);
 
-/** Bankdaten fuer Rechnungen und Mails – ausschliesslich aus den Kassen-Einstellungen */
+/** Bankdaten für Rechnungen und Mails – ausschließlich aus den Kassen-Einstellungen */
 export async function loadBankData(): Promise<BankData> {
 	const s = await core.settings.getMany([
 		SETTING_KEYS.bankHolder,
@@ -85,7 +85,7 @@ function mailInvoice(inv: RawInvoice, mode: 'paid' | 'open'): MailInvoice {
 interface SendStats {
 	sent: number;
 	failed: number;
-	/** Rechnungen, fuer die mindestens eine Mail rausging bzw. fuer die keine Adresse existiert */
+	/** Rechnungen, für die mindestens eine Mail rausging bzw. für die keine Adresse existiert */
 	delivered: Set<string>;
 	recipientsByInvoice: Map<string, number>;
 }
@@ -122,7 +122,7 @@ const addressesOf = (inv: RawInvoice, names: NameMaps, category?: string) =>
 	invoiceAddresses(inv, names, category);
 
 /**
- * Bestaetigung fuer vollstaendig bezahlte Rechnungen (einmalig, `paid_notified_at`). Mit
+ * Bestätigung für vollständig bezahlte Rechnungen (einmalig, `paid_notified_at`). Mit
  * `notify=false` oder ausgeschalteter Einstellung werden sie nur als „erledigt“ markiert.
  */
 export async function notifyPaid(
@@ -152,7 +152,7 @@ export async function notifyPaid(
 		SETTING_KEYS.paidBody
 	]);
 	let stats: SendStats | null = null;
-	// Nur die Zahlungsbestaetigung ist abschaltbar (Abwahl je Mitglied); ohne Adresse gilt sie als erledigt
+	// Nur die Zahlungsbestätigung ist abschaltbar (Abwahl je Mitglied); ohne Adresse gilt sie als erledigt
 	const items = paid.map((inv) => ({
 		inv,
 		addresses: addressesOf(inv, names, 'payment-confirmation')
@@ -241,7 +241,7 @@ async function sendReminderMails(
 	return result;
 }
 
-/** Taeglicher Lauf: faellige Erinnerungsstufen fuer alle offenen Rechnungen. */
+/** Täglicher Lauf: fällige Erinnerungsstufen für alle offenen Rechnungen. */
 export async function runReminderJob(ctx: RequestContext): Promise<ReminderRun> {
 	const s = await core.settings.getMany([
 		SETTING_KEYS.remindersEnabled,
@@ -282,7 +282,7 @@ export async function runReminderJob(ctx: RequestContext): Promise<ReminderRun> 
 	return sendReminderMails(ctx, due, names, false);
 }
 
-/** Manuell: Erinnerung fuer bestimmte offene Rechnungen (naechste Stufe, ohne Fristpruefung). */
+/** Manuell: Erinnerung für bestimmte offene Rechnungen (nächste Stufe, ohne Fristprüfung). */
 export async function sendManualReminders(
 	ctx: RequestContext,
 	invoiceIds: string[]

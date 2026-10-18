@@ -1,7 +1,7 @@
 /**
- * Abgleich Aktionen → Rechnungen: Jede*r Teilnehmende einer Aktion mit uebernommenem Beitrag
+ * Abgleich Aktionen → Rechnungen: Jede*r Teilnehmende einer Aktion mit übernommenem Beitrag
  * bekommt eine Rechnung mit einem Posten. Dienste von `actions`/`members` werden VOR der
- * Transaktion gelesen (PGlite), die Aenderungen laufen in EINER Modul-Transaktion.
+ * Transaktion gelesen (PGlite), die Änderungen laufen in EINER Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
 import { core, type RequestContext } from '$lib/sdk/server';
@@ -117,17 +117,17 @@ async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
 		};
 	});
 
-	// Auszahlungen (Auslagen, Rueckzahlungen, Guthaben) nachziehen
+	// Auszahlungen (Auslagen, Rückzahlungen, Guthaben) nachziehen
 	try {
 		await syncPayables(members);
 	} catch (e) {
 		console.error('[treasury] Abgleich der Auszahlungen fehlgeschlagen:', e);
 	}
-	// Bereits versendete Rechnungen mit Aenderungen (Betrag, Rolle, Storno …) neu verschicken
+	// Bereits versendete Rechnungen mit Änderungen (Betrag, Rolle, Storno …) neu verschicken
 	try {
 		await refreshSentDocuments(ctx ?? core.auth.systemContext('treasury-sync'));
 	} catch (e) {
-		console.error('[treasury] Versand geaenderter Rechnungen fehlgeschlagen:', e);
+		console.error('[treasury] Versand geänderter Rechnungen fehlgeschlagen:', e);
 	}
 	if (result.created || result.updated || result.cancelled || result.reactivated) {
 		await core.audit.logFromContext(
@@ -145,7 +145,7 @@ let inFlight: Promise<SyncResult> | null = null;
 let lastRun = 0;
 const STALE_MS = 60_000;
 
-/** Abgleich ausfuehren (parallele Aufrufe teilen sich einen Lauf). */
+/** Abgleich ausführen (parallele Aufrufe teilen sich einen Lauf). */
 export function syncActions(ctx: RequestContext | null): Promise<SyncResult> {
 	inFlight ??= runSync(ctx).finally(() => {
 		inFlight = null;
@@ -154,7 +154,7 @@ export function syncActions(ctx: RequestContext | null): Promise<SyncResult> {
 	return inFlight;
 }
 
-/** Beim Oeffnen von Kassenseiten: nur, wenn der letzte Lauf laenger als eine Minute her ist. */
+/** Beim Öffnen von Kassenseiten: nur, wenn der letzte Lauf länger als eine Minute her ist. */
 export async function syncIfStale(ctx: RequestContext): Promise<void> {
 	if (Date.now() - lastRun < STALE_MS && !inFlight) return;
 	try {
@@ -165,7 +165,7 @@ export async function syncIfStale(ctx: RequestContext): Promise<void> {
 	}
 }
 
-/** Nur fuer Tests: naechster `syncIfStale` laeuft sofort */
+/** Nur für Tests: nächster `syncIfStale` läuft sofort */
 export function resetSyncThrottleForTests(): void {
 	lastRun = 0;
 }

@@ -37,7 +37,7 @@ const COLUMNS = sql`a.id, a.name, a.description, a.location,
 		a.fee_cents, a.team_fee_cents, a.fee_applied_at, a.fee_applied_by,
 	(SELECT count(*)::int FROM action_participants p WHERE p.action_id = a.id) AS participant_count`;
 
-/** Loest Benutzer-IDs in Namen/E-Mail auf (in Bloecken, das Verzeichnis liefert max. 30). */
+/** Löst Benutzer-IDs in Namen/E-Mail auf (in Blöcken, das Verzeichnis liefert max. 30). */
 async function resolveUsers(ctx: RequestContext, ids: string[]): Promise<Map<string, UserRef>> {
 	const unique = [...new Set(ids)];
 	const map = new Map<string, UserRef>();
@@ -59,8 +59,8 @@ function hasEditAll(ctx: RequestContext): boolean {
 /**
  * Zusammenfassungen entstehen in zwei Schritten: Zeilen und eigene Freigaben werden INNERHALB
  * der Modul-Transaktion gelesen, Benutzernamen (Core-Verzeichnis) erst NACH der Transaktion
- * aufgeloest. Das Verzeichnis nutzt die Core-Verbindung; innerhalb einer offenen Transaktion
- * wuerde das auf Einzelverbindungs-Treibern (PGlite) blockieren.
+ * aufgelöst. Das Verzeichnis nutzt die Core-Verbindung; innerhalb einer offenen Transaktion
+ * würde das auf Einzelverbindungs-Treibern (PGlite) blockieren.
  */
 interface SummaryData {
 	rows: Record<string, unknown>[];
@@ -229,7 +229,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/actions/:id',
-		summary: 'Aktion aendern',
+		summary: 'Aktion ändern',
 		tags,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -258,8 +258,8 @@ export const actionEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'DELETE',
 		path: '/actions/:id',
-		summary: 'Aktion loeschen',
-		description: 'Nur Eigentuemer*in oder Benutzer mit actions.action.edit-all.',
+		summary: 'Aktion löschen',
+		description: 'Nur Eigentümer*in oder Benutzer mit actions.action.edit-all.',
 		tags,
 		permission: 'actions.action.delete',
 		params: idParams,
@@ -267,7 +267,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 			const name = await mdb().transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, params.id, 'edit');
 				if (!access.isOwner && !hasEditAll(ctx)) {
-					throw errors.forbidden('Nur Eigentuemer*in darf die Aktion loeschen');
+					throw errors.forbidden('Nur Eigentümer*in darf die Aktion löschen');
 				}
 				const [row] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${params.id}`);
 				await tx.execute(sql`DELETE FROM actions WHERE id = ${params.id}`);
@@ -313,7 +313,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/actions/:id/shares/:userId',
-		summary: 'Aktion freigeben oder Freigabe aendern',
+		summary: 'Aktion freigeben oder Freigabe ändern',
 		tags,
 		permission: 'actions.action.view',
 		params: shareParams,
@@ -326,10 +326,10 @@ export const actionEndpoints: ApiEndpoint[] = [
 					sql`SELECT owner_id FROM actions WHERE id = ${params.id}`
 				);
 				if (String(action?.owner_id) === params.userId) {
-					throw errors.badRequest('Die Aktion kann nicht mit der Eigentuemer*in geteilt werden');
+					throw errors.badRequest('Die Aktion kann nicht mit der Eigentümer*in geteilt werden');
 				}
 			});
-			// Verzeichnis ausserhalb der Modul-Transaktion abfragen (siehe loadSummaryData)
+			// Verzeichnis außerhalb der Modul-Transaktion abfragen (siehe loadSummaryData)
 			const users = await resolveUsers(ctx, [params.userId]);
 			const target = users.get(params.userId);
 			if (!target) throw errors.validation({ userId: 'Unbekannter oder inaktiver Benutzer' });
@@ -353,7 +353,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		method: 'DELETE',
 		path: '/actions/:id/shares/:userId',
 		summary: 'Freigabe entfernen',
-		description: 'Benutzer duerfen ihre eigene Freigabe entfernen (Aktion verlassen).',
+		description: 'Benutzer dürfen ihre eigene Freigabe entfernen (Aktion verlassen).',
 		tags,
 		permission: 'actions.action.view',
 		params: shareParams,
@@ -375,7 +375,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/users',
-		summary: 'Benutzerverzeichnis fuer Freigaben durchsuchen',
+		summary: 'Benutzerverzeichnis für Freigaben durchsuchen',
 		tags,
 		permission: 'actions.action.view',
 		query: userSearchQuery,

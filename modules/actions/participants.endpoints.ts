@@ -6,10 +6,12 @@ import { effectiveSubsidyEligible } from './subsidy-eligibility';
 import {
 	MODULE_ID,
 	idParams,
+	participantBulkInput,
 	participantInput,
 	participantParams,
 	type Diet,
 	type Participant,
+	type ParticipantBulkInput,
 	type ParticipantInput,
 	type ParticipantRole
 } from './schemas';
@@ -117,7 +119,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/participants',
-		summary: 'Teilnehmer*in hinzufuegen',
+		summary: 'Teilnehmer*in hinzufügen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -151,9 +153,68 @@ export const participantEndpoints: ApiEndpoint[] = [
 		}
 	} as ApiEndpoint,
 	{
+		method: 'PATCH',
+		path: '/actions/:id/participants',
+		summary: 'Mehrere Teilnehmende auf einmal ändern (Zuschuss, Rolle)',
+		description:
+			'Setzt für alle `ids` die angegebenen Felder (`subsidyEligible`: true/false/null = automatisch, ' +
+			'`role`). Alle IDs müssen zu dieser Aktion gehören, sonst 404 und es wird nichts geändert.',
+		tags: TAGS,
+		permission: 'actions.action.view',
+		params: idParams,
+		body: participantBulkInput,
+		handler: async ({ ctx, params, body }) => {
+			const id = (params as { id: string }).id;
+			const input = body as ParticipantBulkInput;
+			const ids = [...new Set(input.ids)];
+			const updated = await mdb().transaction(async (tx) => {
+				await requireAccess(tx, ctx, id, 'edit');
+				const idList = sql.join(
+					ids.map((v) => sql`${v}`),
+					sql`, `
+				);
+				const found = await rowsOf(
+					tx,
+					sql`SELECT id FROM action_participants WHERE action_id = ${id} AND id IN (${idList})
+						FOR UPDATE`
+				);
+				// Fremde oder unbekannte IDs: alles oder nichts (Existenz anderer Aktionen nicht verraten)
+				if (found.length !== ids.length) throw errors.notFound('Teilnehmer*in nicht gefunden');
+				const sets = [];
+				if (input.subsidyEligible !== undefined) {
+					sets.push(sql`subsidy_eligible = ${input.subsidyEligible}`);
+				}
+				if (input.role !== undefined) sets.push(sql`role = ${input.role}`);
+				sets.push(sql`updated_at = now()`);
+				await tx.execute(
+					sql`UPDATE action_participants SET ${sql.join(sets, sql`, `)}
+						WHERE action_id = ${id} AND id IN (${idList})`
+				);
+				return found.length;
+			});
+			const fields = [
+				...(input.subsidyEligible !== undefined ? ['subsidyEligible'] : []),
+				...(input.role !== undefined ? ['role'] : [])
+			];
+			await core.audit.logFromContext(ctx, 'actions.participant.bulk_updated', {
+				target: id,
+				metadata: {
+					actionId: id,
+					count: updated,
+					fields,
+					...(input.subsidyEligible !== undefined
+						? { subsidyEligible: input.subsidyEligible }
+						: {}),
+					...(input.role !== undefined ? { role: input.role } : {})
+				}
+			});
+			return { updated };
+		}
+	} as ApiEndpoint,
+	{
 		method: 'PUT',
 		path: '/actions/:id/participants/:participantId',
-		summary: 'Teilnehmer*in aendern',
+		summary: 'Teilnehmer*in ändern',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: participantParams,

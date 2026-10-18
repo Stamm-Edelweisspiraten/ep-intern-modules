@@ -57,7 +57,7 @@
 		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 	};
 	// Beim Anlegen: liegt die Aktion (Ende, sonst Start) in der Vergangenheit, wird die Checkbox
-	// vorgeschlagen – eine laufende mehrtaegige Aktion zaehlt nicht als vergangen
+	// vorgeschlagen – eine laufende mehrtägige Aktion zählt nicht als vergangen
 	$effect(() => {
 		if (!open || action || pastTouched || !startsOn) return;
 		isPast = (endsOn || startsOn) < todayIso();

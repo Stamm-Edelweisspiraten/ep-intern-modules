@@ -37,7 +37,7 @@ const inList = (values: string[]) =>
 		sql`, `
 	);
 
-/** Laedt Gruppen (optional eine einzelne) inkl. Leiter und Mitgliederzahl, sortiert nach Name. */
+/** Lädt Gruppen (optional eine einzelne) inkl. Leiter und Mitgliederzahl, sortiert nach Name. */
 async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 	const groups = rowsOf(
 		await tx.execute(
@@ -205,7 +205,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 	{
 		method: 'PUT',
 		path: '/groups/:id',
-		summary: 'Gruppe aendern',
+		summary: 'Gruppe ändern',
 		tags: ['Modul: members'],
 		permission: 'members.group.edit',
 		params: idParams,
@@ -222,8 +222,8 @@ export const groupEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/groups/:id',
-		summary: 'Gruppe loeschen',
-		description: 'Nicht moeglich, solange der Gruppe Mitglieder zugeordnet sind.',
+		summary: 'Gruppe löschen',
+		description: 'Nicht möglich, solange der Gruppe Mitglieder zugeordnet sind.',
 		tags: ['Modul: members'],
 		permission: 'members.group.delete',
 		params: idParams,
@@ -234,7 +234,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 				const ref = rowsOf(await tx.execute(sql`SELECT image_path FROM groups WHERE id = ${id}`));
 				const imagePath = ref[0]?.image_path == null ? null : String(ref[0].image_path);
 				if (group.memberCount > 0) {
-					throw errors.conflict('Gruppe hat noch Mitglieder und kann nicht geloescht werden');
+					throw errors.conflict('Gruppe hat noch Mitglieder und kann nicht gelöscht werden');
 				}
 				await tx.execute(sql`DELETE FROM groups WHERE id = ${id}`);
 				return { name: group.name, imagePath };

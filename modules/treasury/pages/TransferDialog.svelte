@@ -25,6 +25,7 @@
 	let amountCents = $state(0);
 	let purpose = $state('');
 	let busy = $state(false);
+	let formEl = $state<HTMLFormElement | null>(null);
 	let error = $state('');
 	let errors = $state<Record<string, string>>({});
 
@@ -48,6 +49,9 @@
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
+		if (busy) return;
+		errors = {};
+		error = '';
 		const parsed = transferInput.safeParse({
 			fromAccountId: fromAccountId ?? undefined,
 			toAccountId: toAccountId ?? undefined,
@@ -57,10 +61,10 @@
 		});
 		if (!parsed.success) {
 			errors = issuesToErrors(parsed.error.issues);
+			error = 'Bitte die markierten Felder prüfen.';
 			return;
 		}
 		busy = true;
-		error = '';
 		try {
 			await apiFetch(`${BASE}/transfers`, { method: 'POST', body: JSON.stringify(parsed.data) });
 			toast.success('Umbuchung angelegt');
@@ -78,7 +82,20 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<Dialog.Content
+		class="sm:max-w-md"
+		onkeydown={(e) => {
+			// Strg/Cmd+Enter speichert ebenfalls (Enter allein über das Formular)
+			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+				e.preventDefault();
+				formEl?.requestSubmit();
+			}
+		}}
+		onOpenAutoFocus={(e) => {
+			e.preventDefault();
+			document.getElementById('tr-amount')?.focus();
+		}}
+	>
 		<Dialog.Header>
 			<Dialog.Title>Umbuchung</Dialog.Title>
 			<Dialog.Description>
@@ -86,7 +103,7 @@
 				Ausgabe.
 			</Dialog.Description>
 		</Dialog.Header>
-		<form class="space-y-4" onsubmit={submit} novalidate>
+		<form class="space-y-4" onsubmit={submit} bind:this={formEl} novalidate>
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<FormField label="Von *" id="tr-from" error={errors.fromAccountId}>
 					<SelectField id="tr-from" label="Von Konto" {options} bind:value={fromAccountId} />
@@ -121,7 +138,8 @@
 				</p>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer class="items-center gap-2">
+				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || active.length < 2}>
 					{busy ? 'Speichert …' : 'Umbuchen'}

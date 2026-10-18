@@ -20,7 +20,7 @@ export function composeMail(p: {
 	bodyTpl: string;
 	invoices: MailInvoice[];
 	bank: BankData;
-	/** `paid`: Bestaetigung (ohne Zahlungskasten), `open`: Rechnung/Erinnerung */
+	/** `paid`: Bestätigung (ohne Zahlungskasten), `open`: Rechnung/Erinnerung */
 	mode: 'paid' | 'open';
 	level?: number;
 	extraVars?: Record<string, string>;

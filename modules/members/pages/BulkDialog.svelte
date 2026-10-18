@@ -46,7 +46,7 @@
 	let busy = $state(false);
 	let error = $state('');
 
-	// Bei jedem Oeffnen zuruecksetzen
+	// Bei jedem Öffnen zurücksetzen
 	$effect(() => {
 		if (open) {
 			groupIds = [];

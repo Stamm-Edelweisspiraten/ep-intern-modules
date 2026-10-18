@@ -1,4 +1,4 @@
-/** IBAN-Hilfen der Kasse (rein): Normalisieren, Pruefen (mod 97), Maske aus den letzten Stellen. */
+/** IBAN-Hilfen der Kasse (rein): Normalisieren, Prüfen (mod 97), Maske aus den letzten Stellen. */
 
 const LENGTHS: Record<string, number> = {
 	DE: 22,
@@ -26,7 +26,7 @@ export function normalizeIban(input: string): string {
 	return input.replace(/[\s.-]+/g, '').toUpperCase();
 }
 
-/** Format, Laenge (bekannte Laender) und Pruefsumme ISO 7064 mod 97-10 */
+/** Format, Länge (bekannte Länder) und Prüfsumme ISO 7064 mod 97-10 */
 export function isValidIban(input: string): boolean {
 	const iban = normalizeIban(input);
 	if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
@@ -42,7 +42,7 @@ export function isValidIban(input: string): boolean {
 
 export const ibanLast4 = (input: string) => normalizeIban(input).slice(-4);
 
-/** `•••• 2051` – Anzeige ohne Entschluesselung */
+/** `•••• 2051` – Anzeige ohne Entschlüsselung */
 export const maskIban = (last4: string | null | undefined) => (last4 ? `•••• ${last4}` : null);
 
 /** Gruppiert in Vierergruppen: `DE02 1203 0000 …` */

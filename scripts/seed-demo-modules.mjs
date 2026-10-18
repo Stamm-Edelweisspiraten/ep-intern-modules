@@ -1,6 +1,6 @@
-// Legt Demo-Daten fuer die Module `members` und `actions` an (idempotent, ueber die echte API).
-// Voraussetzung: demo-server laeuft, `node scripts/seed-demo.mjs` wurde ausgefuehrt.
-// Enthaelt Geschwister (gleiche Anschrift/E-Mail), damit Sammelzahlungen in der Kasse getestet werden koennen.
+// Legt Demo-Daten für die Module `members` und `actions` an (idempotent, über die echte API).
+// Voraussetzung: demo-server läuft, `node scripts/seed-demo.mjs` wurde ausgeführt.
+// Enthält Geschwister (gleiche Anschrift/E-Mail), damit Sammelzahlungen in der Kasse getestet werden können.
 const BASE = 'http://127.0.0.1:4300';
 const ORIGIN = 'http://localhost:4300';
 
@@ -30,7 +30,7 @@ await call(
 	{ email: 'admin@demo.test', password: 'Demo-Admin-2026!' },
 	'/api/auth'
 );
-if (!cookie) throw new Error('Login fehlgeschlagen - laeuft der Demo-Server?');
+if (!cookie) throw new Error('Login fehlgeschlagen - läuft der Demo-Server?');
 
 for (const id of ['members', 'actions', 'treasury']) {
 	const r = await call('POST', `/modules/${id}/enable`);

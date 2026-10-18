@@ -8,7 +8,7 @@ export const addressEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/address/suggest',
-		summary: 'Adressvorschlaege (Strasse, Hausnummer, PLZ, Ort) zu einem Suchtext',
+		summary: 'Adressvorschläge (Straße, Hausnummer, PLZ, Ort) zu einem Suchtext',
 		tags,
 		permission: 'members.member.edit',
 		query: addressSuggestQuery,

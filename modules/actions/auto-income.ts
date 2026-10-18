@@ -2,7 +2,7 @@ import { computeSubsidy } from './subsidy';
 import { deriveSubsidyCounts, type EligibilityParticipant } from './subsidy-eligibility';
 import type { AutoIncome, EntryType, FreizeitType, LodgingType } from './schemas';
 
-/** Reine Berechnung der automatischen Einnahmen (Beitraege, Zuschuss) aus Teilnehmerliste und Kalkulation. */
+/** Reine Berechnung der automatischen Einnahmen (Beiträge, Zuschuss) aus Teilnehmerliste und Kalkulation. */
 
 export interface AutoIncomeInput {
 	feeCents: number | null;
@@ -19,9 +19,9 @@ export interface AutoIncomeInput {
 		startsOn: string;
 		participants: EligibilityParticipant[];
 	};
-	/** Manuelle Buchungen (nur Typ und Kategorie noetig) */
+	/** Manuelle Buchungen (nur Typ und Kategorie nötig) */
 	entries: { type: EntryType; category: string }[];
-	/** Zahlungseingaenge aus der Kasse: ersetzen die berechneten Beitraege (Ist statt Soll) */
+	/** Zahlungseingänge aus der Kasse: ersetzen die berechneten Beiträge (Ist statt Soll) */
 	treasury?: {
 		invoiceCount: number;
 		dueCents: number;
@@ -86,7 +86,7 @@ export function computeAutoIncome(input: AutoIncomeInput): AutoIncome {
 	return { contributions, subsidy, overridden };
 }
 
-/** Automatisch zaehlende Betraege (ohne ueberschriebene Kategorien). */
+/** Automatisch zählende Beträge (ohne überschriebene Kategorien). */
 export function appliedAutoIncome(auto: AutoIncome | null | undefined): {
 	contributionsCents: number;
 	subsidyCents: number;

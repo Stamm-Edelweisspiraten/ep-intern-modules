@@ -349,7 +349,7 @@ export const reportEndpoints = [
 	{
 		method: 'GET',
 		path: '/overview',
-		summary: 'Uebersicht: Kontostaende, offene Betraege, letzte Buchungen',
+		summary: 'Übersicht: Kontostände, offene Beträge, letzte Buchungen',
 		tags: TAGS,
 		permission: 'treasury.cash.view',
 		handler: ({ ctx }) => overview(ctx)
@@ -357,7 +357,7 @@ export const reportEndpoints = [
 	{
 		method: 'GET',
 		path: '/report',
-		summary: 'Kassenbericht fuer einen Zeitraum',
+		summary: 'Kassenbericht für einen Zeitraum',
 		tags: TAGS,
 		permission: 'treasury.report.view',
 		query: reportQuery,

@@ -66,8 +66,15 @@
 	let busy = $state(false);
 	let error = $state('');
 	let errors = $state<Record<string, string>>({});
-	/** „Weitere Buchung erfassen“: Dialog bleibt nach dem Speichern offen (bleibt für die Sitzung gemerkt) */
+	/**
+	 * „Weitere Buchung erfassen“: Dialog bleibt nach dem Speichern offen. Standard: an bei Barkonten
+	 * (viele Einzelbuchungen hintereinander), aus bei Giro. Hat die Person selbst geklickt, gilt ihre
+	 * Wahl für die Sitzung (kein Überschreiben beim Kontowechsel).
+	 */
 	let keepOpen = $state(false);
+	let keepOpenChosen = $state(false);
+	/** Zuordnungsvorschläge laden noch (Enter direkt nach dem Betrag wartet darauf) */
+	let matchPending = $state(false);
 	let savedCount = $state(0);
 	/** neu aufbauen der Zuordnung nach jeder gespeicherten Buchung */
 	let formKey = $state(0);
@@ -87,7 +94,39 @@
 		errors = {};
 		formKey++;
 		await tick();
-		document.getElementById('tx-amount')?.focus();
+		focusFirst();
+	}
+
+	function focusFirst() {
+		const el = document.getElementById('tx-amount') as HTMLInputElement | null;
+		if (el && !el.disabled) {
+			el.focus();
+			el.select();
+		}
+	}
+
+	// Barkonto → „Weitere Buchung erfassen“ vorbelegen, solange nicht selbst gewählt
+	$effect(() => {
+		if (!open || transaction || keepOpenChosen) return;
+		const kind = accounts.find((a) => a.id === accountId)?.kind;
+		keepOpen = kind === 'cash';
+	});
+
+	/** Strg/Cmd+Enter speichert immer (auch aus der Notiz heraus) */
+	let formEl = $state<HTMLFormElement | null>(null);
+	function onContentKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+			e.preventDefault();
+			if (!busy) formEl?.requestSubmit();
+		}
+	}
+
+	/** Wartet kurz, bis laufende Zuordnungsvorschläge da sind (max. 3 s) */
+	async function settleMatch() {
+		const until = Date.now() + 3000;
+		while (matchPending && Date.now() < until) {
+			await new Promise((r) => setTimeout(r, 50));
+		}
 	}
 
 	$effect(() => {
@@ -149,8 +188,14 @@
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
+		if (busy) return;
 		error = '';
 		errors = {};
+		// Enter im Betragsfeld übernimmt den Betrag erst jetzt – Effekte (Vorschlagssuche) anstoßen
+		busy = true;
+		await tick();
+		if (canMatch && matchPending) await settleMatch();
+		busy = false;
 		const base = {
 			accountId: accountId ?? undefined,
 			bookedOn,
@@ -262,6 +307,12 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
+		onkeydown={onContentKeydown}
+		onOpenAutoFocus={(e) => {
+			if (locked) return;
+			e.preventDefault();
+			focusFirst();
+		}}
 		class={canMatch
 			? 'max-h-[94vh] overflow-y-auto sm:max-w-[min(72rem,calc(100vw-2rem))]'
 			: 'max-h-[90vh] overflow-y-auto sm:max-w-xl'}
@@ -276,7 +327,7 @@
 						: 'Pflichtfelder sind mit * markiert.'}
 			</Dialog.Description>
 		</Dialog.Header>
-		<form class="space-y-4" onsubmit={submit} novalidate>
+		<form class="space-y-4" bind:this={formEl} onsubmit={submit} novalidate>
 			<div
 				class={canMatch ? 'grid gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]' : 'grid gap-4'}
 			>
@@ -413,6 +464,7 @@
 							bind:amounts={matchAmounts}
 							bind:payableId
 							bind:notify
+							onpending={(p) => (matchPending = p)}
 						/>
 					{/key}
 				{/if}
@@ -424,14 +476,22 @@
 						<Checkbox
 							id="tx-keep-open"
 							checked={keepOpen}
-							onCheckedChange={(v) => (keepOpen = v === true)}
+							onCheckedChange={(v) => {
+								keepOpen = v === true;
+								keepOpenChosen = true;
+							}}
 						/>
 						<Label for="tx-keep-open" class="font-normal">Weitere Buchung erfassen</Label>
 					</div>
 				{:else}
 					<span></span>
 				{/if}
-				<div class="flex gap-2">
+				<div class="flex items-center gap-2">
+					{#if !locked}
+						<span class="mr-1 hidden text-xs text-muted-foreground sm:inline">
+							Enter speichert
+						</span>
+					{/if}
 					<Button type="button" variant="outline" onclick={() => (open = false)}>
 						{keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
 					</Button>

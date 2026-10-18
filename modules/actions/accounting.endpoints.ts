@@ -8,14 +8,15 @@ import {
 	closedInfo,
 	loadAutoIncome,
 	loadEntries,
+	loadInterims,
+	loadPlan,
 	loadTreasuryContributions,
-	mapEntry
+	mapEntry,
+	resolveInterimUsers
 } from './accounting-core';
 import { payeeTotals, summarize } from './accounting';
-import { sanitizeName } from './action-archive';
-import { calculate } from './calculation';
+import { detectReceiptType, sanitizeName } from './action-archive';
 import { ibanLast, maskFromLast } from './iban';
-import { computeSubsidy } from './subsidy';
 import {
 	MAX_RECEIPT_BYTES,
 	MODULE_ID,
@@ -26,85 +27,13 @@ import {
 	needsTransfer,
 	type AccountingEntry,
 	type AccountingPayee,
-	type AccountingPlan,
 	type AccountingState,
-	type CalcBasis,
-	type CalcCategory,
-	type CalcItem,
 	type EntryInput,
-	type FreizeitType,
-	type LodgingType,
 	type SummaryEntry
 } from './schemas';
 
 const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
-
-/** Soll-Werte aus der gespeicherten Kalkulation; `null`, wenn keine gespeichert ist. */
-async function loadPlan(tx: Tx, actionId: string): Promise<AccountingPlan | null> {
-	const [row] = await rowsOf(
-		tx,
-		sql`SELECT * FROM action_calculations WHERE action_id = ${actionId}`
-	);
-	if (!row) return null;
-	const itemRows = await rowsOf(
-		tx,
-		sql`SELECT id, category, label, amount_cents, basis FROM calc_items
-			WHERE action_id = ${actionId} ORDER BY position`
-	);
-	const items: CalcItem[] = itemRows.map((r) => ({
-		id: String(r.id),
-		category: String(r.category) as CalcCategory,
-		label: String(r.label),
-		amountCents: Number(r.amount_cents),
-		basis: String(r.basis) as CalcBasis
-	}));
-	const includeSubsidy = Boolean(row.include_subsidy);
-	const subsidy = includeSubsidy
-		? computeSubsidy({
-				nights: Number(row.nights),
-				lodgingType: String(row.lodging_type) as LodgingType,
-				konfi: Boolean(row.konfi),
-				freizeitType: String(row.freizeit_type) as FreizeitType,
-				children: Number(row.bremen_children),
-				youth: Number(row.bremen_youth),
-				teamWithJuleica: Number(row.team_with_juleica),
-				teamWithoutJuleica: Number(row.team_without_juleica),
-				teamYouth: Number(row.team_youth)
-			})
-		: null;
-	const participants = Number(row.participants);
-	const team = Number(row.team);
-	const result = calculate({
-		participants,
-		team,
-		teamPercent: Number(row.team_percent),
-		nights: Number(row.nights),
-		items,
-		bufferPercent: Number(row.buffer_percent),
-		subsidyCents: subsidy?.subsidyCents ?? 0
-	});
-	const [fee] = await rowsOf(
-		tx,
-		sql`SELECT fee_cents, team_fee_cents FROM actions WHERE id = ${actionId}`
-	);
-	const hasFee = !!fee && fee.fee_cents != null;
-	const perPerson = hasFee ? Number(fee!.fee_cents) : result.recommendedPerPersonCents;
-	const perTeam = hasFee ? Number(fee!.team_fee_cents ?? 0) : result.recommendedTeamPerPersonCents;
-	const expenseByCategory: Partial<Record<CalcCategory, number>> = {};
-	for (const line of result.lines) {
-		expenseByCategory[line.category] = (expenseByCategory[line.category] ?? 0) + line.totalCents;
-	}
-	if (expenseByCategory.program != null || result.programTotalCents > 0) {
-		expenseByCategory.program = result.programTotalCents;
-	}
-	return {
-		contributionsCents: perPerson * participants + perTeam * team,
-		subsidyCents: includeSubsidy ? (subsidy?.subsidyCents ?? 0) : 0,
-		expenseByCategory,
-		totalExpenseCents: result.totalCents
-	};
-}
 
 function toSummaryEntries(rows: Record<string, unknown>[]): SummaryEntry[] {
 	return rows.map((r) => ({
@@ -124,12 +53,16 @@ export interface LoadedState {
 	closedBy: string | null;
 }
 
-/** Abrechnung lesen (ohne Objektrechte); Empfaenger nur mit `canViewPayouts`. */
+/**
+ * Abrechnung lesen (ohne Objektrechte); Empfänger nur mit `canViewPayouts`.
+ * `canManageInterims` = Eigentümer*in oder `edit-all` (Zwischenabrechnungen zurücknehmen).
+ */
 export async function loadState(
 	tx: Tx,
 	actionId: string,
 	treasury: ActionContributions | null,
-	canViewPayouts: boolean
+	canViewPayouts: boolean,
+	canManageInterims = false
 ): Promise<LoadedState> {
 	const closed = await closedInfo(tx, actionId);
 	const entries = await loadEntries(tx, actionId);
@@ -163,6 +96,7 @@ export async function loadState(
 			};
 		});
 	}
+	const interims = await loadInterims(tx, actionId, canManageInterims);
 	return {
 		state: {
 			closed: closed ? { at: closed.at, by: null } : null,
@@ -171,7 +105,8 @@ export async function loadState(
 			plan,
 			autoIncome,
 			payees,
-			canViewPayouts
+			canViewPayouts,
+			interims
 		},
 		closedBy: closed?.by ?? null
 	};
@@ -221,12 +156,12 @@ async function validateEntry(tx: Tx, actionId: string, input: EntryInput): Promi
 	}
 }
 
-const REIMBURSED_MSG = 'Ausgezahlte Auslagen koennen nicht geaendert werden';
+const REIMBURSED_MSG = 'Ausgezahlte Auslagen können nicht geändert werden';
 const TRANSFERRED_MSG =
-	'Die Ausgabe wurde bereits von der Kasse ueberwiesen. Zum Aendern zuerst die Zahlung in der Kasse loeschen.';
+	'Die Ausgabe wurde bereits von der Kasse überwiesen. Zum Ändern zuerst die Zahlung in der Kasse löschen.';
 const crypt = () => core.crypto.forModule(MODULE_ID);
 
-/** Empfaengerdaten einer Stamm-Ausgabe fuer INSERT/UPDATE (alles `null` bei anderen Buchungen). */
+/** Empfängerdaten einer Stamm-Ausgabe für INSERT/UPDATE (alles `null` bei anderen Buchungen). */
 function recipientValues(
 	input: EntryInput,
 	encrypted: string | null,
@@ -250,7 +185,7 @@ function recipientValues(
 		paid: input.clubPaid
 	};
 }
-const REFUND_MSG = 'Bitte die Rueckzahlung ueber die Rueckzahlungsfunktion zuruecknehmen';
+const REFUND_MSG = 'Bitte die Rückzahlung über die Rückzahlungsfunktion zurücknehmen';
 
 export const accountingEndpoints: ApiEndpoint[] = [
 	{
@@ -264,11 +199,18 @@ export const accountingEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const treasury = await loadTreasuryContributions(id);
 			const loaded = await mdb().transaction(async (tx) => {
-				await requireAccess(tx, ctx, id, 'read');
-				return loadState(tx, id, treasury, core.permissions.has(ctx, 'actions.payout.view'));
+				const access = await requireAccess(tx, ctx, id, 'read');
+				return loadState(
+					tx,
+					id,
+					treasury,
+					core.permissions.has(ctx, 'actions.payout.view'),
+					access.isOwner || core.permissions.has(ctx, 'actions.action.edit-all')
+				);
 			});
 			const { state, closedBy } = loaded;
 			state.payoutsViaTreasury = await core.modules.isEnabled('treasury');
+			await resolveInterimUsers(ctx, state.interims);
 			if (state.closed && closedBy) {
 				const found = await core.users.directory(ctx, { ids: [closedBy], limit: 30 });
 				const u = found.find((x) => x.id === closedBy);
@@ -325,7 +267,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 	{
 		method: 'PUT',
 		path: '/actions/:id/accounting/entries/:entryId',
-		summary: 'Buchung aendern',
+		summary: 'Buchung ändern',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: entryParams,
@@ -389,7 +331,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/actions/:id/accounting/entries/:entryId',
-		summary: 'Buchung loeschen',
+		summary: 'Buchung löschen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: entryParams,
@@ -430,7 +372,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/actions/:id/accounting/entries/:entryId/iban',
-		summary: 'IBAN des Empfaengers einer Stamm-Ausgabe entschluesselt lesen',
+		summary: 'IBAN des Empfängers einer Stamm-Ausgabe entschlüsselt lesen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: entryParams,
@@ -465,14 +407,14 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		path: '/actions/:id/accounting/entries/:entryId/receipt',
 		summary: 'Beleg hochladen (multipart, Feld "file")',
 		description:
-			'Ersetzt einen vorhandenen Beleg. Erlaubt: PDF, JPEG, PNG, WebP bis 10 MB. Nur fuer Ausgaben.',
+			'Ersetzt einen vorhandenen Beleg. Erlaubt: PDF, JPEG, PNG, WebP bis 10 MB. Nur für Ausgaben.',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: entryParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
 			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungueltige Formulardaten');
+				throw errors.badRequest('Ungültige Formulardaten');
 			});
 			const file = form.get('file');
 			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
@@ -482,7 +424,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 			}
 			if (file.size === 0) throw errors.badRequest('Datei ist leer');
 			if (file.size > MAX_RECEIPT_BYTES) {
-				throw errors.tooLarge('Datei ueberschreitet das Limit von 10 MB');
+				throw errors.tooLarge('Datei überschreitet das Limit von 10 MB');
 			}
 
 			const old = await mdb().transaction(async (tx) => {
@@ -490,12 +432,16 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);
 				if (String(cur.type) !== 'expense') {
-					throw errors.badRequest('Belege sind nur bei Ausgaben moeglich');
+					throw errors.badRequest('Belege sind nur bei Ausgaben möglich');
 				}
 				return cur.receipt_path == null ? null : String(cur.receipt_path);
 			});
 
 			const bytes = new Uint8Array(await file.arrayBuffer());
+			// Inhalt muss zum angegebenen Typ passen (Magic Bytes)
+			if (detectReceiptType(bytes) !== contentType) {
+				throw errors.validation({ file: 'Dateiinhalt passt nicht zum Dateityp' });
+			}
 			const displayName = file.name?.trim() || 'beleg';
 			const path = `${id}/${entryId}-${crypto.randomUUID()}-${sanitizeName(displayName)}`;
 			await core.storage.upload(ctx, {

@@ -6,35 +6,38 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Users from '@lucide/svelte/icons/users';
+	import X from '@lucide/svelte/icons/x';
 	import { apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable } from '$lib/components/layout';
+	import { ConfirmDialog, DataTable, MobileActionBar } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { InvoiceSummary, OpenItems, OpenItemsGroup } from '../schemas';
-	import {
-		BASE,
-		errorMessage,
-		fmtDate,
-		openApiFile,
-		statusText,
-		statusVariant,
-		type SharedData
-	} from './helpers';
+	import { BASE, errorMessage, fmtDate, openApiFile, type SharedData } from './helpers';
+	import { openStatements, remindInvoices } from './BulkActions';
+	import FilterChips from './FilterChips.svelte';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
+	import type { FamilyRef } from './navigation';
+	import StatusBadge from './StatusBadge.svelte';
 
 	let {
 		accounts,
 		perm,
 		version,
-		onchanged
-	}: SharedData & { onchanged: () => void | Promise<void> } = $props();
+		onchanged,
+		onfamily
+	}: SharedData & {
+		onchanged: () => void | Promise<void>;
+		/** öffnet das Familienkonto eines Zahlers bzw. Mitglieds */
+		onfamily?: (ref: FamilyRef) => void;
+	} = $props();
 
 	let groupBy = $state<'payer' | 'action'>('payer');
 	let overdueOnly = $state(false);
@@ -94,6 +97,81 @@
 		expanded = Object.fromEntries(groups.map((g) => [g.key, next]));
 	}
 	const toggle = (key: string) => (expanded = { ...expanded, [key]: !expanded[key] });
+
+	/** Verweis aufs Familienkonto der Gruppe (Zahler oder Mitglied ohne Zahler) */
+	function familyOf(g: OpenItemsGroup): FamilyRef | null {
+		if (g.payerId) return { payerId: g.payerId };
+		if (g.kind === 'member' && g.key.startsWith('member:')) return { memberId: g.key.slice(7) };
+		return null;
+	}
+
+	// Auswahl auf Rechnungsebene (nur Rechnungen mit offenem Betrag)
+	const isSelectable = (i: InvoiceSummary) => i.openCents > 0 && i.status !== 'cancelled';
+	let selected = $state<string[]>([]);
+	const selectable = $derived(groups.flatMap((g) => g.invoices.filter(isSelectable)));
+	const selectedInvoices = $derived(selectable.filter((i) => selected.includes(i.id)));
+	const selectedSum = $derived(selectedInvoices.reduce((s, i) => s + i.openCents, 0));
+	const allSelected = $derived(
+		selectable.length > 0 && selectedInvoices.length === selectable.length
+	);
+	const someSelected = $derived(selectedInvoices.length > 0 && !allSelected);
+	function groupState(g: OpenItemsGroup): { all: boolean; some: boolean; count: number } {
+		const list = g.invoices.filter(isSelectable);
+		const n = list.filter((i) => selected.includes(i.id)).length;
+		return {
+			all: list.length > 0 && n === list.length,
+			some: n > 0 && n < list.length,
+			count: list.length
+		};
+	}
+	function setSelected(ids: string[], on: boolean) {
+		const set = new Set(selected);
+		for (const id of ids) {
+			if (on) set.add(id);
+			else set.delete(id);
+		}
+		selected = [...set];
+	}
+	const toggleGroup = (g: OpenItemsGroup, on: boolean) =>
+		setSelected(
+			g.invoices.filter(isSelectable).map((i) => i.id),
+			on
+		);
+	function toggleEverything(on: boolean) {
+		selected = on ? selectable.map((i) => i.id) : [];
+	}
+	/** Sammelrechnung nur, wenn alle gewählten Rechnungen zu Zahlern gehören */
+	const selectedPayers = $derived.by(() => {
+		if (!selectedInvoices.length || selectedInvoices.some((i) => !i.payer)) return null;
+		const map = new Map<string, { id: string; name: string }>();
+		for (const i of selectedInvoices) if (i.payer) map.set(i.payer.id, i.payer);
+		return [...map.values()];
+	});
+	let bulkBusy = $state(false);
+	let confirmBulkOpen = $state(false);
+
+	async function bulkRemind() {
+		const list = [...selectedInvoices];
+		if (!list.length) return;
+		bulkBusy = true;
+		try {
+			const r = await remindInvoices(list);
+			if (r.ok) selected = [];
+			await load();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
+	async function bulkStatements() {
+		if (!selectedPayers?.length) return;
+		bulkBusy = true;
+		try {
+			await openStatements(selectedPayers);
+		} finally {
+			bulkBusy = false;
+		}
+	}
 
 	let payOpen = $state(false);
 	let payInvoice = $state<InvoiceSummary | null>(null);
@@ -165,6 +243,10 @@
 		action: 'Aktion',
 		manual: ''
 	} as const;
+	const groupOptions: { value: 'payer' | 'action'; label: string }[] = [
+		{ value: 'payer', label: 'Familie/Person' },
+		{ value: 'action', label: 'Aktion' }
+	];
 	const sortOptions = [
 		{ value: 'overdue', label: 'Überfällig zuerst' },
 		{ value: 'open', label: 'Höchster Betrag' },
@@ -173,7 +255,7 @@
 	];
 </script>
 
-<div class="space-y-3">
+<div class="space-y-3 {selectedInvoices.length ? 'max-sm:pb-20' : ''}">
 	{#if data}
 		<div class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm" aria-live="polite">
 			<span>Offen <strong class="tabular-nums">{formatEuro(data.totals.openCents)}</strong></span>
@@ -205,24 +287,7 @@
 			: 'Es gibt keine offenen Beträge.'}
 	>
 		{#snippet toolbar()}
-			<div class="flex gap-1" role="group" aria-label="Gruppieren nach">
-				<Button
-					size="sm"
-					variant={groupBy === 'payer' ? 'default' : 'outline'}
-					aria-pressed={groupBy === 'payer'}
-					onclick={() => (groupBy = 'payer')}
-				>
-					Familie/Person
-				</Button>
-				<Button
-					size="sm"
-					variant={groupBy === 'action' ? 'default' : 'outline'}
-					aria-pressed={groupBy === 'action'}
-					onclick={() => (groupBy = 'action')}
-				>
-					Aktion
-				</Button>
-			</div>
+			<FilterChips options={groupOptions} bind:value={groupBy} label="Gruppieren nach" />
 			<SelectField
 				class="w-44"
 				size="sm"
@@ -252,14 +317,51 @@
 						onclick={() => (confirmAllOpen = true)}
 						disabled={busy}
 					>
-						<Bell /> Erinnerungen senden
+						<Bell /> Fällige Erinnerungen senden
 					</Button>
 				{/if}
 			</div>
+			<MobileActionBar
+				show={selectedInvoices.length > 0}
+				label="Sammelaktionen für offene Posten"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
+			>
+				<span class="text-sm font-medium" aria-live="polite">
+					{selectedInvoices.length}
+					{selectedInvoices.length === 1 ? 'Rechnung' : 'Rechnungen'} ·
+					<span class="tabular-nums">{formatEuro(selectedSum)}</span>
+				</span>
+				{#if perm.send}
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={bulkBusy}
+						onclick={() => (confirmBulkOpen = true)}
+					>
+						<Bell /> Erinnerung senden
+					</Button>
+				{/if}
+				{#if selectedPayers}
+					<Button size="sm" variant="outline" disabled={bulkBusy} onclick={bulkStatements}>
+						<FileText /> Sammelrechnung (PDF)
+					</Button>
+				{/if}
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</MobileActionBar>
 		{/snippet}
 		{#snippet head()}
 			<Table.Row>
-				<Table.Head class="w-8"><span class="sr-only">Aufklappen</span></Table.Head>
+				<Table.Head class="w-16">
+					<Checkbox
+						aria-label="Alle offenen Rechnungen auswählen"
+						checked={allSelected}
+						indeterminate={someSelected}
+						disabled={!selectable.length}
+						onCheckedChange={(v) => toggleEverything(v === true)}
+					/>
+				</Table.Head>
 				<Table.Head>{groupBy === 'payer' ? 'Familie / Person' : 'Aktion'}</Table.Head>
 				<Table.Head>Rechnung</Table.Head>
 				<Table.Head>Fällig</Table.Head>
@@ -270,27 +372,55 @@
 		{/snippet}
 		{#each groups as g (g.key)}
 			{@const isOpen = !!expanded[g.key]}
+			{@const gs = groupState(g)}
+			{@const family = onfamily ? familyOf(g) : null}
 			<Table.Row class="cursor-pointer bg-muted/30 hover:bg-muted/60" onclick={() => toggle(g.key)}>
-				<Table.Cell>
-					<button
-						type="button"
-						class="flex size-6 items-center justify-center rounded hover:bg-accent"
-						aria-expanded={isOpen}
-						aria-label={`${g.label} ${isOpen ? 'zuklappen' : 'aufklappen'}`}
-						onclick={(e) => {
-							e.stopPropagation();
-							toggle(g.key);
-						}}
-					>
-						<ChevronRight class="size-4 transition-transform {isOpen ? 'rotate-90' : ''}" />
-					</button>
+				<Table.Cell onclick={(e: MouseEvent) => e.stopPropagation()}>
+					<div class="flex items-center gap-1">
+						{#if gs.count}
+							<Checkbox
+								aria-label={`Alle Rechnungen von ${g.label} auswählen`}
+								checked={gs.all}
+								indeterminate={gs.some}
+								onCheckedChange={(v) => toggleGroup(g, v === true)}
+							/>
+						{:else}
+							<span class="size-4" aria-hidden="true"></span>
+						{/if}
+						<button
+							type="button"
+							class="flex size-6 items-center justify-center rounded hover:bg-accent"
+							aria-expanded={isOpen}
+							aria-label={`${g.label} ${isOpen ? 'zuklappen' : 'aufklappen'}`}
+							onclick={(e) => {
+								e.stopPropagation();
+								toggle(g.key);
+							}}
+						>
+							<ChevronRight class="size-4 transition-transform {isOpen ? 'rotate-90' : ''}" />
+						</button>
+					</div>
 				</Table.Cell>
 				<Table.Cell class="max-w-64">
 					<div class="flex items-center gap-2">
 						{#if g.kind === 'payer'}
 							<Users class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						{/if}
-						<span class="truncate font-medium">{g.label}</span>
+						{#if family && onfamily}
+							<button
+								type="button"
+								class="truncate text-left font-medium underline-offset-4 hover:underline"
+								title="Familienkonto öffnen"
+								onclick={(e) => {
+									e.stopPropagation();
+									onfamily(family);
+								}}
+							>
+								{g.label}
+							</button>
+						{:else}
+							<span class="truncate font-medium">{g.label}</span>
+						{/if}
 						{#if kindLabel[g.kind]}
 							<Badge variant="outline" class="shrink-0">{kindLabel[g.kind]}</Badge>
 						{/if}
@@ -323,8 +453,16 @@
 			</Table.Row>
 			{#if isOpen}
 				{#each g.invoices as i (i.id)}
-					<Table.Row>
-						<Table.Cell></Table.Cell>
+					<Table.Row data-state={selected.includes(i.id) ? 'selected' : undefined}>
+						<Table.Cell>
+							{#if isSelectable(i)}
+								<Checkbox
+									aria-label={`Rechnung ${i.number} auswählen`}
+									checked={selected.includes(i.id)}
+									onCheckedChange={(v) => setSelected([i.id], v === true)}
+								/>
+							{/if}
+						</Table.Cell>
 						<Table.Cell class="max-w-64 pl-6">
 							<div class="truncate">{i.people.join(', ')}</div>
 							{#if i.action && groupBy === 'payer'}
@@ -351,7 +489,7 @@
 						</Table.Cell>
 						<Table.Cell class="whitespace-nowrap tabular-nums">{fmtDate(i.dueOn)}</Table.Cell>
 						<Table.Cell>
-							<Badge variant={statusVariant(i)}>{statusText(i)}</Badge>
+							<StatusBadge invoice={i} />
 							{#if i.reminderLevel > 0}
 								<span class="ml-1 text-xs text-muted-foreground">{i.reminderLevel}. Erinnerung</span
 								>
@@ -413,6 +551,13 @@
 	</DataTable>
 </div>
 
+<ConfirmDialog
+	bind:open={confirmBulkOpen}
+	title="Erinnerungen senden?"
+	description={`Für ${selectedInvoices.length} ${selectedInvoices.length === 1 ? 'Rechnung geht' : 'Rechnungen gehen'} sofort eine Zahlungserinnerung (jeweils nächste Stufe) per E-Mail raus. Das kann nicht zurückgeholt werden.`}
+	confirmLabel="Erinnerungen senden"
+	onconfirm={bulkRemind}
+/>
 <MarkPaidDialog bind:open={payOpen} invoice={payInvoice} {accounts} onsaved={onchanged} />
 <ConfirmDialog
 	bind:open={confirmRemindOpen}

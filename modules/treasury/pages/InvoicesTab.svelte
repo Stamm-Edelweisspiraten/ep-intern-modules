@@ -1,30 +1,35 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import Bell from '@lucide/svelte/icons/bell';
 	import Plus from '@lucide/svelte/icons/plus';
+	import X from '@lucide/svelte/icons/x';
 	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable } from '$lib/components/layout';
+	import { ConfirmDialog, DataTable, MobileActionBar } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import { INVOICE_SOURCE_LABELS, type InvoiceList } from '../schemas';
-	import {
-		BASE,
-		errorMessage,
-		fmtDate,
-		statusText,
-		statusVariant,
-		type SharedData
-	} from './helpers';
+	import { INVOICE_SOURCE_LABELS, type InvoiceList, type InvoiceSummary } from '../schemas';
+	import { BASE, errorMessage, fmtDate, type SharedData } from './helpers';
+	import { remindInvoices } from './BulkActions';
+	import FilterChips from './FilterChips.svelte';
+	import type { FamilyRef } from './navigation';
+	import StatusBadge from './StatusBadge.svelte';
 
 	let {
 		actions,
 		perm,
 		version,
-		oncreate
-	}: SharedData & { oncreate: () => void; onchanged: () => void | Promise<void> } = $props();
+		oncreate,
+		onfamily
+	}: SharedData & {
+		oncreate: () => void;
+		onchanged: () => void | Promise<void>;
+		/** öffnet das Familienkonto eines Zahlers */
+		onfamily?: (ref: FamilyRef) => void;
+	} = $props();
 
 	const LIMIT = 50;
 	let status = $state<string>('unpaid');
@@ -65,7 +70,7 @@
 		}
 	}
 
-	const statuses = [
+	const statuses: { value: string; label: string }[] = [
 		{ value: 'unpaid', label: 'Offen' },
 		{ value: 'overdue', label: 'Überfällig' },
 		{ value: 'paid', label: 'Bezahlt' },
@@ -77,132 +82,230 @@
 		{ value: 'annual', label: INVOICE_SOURCE_LABELS.annual },
 		{ value: 'manual', label: INVOICE_SOURCE_LABELS.manual }
 	];
+	// Auswahl für Sammel-Erinnerungen (nur offene Rechnungen, Recht `treasury.invoice.send`)
+	const isSelectable = (i: InvoiceSummary) => i.openCents > 0 && i.status !== 'cancelled';
+	let selected = $state<string[]>([]);
+	const selectable = $derived((data?.items ?? []).filter(isSelectable));
+	const selectedInvoices = $derived(selectable.filter((i) => selected.includes(i.id)));
+	const allSelected = $derived(
+		selectable.length > 0 && selectedInvoices.length === selectable.length
+	);
+	const someSelected = $derived(selectedInvoices.length > 0 && !allSelected);
+	function toggleOne(id: string, on: boolean) {
+		selected = on ? [...new Set([...selected, id])] : selected.filter((x) => x !== id);
+	}
+	let bulkBusy = $state(false);
+	let confirmBulkOpen = $state(false);
+
+	async function bulkRemind() {
+		const list = [...selectedInvoices];
+		if (!list.length) return;
+		bulkBusy = true;
+		try {
+			const r = await remindInvoices(list);
+			if (r.ok) selected = [];
+			await load();
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
 	const actionOptions = $derived(actions.map((a) => ({ value: a.id, label: a.name })));
 	const open = (id: string) => goto(`/modules/treasury/invoices/${id}`);
 </script>
 
-<DataTable
-	mobile="cards"
-	caption="Rechnungen"
-	{loading}
-	{error}
-	empty={!!data && !data.items.length}
-	emptyTitle="Keine Rechnungen"
-	emptyDescription={status === 'unpaid' && !search
-		? 'Es gibt keine offenen Rechnungen.'
-		: 'Kein Eintrag passt zum Filter.'}
->
-	{#snippet toolbar()}
-		<div class="flex flex-wrap gap-1" role="group" aria-label="Status">
-			{#each statuses as s (s.value)}
+<div class={perm.send && selectedInvoices.length ? 'max-sm:pb-20' : ''}>
+	<DataTable
+		mobile="cards"
+		caption="Rechnungen"
+		{loading}
+		{error}
+		empty={!!data && !data.items.length}
+		emptyTitle="Keine Rechnungen"
+		emptyDescription={status === 'unpaid' && !search
+			? 'Es gibt keine offenen Rechnungen.'
+			: 'Kein Eintrag passt zum Filter.'}
+	>
+		{#snippet toolbar()}
+			<FilterChips
+				options={statuses}
+				bind:value={status}
+				label="Rechnungen nach Status filtern"
+				onchange={() => (offset = 0)}
+			/>
+			<SelectField
+				class="w-40"
+				size="sm"
+				label="Herkunft"
+				options={sources}
+				bind:value={source}
+				emptyLabel="Alle Herkünfte"
+				placeholder="Alle Herkünfte"
+				onchange={() => (offset = 0)}
+			/>
+			<SelectField
+				class="w-48"
+				size="sm"
+				label="Aktion"
+				options={actionOptions}
+				bind:value={actionId}
+				emptyLabel="Alle Aktionen"
+				placeholder="Alle Aktionen"
+				onchange={() => (offset = 0)}
+			/>
+			<Input
+				class="h-8 min-w-40 flex-1 sm:max-w-60"
+				placeholder="Name oder Nummer …"
+				aria-label="Rechnungen durchsuchen"
+				bind:value={search}
+				oninput={() => (offset = 0)}
+			/>
+			{#if perm.editInvoice}
+				<Button class="ml-auto" size="sm" onclick={oncreate}><Plus /> Neue Rechnung</Button>
+			{/if}
+			<MobileActionBar
+				show={perm.send && selectedInvoices.length > 0}
+				label="Sammelaktionen für Rechnungen"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
+			>
+				<span class="text-sm font-medium" aria-live="polite">
+					{selectedInvoices.length} ausgewählt
+				</span>
 				<Button
 					size="sm"
-					variant={status === s.value ? 'default' : 'outline'}
-					aria-pressed={status === s.value}
-					onclick={() => {
-						status = s.value;
-						offset = 0;
-					}}
+					variant="outline"
+					disabled={bulkBusy}
+					onclick={() => (confirmBulkOpen = true)}
 				>
-					{s.label}
+					<Bell /> Erinnerung senden
 				</Button>
-			{/each}
-		</div>
-		<SelectField
-			class="w-40"
-			size="sm"
-			label="Herkunft"
-			options={sources}
-			bind:value={source}
-			emptyLabel="Alle Herkünfte"
-			placeholder="Alle Herkünfte"
-			onchange={() => (offset = 0)}
-		/>
-		<SelectField
-			class="w-48"
-			size="sm"
-			label="Aktion"
-			options={actionOptions}
-			bind:value={actionId}
-			emptyLabel="Alle Aktionen"
-			placeholder="Alle Aktionen"
-			onchange={() => (offset = 0)}
-		/>
-		<Input
-			class="h-8 min-w-40 flex-1 sm:max-w-60"
-			placeholder="Name oder Nummer …"
-			aria-label="Rechnungen durchsuchen"
-			bind:value={search}
-			oninput={() => (offset = 0)}
-		/>
-		{#if perm.editInvoice}
-			<Button class="ml-auto" size="sm" onclick={oncreate}><Plus /> Neue Rechnung</Button>
-		{/if}
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			<Table.Head>Nummer</Table.Head>
-			<Table.Head>Empfänger*in</Table.Head>
-			<Table.Head>Fällig</Table.Head>
-			<Table.Head>Status</Table.Head>
-			<Table.Head class="text-right">Betrag</Table.Head>
-			<Table.Head class="text-right">Offen</Table.Head>
-		</Table.Row>
-	{/snippet}
-	{#each data?.items ?? [] as i (i.id)}
-		<Table.Row class="cursor-pointer" onclick={() => open(i.id)}>
-			<Table.Cell class="whitespace-nowrap">
-				<a
-					class="font-medium underline-offset-4 hover:underline"
-					href={`/modules/treasury/invoices/${i.id}`}
-					onclick={(e) => e.stopPropagation()}
-				>
-					{i.number}
-				</a>
-				<div class="text-xs text-muted-foreground">
-					{INVOICE_SOURCE_LABELS[i.source] ?? i.source}
-				</div>
-			</Table.Cell>
-			<Table.Cell class="max-w-72">
-				<div class="truncate">{i.recipientName}</div>
-				<div class="truncate text-xs text-muted-foreground">
-					{[i.payer?.name, i.action?.name].filter(Boolean).join(' · ')}
-				</div>
-			</Table.Cell>
-			<Table.Cell class="whitespace-nowrap tabular-nums">{fmtDate(i.dueOn)}</Table.Cell>
-			<Table.Cell><Badge variant={statusVariant(i)}>{statusText(i)}</Badge></Table.Cell>
-			<Table.Cell class="text-right tabular-nums">{formatEuro(i.totalCents)}</Table.Cell>
-			<Table.Cell class="text-right font-medium tabular-nums">{formatEuro(i.openCents)}</Table.Cell>
-		</Table.Row>
-	{/each}
-	{#snippet footer()}
-		{#if data && data.total > 0}
-			<div class="flex w-full flex-wrap items-center justify-between gap-2 text-sm">
-				<span class="text-muted-foreground">
-					{data.total} Rechnungen · Summe {formatEuro(data.totals.totalCents)} · offen
-					{formatEuro(data.totals.openCents)}
-				</span>
-				{#if data.total > LIMIT}
-					<div class="flex items-center gap-2">
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={offset === 0}
-							onclick={() => (offset -= LIMIT)}
-						>
-							Zurück
-						</Button>
-						<Button
-							size="sm"
-							variant="outline"
-							disabled={offset + LIMIT >= data.total}
-							onclick={() => (offset += LIMIT)}
-						>
-							Weiter
-						</Button>
-					</div>
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</MobileActionBar>
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				{#if perm.send}
+					<Table.Head class="w-10">
+						<Checkbox
+							aria-label="Alle offenen Rechnungen dieser Seite auswählen"
+							checked={allSelected}
+							indeterminate={someSelected}
+							disabled={!selectable.length}
+							onCheckedChange={(v) => (selected = v === true ? selectable.map((i) => i.id) : [])}
+						/>
+					</Table.Head>
 				{/if}
-			</div>
-		{/if}
-	{/snippet}
-</DataTable>
+				<Table.Head>Nummer</Table.Head>
+				<Table.Head>Empfänger*in</Table.Head>
+				<Table.Head>Fällig</Table.Head>
+				<Table.Head>Status</Table.Head>
+				<Table.Head class="text-right">Betrag</Table.Head>
+				<Table.Head class="text-right">Offen</Table.Head>
+			</Table.Row>
+		{/snippet}
+		{#each data?.items ?? [] as i (i.id)}
+			<Table.Row
+				class="cursor-pointer"
+				data-state={selected.includes(i.id) ? 'selected' : undefined}
+				onclick={() => open(i.id)}
+			>
+				{#if perm.send}
+					<Table.Cell onclick={(e: MouseEvent) => e.stopPropagation()}>
+						{#if isSelectable(i)}
+							<Checkbox
+								aria-label={`Rechnung ${i.number} auswählen`}
+								checked={selected.includes(i.id)}
+								onCheckedChange={(v) => toggleOne(i.id, v === true)}
+							/>
+						{/if}
+					</Table.Cell>
+				{/if}
+				<Table.Cell class="whitespace-nowrap">
+					<a
+						class="font-medium underline-offset-4 hover:underline"
+						href={`/modules/treasury/invoices/${i.id}`}
+						onclick={(e) => e.stopPropagation()}
+					>
+						{i.number}
+					</a>
+					<div class="text-xs text-muted-foreground">
+						{INVOICE_SOURCE_LABELS[i.source] ?? i.source}
+					</div>
+				</Table.Cell>
+				<Table.Cell class="max-w-72">
+					<div class="truncate">{i.recipientName}</div>
+					{#if i.payer || i.action}
+						<div class="truncate text-xs text-muted-foreground">
+							{#if i.payer}
+								{@const payer = i.payer}
+								{#if onfamily}
+									<button
+										type="button"
+										class="underline-offset-4 hover:text-foreground hover:underline"
+										title="Familienkonto öffnen"
+										onclick={(e) => {
+											e.stopPropagation();
+											onfamily({ payerId: payer.id });
+										}}
+									>
+										{payer.name}
+									</button>
+								{:else}
+									{payer.name}
+								{/if}
+							{/if}
+							{#if i.payer && i.action}·{/if}
+							{#if i.action}{i.action.name}{/if}
+						</div>
+					{/if}
+				</Table.Cell>
+				<Table.Cell class="whitespace-nowrap tabular-nums">{fmtDate(i.dueOn)}</Table.Cell>
+				<Table.Cell><StatusBadge invoice={i} /></Table.Cell>
+				<Table.Cell class="text-right tabular-nums">{formatEuro(i.totalCents)}</Table.Cell>
+				<Table.Cell class="text-right font-medium tabular-nums"
+					>{formatEuro(i.openCents)}</Table.Cell
+				>
+			</Table.Row>
+		{/each}
+		{#snippet footer()}
+			{#if data && data.total > 0}
+				<div class="flex w-full flex-wrap items-center justify-between gap-2 text-sm">
+					<span class="text-muted-foreground">
+						{data.total} Rechnungen · Summe {formatEuro(data.totals.totalCents)} · offen
+						{formatEuro(data.totals.openCents)}
+					</span>
+					{#if data.total > LIMIT}
+						<div class="flex items-center gap-2">
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={offset === 0}
+								onclick={() => (offset -= LIMIT)}
+							>
+								Zurück
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={offset + LIMIT >= data.total}
+								onclick={() => (offset += LIMIT)}
+							>
+								Weiter
+							</Button>
+						</div>
+					{/if}
+				</div>
+			{/if}
+		{/snippet}
+	</DataTable>
+</div>
+
+<ConfirmDialog
+	bind:open={confirmBulkOpen}
+	title="Erinnerungen senden?"
+	description={`Für ${selectedInvoices.length} ${selectedInvoices.length === 1 ? 'Rechnung geht' : 'Rechnungen gehen'} sofort eine Zahlungserinnerung (jeweils nächste Stufe) per E-Mail raus. Das kann nicht zurückgeholt werden.`}
+	confirmLabel="Erinnerungen senden"
+	onconfirm={bulkRemind}
+/>

@@ -121,7 +121,7 @@
 
 	const visibleCustomFields = $derived(customFields.filter((f) => !f.hidden));
 
-	// Formular bei jedem Oeffnen neu befuellen
+	// Formular bei jedem Öffnen neu befüllen
 	$effect(() => {
 		if (!open) return;
 		const m = member;
@@ -157,7 +157,7 @@
 		busy = false;
 	});
 
-	// Schutz gegen ueberholte Antworten, wenn das Formular schnell fuer ein anderes Mitglied neu oeffnet
+	// Schutz gegen überholte Antworten, wenn das Formular schnell für ein anderes Mitglied neu öffnet
 	let customLoad = 0;
 	async function loadCustomFields(values: Record<string, unknown>) {
 		const seq = ++customLoad;
@@ -330,7 +330,7 @@
 		if (viewing) return;
 		error = '';
 		fieldErrors = {};
-		// Leere Zeilen verwerfen; Zuordnung neuer -> urspruenglicher Index fuer Fehler merken
+		// Leere Zeilen verwerfen; Zuordnung neuer -> ursprünglicher Index für Fehler merken
 		const rowMap: RowMap = { phones: [], emails: [] };
 		const keep = (list: 'phones' | 'emails') => {
 			const rows = list === 'phones' ? phones : emails;

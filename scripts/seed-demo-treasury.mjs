@@ -1,6 +1,6 @@
-// Demo-Daten fuer die Kasse (idempotent, ueber die echte API). Voraussetzung: demo-server laeuft,
-// `node scripts/seed-demo.mjs` und `node scripts/seed-demo-modules.mjs` wurden ausgefuehrt.
-// Legt Konten, Zahler (Geschwister), Buchungen inkl. Sammelzahlung, eine ueberfaellige Rechnung
+// Demo-Daten für die Kasse (idempotent, über die echte API). Voraussetzung: demo-server läuft,
+// `node scripts/seed-demo.mjs` und `node scripts/seed-demo-modules.mjs` wurden ausgeführt.
+// Legt Konten, Zahler (Geschwister), Buchungen inkl. Sammelzahlung, eine überfällige Rechnung
 // und einen Beispiel-Kontoauszug unter .data/demo-kontoauszug.csv an.
 import { writeFileSync } from 'node:fs';
 
@@ -33,7 +33,7 @@ await call(
 	{ email: 'admin@demo.test', password: 'Demo-Admin-2026!' },
 	'/api/auth'
 );
-if (!cookie) throw new Error('Login fehlgeschlagen - laeuft der Demo-Server?');
+if (!cookie) throw new Error('Login fehlgeschlagen - läuft der Demo-Server?');
 await call('POST', '/modules/treasury/enable');
 // Neue Modulrechte erst nach erneutem Login wirksam
 cookie = '';
@@ -91,7 +91,7 @@ const cash = (
 const sync = (await call('POST', `${T}/sync`)).data;
 console.log('Abgleich:', sync);
 
-// Geschwister als Zahler uebernehmen
+// Geschwister als Zahler übernehmen
 for (const s of (await call('GET', `${T}/payers/suggestions`)).data ?? []) {
 	await call('POST', `${T}/payers`, { name: s.name, memberIds: s.members.map((m) => m.id) });
 	console.log('Zahler:', s.name);
@@ -116,7 +116,7 @@ async function allocateSuggested(t, notify = false) {
 
 const herbst = inv('Lena Müller', 'Herbstfahrt 2026');
 const kopenhagenPaul = inv('Paul Schmidt', 'Kopenhagen 2026');
-// Sammelzahlung der Familie Müller fuer drei Kinder (Herbstfahrt) – mit Bestaetigungs-Mail
+// Sammelzahlung der Familie Müller für drei Kinder (Herbstfahrt) – mit Bestätigungs-Mail
 const muellerSum = ['Lena Müller', 'Jonas Müller', 'Mia Müller']
 	.map((n) => inv(n, 'Herbstfahrt 2026')?.openCents ?? 0)
 	.reduce((a, b) => a + b, 0);
@@ -139,7 +139,7 @@ if (kopenhagenPaul) {
 	});
 	await allocateSuggested(t2);
 }
-// Barzahlung (Teilbetrag) fuer Deniz ueber „bezahlt markieren“
+// Barzahlung (Teilbetrag) für Deniz über „bezahlt markieren“
 const deniz = inv('Deniz Yılmaz', 'Kopenhagen 2026');
 if (deniz) {
 	await call('POST', `${T}/invoices/${deniz.id}/mark-paid`, {
@@ -151,7 +151,7 @@ if (deniz) {
 	});
 }
 
-// Ausgaben, Gebuehren, Umbuchung
+// Ausgaben, Gebühren, Umbuchung
 const categories = (await call('GET', `${T}/categories`)).data;
 const cat = (name) => categories.find((c) => c.name === name)?.id ?? null;
 const actions = (await call('GET', `${T}/action-refs`)).data;
@@ -199,7 +199,7 @@ await call('POST', `${T}/transfers`, {
 	purpose: 'Bargeld eingezahlt'
 });
 
-// Manuelle Rechnung (ueberfaellig) fuer Mitgliedsbeitraege der Familie Schmidt
+// Manuelle Rechnung (überfällig) für Mitgliedsbeiträge der Familie Schmidt
 const payers = (await call('GET', `${T}/payers`)).data;
 const schmidt = payers.find((p) => p.name.includes('Schmidt'));
 const members = (await call('GET', `${T}/members`)).data;
@@ -230,7 +230,7 @@ const rows = [
 		'Kontonummer/IBAN',
 		'BIC (SWIFT-Code)',
 		'Betrag',
-		'Waehrung',
+		'Währung',
 		'Info'
 	],
 	[

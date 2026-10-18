@@ -56,7 +56,7 @@ interface ParsedUpload {
 
 async function readUpload(request: Request): Promise<ParsedUpload> {
 	const form = await request.formData().catch(() => {
-		throw errors.badRequest('Ungueltige Formulardaten');
+		throw errors.badRequest('Ungültige Formulardaten');
 	});
 	const file = form.get('file');
 	const accountId = String(form.get('accountId') ?? '');
@@ -65,7 +65,7 @@ async function readUpload(request: Request): Promise<ParsedUpload> {
 		throw errors.validation([{ path: ['accountId'], message: 'Bitte ein Konto wählen' }]);
 	}
 	if (file.size === 0) throw errors.badRequest('Datei ist leer');
-	if (file.size > MAX_IMPORT_BYTES) throw errors.tooLarge('Datei ueberschreitet 5 MB');
+	if (file.size > MAX_IMPORT_BYTES) throw errors.tooLarge('Datei überschreitet 5 MB');
 	const text = decode(new Uint8Array(await file.arrayBuffer()));
 	const delimiter = detectDelimiter(text);
 	let mapping: ImportMapping | null = null;
@@ -93,7 +93,7 @@ async function readUpload(request: Request): Promise<ParsedUpload> {
 	if (!headers.length)
 		throw errors.validation([{ path: ['file'], message: 'Keine Kopfzeile gefunden' }]);
 	if (table.length - 1 > MAX_IMPORT_ROWS) {
-		throw errors.tooLarge(`Hoechstens ${MAX_IMPORT_ROWS} Zeilen je Import`);
+		throw errors.tooLarge(`Höchstens ${MAX_IMPORT_ROWS} Zeilen je Import`);
 	}
 	mapping ??= guessMapping(headers, table[1], delimiter);
 	if (!mapping) {
@@ -102,7 +102,7 @@ async function readUpload(request: Request): Promise<ParsedUpload> {
 				issues: [{ path: ['mapping'], message: 'Spalten für Datum und Betrag nicht erkannt' }],
 				headers
 			},
-			'Spalten fuer Datum und Betrag nicht erkannt - bitte zuordnen'
+			'Spalten für Datum und Betrag nicht erkannt - bitte zuordnen'
 		);
 	}
 	for (const col of [mapping.date, mapping.amount, mapping.counterparty, mapping.purpose]) {
@@ -144,7 +144,7 @@ async function existingHashes(accountId: string, hashes: string[]): Promise<Set<
 	});
 }
 
-/** Vorschlaege fuer alle (oder bestimmte) nicht vollstaendig zugeordneten Einnahmen */
+/** Vorschläge für alle (oder bestimmte) nicht vollständig zugeordneten Einnahmen */
 export async function bulkSuggestions(
 	ctx: RequestContext,
 	transactionIds?: string[]
@@ -161,7 +161,7 @@ export async function bulkSuggestions(
 	if (!raw.length) return [];
 	const { match } = await loadMatchLines();
 	const byIban = await payerByIbanHash();
-	// Bereits fuer eine Buchung vorgeschlagene Posten nicht doppelt anbieten (aelteste Buchung zuerst)
+	// Bereits für eine Buchung vorgeschlagene Posten nicht doppelt anbieten (älteste Buchung zuerst)
 	const used = new Map<string, number>();
 	const out: MatchSuggestion[] = [];
 	for (const t of [...raw].reverse()) {
@@ -188,7 +188,7 @@ export const importEndpoints = [
 	{
 		method: 'POST',
 		path: '/import/preview',
-		summary: 'Kontoauszug (CSV) pruefen: Spalten, Zeilen, Duplikate',
+		summary: 'Kontoauszug (CSV) prüfen: Spalten, Zeilen, Duplikate',
 		description: 'multipart: `file`, `accountId`, optional `mapping` (JSON). Speichert nichts.',
 		tags: TAGS,
 		permission: 'treasury.transaction.edit',
@@ -220,7 +220,7 @@ export const importEndpoints = [
 	{
 		method: 'POST',
 		path: '/import',
-		summary: 'Kontoauszug (CSV) importieren; Duplikate werden uebersprungen',
+		summary: 'Kontoauszug (CSV) importieren; Duplikate werden übersprungen',
 		tags: TAGS,
 		permission: 'treasury.transaction.edit',
 		handler: async ({ ctx, request }) => {
@@ -283,7 +283,7 @@ export const importEndpoints = [
 	{
 		method: 'GET',
 		path: '/suggestions',
-		summary: 'Zuordnungsvorschlaege fuer alle offenen Einnahmen',
+		summary: 'Zuordnungsvorschläge für alle offenen Einnahmen',
 		tags: TAGS,
 		permission: 'treasury.cash.view',
 		handler: ({ ctx }) => bulkSuggestions(ctx)

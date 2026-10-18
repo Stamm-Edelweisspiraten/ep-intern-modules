@@ -1,8 +1,8 @@
 /**
  * Rechnungsdokumente: Jede versendete Fassung einer Rechnung wird als Version mit Snapshot gespeichert;
- * das PDF entsteht deterministisch aus dem Snapshot (kein Datei-Speicher noetig). Aendert sich eine
- * bereits versendete Rechnung (Betrag, Rolle, Ermaessigung, Frist, Storno), geht automatisch eine neue
- * Fassung an dieselben Adressen. Core-Dienste (PDF, Mail, Audit) laufen ausserhalb von Transaktionen.
+ * das PDF entsteht deterministisch aus dem Snapshot (kein Datei-Speicher nötig). Ändert sich eine
+ * bereits versendete Rechnung (Betrag, Rolle, Ermäßigung, Frist, Storno), geht automatisch eine neue
+ * Fassung an dieselben Adressen. Core-Dienste (PDF, Mail, Audit) laufen außerhalb von Transaktionen.
  */
 import { sql } from 'drizzle-orm';
 import { core, errors, type RequestContext } from '$lib/sdk/server';
@@ -55,7 +55,7 @@ export interface AnnualSnapshot {
 	members: {
 		name: string;
 		firstName: string;
-		/** Cent je Ebene (nach Ermaessigung); fehlende Ebene = nicht berechnet */
+		/** Cent je Ebene (nach Ermäßigung); fehlende Ebene = nicht berechnet */
 		levels: Partial<Record<FeeLevel, number>>;
 		totalCents: number;
 	}[];
@@ -85,7 +85,7 @@ export interface InvoiceSnapshot {
 	annual?: AnnualSnapshot;
 }
 
-/** Teile des Snapshots, deren Aenderung eine neue Fassung ausloest (nicht: Zahlungen, Bankdaten) */
+/** Teile des Snapshots, deren Änderung eine neue Fassung auslöst (nicht: Zahlungen, Bankdaten) */
 export function snapshotKey(s: InvoiceSnapshot): string {
 	return JSON.stringify({
 		recipient: s.recipientName,
@@ -95,7 +95,7 @@ export function snapshotKey(s: InvoiceSnapshot): string {
 	});
 }
 
-/** Beschreibt, was sich gegenueber der letzten Fassung geaendert hat (fuer `{aenderung}`) */
+/** Beschreibt, was sich gegenüber der letzten Fassung geändert hat (für `{aenderung}`) */
 export function describeChange(prev: InvoiceSnapshot | null, next: InvoiceSnapshot): string {
 	if (next.cancelled)
 		return 'die folgende Rechnung wurde storniert. Bitte überweise dafür nichts (mehr).';
@@ -127,7 +127,7 @@ function addressLines(inv: RawInvoice, contact: Contact | undefined): string[] {
 		.map((l) => l.slice(0, 60));
 }
 
-/** Aufschluesselung je Mitglied und Ebene (Reihenfolge der Posten) */
+/** Aufschlüsselung je Mitglied und Ebene (Reihenfolge der Posten) */
 function annualSnapshot(
 	inv: RawInvoice,
 	names: NameMaps,
@@ -240,7 +240,7 @@ export function annualVars(s: InvoiceSnapshot, a: AnnualSnapshot): Record<string
 	};
 }
 
-/** Einleitung + Tabelle Mitglied × Ebene fuer Jahresbeitrags-Rechnungen */
+/** Einleitung + Tabelle Mitglied × Ebene für Jahresbeitrags-Rechnungen */
 function annualBlocks(s: InvoiceSnapshot, a: AnnualSnapshot): PdfBlock[] {
 	const intro = s.cancelled
 		? `die Rechnung ${s.number} über den Jahresbeitrag ${a.year} wurde storniert:`
@@ -276,7 +276,7 @@ ${intro}`
 export const invoicePurpose = (s: Pick<InvoiceSnapshot, 'number' | 'recipientName'>) =>
 	`${s.number} ${s.recipientName}`.slice(0, 140);
 
-/** Zahlungsteil fuer PDF-Dokumente (Tabelle + GiroCode); auch fuer Sammelrechnungen */
+/** Zahlungsteil für PDF-Dokumente (Tabelle + GiroCode); auch für Sammelrechnungen */
 export async function paymentBlocks(p: {
 	bank: BankData;
 	amountCents: number;
@@ -507,8 +507,8 @@ async function storeDocument(
 }
 
 /**
- * Anmeldung: Fassung 1 der Rechnung erzeugen und als PDF zurueckgeben (`actions` haengt sie an die
- * Anmeldebestaetigung). Bereits vorhandene Fassungen werden nicht dupliziert.
+ * Anmeldung: Fassung 1 der Rechnung erzeugen und als PDF zurückgeben (`actions` hängt sie an die
+ * Anmeldebestätigung). Bereits vorhandene Fassungen werden nicht dupliziert.
  */
 export async function registrationDocument(invoiceId: string): Promise<{
 	filename: string;
@@ -660,7 +660,7 @@ export async function sendDocuments(
 }
 
 /**
- * Prueft Rechnungen mit bereits versendeter Fassung auf Aenderungen und verschickt automatisch die
+ * Prüft Rechnungen mit bereits versendeter Fassung auf Änderungen und verschickt automatisch die
  * neue Fassung („Geänderte Rechnung“ bzw. „Stornierung“). Ohne versendete Fassung passiert nichts.
  */
 export async function refreshSentDocuments(
@@ -763,7 +763,7 @@ export async function invoicePdfResponse(
 	});
 }
 
-/** Sammelrechnung: alle offenen Rechnungen eines Zahlers in einem PDF (mit GiroCode ueber die Summe) */
+/** Sammelrechnung: alle offenen Rechnungen eines Zahlers in einem PDF (mit GiroCode über die Summe) */
 export async function payerStatementResponse(
 	ctx: RequestContext,
 	payerId: string

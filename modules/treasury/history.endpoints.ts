@@ -24,7 +24,7 @@ const TABLE: Record<HistoryKind, string> = {
 	payable: 'payables'
 };
 
-/** Entitaet laden und – bei Rechnungen – die aktuell zugeordneten Buchungen (ihre Eintraege gehoeren mit zum Verlauf) */
+/** Entität laden und – bei Rechnungen – die aktuell zugeordneten Buchungen (ihre Einträge gehören mit zum Verlauf) */
 async function relatedTargets(kind: HistoryKind, id: string): Promise<string[]> {
 	return mdb().transaction(async (tx) => {
 		const found = await rows(tx, sql`SELECT id FROM ${sql.raw(TABLE[kind])} WHERE id = ${id}`);

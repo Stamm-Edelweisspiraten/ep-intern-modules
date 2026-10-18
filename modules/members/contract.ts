@@ -32,7 +32,7 @@ export interface MemberFieldDefinition {
 	field: FieldDefinition;
 }
 
-/** Kontaktdaten fuer Systemfunktionen anderer Module (z. B. Kasse: Zahler, Mails) */
+/** Kontaktdaten für Systemfunktionen anderer Module (z. B. Kasse: Zahler, Mails) */
 export interface MemberContact {
 	id: string;
 	firstName: string;
@@ -81,7 +81,44 @@ export interface MemberSheetData {
 	custom: Record<string, FormValue>;
 }
 
+/** Gruppe für Auswahl/Freigaben anderer Module */
+export interface MemberGroupRef {
+	id: string;
+	name: string;
+	color: string | null;
+	/** Gruppenbild (`/api/v1/modules/members/groups/<id>/image?v=…`) oder `null`; Abruf braucht `members.group.view` */
+	image: string | null;
+	/** Gruppenstunde: 1 = Mo … 7 = So, `HH:MM`, Treffpunkt (je `null`, wenn nicht hinterlegt) */
+	meetingWeekday: number | null;
+	meetingTime: string | null;
+	meetingPlace: string | null;
+}
+
+/** Mitglied für Freigabe-Suche (Name = „Vorname Nachname“) */
+export interface MemberPrincipalRef {
+	id: string;
+	name: string;
+	groups: { id: string; name: string }[];
+}
+
 export interface MembersService {
+	/** Alle Gruppen nach Name, ohne Rechteprüfung (nur Name/Farbe) */
+	listGroups(): Promise<MemberGroupRef[]>;
+	/**
+	 * Für Freigaben: mit `userId` verknüpfte Mitglieder (ohne ausgetretene, Austritt ≤ heute) und deren
+	 * Gruppen (Mitgliedschaft UND Leitung).
+	 */
+	principalIdsForUser(userId: string): Promise<{ memberIds: string[]; groupIds: string[] }>;
+	/**
+	 * Für Freigaben, ohne Rechteprüfung: `search` (ab 2 Zeichen, Vor-/Nach-/Pfadname, ohne ausgetretene)
+	 * oder `ids` (≤ 100, auch ausgetretene); max. `limit` (Standard 20, höchstens 30).
+	 */
+	searchMembers(query: {
+		search?: string;
+		ids?: string[];
+		limit?: number;
+	}): Promise<MemberPrincipalRef[]>;
+
 	/** Mit dem Konto verknüpfte Mitglieder (`ctx.userId` Pflicht) */
 	listLinkedMembers(ctx: import('$lib/sdk/types').RequestContext): Promise<LinkedMemberData[]>;
 	/** 404, wenn das Mitglied nicht mit dem Konto verknüpft ist */
@@ -96,7 +133,7 @@ export interface MembersService {
 		values: Record<string, FormValue>
 	): Promise<string[]>;
 	/**
-	 * Kontaktdaten ohne Verknuepfungs- oder Rechtepruefung – der AUFRUFER prueft seine eigenen Rechte.
+	 * Kontaktdaten ohne Verknüpfungs- oder Rechteprüfung – der AUFRUFER prüft seine eigenen Rechte.
 	 * `ids` (≤ 1000) oder `search` (Vor-/Nach-/Pfadname); ohne beides alle (≤ `limit`, Standard 1000).
 	 */
 	listMemberContacts(query: {

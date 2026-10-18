@@ -1,6 +1,6 @@
-/** IBAN-Hilfen (rein, ohne Abhaengigkeiten): Normalisieren, Pruefen (mod 97), Maskieren. */
+/** IBAN-Hilfen (rein, ohne Abhängigkeiten): Normalisieren, Prüfen (mod 97), Maskieren. */
 
-/** Laengen gaengiger Laender; unbekannte Laender werden nur auf 15–34 Zeichen geprueft. */
+/** Längen gängiger Länder; unbekannte Länder werden nur auf 15–34 Zeichen geprüft. */
 const LENGTHS: Record<string, number> = {
 	DE: 22,
 	AT: 20,
@@ -23,12 +23,12 @@ const LENGTHS: Record<string, number> = {
 	CZ: 24
 };
 
-/** Entfernt Leerzeichen/Trennzeichen und wandelt in Grossbuchstaben um. */
+/** Entfernt Leerzeichen/Trennzeichen und wandelt in Großbuchstaben um. */
 export function normalizeIban(input: string): string {
 	return input.replace(/[\s.-]+/g, '').toUpperCase();
 }
 
-/** Prueft Format, Laenge (falls Land bekannt) und Pruefsumme (ISO 7064 mod 97-10). */
+/** Prüft Format, Länge (falls Land bekannt) und Prüfsumme (ISO 7064 mod 97-10). */
 export function isValidIban(input: string): boolean {
 	const iban = normalizeIban(input);
 	if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(iban)) return false;
@@ -44,7 +44,7 @@ export function isValidIban(input: string): boolean {
 	return remainder === 1;
 }
 
-/** `DE75 5206 0410 0506 4394 38` → `DE75 •••• •••• •••• 4394 38` (Land, Pruefziffer, letzte 6 Stellen). */
+/** `DE75 5206 0410 0506 4394 38` → `DE75 •••• •••• •••• 4394 38` (Land, Prüfziffer, letzte 6 Stellen). */
 export function maskIban(input: string): string {
 	const iban = normalizeIban(input);
 	if (iban.length < 10) return '••••';
@@ -57,12 +57,12 @@ export function maskIban(input: string): string {
 	return [head, groups, tailGrouped].filter(Boolean).join(' ');
 }
 
-/** Letzte 6 Stellen (fuer die Speicherung neben der verschluesselten IBAN). */
+/** Letzte 6 Stellen (für die Speicherung neben der verschlüsselten IBAN). */
 export function ibanLast(input: string, n = 6): string {
 	return normalizeIban(input).slice(-n);
 }
 
-/** Maskierung aus den gespeicherten letzten Stellen (ohne Entschluesselung). */
+/** Maskierung aus den gespeicherten letzten Stellen (ohne Entschlüsselung). */
 export function maskFromLast(last: string | null, total = 22): string | null {
 	if (!last) return null;
 	const hidden = Math.max(total - 4 - last.length, 0);

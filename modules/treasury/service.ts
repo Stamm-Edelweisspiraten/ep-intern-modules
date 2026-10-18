@@ -84,7 +84,7 @@ export const treasuryService: TreasuryService = {
 	},
 
 	async invoiceForRegistration(actionId: string, participantId: string) {
-		// Vergangene Aktionen: keine Rechnung (Anmeldebestaetigung ohne Zahlungsblock)
+		// Vergangene Aktionen: keine Rechnung (Anmeldebestätigung ohne Zahlungsblock)
 		const [source] = await (
 			await actionsService()
 		).listReceivableSources({ actionIds: [actionId] });

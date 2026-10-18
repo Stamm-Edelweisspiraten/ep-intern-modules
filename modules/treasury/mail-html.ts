@@ -1,5 +1,5 @@
 /**
- * HTML-Bausteine fuer Kassen-Mails (rein): Postentabelle, Zahlungskasten und das Rendern der
+ * HTML-Bausteine für Kassen-Mails (rein): Postentabelle, Zahlungskasten und das Rendern der
  * (vom Nutzer pflegbaren) Textvorlage nach HTML. Ein Absatz, der nur aus `{posten}`, `{zahlung}`
  * oder `{kontodaten}` besteht, wird durch den passenden HTML-Block ersetzt; alles andere wird escaped.
  */
@@ -47,7 +47,7 @@ export function hasBankData(b: BankData): boolean {
 	return !!(b.iban && b.holder);
 }
 
-/** Zahlungskasten: Empfaenger, IBAN, BIC, Bank, Betrag, Faelligkeit, Verwendungszweck */
+/** Zahlungskasten: Empfänger, IBAN, BIC, Bank, Betrag, Fälligkeit, Verwendungszweck */
 export function paymentBox(p: {
 	bank: BankData;
 	amountCents: number;
@@ -107,7 +107,7 @@ export function paymentText(p: {
 }
 
 /**
- * Rendert eine Textvorlage nach HTML. `blocks` ersetzt ganze Absaetze (z. B. `{posten}`) durch HTML,
+ * Rendert eine Textvorlage nach HTML. `blocks` ersetzt ganze Absätze (z. B. `{posten}`) durch HTML,
  * `vars` werden escaped eingesetzt. Unbekannte Platzhalter bleiben stehen.
  */
 export function templateToHtml(

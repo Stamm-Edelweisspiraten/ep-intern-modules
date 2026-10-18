@@ -33,6 +33,7 @@
 	let notify = $state(true);
 	let loading = $state(false);
 	let busy = $state(false);
+	let formEl = $state<HTMLFormElement | null>(null);
 	let error = $state('');
 
 	const amount = $derived(transaction?.amountCents ?? 0);
@@ -113,8 +114,9 @@
 		amounts = next;
 	}
 
-	async function save() {
-		if (!transaction) return;
+	async function save(e?: SubmitEvent) {
+		e?.preventDefault();
+		if (!transaction || busy || loading) return;
 		error = '';
 		const allocations = Object.entries(amounts)
 			.filter(([, v]) => v > 0)
@@ -174,137 +176,157 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+	<Dialog.Content
+		class="max-h-[92vh] overflow-y-auto sm:max-w-2xl"
+		onkeydown={(e) => {
+			// Strg/Cmd+Enter speichert ebenfalls (Enter allein über das Formular)
+			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+				e.preventDefault();
+				formEl?.requestSubmit();
+			}
+		}}
+	>
 		<Dialog.Header>
 			<Dialog.Title>Zahlung zuordnen</Dialog.Title>
 			<Dialog.Description>
 				Verteile den Betrag auf offene Posten – auch auf mehrere Kinder oder Aktionen.
 			</Dialog.Description>
 		</Dialog.Header>
-		{#if transaction}
-			<div class="rounded-md border bg-muted/40 p-3 text-sm">
-				<div class="flex flex-wrap items-baseline justify-between gap-2">
-					<span class="font-medium">{transaction.counterparty ?? 'Ohne Gegenpartei'}</span>
-					<span class="font-semibold tabular-nums">{formatEuro(transaction.amountCents)}</span>
-				</div>
-				<div class="text-xs text-muted-foreground">
-					{fmtDate(transaction.bookedOn)} · {transaction.accountName}
-					{#if transaction.purpose}· {transaction.purpose}{/if}
-				</div>
-			</div>
-
-			{#if loading}
-				<div class="space-y-2">
-					<Skeleton class="h-10 w-full" />
-					<Skeleton class="h-10 w-full" />
-					<Skeleton class="h-10 w-full" />
-				</div>
-			{:else}
-				{#if suggestion}
-					<div
-						class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm"
-						role="note"
-					>
-						<Sparkles class="size-4 text-primary" aria-hidden="true" />
-						<span class="min-w-0 flex-1">
-							<span class="font-medium">Vorschlag ({confidenceLabel[suggestion.confidence]}):</span>
-							{suggestion.reason} – {suggestion.invoiceNumbers.join(', ')}
-						</span>
-						<Button size="sm" variant="outline" onclick={applySuggestion}>Übernehmen</Button>
+		<form class="grid gap-4" onsubmit={save} bind:this={formEl} novalidate>
+			{#if transaction}
+				<div class="rounded-md border bg-muted/40 p-3 text-sm">
+					<div class="flex flex-wrap items-baseline justify-between gap-2">
+						<span class="font-medium">{transaction.counterparty ?? 'Ohne Gegenpartei'}</span>
+						<span class="font-semibold tabular-nums">{formatEuro(transaction.amountCents)}</span>
 					</div>
-				{/if}
-
-				<div class="flex flex-wrap items-center gap-2">
-					<Input
-						class="min-w-48 flex-1"
-						placeholder="Name, Rechnungsnummer oder Posten suchen …"
-						aria-label="Offene Posten durchsuchen"
-						bind:value={search}
-					/>
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={spread}
-						disabled={!Object.keys(amounts).length}
-					>
-						Auf Auswahl verteilen
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						onclick={() => (amounts = {})}
-						disabled={!Object.keys(amounts).length}
-					>
-						Leeren
-					</Button>
+					<div class="text-xs text-muted-foreground">
+						{fmtDate(transaction.bookedOn)} · {transaction.accountName}
+						{#if transaction.purpose}· {transaction.purpose}{/if}
+					</div>
 				</div>
 
-				{#if !lines.length}
-					<p class="py-6 text-center text-sm text-muted-foreground">
-						Es gibt keine offenen Posten. Die Zahlung bleibt als nicht zugeordnete Einnahme stehen.
-					</p>
+				{#if loading}
+					<div class="space-y-2">
+						<Skeleton class="h-10 w-full" />
+						<Skeleton class="h-10 w-full" />
+						<Skeleton class="h-10 w-full" />
+					</div>
 				{:else}
-					<ul
-						class="max-h-[45vh] divide-y overflow-y-auto rounded-md border"
-						aria-label="Offene Posten"
-					>
-						{#each visible as l (l.lineId)}
-							{@const checked = l.lineId in amounts}
-							<li class="flex flex-wrap items-center gap-3 px-3 py-2">
-								<Checkbox
-									id={`al-${l.lineId}`}
-									{checked}
-									onCheckedChange={(v) => toggle(l, v === true)}
-									aria-label={`${l.description} auswählen`}
-								/>
-								<label for={`al-${l.lineId}`} class="min-w-0 flex-1 cursor-pointer text-sm">
-									<span class="block truncate font-medium">{l.description}</span>
-									<span class="block text-xs text-muted-foreground">
-										{l.invoiceNumber} · {l.recipientName} · fällig {fmtDate(l.dueOn)} · offen
-										<span class="tabular-nums">{formatEuro(l.openCents)}</span>
-									</span>
-								</label>
-								{#if checked}
-									<MoneyInput
-										class="w-28 shrink-0 sm:w-32"
-										label={`Betrag für ${l.description}`}
-										cents={amounts[l.lineId] ?? 0}
-										max={l.openCents}
-										onchange={(c) => (amounts = { ...amounts, [l.lineId]: c })}
-									/>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-					{#if lines.length > visible.length}
-						<p class="text-xs text-muted-foreground">
-							Weitere Posten über die Suche finden ({lines.length} offen).
-						</p>
+					{#if suggestion}
+						<div
+							class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm"
+							role="note"
+						>
+							<Sparkles class="size-4 text-primary" aria-hidden="true" />
+							<span class="min-w-0 flex-1">
+								<span class="font-medium"
+									>Vorschlag ({confidenceLabel[suggestion.confidence]}):</span
+								>
+								{suggestion.reason} – {suggestion.invoiceNumbers.join(', ')}
+							</span>
+							<Button size="sm" variant="outline" onclick={applySuggestion}>Übernehmen</Button>
+						</div>
 					{/if}
-				{/if}
 
-				<div class="flex flex-wrap items-center justify-between gap-3 text-sm">
-					<div class="space-x-3">
-						<span>Zugeordnet <strong class="tabular-nums">{formatEuro(allocated)}</strong></span>
-						<span class={rest < 0 ? 'text-destructive' : 'text-muted-foreground'}>
-							Rest <span class="tabular-nums">{formatEuro(rest)}</span>
-						</span>
-						{#if rest > 0 && allocated > 0}
-							<Badge variant="outline">Rest bleibt als Guthaben/Einnahme</Badge>
+					<div class="flex flex-wrap items-center gap-2">
+						<Input
+							class="min-w-48 flex-1"
+							placeholder="Name, Rechnungsnummer oder Posten suchen …"
+							aria-label="Offene Posten durchsuchen"
+							bind:value={search}
+							onkeydown={(e) => {
+								// Enter in der Suche speichert nicht
+								if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) e.preventDefault();
+							}}
+						/>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={spread}
+							disabled={!Object.keys(amounts).length}
+						>
+							Auf Auswahl verteilen
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							onclick={() => (amounts = {})}
+							disabled={!Object.keys(amounts).length}
+						>
+							Leeren
+						</Button>
+					</div>
+
+					{#if !lines.length}
+						<p class="py-6 text-center text-sm text-muted-foreground">
+							Es gibt keine offenen Posten. Die Zahlung bleibt als nicht zugeordnete Einnahme
+							stehen.
+						</p>
+					{:else}
+						<ul
+							class="max-h-[45vh] divide-y overflow-y-auto rounded-md border"
+							aria-label="Offene Posten"
+						>
+							{#each visible as l (l.lineId)}
+								{@const checked = l.lineId in amounts}
+								<li class="flex flex-wrap items-center gap-3 px-3 py-2">
+									<Checkbox
+										id={`al-${l.lineId}`}
+										{checked}
+										onCheckedChange={(v) => toggle(l, v === true)}
+										aria-label={`${l.description} auswählen`}
+									/>
+									<label for={`al-${l.lineId}`} class="min-w-0 flex-1 cursor-pointer text-sm">
+										<span class="block truncate font-medium">{l.description}</span>
+										<span class="block text-xs text-muted-foreground">
+											{l.invoiceNumber} · {l.recipientName} · fällig {fmtDate(l.dueOn)} · offen
+											<span class="tabular-nums">{formatEuro(l.openCents)}</span>
+										</span>
+									</label>
+									{#if checked}
+										<MoneyInput
+											class="w-28 shrink-0 sm:w-32"
+											label={`Betrag für ${l.description}`}
+											cents={amounts[l.lineId] ?? 0}
+											max={l.openCents}
+											onchange={(c) => (amounts = { ...amounts, [l.lineId]: c })}
+										/>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+						{#if lines.length > visible.length}
+							<p class="text-xs text-muted-foreground">
+								Weitere Posten über die Suche finden ({lines.length} offen).
+							</p>
 						{/if}
+					{/if}
+
+					<div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+						<div class="space-x-3">
+							<span>Zugeordnet <strong class="tabular-nums">{formatEuro(allocated)}</strong></span>
+							<span class={rest < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+								Rest <span class="tabular-nums">{formatEuro(rest)}</span>
+							</span>
+							{#if rest > 0 && allocated > 0}
+								<Badge variant="outline">Rest bleibt als Guthaben/Einnahme</Badge>
+							{/if}
+						</div>
+						<div class="flex items-center gap-2">
+							<Switch id="al-notify" bind:checked={notify} />
+							<Label for="al-notify">Bestätigung per E-Mail</Label>
+						</div>
 					</div>
-					<div class="flex items-center gap-2">
-						<Switch id="al-notify" bind:checked={notify} />
-						<Label for="al-notify">Bestätigung per E-Mail</Label>
-					</div>
-				</div>
+				{/if}
 			{/if}
-		{/if}
-		{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-			<Button onclick={save} disabled={busy || loading}>{busy ? 'Speichert …' : 'Speichern'}</Button
-			>
-		</Dialog.Footer>
+			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			<Dialog.Footer class="items-center gap-2">
+				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
+				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
+				<Button type="submit" disabled={busy || loading}
+					>{busy ? 'Speichert …' : 'Speichern'}</Button
+				>
+			</Dialog.Footer>
+		</form>
 	</Dialog.Content>
 </Dialog.Root>

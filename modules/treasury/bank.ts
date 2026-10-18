@@ -1,4 +1,4 @@
-/** Bankverbindungen (Zahler, Auszahlungen, Import): IBAN nur verschluesselt + HMAC fuer den Abgleich. */
+/** Bankverbindungen (Zahler, Auszahlungen, Import): IBAN nur verschlüsselt + HMAC für den Abgleich. */
 import { core } from '$lib/sdk/server';
 import { ibanLast4, isValidIban, normalizeIban } from './iban';
 import { MODULE_ID } from './schemas';
@@ -11,7 +11,7 @@ export interface StoredIban {
 	hash: string | null;
 }
 
-/** `undefined` = unveraendert, `''` = entfernen, sonst verschluesseln (Eingabe ist bereits geprueft) */
+/** `undefined` = unverändert, `''` = entfernen, sonst verschlüsseln (Eingabe ist bereits geprüft) */
 export function storeIban(iban: string | undefined): StoredIban | undefined {
 	if (iban === undefined) return undefined;
 	if (!iban) return { enc: null, last4: null, hash: null };
@@ -19,7 +19,7 @@ export function storeIban(iban: string | undefined): StoredIban | undefined {
 	return { enc: crypto().encrypt(n), last4: ibanLast4(n), hash: crypto().hash(n) };
 }
 
-/** HMAC einer (ggf. aus dem Import stammenden) IBAN; `null`, wenn ungueltig */
+/** HMAC einer (ggf. aus dem Import stammenden) IBAN; `null`, wenn ungültig */
 export function ibanHash(raw: string | null | undefined): { hash: string; last4: string } | null {
 	if (!raw) return null;
 	const n = normalizeIban(raw);

@@ -16,7 +16,7 @@ export interface AutoIncome {
 		teamCount: number;
 		feeCents: number;
 		teamFeeCents: number;
-		/** `treasury`: tatsaechlich eingegangene Zahlungen aus der Kasse (Ist statt Soll) */
+		/** `treasury`: tatsächlich eingegangene Zahlungen aus der Kasse (Ist statt Soll) */
 		source?: 'calculated' | 'treasury';
 		/** nur bei `treasury`: Soll, offen, Anzahl Rechnungen */
 		dueCents?: number;

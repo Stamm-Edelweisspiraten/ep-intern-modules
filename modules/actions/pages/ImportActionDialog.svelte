@@ -31,7 +31,7 @@
 	let fieldKey = $state(0);
 
 	$effect(() => {
-		// `reset()` liest und schreibt `fieldKey` – ohne `untrack` loest sich der Effekt endlos selbst aus
+		// `reset()` liest und schreibt `fieldKey` – ohne `untrack` löst sich der Effekt endlos selbst aus
 		// (`effect_update_depth_exceeded`, Aktionsliste blieb im Ladezustand)
 		if (!open && !busy) untrack(reset);
 	});

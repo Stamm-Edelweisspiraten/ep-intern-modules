@@ -1,7 +1,7 @@
 /**
- * Reine Kassen-Logik (ohne Server-/Svelte-Abhaengigkeiten): Rechnungsstatus, Verteilung von
- * Zahlungen, Faelligkeit, Erinnerungsstufen, Abgleich mit Aktionen, Zahler-Vorschlaege,
- * Zuordnungsvorschlaege und Mail-Texte. Alle Betraege Integer-Cent, Daten `YYYY-MM-DD`.
+ * Reine Kassen-Logik (ohne Server-/Svelte-Abhängigkeiten): Rechnungsstatus, Verteilung von
+ * Zahlungen, Fälligkeit, Erinnerungsstufen, Abgleich mit Aktionen, Zahler-Vorschläge,
+ * Zuordnungsvorschläge und Mail-Texte. Alle Beträge Integer-Cent, Daten `YYYY-MM-DD`.
  */
 import { formatEuro } from '$lib/components/layout/money';
 import type { InvoiceStatus } from './schemas';
@@ -15,7 +15,7 @@ export function addDays(date: string, days: number): string {
 	return fromUtc(toUtc(date) + days * DAY_MS);
 }
 
-/** Ganze Tage von `a` nach `b` (positiv, wenn `b` spaeter liegt) */
+/** Ganze Tage von `a` nach `b` (positiv, wenn `b` später liegt) */
 export function daysBetween(a: string, b: string): number {
 	return Math.round((toUtc(b) - toUtc(a)) / DAY_MS);
 }
@@ -52,7 +52,7 @@ export interface InvoiceTotals {
 
 /**
  * Summen einer Rechnung. Stornierte Rechnungen schulden nichts; bereits Bezahltes wird dort
- * (wie eine Ueberzahlung) als Guthaben gefuehrt.
+ * (wie eine Überzahlung) als Guthaben geführt.
  */
 export function invoiceTotals(lines: LineAmounts[], cancelled: boolean): InvoiceTotals {
 	const due = lines.reduce((s, l) => s + Math.max(0, safe(l.amountCents) - safe(l.waivedCents)), 0);
@@ -76,7 +76,7 @@ export function invoiceTotals(lines: LineAmounts[], cancelled: boolean): Invoice
 	return { totalCents: due, paidCents: paid, openCents: open, creditCents: credit, status };
 }
 
-/** Tage ueberfaellig (0 = nicht ueberfaellig) */
+/** Tage überfällig (0 = nicht überfällig) */
 export function overdueDays(dueOn: string, today: string, openCents: number): number {
 	if (openCents <= 0) return 0;
 	return Math.max(0, daysBetween(dueOn, today));
@@ -88,11 +88,11 @@ export interface OpenSlot {
 	lineId: string;
 	openCents: number;
 	dueOn: string;
-	/** Stabile Reihenfolge bei gleicher Faelligkeit */
+	/** Stabile Reihenfolge bei gleicher Fälligkeit */
 	order?: string;
 }
 
-/** Verteilt einen Betrag auf offene Posten, aelteste Faelligkeit zuerst. */
+/** Verteilt einen Betrag auf offene Posten, älteste Fälligkeit zuerst. */
 export function distribute(
 	amountCents: number,
 	slots: OpenSlot[]
@@ -116,11 +116,11 @@ export function distribute(
 	return { allocations, restCents: rest };
 }
 
-// --- Faelligkeit und Erinnerungen ---------------------------------------------
+// --- Fälligkeit und Erinnerungen ---------------------------------------------
 
 /**
- * Faelligkeit automatischer Rechnungen: `daysBeforeStart` Tage vor Beginn, aber nie frueher als
- * `minDays` nach Erstellung (alte Aktionen loesen also nicht sofort Erinnerungen aus).
+ * Fälligkeit automatischer Rechnungen: `daysBeforeStart` Tage vor Beginn, aber nie früher als
+ * `minDays` nach Erstellung (alte Aktionen lösen also nicht sofort Erinnerungen aus).
  */
 export function computeDueOn(p: {
 	startsOn: string;
@@ -136,8 +136,8 @@ export function computeDueOn(p: {
 export const MAX_REMINDER_LEVEL = 2;
 
 /**
- * Welche Erinnerungsstufe ist heute faellig? Stufe 1 ab `firstDays` Tagen Ueberfaelligkeit,
- * Stufe 2 fruehestens `secondDays` Tage nach Stufe 1. Danach keine automatische Erinnerung mehr.
+ * Welche Erinnerungsstufe ist heute fällig? Stufe 1 ab `firstDays` Tagen Überfälligkeit,
+ * Stufe 2 frühestens `secondDays` Tage nach Stufe 1. Danach keine automatische Erinnerung mehr.
  */
 export function reminderLevelDue(p: {
 	dueOn: string;
@@ -187,7 +187,7 @@ export interface MemberLite {
 }
 
 /**
- * Ordnet Teilnehmende einem Mitglied zu: vorhandene Verknuepfung, sonst eindeutiger Treffer
+ * Ordnet Teilnehmende einem Mitglied zu: vorhandene Verknüpfung, sonst eindeutiger Treffer
  * auf Name + Geburtsdatum, ohne Geburtsdatum eindeutiger Name.
  */
 export function matchMember(
@@ -269,7 +269,7 @@ export function lineDescription(actionName: string, personName: string): string 
 	return `Beitrag ${actionName} – ${personName}`.slice(0, 200);
 }
 
-/** Vergleicht gewuenschte Posten (aus Aktionen) mit vorhandenen und plant die Aenderungen. */
+/** Vergleicht gewünschte Posten (aus Aktionen) mit vorhandenen und plant die Änderungen. */
 export function planSync(p: {
 	sources: SyncSource[];
 	excludedActionIds: Set<string>;
@@ -348,7 +348,7 @@ export function planSync(p: {
 	return plan;
 }
 
-// --- Zahler-Vorschlaege ---------------------------------------------------------
+// --- Zahler-Vorschläge ---------------------------------------------------------
 
 /** Gruppiert Mitglieder ohne Zahler nach gemeinsamer E-Mail bzw. Anschrift (Geschwister). */
 export function suggestPayers(
@@ -399,16 +399,16 @@ export function suggestPayers(
 		.sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
-// --- Zuordnungsvorschlaege ----------------------------------------------------
+// --- Zuordnungsvorschläge ----------------------------------------------------
 
 export interface MatchLine extends OpenSlot {
 	invoiceId: string;
 	invoiceNumber: string;
-	/** Namen, die zu diesem Posten passen (Empfaenger, Mitglied, Zahler) */
+	/** Namen, die zu diesem Posten passen (Empfänger, Mitglied, Zahler) */
 	names: string[];
-	/** Gruppierung fuer Sammelzahlungen (Zahler-ID oder Nachname) */
+	/** Gruppierung für Sammelzahlungen (Zahler-ID oder Nachname) */
 	groupKey: string;
-	/** Worum es geht (z. B. Name der Aktion); steht es im Verwendungszweck, zaehlt der Posten zuerst */
+	/** Worum es geht (z. B. Name der Aktion); steht es im Verwendungszweck, zählt der Posten zuerst */
 	topic?: string;
 }
 
@@ -433,7 +433,7 @@ function nameMatches(haystack: string, name: string): boolean {
 		.filter((p) => p.length >= 2);
 	if (!parts.length) return false;
 	const words = new Set(haystack.split(' '));
-	// Vor- und Nachname (erstes und letztes Wort) muessen vorkommen; Einzelnamen genuegen nicht
+	// Vor- und Nachname (erstes und letztes Wort) müssen vorkommen; Einzelnamen genügen nicht
 	if (parts.length === 1) return false;
 	return words.has(parts[0]!) && words.has(parts[parts.length - 1]!);
 }
@@ -444,7 +444,7 @@ function lastNameOf(name: string): string {
 }
 
 /**
- * Schlaegt eine Verteilung fuer eine Einnahme vor. Reihenfolge: Rechnungsnummer im
+ * Schlägt eine Verteilung für eine Einnahme vor. Reihenfolge: Rechnungsnummer im
  * Verwendungszweck, Namen (inkl. Geschwister mit gleichem Zahler/Nachnamen), exakter Betrag.
  */
 export function suggestMatch(
@@ -512,7 +512,7 @@ export function suggestMatch(
 			);
 		}
 	}
-	// Thema (z. B. „Herbstfahrt“) im Verwendungszweck: Woerter ab 4 Zeichen, keine Jahreszahlen
+	// Thema (z. B. „Herbstfahrt“) im Verwendungszweck: Wörter ab 4 Zeichen, keine Jahreszahlen
 	const mentioned = (l: MatchLine) =>
 		normalizeName(l.topic ?? '')
 			.split(' ')
@@ -578,7 +578,7 @@ export interface PayableMatch {
 }
 
 /**
- * Vorschlag fuer eine Ausgabe: welche offene Auszahlung wird damit bezahlt?
+ * Vorschlag für eine Ausgabe: welche offene Auszahlung wird damit bezahlt?
  * IBAN-Ende + Betrag → sicher; Name + Betrag → sicher; Name allein → wahrscheinlich;
  * nur der Betrag (eindeutig) → unsicher.
  */
@@ -600,7 +600,7 @@ export function suggestPayable(
 			.split(' ')
 			.filter((w) => w.length >= 3);
 		const hits = parts.filter((w) => hay.includes(` ${w} `)).length;
-		// mehrteilige Namen: zwei Woerter muessen passen (Vor- und Nachname, Firma + Ort …)
+		// mehrteilige Namen: zwei Wörter müssen passen (Vor- und Nachname, Firma + Ort …)
 		return parts.length > 0 && hits >= Math.min(2, parts.length);
 	};
 	const pick = (
@@ -609,7 +609,7 @@ export function suggestPayable(
 		reason: string
 	): PayableMatch | null => {
 		if (!list.length) return null;
-		// bei mehreren Treffern den mit dem passenden (bzw. naechsten) Betrag
+		// bei mehreren Treffern den mit dem passenden (bzw. nächsten) Betrag
 		const best = [...list].sort(
 			(a, b) => Math.abs(a.openCents - amount) - Math.abs(b.openCents - amount)
 		)[0]!;
@@ -674,7 +674,7 @@ export function renderTemplate(tpl: string, vars: Record<string, string>): strin
 	return tpl.replace(/\{([a-z]+)\}/g, (m, key: string) => vars[key] ?? m);
 }
 
-/** Variablen fuer Bestaetigung (`kind: 'paid'`) bzw. Erinnerung (`kind: 'reminder'`) */
+/** Variablen für Bestätigung (`kind: 'paid'`) bzw. Erinnerung (`kind: 'reminder'`) */
 export function mailVars(p: {
 	invoices: MailInvoice[];
 	bank: BankData;
@@ -711,7 +711,7 @@ export function mailSubject(tpl: string, vars: Record<string, string>): string {
 
 const EMAIL_RE = /^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()"]+$/;
 
-/** Fasst Rechnungen je Empfaengeradresse zusammen (eine Mail je Adresse, z. B. fuer Geschwister). */
+/** Fasst Rechnungen je Empfängeradresse zusammen (eine Mail je Adresse, z. B. für Geschwister). */
 export function groupByAddress<T extends { addresses: string[] }>(items: T[]): Map<string, T[]> {
 	const out = new Map<string, T[]>();
 	for (const it of items) {
@@ -739,7 +739,7 @@ export function csvDocument(header: string[], rows: (string | number | null)[][]
 
 export const centsToCsv = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 
-/** Dateiname fuer Storage-Pfade und Content-Disposition */
+/** Dateiname für Storage-Pfade und Content-Disposition */
 export function sanitizeName(name: string): string {
 	const cleaned = name
 		.normalize('NFKD')
@@ -750,7 +750,44 @@ export function sanitizeName(name: string): string {
 	return cleaned || 'datei';
 }
 
-// --- Ausstehende Ueberweisungen (Abgleich) ---------------------------------------
+// --- Ausstehende Überweisungen (Abgleich) ---------------------------------------
+
+/**
+ * Schlüssel einer Auslagen-Auszahlung: Schlussabrechnung `reimb:<aktion>:<empfaenger>` (wie bisher),
+ * Zwischenabrechnung `reimb:<aktion>:<empfaenger>:<zwischenabrechnung>`.
+ */
+export function reimbursementRef(
+	actionId: string,
+	payeeId: string,
+	interimId?: string | null
+): string {
+	return interimId ? `reimb:${actionId}:${payeeId}:${interimId}` : `reimb:${actionId}:${payeeId}`;
+}
+
+/** Gegenstück zu `reimbursementRef`; `interimId: null` = Schlussabrechnung. */
+export function parseReimbursementRef(
+	ref: string
+): { actionId: string; payeeId: string; interimId: string | null } | null {
+	const parts = ref.split(':');
+	if (parts[0] !== 'reimb' || parts.length < 3 || parts.length > 4) return null;
+	const [, actionId, payeeId, interimId] = parts;
+	if (!actionId || !payeeId) return null;
+	if (parts.length === 4 && !interimId) return null;
+	return { actionId, payeeId, interimId: interimId ?? null };
+}
+
+/** Beschreibung einer Auslagen-Auszahlung (Schlussabrechnung unverändert wie bisher). */
+export function reimbursementDescription(
+	recipientName: string,
+	actionName: string,
+	interimNumber?: number | null
+): string {
+	return (
+		interimNumber
+			? `Auslagen ${recipientName} – ${actionName}, Zwischenabrechnung Nr. ${interimNumber}`
+			: `Auslagen ${actionName}`
+	).slice(0, 200);
+}
 
 export interface PayableDesired {
 	sourceRef: string;
@@ -763,7 +800,7 @@ export interface PayableDesired {
 	memberId: string | null;
 	ibanLast4: string | null;
 	bic: string | null;
-	/** Verschluesselte IBAN (z. B. Herkunftskonto des Beitrags); `null` = aus Quelle/Zahler */
+	/** Verschlüsselte IBAN (z. B. Herkunftskonto des Beitrags); `null` = aus Quelle/Zahler */
 	ibanEnc?: string | null;
 }
 
@@ -789,7 +826,7 @@ export interface PayablePlan {
 
 /**
  * Gleicht automatische Auszahlungen ab. Bereits (teil-)bezahlte Posten werden nie storniert und ihr
- * Betrag faellt nie unter das Gezahlte; manuell stornierte bleiben storniert.
+ * Betrag fällt nie unter das Gezahlte; manuell stornierte bleiben storniert.
  */
 export function planPayables(desired: PayableDesired[], existing: PayableExisting[]): PayablePlan {
 	const plan: PayablePlan = { create: [], update: [], cancel: [], reactivate: [] };
@@ -822,7 +859,7 @@ export function planPayables(desired: PayableDesired[], existing: PayableExistin
 }
 
 /**
- * GiroCode (EPC-QR, Version 002) fuer Banking-Apps. `null` ohne IBAN/Empfaenger oder Betrag ≤ 0.
+ * GiroCode (EPC-QR, Version 002) für Banking-Apps. `null` ohne IBAN/Empfänger oder Betrag ≤ 0.
  * Felder: Name max. 70, Verwendungszweck max. 140 Zeichen.
  */
 export function epcPayload(p: {

@@ -1,7 +1,7 @@
 import { ageAt, type ParticipantRole } from './schemas';
 
 /**
- * Reine Klassifikation der Zuschussberechtigung (Server, Vorschlaege und Abrechnung).
+ * Reine Klassifikation der Zuschussberechtigung (Server, Vorschläge und Abrechnung).
  *
  * Effektiv berechtigt:
  * - `subsidyEligible === false`: nie.
@@ -61,7 +61,7 @@ export function deriveSubsidyCounts(
 		if (p.bremenResident == null && p.subsidyEligible == null) missing.push('bremenResident');
 		if (missing.length) out.incomplete.push({ id: p.id, name: p.name, missing });
 
-		// Taschengeld-Kontingent: Team bis 27 (unabhaengig vom Wohnort), ausser ausdruecklich ausgeschlossen
+		// Taschengeld-Kontingent: Team bis 27 (unabhängig vom Wohnort), außer ausdrücklich ausgeschlossen
 		if (isTeam && p.subsidyEligible !== false && age != null && age >= 0 && age <= 27) {
 			if (p.juleica) out.teamWithJuleica++;
 			else out.teamWithoutJuleica++;

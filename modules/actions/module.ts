@@ -23,6 +23,13 @@ import m0013 from './migrations/0013_entry_reimbursed_upfront.sql?raw';
 import { refundEndpoints } from './refund.endpoints';
 import { exportImportEndpoints } from './export-import.endpoints';
 import { actionsService } from './service';
+import { interimEndpoints } from './interim.endpoints';
+import { expenseLinkEndpoints } from './expense-link.endpoints';
+import { resetAreas, resetUsers } from './reset';
+import m0014 from './migrations/0014_accounting_interims.sql?raw';
+import m0015 from './migrations/0015_expense_links.sql?raw';
+import m0016 from './migrations/0016_interim_snapshots.sql?raw';
+import m0017 from './migrations/0017_expense_batches.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -30,7 +37,7 @@ export default defineModule({
 		name: 'Aktionen',
 		version: '1.1.0',
 		dependencies: ['members'],
-		/** Kasse: tatsaechlich eingegangene Beitraege fuer die Abrechnung (`TreasuryService`) */
+		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
 		permissions: [
 			'actions.action.view',
@@ -46,7 +53,7 @@ export default defineModule({
 		navigation: [
 			{
 				label: 'Aktionen',
-				icon: 'calendar',
+				icon: 'backpack',
 				path: '/modules/actions',
 				permission: 'actions.action.view'
 			}
@@ -73,6 +80,8 @@ export default defineModule({
 			default: '{{aktion}} + Name'
 		}
 	],
+	resetAreas,
+	resetUsers,
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_calculation', sql: m0002 },
@@ -86,7 +95,11 @@ export default defineModule({
 		{ name: '0010_member_registration', sql: m0010 },
 		{ name: '0011_club_expenses', sql: m0011 },
 		{ name: '0012_action_past_flag', sql: m0012 },
-		{ name: '0013_entry_reimbursed_upfront', sql: m0013 }
+		{ name: '0013_entry_reimbursed_upfront', sql: m0013 },
+		{ name: '0014_accounting_interims', sql: m0014 },
+		{ name: '0015_expense_links', sql: m0015 },
+		{ name: '0016_interim_snapshots', sql: m0016 },
+		{ name: '0017_expense_batches', sql: m0017 }
 	],
 	endpoints: [
 		...actionEndpoints,
@@ -97,6 +110,8 @@ export default defineModule({
 		...accountingEndpoints,
 		...payoutEndpoints,
 		...refundEndpoints,
-		...exportImportEndpoints
+		...exportImportEndpoints,
+		...interimEndpoints,
+		...expenseLinkEndpoints
 	]
 });

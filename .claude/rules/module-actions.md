@@ -263,3 +263,48 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - Zeile: ohne Mitglied aus `action_participants` (Gruppe = `group_label`, Alter, E-Mail, `diet` → Ernährung, `allergies` → Allergien); mit `member_id` aus `listMemberSheets` (Notfall-Telefon, Zusatzfelder), Ernährung/Allergien/E-Mail aus beiden zusammengeführt.
   `fee` = `fee_cents` bzw. `team_fee_cents` (Team), `notes` = Hinweise + Antworten des Anmeldeformulars (ohne `mf_*` bei Mitglied). Abschnitte „Teilnehmende“ und „Team“ (neue Seite).
 - Reihenfolge der Prüfung: Zugriff (`requireAccess read`, fremde Aktion 404) → `members.data.export` (403). POST-Body `{ selection? }` strikt (`listSelectionInput` aus `members/schemas.ts`), leere/zu lange Auswahl 422.
+
+## Zwischenabrechnungen (Migrationen 0014/0016, Snapshot-Modell seit 2026-10-18)
+- Nutzerentscheidung: Jede ZA ist ein **eingefrorenes Abbild des gesamten Abrechnungsstands** zum Erstellungszeitpunkt;
+  ZAs und Endabrechnung sind **unabhängig** voneinander (kein Aufbauen, keine Aufteilung der Buchungen). **Keine Sperre** durch ZA
+  (gesperrt bleibt nur Ausgezahltes). `accounting_entries.interim_id` (0014) ist seit 0016 ungenutzt (immer NULL).
+- Daten (0016): `accounting_interims.snapshot jsonb` (`InterimSnapshot`: `takenAt`, `entries`, `summary`, `plan`, `autoIncome`, `payees` ohne Bankdaten,
+  `receiptEntryIds`), `accounting_interim_entries` (in der ZA enthaltene Buchungen = Freigabe zur Auszahlung). Altdaten: ZA N = Buchungen aus ZA 1..N,
+  ohne Snapshot → Fallback live aus den zugeordneten Buchungen (`loadInterimSnapshot` in accounting-core.ts).
+- `POST …/accounting/interims` (`{acceptMissingReceipts, note}`): offene Abrechnung, ≥ 1 Buchung, Belegprüfung über alle Ausgaben (409); Snapshot wie
+  `GET …/accounting` (Kasse-Beiträge vor der Transaktion). `DELETE …/interims/:interimId[?force=true]`: jede ZA, nur Eigentümer*in/`edit-all` (403);
+  Warnung `paid` (erstattete Auslagen nur in dieser ZA, Abrechnung offen) → ohne `force` 409; Erstattetes bleibt erstattet. Nummern lückenhaft (max+1).
+- PDF `GET …/interims/:interimId/report.pdf`: gleicher Aufbau wie der Endbericht, aus dem Snapshot („Zwischenabrechnung Nr. N – Stand TT.MM.JJJJ“,
+  „Ergebnis/Saldo zum Stichtag“, keine Rückzahlung), Bankdaten live nach Rechten, Belege der Snapshot-Buchungen soweit noch vorhanden.
+  Endbericht ohne ZA-Vermerke. Download-Dateiname `Zwischenabrechnung-<Aktion>-ZA<N>.pdf` (`pages/download.ts`).
+- Kasse: Auslage freigegeben = Abrechnung abgeschlossen ODER in einer ZA enthalten; `listReimbursements` = eine Zeile je (Aktion, Person),
+  `interimId: null`. `markReimbursed`/`listReimbursementReceipts`: ohne Argument = alle Auslagen der Person, `null` = nur freigegebene,
+  Alt-ZA-Schlüssel → No-op. `listInterims`/`interimReportPdf` aus dem Snapshot. Audit `actions.accounting.interim_created|interim_reverted`.
+- UI: Button „Zwischenabrechnung“ (Dialog fasst den Gesamtstand zusammen, „Festhalten“), `InterimsCard` (Nr., Stichtag, Buchungen, Einnahmen,
+  Ausgaben, Saldo, PDF/Ansehen, Zurücknehmen). Export/Import übernimmt **keine** ZA.
+
+## Kosten-Link (Migration 0015, 2026-10-18)
+- Ein Link je Aktion (`expense_links`, Token 64 hex), Einreichungen `expense_submissions` (`pending|accepted|rejected`, IBAN verschlüsselt).
+  Intern: `GET/PUT /actions/:id/expense-link` (`{enabled}`), `POST …/expense-link/rotate`, `GET /actions/:id/expense-submissions?status=`,
+  `…/:submissionId/receipt` (+`actions.storage.read`), `POST …/:submissionId/accept` (`expenseAcceptInput`: Korrekturen, optional `payeeId`;
+  sonst Empfänger mit gleichem Namen + IBAN-Ende wiederverwenden bzw. neu „Aus Kosten-Link“; Buchung paid_by person mit demselben Beleg-Pfad;
+  IBAN der Einreichung danach gelöscht; abgeschlossen → 409), `POST …/reject` (`{reason, notify}`; Beleg + IBAN sofort gelöscht, auch bei Abschluss).
+- Öffentlich: `GET /public/expense-links/:token` (60/60 s), `POST …/:token/submit` (5/600 s, **multipart** ≤ 12 MB, Feld `file`, Textfelder
+  `publicExpenseSubmitInput`, Honeypot `website`, Magic-Bytes, Upload per `systemContext('expense-link')`, ohne S3 503, max. 50 offene je Aktion → 409).
+  Unbekannt/deaktiviert/abgeschlossen/Modul aus → einheitlich 404. Seite `/p/actions/auslagen/<token>` (`PublicExpense.svelte`).
+- UI im Tab Abrechnung: `ExpenseLinkSection` (Link kopieren/erneuern/aus, eingereichte Auslagen, Prüfdialog `ExpenseSubmissionDialog`).
+- Audit `actions.expense.submitted|accepted|rejected|link_updated|link_rotated` ohne Name/E-Mail/IBAN. Beleg-Upload in der Abrechnung prüft jetzt Magic-Bytes (422).
+
+## UX-Paket Aktionen (2026-10-18)
+- **Abrechnung**: Unterbereiche (Buchungen · Auslagen & Auszahlung · Kosten-Link · Zwischenabrechnungen · Rückzahlung) mit Zählern;
+  Hinweisbalken bei Einreichungen zu prüfen; mobile Buchungsliste als kompakte Karten (eigene Liste `sm:hidden`, Tabelle ab `sm`);
+  Abschluss über `CloseAccountingDialog` (Checkliste: Belege mit Pflicht-Haken „Trotzdem“, offene Überweisungen/Auslagen, Einreichungen, Überschuss).
+- **Kosten-Link mit mehreren Auslagen** (Migration 0017 `expense_submissions.batch_id`): `POST /public/expense-links/:token/submit` nimmt
+  `publicExpenseBatchInput` (gemeinsame Person/Konto, `items` als JSON, 1–5 Auslagen), je Auslage genau eine Datei `file` in Reihenfolge,
+  multipart ≤ 30 MB (`MAX_MULTIPART_BYTES` im Core jetzt 30 MB), Fehlerpfade `items.<i>.<feld>`/`items.<i>.file`; Antwort `{ batchId, count, emailSent }`.
+  Mail an die Person (Liste + Summe) und **an die Eigentümer*in** der Aktion (Name, Anzahl, Summe, Link; keine IBAN). Intern gruppiert je `batchId`, „Alle annehmen“.
+  Öffentliche Seite: Auslage-Karten, `ReceiptPicker` (Upload mit Vorschau), `DateInputDe` (TT.MM.JJJJ).
+- **Teilnehmende** (`pages/ParticipantsTab.svelte`): Filter-Chips (Rolle, Beitrag bezahlt/offen, Zuschuss, Angaben fehlen) + Mehrfachbearbeitung;
+  `PATCH /actions/:id/participants` `{ ids (≤ 500), subsidyEligible?, role? }` → `{ updated }`, fremde ID → 404 ohne Änderung, Audit `actions.participant.bulk_updated`.
+- **Kalkulation**: feste Leiste unten (Beitrag, Team, Gesamtkosten, Zuschuss), Klick scrollt zur Zusammenfassung (`#calc-summary`).
+

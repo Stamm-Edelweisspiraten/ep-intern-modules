@@ -1,6 +1,6 @@
 /**
- * Reine Hilfen fuer das Anmeldeformular (ohne Server-/Svelte-Imports, in Tests nutzbar):
- * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschluessel, CSV.
+ * Reine Hilfen für das Anmeldeformular (ohne Server-/Svelte-Imports, in Tests nutzbar):
+ * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschlüssel, CSV.
  */
 import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
 import { DIETS, DIET_LABELS, STANDARD_FORM_KEYS, ageAt, type FormStatus } from './schemas';
@@ -122,8 +122,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 }
 
 /**
- * Stellt die Pflicht-Standardfelder sicher: fehlende werden ergaenzt, `locked` bleibt gesetzt,
- * der Typ gesperrter Felder aendert sich nicht (sonst Standardfeld), feste Optionen werden erzwungen.
+ * Stellt die Pflicht-Standardfelder sicher: fehlende werden ergänzt, `locked` bleibt gesetzt,
+ * der Typ gesperrter Felder ändert sich nicht (sonst Standardfeld), feste Optionen werden erzwungen.
  */
 export function mergeStandardFields(
 	def: FormDefinition,
@@ -162,7 +162,7 @@ export function mergeStandardFields(
 	return { ...def, version: 1, fields };
 }
 
-/** Oeffentliche Sicht: ohne `hidden`-Felder, Datenschutz-Link und gerenderter Disclaimer gesetzt. */
+/** Öffentliche Sicht: ohne `hidden`-Felder, Datenschutz-Link und gerenderter Disclaimer gesetzt. */
 export function toPublicDefinition(
 	def: FormDefinition,
 	runtime: { privacyUrl: string | null; disclaimer: string }
@@ -184,7 +184,7 @@ export function toPublicDefinition(
 
 // --- Anmeldung mit Mitglied ---------------------------------------------------
 
-/** Wohnort Bremen/Bremerhaven (Land DE, Ort ohne Beachtung der Gross-/Kleinschreibung) */
+/** Wohnort Bremen/Bremerhaven (Land DE, Ort ohne Beachtung der Groß-/Kleinschreibung) */
 export function isBremenCity(city: string, country: string): boolean | null {
 	if (!city.trim()) return null;
 	if (country && country !== 'DE') return false;
@@ -320,7 +320,7 @@ export interface MappedAnswers {
 	allergies: string | null;
 	notes: string | null;
 	email: string | null;
-	/** Alle uebrigen Antworten (nur Felder der Definition) */
+	/** Alle übrigen Antworten (nur Felder der Definition) */
 	answers: Record<string, unknown>;
 }
 
@@ -353,7 +353,7 @@ export function mapStandardAnswers(def: FormDefinition, values: FormValues): Map
 	};
 }
 
-/** Geburtsdatum plausibel (nicht in der Zukunft, hoechstens 120 Jahre)? */
+/** Geburtsdatum plausibel (nicht in der Zukunft, höchstens 120 Jahre)? */
 export function isPlausibleBirthDate(birthIso: string, todayIso: string): boolean {
 	if (birthIso > todayIso) return false;
 	const age = ageAt(birthIso, todayIso);
@@ -364,13 +364,13 @@ export function normalizeDedupeKey(name: string, birthDate: string): string {
 	return `${name.trim().toLowerCase().replace(/\s+/g, ' ')}|${birthDate.trim()}`;
 }
 
-// --- Bestaetigungs-Mail -----------------------------------------------------
+// --- Bestätigungs-Mail -----------------------------------------------------
 
 const escapeHtml = (v: string) =>
 	v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
- * Anmeldebestaetigung. Mit `invoice` (Kasse aktiv) folgt nach den Angaben die Rechnung mit
+ * Anmeldebestätigung. Mit `invoice` (Kasse aktiv) folgt nach den Angaben die Rechnung mit
  * Zahlungskasten (Bankdaten, Betrag, Verwendungszweck = Rechnungsnummer) und Hinweis auf das PDF.
  */
 export function buildConfirmationMail(p: {

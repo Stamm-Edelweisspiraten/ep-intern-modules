@@ -78,7 +78,7 @@
 	let deleteMember = $state<Member | null>(null);
 	/** Zeilenklick öffnet den Bearbeiten-Dialog als gesperrte Ansicht */
 	let formReadonly = $state(false);
-	// Verknuepfungen koennen sich bei offener Ansicht aendern: Zaehler aus der frisch geladenen Liste
+	// Verknüpfungen können sich bei offener Ansicht ändern: Zähler aus der frisch geladenen Liste
 	const formLinkCount = $derived(
 		items.find((x) => x.id === editMember?.id)?.linkCount ?? editMember?.linkCount ?? 0
 	);
@@ -92,7 +92,7 @@
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
-	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeaendert wird
+	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeändert wird
 	let lastFilter = '';
 	$effect(() => {
 		const key = `${search}|${stage}|${groupId}|${status}`;

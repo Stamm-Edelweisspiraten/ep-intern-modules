@@ -1,6 +1,6 @@
-// Demo-Daten fuer die Ausbaustufe 2 der Kasse (idempotent): Bankverbindung der Familie Mueller,
+// Demo-Daten für die Ausbaustufe 2 der Kasse (idempotent): Bankverbindung der Familie Mueller,
 // Eingangsrechnung (Zeltplatz) und eine Auslage in „Kopenhagen 2026“ (erscheint unter „Auszahlungen“).
-// Wird von seed-demo-treasury.mjs aufgerufen, laesst sich aber auch einzeln starten.
+// Wird von seed-demo-treasury.mjs aufgerufen, lässt sich aber auch einzeln starten.
 const BASE = 'http://127.0.0.1:4300';
 const ORIGIN = 'http://localhost:4300';
 
@@ -26,7 +26,7 @@ await call(
 	{ email: 'admin@demo.test', password: 'Demo-Admin-2026!' },
 	'/api/auth'
 );
-if (!cookie) throw new Error('Login fehlgeschlagen - laeuft der Demo-Server?');
+if (!cookie) throw new Error('Login fehlgeschlagen - läuft der Demo-Server?');
 const T = '/modules/treasury';
 
 // Bankverbindung der Familie Mueller (Zahlungen von dieser IBAN werden der Familie vorgeschlagen)

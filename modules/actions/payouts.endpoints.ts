@@ -8,6 +8,7 @@ import {
 	loadAutoIncome,
 	loadTreasuryContributions,
 	loadEntries,
+	loadInterimSnapshot,
 	loadRefundSnapshot
 } from './accounting-core';
 import {
@@ -54,7 +55,7 @@ async function actionName(tx: Tx, id: string): Promise<string> {
 	return String(a.name);
 }
 
-/** Empfaenger mit Summen (ohne IBAN im Klartext). */
+/** Empfänger mit Summen (ohne IBAN im Klartext). */
 async function loadPayee(tx: Tx, actionId: string, payeeId: string): Promise<AccountingPayee> {
 	const [r] = await rowsOf(
 		tx,
@@ -97,7 +98,7 @@ function reimburseEndpoint(method: 'POST' | 'DELETE'): ApiEndpoint {
 		path: '/actions/:id/accounting/payees/:payeeId/reimburse',
 		summary: apply
 			? 'Offene Auslagen einer Person als ausgezahlt markieren'
-			: 'Auszahlung zuruecknehmen',
+			: 'Auszahlung zurücknehmen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: payeeParams,
@@ -141,16 +142,26 @@ function reimburseEndpoint(method: 'POST' | 'DELETE'): ApiEndpoint {
 }
 
 /**
- * Abrechnungsbericht (PDF inkl. Beleg-Anhaengen). `checkAccess=false` nur fuer vertrauenswuerdige
- * Aufrufer (Dienst fuer die Kasse); dann laeuft der Abruf mit dem uebergebenen (System-)Kontext.
+ * Abrechnungsbericht (PDF inkl. Beleg-Anhängen). `checkAccess=false` nur für vertrauenswürdige
+ * Aufrufer (Dienst für die Kasse); dann läuft der Abruf mit dem übergebenen (System-)Kontext.
+ * Mit `interimId` entsteht der Bericht einer Zwischenabrechnung: ein eingefrorenes Abbild des
+ * gesamten Abrechnungsstands zum Stichtag (Snapshot); Bankdaten und Belegdateien werden live
+ * nachgeladen, eine Rückzahlung gibt es dort nicht.
  */
 export async function buildAccountingReport(
 	ctx: RequestContext,
 	id: string,
-	opts: { withBank: boolean; canAttach: boolean; checkAccess: boolean; auditCtx?: RequestContext }
+	opts: {
+		withBank: boolean;
+		canAttach: boolean;
+		checkAccess: boolean;
+		auditCtx?: RequestContext;
+		interimId?: string;
+	}
 ): Promise<{ buffer: Uint8Array; fileName: string }> {
 	const withBank = opts.withBank;
-	const treasury = await loadTreasuryContributions(id);
+	const interimId = opts.interimId ?? null;
+	const treasury = interimId ? null : await loadTreasuryContributions(id);
 	const data = await mdb().transaction(async (tx) => {
 		if (opts.checkAccess) await requireAccess(tx, ctx, id, 'read');
 		const [a] = await rowsOf(
@@ -159,8 +170,6 @@ export async function buildAccountingReport(
 					to_char(ends_on, 'YYYY-MM-DD') AS ends_on FROM actions WHERE id = ${id}`
 		);
 		if (!a) throw errors.notFound('Aktion nicht gefunden');
-		const entries = await loadEntries(tx, id);
-		const closed = await closedInfo(tx, id);
 		const payees = await rowsOf(
 			tx,
 			sql`SELECT id, name, bic, iban_enc, iban_last4 FROM accounting_payees
@@ -171,14 +180,36 @@ export async function buildAccountingReport(
 			sql`SELECT id, receipt_path FROM accounting_entries
 				WHERE action_id = ${id} AND receipt_path IS NOT NULL`
 		);
-		const refund = await loadRefundSnapshot(tx, id);
-		const autoIncome = await loadAutoIncome(tx, id, entries, treasury);
-		return { a, entries, closed, payees, receipts, refund, autoIncome };
+		if (interimId) {
+			const { interim, snapshot } = await loadInterimSnapshot(tx, id, interimId);
+			return {
+				a,
+				payees,
+				receipts,
+				interim: { id: interim.id, number: interim.number, takenAt: snapshot.takenAt },
+				snapshot,
+				entries: snapshot.entries,
+				closed: null,
+				refund: null,
+				autoIncome: snapshot.autoIncome
+			};
+		}
+		const entries = await loadEntries(tx, id);
+		return {
+			a,
+			payees,
+			receipts,
+			interim: null,
+			snapshot: null,
+			entries,
+			closed: await closedInfo(tx, id),
+			refund: await loadRefundSnapshot(tx, id),
+			autoIncome: await loadAutoIncome(tx, id, entries, treasury)
+		};
 	});
+	const { interim, snapshot } = data;
 
-	// Core-Services erst nach der Transaktion: IBAN entschluesseln, Belege laden.
-	const se: SummaryEntry[] = data.entries.map(toSummaryEntry);
-	const totals = payeeTotals(se);
+	// Core-Services erst nach der Transaktion: IBAN entschlüsseln, Belege laden.
 	const ibanOf = (p: Record<string, unknown>): string | null => {
 		if (!p.iban_enc) return null;
 		if (withBank) {
@@ -190,15 +221,54 @@ export async function buildAccountingReport(
 		}
 		return maskFromLast(str(p.iban_last4));
 	};
+	const livePayees = new Map(data.payees.map((p) => [String(p.id), p]));
+	let payees: ReportInput['payees'];
+	let summary: ReportInput['summary'];
+	if (snapshot) {
+		summary = snapshot.summary;
+		// Beträge aus dem Stichtag, Bankdaten live (gelöschte Personen ohne Bankdaten)
+		payees = snapshot.payees.map((p) => {
+			const live = livePayees.get(p.id);
+			return {
+				name: p.name,
+				openCents: p.openCents,
+				reimbursedCents: p.reimbursedCents,
+				iban: live ? ibanOf(live) : null,
+				bic: live ? str(live.bic) : null
+			};
+		});
+	} else {
+		const se: SummaryEntry[] = data.entries.map(toSummaryEntry);
+		const totals = payeeTotals(se);
+		summary = summarize(se, null, data.autoIncome);
+		payees = data.payees.map((n) => {
+			const t = totals.get(String(n.id));
+			return {
+				name: String(n.name),
+				openCents: t?.openCents ?? 0,
+				reimbursedCents: t?.reimbursedCents ?? 0,
+				iban: ibanOf(n),
+				bic: str(n.bic)
+			};
+		});
+	}
 
 	const numbering = numberExpenses(data.entries);
 	const paths = new Map(data.receipts.map((r) => [String(r.id), String(r.receipt_path)]));
+	// ZA: nur Belege, die zum Stichtag vorhanden waren (Pfade live; gelöscht → fehlend)
+	const receiptIds = snapshot ? new Set(snapshot.receiptEntryIds) : null;
 	const attachments: PdfAttachment[] = [];
 	const attachedEntryIds: string[] = [];
 	let missingAttachments = 0;
 	const canAttach = opts.canAttach;
 	const withReceipt = data.entries
-		.filter((e) => e.type === 'expense' && e.category !== 'refund' && e.receipt)
+		.filter(
+			(e) =>
+				e.type === 'expense' &&
+				e.category !== 'refund' &&
+				e.receipt &&
+				(!receiptIds || receiptIds.has(e.id))
+		)
 		.sort((x, y) => (numbering.get(x.id) ?? 0) - (numbering.get(y.id) ?? 0));
 	let totalBytes = 0;
 	let storageDown = false;
@@ -239,18 +309,10 @@ export async function buildAccountingReport(
 		endsOn: str(data.a.ends_on),
 		closedAt: data.closed?.at ?? null,
 		entries: data.entries,
-		summary: summarize(se, null, data.autoIncome),
+		summary,
 		autoIncome: data.autoIncome,
-		payees: data.payees.map((n) => {
-			const t = totals.get(String(n.id));
-			return {
-				name: String(n.name),
-				openCents: t?.openCents ?? 0,
-				reimbursedCents: t?.reimbursedCents ?? 0,
-				iban: ibanOf(n),
-				bic: str(n.bic)
-			};
-		}),
+		interim: interim ? { number: interim.number, takenAt: interim.takenAt } : null,
+		payees,
 		refund: data.refund
 			? {
 					items: data.refund.items.map((i) => ({ name: i.name, amountCents: i.amountCents })),
@@ -265,22 +327,41 @@ export async function buildAccountingReport(
 	const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'stamm-briefkopf');
 	const pdf = await core.pdf.generate(ctx, {
 		template: hasLetterhead ? 'stamm-briefkopf' : 'default',
-		title: `Abrechnung – ${input.actionName}`,
+		title: interim
+			? `Zwischenabrechnung Nr. ${interim.number} – ${input.actionName}`
+			: `Abrechnung – ${input.actionName}`,
 		content: buildReportBlocks(input),
 		attachments
 	});
 	await core.audit.logFromContext(opts.auditCtx ?? ctx, 'actions.accounting.report', {
 		target: id,
-		metadata: { actionId: id, withBank, attachments: attachments.length, missingAttachments }
+		metadata: {
+			actionId: id,
+			withBank,
+			attachments: attachments.length,
+			missingAttachments,
+			...(interim ? { interimId: interim.id, interimNumber: interim.number } : {})
+		}
 	});
-	return { buffer: pdf.buffer, fileName: pdf.fileName };
+	// Wie der Schlussbericht (core sanitizeFileName): Umlaute ohne Akzent, sonst nur [A-Za-z0-9._-]
+	const safeName =
+		input.actionName
+			.normalize('NFKD')
+			.replace(/[̀-ͯ]/g, '')
+			.replace(/[^a-zA-Z0-9._-]+/g, '-')
+			.replace(/^-+|-+$/g, '')
+			.slice(0, 60) || 'Aktion';
+	const fileName = interim
+		? `Zwischenabrechnung-${safeName}-ZA${interim.number}.pdf`
+		: pdf.fileName;
+	return { buffer: pdf.buffer, fileName };
 }
 
 export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/accounting/payees',
-		summary: 'Person mit Bankdaten fuer Auslagen anlegen',
+		summary: 'Person mit Bankdaten für Auslagen anlegen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -345,7 +426,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/actions/:id/accounting/payees/:payeeId',
-		summary: 'Person loeschen (nur ohne Buchungen)',
+		summary: 'Person löschen (nur ohne Buchungen)',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: payeeParams,
@@ -375,7 +456,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/actions/:id/accounting/payees/:payeeId/iban',
-		summary: 'IBAN einer Person entschluesselt lesen (nur Bearbeiten-Dialog)',
+		summary: 'IBAN einer Person entschlüsselt lesen (nur Bearbeiten-Dialog)',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: payeeParams,
@@ -459,7 +540,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/accounting/close',
-		summary: 'Abrechnung abschliessen',
+		summary: 'Abrechnung abschließen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -500,7 +581,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/accounting/reopen',
-		summary: 'Abrechnung wieder oeffnen',
+		summary: 'Abrechnung wieder öffnen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,

@@ -1,4 +1,4 @@
-// Haengt Beispiel-Belege (abwechselnd PDF und PNG) an alle Ausgaben der Demo-Aktion "Kopenhagen 2026"
+// Hängt Beispiel-Belege (abwechselnd PDF und PNG) an alle Ausgaben der Demo-Aktion "Kopenhagen 2026"
 // und speichert den Bericht als .data/demo-report.pdf. Voraussetzung: Demo-Storage eingerichtet
 // (docker compose -f docker-compose.demo.yml up -d; node scripts/setup-demo-storage.mjs).
 import { writeFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ async function samplePdf(title) {
 	return Buffer.from(await doc.save());
 }
 
-// 8x8 graues PNG, gross skaliert dargestellt
+// 8x8 graues PNG, groß skaliert dargestellt
 const PNG = Buffer.from(
 	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII=',
 	'base64'

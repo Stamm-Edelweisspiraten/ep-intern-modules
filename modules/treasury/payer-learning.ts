@@ -1,6 +1,6 @@
 /**
- * Zahler aus eingehenden Buchungen lernen: Wird eine Einnahme mit IBAN (oder gewaehltem Zahler)
- * Rechnungen zugeordnet, legt die Kasse den Zahler an bzw. ergaenzt IBAN und Mitglieder.
+ * Zahler aus eingehenden Buchungen lernen: Wird eine Einnahme mit IBAN (oder gewähltem Zahler)
+ * Rechnungen zugeordnet, legt die Kasse den Zahler an bzw. ergänzt IBAN und Mitglieder.
  * Bestehende Zuordnungen von Mitgliedern zu anderen Zahlern bleiben unangetastet.
  */
 import { sql } from 'drizzle-orm';
@@ -72,7 +72,7 @@ export async function learnPayerFromTransaction(
 					${str(t.counterparty_iban_enc)}, ${str(t.counterparty_iban_last4)}, ${str(t.counterparty_iban_hash)})`
 			);
 		} else if (hasIban) {
-			// IBAN nur ergaenzen, nie eine vorhandene ueberschreiben
+			// IBAN nur ergänzen, nie eine vorhandene überschreiben
 			await tx.execute(
 				sql`UPDATE payers SET iban_enc = ${str(t.counterparty_iban_enc)}, iban_last4 = ${str(t.counterparty_iban_last4)},
 					iban_hash = ${str(t.counterparty_iban_hash)},

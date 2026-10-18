@@ -1,11 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { core, type Tx } from '$lib/sdk/server';
-import type { ActionRef, ActionsService, ReceivableSource } from './contract';
+import type { ActionRef, ActionsService, InterimRef, ReceivableSource } from './contract';
 import { summarize, toSummaryEntry } from './accounting';
 import { loadState } from './accounting.endpoints';
 import {
+	interimTotals,
 	loadAutoIncome,
 	loadEntries,
+	loadInterimSnapshot,
 	loadRefundSnapshot,
 	loadTreasuryContributions
 } from './accounting-core';
@@ -23,6 +25,24 @@ const idList = (ids: string[]) =>
 		ids.slice(0, 1000).map((v) => sql`${v}`),
 		sql`, `
 	);
+
+/**
+ * Auslage zur Auszahlung freigegeben (Alias `e`): Abrechnung abgeschlossen oder Buchung in
+ * mindestens einer Zwischenabrechnung enthalten.
+ */
+const RELEASED = sql`(EXISTS (SELECT 1 FROM action_accounting c
+		WHERE c.action_id = e.action_id AND c.closed_at IS NOT NULL)
+	OR EXISTS (SELECT 1 FROM accounting_interim_entries x WHERE x.entry_id = e.id))`;
+
+/**
+ * Seit Migration 0016 gibt es je (Aktion, Person) nur noch eine Auszahlung. `null` (Kasse) = alle
+ * freigegebenen Auslagen; fehlt = alle Auslagen der Person (Altverhalten); ein konkreter
+ * (Alt-)Schlüssel einer Zwischenabrechnung trifft nichts.
+ */
+const isLegacyInterimKey = (interimId: string | null | undefined): boolean =>
+	interimId !== undefined && interimId !== null;
+const releasedFilter = (interimId: string | null | undefined) =>
+	interimId === null ? sql`AND ${RELEASED}` : sql``;
 
 const ref = (r: Row): ActionRef => ({
 	id: r.id as string,
@@ -96,14 +116,15 @@ export const actionsService: ActionsService = {
 		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
 			const found = await rows(
 				tx,
-				sql`SELECT e.action_id, e.payee_id, p.name, p.iban_last4, p.bic, (p.iban_enc IS NOT NULL) AS has_iban,
+				// Freigegeben: Auslage in einer Zwischenabrechnung oder Abrechnung abgeschlossen
+				sql`SELECT e.action_id, e.payee_id, p.name, p.iban_last4, p.bic,
+					(p.iban_enc IS NOT NULL) AS has_iban,
 					sum(e.amount_cents) AS total_cents,
 					coalesce(sum(e.amount_cents) FILTER (WHERE e.reimbursed_at IS NULL), 0) AS open_cents
 				FROM accounting_entries e JOIN accounting_payees p ON p.id = e.payee_id
-				JOIN action_accounting c ON c.action_id = e.action_id AND c.closed_at IS NOT NULL
-				WHERE e.paid_by = 'person' AND e.type = 'expense'
+				WHERE e.paid_by = 'person' AND e.type = 'expense' AND ${RELEASED}
 				GROUP BY e.action_id, e.payee_id, p.name, p.iban_last4, p.bic, p.iban_enc
-				ORDER BY e.action_id, p.name`
+				ORDER BY e.action_id, p.name, e.payee_id`
 			);
 			return found.map((r) => ({
 				actionId: String(r.action_id),
@@ -113,7 +134,9 @@ export const actionsService: ActionsService = {
 				hasIban: Boolean(r.has_iban),
 				bic: (r.bic as string | null) ?? null,
 				totalCents: Number(r.total_cents),
-				openCents: Number(r.open_cents)
+				openCents: Number(r.open_cents),
+				interimId: null,
+				interimNumber: null
 			}));
 		});
 	},
@@ -129,17 +152,20 @@ export const actionsService: ActionsService = {
 		return enc ? core.crypto.forModule(MODULE_ID).decrypt(enc) : null;
 	},
 
-	async markReimbursed(actionId, payeeId, reimbursed) {
+	async markReimbursed(actionId, payeeId, reimbursed, interimId) {
+		if (isLegacyInterimKey(interimId)) return 0;
 		const changed = await core.database.forModule(MODULE_ID).transaction(async (tx) =>
 			rows(
 				tx,
 				reimbursed
-					? sql`UPDATE accounting_entries SET reimbursed_at = now(), updated_at = now()
-						WHERE action_id = ${actionId} AND payee_id = ${payeeId} AND paid_by = 'person'
-							AND type = 'expense' AND reimbursed_at IS NULL RETURNING amount_cents`
-					: sql`UPDATE accounting_entries SET reimbursed_at = NULL, updated_at = now()
-						WHERE action_id = ${actionId} AND payee_id = ${payeeId} AND paid_by = 'person'
-							AND reimbursed_at IS NOT NULL AND reimbursed_upfront = false RETURNING amount_cents`
+					? sql`UPDATE accounting_entries e SET reimbursed_at = now(), updated_at = now()
+						WHERE e.action_id = ${actionId} AND e.payee_id = ${payeeId} AND e.paid_by = 'person'
+							AND e.type = 'expense' AND e.reimbursed_at IS NULL ${releasedFilter(interimId)}
+						RETURNING e.amount_cents`
+					: sql`UPDATE accounting_entries e SET reimbursed_at = NULL, updated_at = now()
+						WHERE e.action_id = ${actionId} AND e.payee_id = ${payeeId} AND e.paid_by = 'person'
+							AND e.reimbursed_at IS NOT NULL AND e.reimbursed_upfront = false
+						RETURNING e.amount_cents`
 			)
 		);
 		if (changed.length) {
@@ -182,15 +208,17 @@ export const actionsService: ActionsService = {
 		});
 	},
 
-	async listReimbursementReceipts(actionId, payeeId) {
+	async listReimbursementReceipts(actionId, payeeId, interimId) {
+		if (isLegacyInterimKey(interimId)) return [];
 		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
 			const found = await rows(
 				tx,
-				sql`SELECT id, description, to_char(entry_date, 'YYYY-MM-DD') AS entry_date, amount_cents,
-					receipt_name, receipt_content_type
-				FROM accounting_entries
-				WHERE action_id = ${actionId} AND payee_id = ${payeeId} AND receipt_path IS NOT NULL
-				ORDER BY entry_date, created_at, id`
+				sql`SELECT e.id, e.description, to_char(e.entry_date, 'YYYY-MM-DD') AS entry_date,
+					e.amount_cents, e.receipt_name, e.receipt_content_type
+				FROM accounting_entries e
+				WHERE e.action_id = ${actionId} AND e.payee_id = ${payeeId} AND e.receipt_path IS NOT NULL
+					AND e.paid_by = 'person' AND e.type = 'expense' ${releasedFilter(interimId)}
+				ORDER BY e.entry_date, e.created_at, e.id`
 			);
 			return found.map((r) => ({
 				entryId: String(r.id),
@@ -379,6 +407,47 @@ export const actionsService: ActionsService = {
 			canAttach: true,
 			checkAccess: false,
 			auditCtx
+		});
+		return { data: pdf.buffer, fileName: pdf.fileName };
+	},
+
+	async listInterims(query = {}) {
+		if (query.actionIds && !query.actionIds.length) return [];
+		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+			const filter = query.actionIds ? sql`WHERE action_id IN (${idList(query.actionIds)})` : sql``;
+			const found = await rows(
+				tx,
+				sql`SELECT id, action_id FROM accounting_interims ${filter} ORDER BY action_id, number`
+			);
+			const out: InterimRef[] = [];
+			for (const r of found) {
+				const { interim, snapshot } = await loadInterimSnapshot(
+					tx,
+					String(r.action_id),
+					String(r.id)
+				);
+				const totals = interimTotals(snapshot);
+				out.push({
+					id: interim.id,
+					actionId: String(r.action_id),
+					number: interim.number,
+					createdAt: interim.createdAt,
+					incomeCents: totals.incomeCents,
+					expenseCents: totals.expenseCents,
+					reimbursementCents: totals.reimbursementCents
+				});
+			}
+			return out;
+		});
+	},
+
+	async interimReportPdf(actionId, interimId, withBank, auditCtx) {
+		const pdf = await buildAccountingReport(core.auth.systemContext('treasury'), actionId, {
+			withBank,
+			canAttach: true,
+			checkAccess: false,
+			auditCtx,
+			interimId
 		});
 		return { data: pdf.buffer, fileName: pdf.fileName };
 	}

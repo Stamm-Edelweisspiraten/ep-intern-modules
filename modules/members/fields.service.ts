@@ -111,7 +111,7 @@ export async function putFieldDefs(
 			)})`
 		);
 		for (const [i, f] of fields.entries()) {
-			// Antworten auf Zusatzfelder sind immer freiwillig; die Schluesselfeld-ID entspricht dem Schluessel
+			// Antworten auf Zusatzfelder sind immer freiwillig; die Schlüsselfeld-ID entspricht dem Schlüssel
 			const def = { ...f, id: f.key, required: false, locked: undefined, hidden: undefined };
 			await tx.execute(
 				sql`INSERT INTO member_field_defs (key, position, active, preset, definition)
@@ -131,7 +131,7 @@ export async function putFieldDefs(
 // --- Werte ---------------------------------------------------------------------
 
 /**
- * Prueft Werte gegen die AKTIVEN Zusatzfelder (unbekannte/inaktive Schluessel → 422) und liefert die
+ * Prüft Werte gegen die AKTIVEN Zusatzfelder (unbekannte/inaktive Schlüssel → 422) und liefert die
  * bereinigten Werte (leere Eingaben → `null`).
  */
 export async function validateCustomValues(
@@ -160,7 +160,7 @@ export async function validateCustomValues(
 	return result.values;
 }
 
-/** Fuehrt gespeicherte und neue Werte zusammen (neue ueberschreiben; `null` loescht). */
+/** Führt gespeicherte und neue Werte zusammen (neue überschreiben; `null` löscht). */
 export function mergeCustom(
 	stored: Record<string, FormValue>,
 	next: Record<string, FormValue>
@@ -173,7 +173,7 @@ export function mergeCustom(
 	return out;
 }
 
-// --- Dienst fuer abhaengige Module (Aktionen) ---------------------------------
+// --- Dienst für abhängige Module (Aktionen) ---------------------------------
 
 async function linkedRows(tx: Tx, userId: string, memberId?: string): Promise<Row[]> {
 	return rows(
@@ -319,8 +319,14 @@ async function memberContacts(
 	}));
 }
 
-/** `listMemberSheets` ergänzt `module.ts` (liegt in `sheets.service.ts`, Importzyklus vermeiden) */
-export const membersService: Omit<MembersService, 'listMemberSheets'> = {
+/**
+ * `listMemberSheets` (`sheets.service.ts`, Importzyklus vermeiden) und die Freigabe-Dienste
+ * (`principals.service.ts`) ergänzt `module.ts`.
+ */
+export const membersService: Omit<
+	MembersService,
+	'listMemberSheets' | 'listGroups' | 'principalIdsForUser' | 'searchMembers'
+> = {
 	listMemberContacts(query) {
 		return mdb().transaction((tx) => memberContacts(tx, query));
 	},

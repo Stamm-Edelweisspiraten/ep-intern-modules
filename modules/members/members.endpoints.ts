@@ -42,12 +42,12 @@ export const memberEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/members/bulk',
-		summary: 'Sammelaktion auf mehreren Mitgliedern (Gruppen, Stand, Einwilligungen, Loeschen)',
+		summary: 'Sammelaktion auf mehreren Mitgliedern (Gruppen, Stand, Einwilligungen, Löschen)',
 		tags,
 		permission: 'members.member.edit',
 		body: bulkInput,
 		handler: async ({ ctx, body }) => {
-			// Loeschen braucht zusaetzlich das Loeschrecht
+			// Löschen braucht zusätzlich das Löschrecht
 			if (body.action === 'delete') await core.permissions.require(ctx, 'members.member.delete');
 			return bulkUpdateMembers(ctx, body);
 		}
@@ -65,7 +65,7 @@ export const memberEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'DELETE',
 		path: '/members/:id',
-		summary: 'Mitglied loeschen',
+		summary: 'Mitglied löschen',
 		tags,
 		permission: 'members.member.delete',
 		params: idParams,

@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -37,6 +38,7 @@
 		transactionTitle,
 		type SharedData
 	} from './helpers';
+	import type { FamilyRef } from './navigation';
 
 	let {
 		perm,
@@ -46,7 +48,8 @@
 		onsuggestions,
 		oncreate,
 		onimport,
-		onchanged
+		onchanged,
+		onfamily
 	}: SharedData & {
 		onopen: (tab: string) => void;
 		onallocate: (t: Transaction) => void;
@@ -56,6 +59,8 @@
 		/** CSV-Import öffnen */
 		onimport: () => void;
 		onchanged: () => void | Promise<void>;
+		/** Familienkonto (Zahler) öffnen */
+		onfamily?: (ref: FamilyRef) => void;
 	} = $props();
 
 	let data = $state<Overview | null>(null);
@@ -179,11 +184,105 @@
 
 	const pct = (a: ActionReceivables) =>
 		a.totalCents > 0 ? Math.min(100, Math.round((a.paidCents / a.totalCents) * 100)) : 0;
+
+	/** Kennzahl-Kachel; `run` = Ziel beim Klick (fehlt → nicht klickbar) */
+	interface Kpi {
+		id: string;
+		label: string;
+		value: string;
+		sub: string;
+		tone: 'default' | 'critical' | 'warning';
+		/** auf schmalen Bildschirmen über die volle Breite */
+		wide?: boolean;
+		run?: () => void;
+		target?: string;
+	}
+
+	const kpis = $derived.by((): Kpi[] => {
+		if (!data) return [];
+		const d = data;
+		const list: Kpi[] = [
+			{
+				id: 'balance',
+				label: 'Kontostand gesamt',
+				value: formatEuro(d.balanceCents),
+				sub: plural(d.accounts.length, 'Konto', 'Konten'),
+				tone: 'default',
+				wide: true,
+				run: () => onopen('transactions'),
+				target: 'Buchungen öffnen'
+			},
+			{
+				id: 'open',
+				label: 'Noch offen',
+				value: formatEuro(d.openCents),
+				sub: d.creditCents > 0 ? `Guthaben ${formatEuro(d.creditCents)}` : 'Forderungen',
+				tone: 'default',
+				run: () => onopen('open'),
+				target: 'Offene Posten öffnen'
+			},
+			{
+				id: 'overdue',
+				label: 'Überfällig',
+				value: formatEuro(d.overdueCents),
+				sub: plural(d.overdueCount, 'Rechnung', 'Rechnungen'),
+				tone: d.overdueCount ? 'critical' : 'default',
+				run: () => onopen('open'),
+				target: 'Offene Posten öffnen'
+			},
+			{
+				id: 'unallocated',
+				label: 'Ohne Zuordnung',
+				value: formatEuro(d.unallocatedCents),
+				sub: plural(d.unallocatedCount, 'Einnahme', 'Einnahmen'),
+				tone: d.unallocatedCount ? 'warning' : 'default',
+				run: d.unallocatedCount && perm.editTx ? onsuggestions : () => onopen('transactions'),
+				target: d.unallocatedCount && perm.editTx ? 'Vorschläge prüfen' : 'Buchungen öffnen'
+			}
+		];
+		if (d.payableCount > 0 || d.payableCents > 0) {
+			list.push({
+				id: 'payables',
+				label: 'Auszuzahlen',
+				value: formatEuro(d.payableCents),
+				sub: `${plural(d.payableCount, 'Überweisung', 'Überweisungen')} · danach ${formatEuro(
+					d.balanceCents - d.payableCents
+				)}`,
+				tone: 'default',
+				wide: true,
+				run: () => onopen('payables'),
+				target: 'Auszahlungen öffnen'
+			});
+		}
+		return list;
+	});
+
+	const hasCritical = $derived(data?.tasks.some((t) => t.severity === 'critical') ?? false);
 </script>
 
+{#snippet kpiBody(k: Kpi)}
+	<span class="flex items-center justify-between gap-1 text-xs text-muted-foreground">
+		<span class="truncate">{k.label}</span>
+		{#if k.run}<ChevronRight class="size-3.5 shrink-0 opacity-60" aria-hidden="true" />{/if}
+	</span>
+	<span
+		class="block text-lg leading-tight font-semibold tabular-nums {k.tone === 'critical'
+			? 'text-destructive'
+			: k.tone === 'warning'
+				? 'text-amber-700 dark:text-amber-400'
+				: ''}"
+	>
+		{k.value}
+	</span>
+	<span class="block truncate text-xs text-muted-foreground tabular-nums">{k.sub}</span>
+{/snippet}
+
 {#if loading}
-	<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-		{#each [1, 2, 3, 4] as i (i)}<Skeleton class="h-24" />{/each}
+	<div class="space-y-4">
+		<Skeleton class="h-32" />
+		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+			{#each [1, 2, 3, 4, 5] as i (i)}<Skeleton class="h-16" />{/each}
+		</div>
 	</div>
 {:else if error}
 	<Card.Root>
@@ -194,143 +293,115 @@
 	</Card.Root>
 {:else if data}
 	<div class="space-y-6">
-		<Card.Root
-			class={data.tasks.some((t) => t.severity === 'critical') ? 'border-destructive/40' : ''}
-		>
-			<Card.Header class="flex flex-row flex-wrap items-center justify-between gap-2">
-				<div class="space-y-1">
-					<Card.Title>Das ist zu tun</Card.Title>
-					<Card.Description
-						>Offene Aufgaben der Kasse – ein Klick führt direkt hin.</Card.Description
-					>
-				</div>
+		<section aria-labelledby="ov-todo" class="space-y-3">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<h2 id="ov-todo" class="text-base font-semibold">Heute zu tun</h2>
 				{#if perm.editTx}
 					<div class="flex flex-wrap gap-2">
-						<Button onclick={oncreate}><Plus /> Zahlung erfassen</Button>
-						<Button variant="outline" onclick={onimport}><Upload /> CSV importieren</Button>
+						<Button size="sm" onclick={oncreate}><Plus /> Zahlung erfassen</Button>
+						<Button size="sm" variant="outline" onclick={onimport}>
+							<Upload /> CSV importieren
+						</Button>
 					</div>
 				{/if}
-			</Card.Header>
-			<Card.Content>
-				{#if !data.tasks.length}
-					<div class="flex items-center gap-3 text-sm" role="status">
-						<CircleCheck class="size-5 shrink-0 text-emerald-600" aria-hidden="true" />
-						<span><strong>Alles erledigt.</strong> Im Moment ist nichts offen.</span>
-					</div>
-				{:else}
-					<ul class="divide-y">
-						{#each data.tasks as t (t.kind)}
-							{@const v = taskView(t)}
-							<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-								{#if t.severity === 'critical'}
-									<CircleAlert class="size-5 shrink-0 text-destructive" aria-label="Dringend" />
-								{:else if t.severity === 'warning'}
-									<TriangleAlert class="size-5 shrink-0 text-amber-600" aria-label="Wichtig" />
-								{:else}
-									<Info class="size-5 shrink-0 text-muted-foreground" aria-label="Hinweis" />
-								{/if}
-								<div class="min-w-48 flex-1">
-									<div class="font-medium">{v.title}</div>
-									<div class="text-xs text-muted-foreground">{v.hint}</div>
-								</div>
-								{#if t.kind === 'bank-missing'}
-									<Button size="sm" variant="outline" href="/modules/treasury/settings">
-										{v.action}
-										<ArrowRight />
-									</Button>
-								{:else}
-									<Button size="sm" variant="outline" onclick={() => runTask(t)}>
-										{v.action}
-										<ArrowRight />
-									</Button>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</Card.Content>
-		</Card.Root>
-		<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-			<Card.Root>
-				<Card.Content>
-					<div class="text-xs text-muted-foreground">Kontostand gesamt</div>
-					<div class="text-xl font-semibold tabular-nums sm:text-2xl">
-						{formatEuro(data.balanceCents)}
-					</div>
-					<div class="text-xs text-muted-foreground">{data.accounts.length} Konten</div>
-				</Card.Content>
-			</Card.Root>
-			<button type="button" class="text-left" onclick={() => onopen('open')}>
-				<Card.Root class="h-full transition-colors hover:bg-muted/40">
-					<Card.Content>
-						<div class="text-xs text-muted-foreground">Noch offen</div>
-						<div class="text-xl font-semibold tabular-nums sm:text-2xl">
-							{formatEuro(data.openCents)}
-						</div>
-						{#if data.creditCents > 0}
-							<div class="text-xs text-muted-foreground">
-								Guthaben/Überzahlungen {formatEuro(data.creditCents)}
+			</div>
+
+			{#if !data.tasks.length}
+				<div
+					class="flex items-center gap-2 rounded-xl bg-card ring-1 ring-foreground/10 px-3 py-2 text-sm"
+					role="status"
+				>
+					<CircleCheck
+						class="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+						aria-hidden="true"
+					/>
+					<span
+						><strong class="font-medium">Alles erledigt.</strong>
+						<span class="text-muted-foreground">Im Moment ist nichts offen.</span></span
+					>
+				</div>
+			{:else}
+				<ul
+					class="divide-y rounded-xl bg-card ring-1 {hasCritical
+						? 'ring-destructive/40'
+						: 'ring-foreground/10'}"
+				>
+					{#each data.tasks as t (t.kind)}
+						{@const v = taskView(t)}
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:flex-nowrap">
+							{#if t.severity === 'critical'}
+								<CircleAlert class="size-4 shrink-0 text-destructive" aria-label="Dringend" />
+							{:else if t.severity === 'warning'}
+								<TriangleAlert
+									class="size-4 shrink-0 text-amber-600 dark:text-amber-400"
+									aria-label="Wichtig"
+								/>
+							{:else}
+								<Info class="size-4 shrink-0 text-muted-foreground" aria-label="Hinweis" />
+							{/if}
+							<div class="min-w-0 flex-1 basis-48">
+								<div class="text-sm font-medium">{v.title}</div>
+								<div class="text-xs text-muted-foreground">{v.hint}</div>
+							</div>
+							{#if t.kind === 'bank-missing'}
+								<Button
+									size="sm"
+									variant={t.severity === 'critical' ? 'default' : 'outline'}
+									class="ml-auto shrink-0"
+									href="/modules/treasury/settings"
+								>
+									{v.action}
+									<ArrowRight />
+								</Button>
+							{:else}
+								<Button
+									size="sm"
+									variant={t.severity === 'critical' ? 'default' : 'outline'}
+									class="ml-auto shrink-0"
+									onclick={() => runTask(t)}
+								>
+									{v.action}
+									<ArrowRight />
+								</Button>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<section aria-label="Kennzahlen">
+			<ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+				{#each kpis as k (k.id)}
+					<li class={k.wide ? 'col-span-2 sm:col-span-1' : ''}>
+						{#if k.run}
+							<button
+								type="button"
+								class="block h-full w-full rounded-xl bg-card px-3 py-2 text-left ring-1 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {k.tone ===
+								'critical'
+									? 'ring-destructive/40'
+									: k.tone === 'warning'
+										? 'ring-amber-500/40'
+										: 'ring-foreground/10'}"
+								onclick={k.run}
+								aria-label={`${k.label}: ${k.value}, ${k.sub} – ${k.target}`}
+							>
+								{@render kpiBody(k)}
+							</button>
+						{:else}
+							<div class="h-full rounded-xl bg-card ring-1 ring-foreground/10 px-3 py-2">
+								{@render kpiBody(k)}
 							</div>
 						{/if}
-					</Card.Content>
-				</Card.Root>
-			</button>
-			<button type="button" class="text-left" onclick={() => onopen('open')}>
-				<Card.Root
-					class="h-full transition-colors hover:bg-muted/40 {data.overdueCount
-						? 'border-destructive/40'
-						: ''}"
-				>
-					<Card.Content>
-						<div class="text-xs text-muted-foreground">Überfällig</div>
-						<div
-							class="text-xl font-semibold tabular-nums sm:text-2xl {data.overdueCount
-								? 'text-destructive'
-								: ''}"
-						>
-							{formatEuro(data.overdueCents)}
-						</div>
-						<div class="text-xs text-muted-foreground">{data.overdueCount} Rechnungen</div>
-					</Card.Content>
-				</Card.Root>
-			</button>
-			<button type="button" class="text-left" onclick={() => onopen('payables')}>
-				<Card.Root class="h-full transition-colors hover:bg-muted/40">
-					<Card.Content>
-						<div class="text-xs text-muted-foreground">Auszuzahlen</div>
-						<div class="text-xl font-semibold tabular-nums sm:text-2xl">
-							{formatEuro(data.payableCents)}
-						</div>
-						<div class="text-xs text-muted-foreground">
-							{data.payableCount} Überweisungen · nach Abzug {formatEuro(
-								data.balanceCents - data.payableCents
-							)}
-						</div>
-					</Card.Content>
-				</Card.Root>
-			</button>
-			<Card.Root class={data.unallocatedCount ? 'border-amber-500/40' : ''}>
-				<Card.Content class="space-y-2">
-					<div class="text-xs text-muted-foreground">Einnahmen ohne Zuordnung</div>
-					<div class="text-xl font-semibold tabular-nums sm:text-2xl">
-						{formatEuro(data.unallocatedCents)}
-					</div>
-					<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-						{data.unallocatedCount} Buchungen
-						{#if data.unallocatedCount && perm.editTx}
-							<Button size="sm" variant="outline" class="h-7" onclick={onsuggestions}>
-								Vorschläge prüfen
-							</Button>
-						{/if}
-					</div>
-				</Card.Content>
-			</Card.Root>
-		</div>
+					</li>
+				{/each}
+			</ul>
+		</section>
 
-		<div class="grid gap-6 lg:grid-cols-2">
-			<Card.Root>
+		<div class="grid gap-4 lg:grid-cols-2">
+			<Card.Root size="sm">
 				<Card.Header>
-					<Card.Title>Konten</Card.Title>
+					<Card.Title class="text-sm">Konten</Card.Title>
 				</Card.Header>
 				<Card.Content>
 					{#if !data.accounts.length}
@@ -343,21 +414,21 @@
 							{/if}
 						</EmptyState>
 					{:else}
-						<ul class="divide-y">
+						<ul class="divide-y text-sm">
 							{#each data.accounts as a (a.id)}
-								<li class="flex items-center gap-3 py-2">
+								<li class="flex items-center gap-3 py-1.5">
 									{#if a.kind === 'cash'}
-										<Wallet class="size-4 text-muted-foreground" aria-hidden="true" />
+										<Wallet class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 									{:else}
-										<Landmark class="size-4 text-muted-foreground" aria-hidden="true" />
+										<Landmark class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 									{/if}
 									<div class="min-w-0 flex-1">
 										<div class="truncate font-medium">{a.name}</div>
-										<div class="text-xs text-muted-foreground">
+										<div class="truncate text-xs text-muted-foreground">
 											{ACCOUNT_KIND_LABELS[a.kind]} · letzte Buchung {fmtDate(a.lastBookedOn)}
 										</div>
 									</div>
-									<span class="font-semibold tabular-nums">{formatEuro(a.balanceCents)}</span>
+									<span class="font-medium tabular-nums">{formatEuro(a.balanceCents)}</span>
 								</li>
 							{/each}
 						</ul>
@@ -365,26 +436,25 @@
 				</Card.Content>
 			</Card.Root>
 
-			<Card.Root>
+			<Card.Root size="sm">
 				<Card.Header>
-					<Card.Title>Beiträge aus Aktionen</Card.Title>
-					<Card.Description>
-						Sobald in einer Aktion ein Beitrag übernommen ist, entsteht je Teilnehmende*r eine
-						Rechnung.
-						{#if data.lastSyncAt}Zuletzt abgeglichen: {fmtDateTime(data.lastSyncAt)}.{/if}
+					<Card.Title class="text-sm">Beiträge aus Aktionen</Card.Title>
+					<Card.Description class="text-xs">
+						Je Teilnehmende*r entsteht automatisch eine Rechnung.
+						{#if data.lastSyncAt}Abgeglichen {fmtDateTime(data.lastSyncAt)}.{/if}
 					</Card.Description>
 				</Card.Header>
 				<Card.Content>
 					{#if !receivables.length}
 						<p class="text-sm text-muted-foreground">Noch keine Aktion mit übernommenem Beitrag.</p>
 					{:else}
-						<ul class="space-y-4">
+						<ul class="space-y-3">
 							{#each receivables as a (a.actionId)}
-								<li class="space-y-1.5">
+								<li class="space-y-1">
 									<div class="flex items-center gap-2">
 										<div class="min-w-0 flex-1">
-											<div class="truncate font-medium">{a.name}</div>
-											<div class="text-xs text-muted-foreground">
+											<div class="truncate text-sm font-medium">{a.name}</div>
+											<div class="truncate text-xs text-muted-foreground">
 												ab {fmtDate(a.startsOn)} · {formatEuro(a.feeCents)} je Person
 												{#if a.dueOn}· fällig {fmtDate(a.dueOn)}{/if}
 											</div>
@@ -402,6 +472,7 @@
 															{...props}
 															variant="ghost"
 															size="icon"
+															class="size-7"
 															aria-label={`Einstellungen für ${a.name}`}
 														>
 															<Ellipsis />
@@ -428,7 +499,7 @@
 									</div>
 									{#if !a.excluded}
 										<div
-											class="h-2 overflow-hidden rounded-full bg-muted"
+											class="h-1.5 overflow-hidden rounded-full bg-muted"
 											role="progressbar"
 											aria-valuemin={0}
 											aria-valuemax={100}
@@ -450,12 +521,12 @@
 			</Card.Root>
 		</div>
 
-		<Card.Root>
+		<Card.Root size="sm">
 			<Card.Header class="flex flex-row items-center justify-between gap-2">
-				<Card.Title>Letzte Buchungen</Card.Title>
-				<Button variant="ghost" size="sm" onclick={() => onopen('transactions')}
-					>Alle Buchungen</Button
-				>
+				<Card.Title class="text-sm">Letzte Buchungen</Card.Title>
+				<Button variant="ghost" size="sm" onclick={() => onopen('transactions')}>
+					Alle Buchungen <ArrowRight />
+				</Button>
 			</Card.Header>
 			<Card.Content>
 				{#if !data.recent.length}
@@ -463,14 +534,25 @@
 				{:else}
 					<ul class="divide-y">
 						{#each data.recent as t (t.id)}
-							<li class="flex flex-wrap items-center gap-3 py-2 text-sm">
-								<span class="w-20 text-muted-foreground tabular-nums">{fmtDate(t.bookedOn)}</span>
+							<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm sm:flex-nowrap">
+								<span class="w-20 shrink-0 text-xs text-muted-foreground tabular-nums"
+									>{fmtDate(t.bookedOn)}</span
+								>
 								<div class="min-w-0 flex-1">
-									<div class="truncate font-medium">
-										{transactionTitle(t)}
-									</div>
+									<div class="truncate font-medium">{transactionTitle(t)}</div>
 									<div class="truncate text-xs text-muted-foreground">
-										{t.accountName}{t.purpose && (t.counterparty || t.transferId)
+										{#if t.payer && onfamily}
+											{@const payerId = t.payer.id}
+											<button
+												type="button"
+												class="text-link underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+												onclick={() => onfamily?.({ payerId })}
+												aria-label={`Familienkonto ${t.payer.name} öffnen`}
+											>
+												{t.payer.name}
+											</button>
+											·
+										{/if}{t.accountName}{t.purpose && (t.counterparty || t.transferId)
 											? ` · ${t.purpose}`
 											: ''}
 									</div>
@@ -481,7 +563,9 @@
 									</Button>
 								{/if}
 								<span
-									class="font-medium tabular-nums {t.amountCents < 0 ? 'text-destructive' : ''}"
+									class="ml-auto shrink-0 font-medium tabular-nums {t.amountCents < 0
+										? 'text-destructive'
+										: ''}"
 								>
 									{signedEuro(t.amountCents)}
 								</span>

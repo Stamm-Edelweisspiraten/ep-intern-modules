@@ -732,6 +732,36 @@ export interface PayableList {
 	totals: { openCents: number; count: number };
 }
 
+// --- Familienkonto (alles zu einem Zahler bzw. Mitglied ohne Zahler) -------------
+
+/** Genau eines von beiden; gehört das Mitglied zu einem Zahler, gilt dessen Familienkonto */
+export const familyAccountQuery = z
+	.object({ payerId: id.optional(), memberId: id.optional() })
+	.refine((q) => !!q.payerId !== !!q.memberId, 'Zahler oder Mitglied angeben');
+export type FamilyAccountQuery = z.infer<typeof familyAccountQuery>;
+
+export interface FamilyAccount {
+	/** null = Mitglied ohne Zahler */
+	payer: Payer | null;
+	/** Anzeigename (Zahler oder Mitglied) */
+	name: string;
+	members: PayerMember[];
+	/** Alle Rechnungen (auch bezahlte/stornierte), neueste zuerst */
+	invoices: InvoiceSummary[];
+	/** Eingegangene Zahlungen: Buchungen des Zahlers oder auf seine Rechnungen, neueste zuerst */
+	payments: Transaction[];
+	/** Auszahlungen an die Familie (Rückzahlung, Guthaben, …), alle Status */
+	payables: Payable[];
+	totals: {
+		openCents: number;
+		overdueCents: number;
+		paidCents: number;
+		creditCents: number;
+		/** Noch offene Auszahlungen an die Familie */
+		payableOpenCents: number;
+	};
+}
+
 // --- Aktionen ------------------------------------------------------------------
 
 export const actionSettingsInput = z.object({

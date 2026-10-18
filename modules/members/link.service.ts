@@ -390,8 +390,8 @@ export async function updateLinkedContacts(
 		target: memberId,
 		metadata: { memberId, ...auditCounts }
 	});
-	// Aenderte sich die E-Mail-Liste, warnen wir die BISHERIGEN Adressen (ohne die neuen zu nennen).
-	// Nach der Transaktion; Mailfehler duerfen das Speichern nie scheitern lassen.
+	// Änderte sich die E-Mail-Liste, warnen wir die BISHERIGEN Adressen (ohne die neuen zu nennen).
+	// Nach der Transaktion; Mailfehler dürfen das Speichern nie scheitern lassen.
 	if (auditCounts.emailsAdded + auditCounts.emailsRemoved > 0 && oldEmails.length) {
 		const systemName = String((await core.settings.get('core.system.name')) ?? 'EP Intern');
 		for (const to of [...new Set(oldEmails.map((e) => e.toLowerCase()))]) {

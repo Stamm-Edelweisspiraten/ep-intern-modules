@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Download from '@lucide/svelte/icons/download';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
@@ -13,7 +14,7 @@
 	import { EmptyState, PageHeader, SummaryList, type SummaryRow } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { ACCOUNTING_CATEGORY_LABELS, type AccountingEntry } from '$lib/modules/actions/schemas';
-	import type { ClosedAccountingDetailItem } from '../closed-accountings';
+	import type { AccountingInterimItem, ClosedAccountingDetailItem } from '../closed-accountings';
 	import { PAYABLE_SOURCE_LABELS } from '../schemas';
 	import { BASE, errorMessage, fmtDate, openApiFile } from './helpers';
 
@@ -27,6 +28,7 @@
 	let notFound = $state(false);
 	let error = $state('');
 	let busy = $state(false);
+	let interimBusy = $state<string | null>(null);
 
 	async function load() {
 		error = '';
@@ -54,6 +56,17 @@
 			toast.error(errorMessage(e, 'PDF konnte nicht erstellt werden'));
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function interimPdf(it: AccountingInterimItem, download = false) {
+		interimBusy = download ? `${it.id}:dl` : it.id;
+		try {
+			await openApiFile(`${BASE}/closed-accountings/${id}/interims/${it.id}/pdf`, download);
+		} catch (e) {
+			toast.error(errorMessage(e, 'PDF konnte nicht erstellt werden'));
+		} finally {
+			interimBusy = null;
 		}
 	}
 
@@ -248,6 +261,79 @@
 			</Card.Root>
 		</div>
 
+		{#if acc.interims?.length}
+			<Card.Root>
+				<Card.Header>
+					<Card.Title>Zwischenabrechnungen</Card.Title>
+					<Card.Description>
+						Festgehaltene Stände der Abrechnung vor dem Abschluss. Jede Zwischenabrechnung steht für
+						sich; enthaltene Auslagen wurden sofort an die Kasse übergeben.
+					</Card.Description>
+				</Card.Header>
+				<Card.Content class="overflow-x-auto">
+					<Table.Root>
+						<Table.Header>
+							<Table.Row>
+								<Table.Head>Nr.</Table.Head>
+								<Table.Head>Datum</Table.Head>
+								<Table.Head class="text-right">Einnahmen</Table.Head>
+								<Table.Head class="text-right">Ausgaben</Table.Head>
+								<Table.Head class="text-right">Auslagen</Table.Head>
+								<Table.Head class="text-right"><span class="sr-only">PDF</span></Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
+							{#each acc.interims as it (it.id)}
+								<Table.Row>
+									<Table.Cell class="font-medium whitespace-nowrap">ZA {it.number}</Table.Cell>
+									<Table.Cell class="whitespace-nowrap tabular-nums"
+										>{fmtDate(it.createdAt)}</Table.Cell
+									>
+									<Table.Cell class="text-right tabular-nums"
+										>{formatEuro(it.incomeCents)}</Table.Cell
+									>
+									<Table.Cell class="text-right tabular-nums"
+										>{formatEuro(it.expenseCents)}</Table.Cell
+									>
+									<Table.Cell class="text-right tabular-nums"
+										>{formatEuro(it.reimbursementCents)}</Table.Cell
+									>
+									<Table.Cell class="text-right">
+										<div class="flex flex-wrap justify-end gap-1">
+											<Button
+												size="sm"
+												variant="outline"
+												onclick={() => interimPdf(it)}
+												disabled={interimBusy === it.id}
+											>
+												<FileText />
+												{interimBusy === it.id ? 'Erstellt …' : 'PDF'}<span class="sr-only">
+													der Zwischenabrechnung Nr. {it.number}</span
+												>
+											</Button>
+											<Button
+												size="sm"
+												variant="outline"
+												onclick={() => interimPdf(it, true)}
+												disabled={interimBusy === `${it.id}:dl`}
+											>
+												<Download />
+												{interimBusy === `${it.id}:dl` ? 'Lädt …' : 'Herunterladen'}<span
+													class="sr-only"
+												>
+													: Zwischenabrechnung Nr. {it.number}</span
+												>
+											</Button>
+										</div>
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					</Table.Root>
+				</Card.Content>
+			</Card.Root>
+		{/if}
+
 		<Card.Root>
 			<Card.Header>
 				<Card.Title>Buchungen</Card.Title>
@@ -289,7 +375,9 @@
 									>{fmtDate(e.entryDate)}</Table.Cell
 								>
 								<Table.Cell class="max-w-80 align-top">
-									<div class="font-medium">{e.description}</div>
+									<div class="font-medium">
+										{e.description}
+									</div>
 									<div class="text-xs text-muted-foreground">
 										{ACCOUNTING_CATEGORY_LABELS[e.category]}{payerText(e)
 											? ` · ${payerText(e)}`

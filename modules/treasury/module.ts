@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { resetAreas, resetUsers } from './reset';
 import { accountEndpoints } from './accounts.endpoints';
 import { annualFeeEndpoints } from './annual-fee.endpoints';
+import { familyEndpoints } from './family.endpoints';
 import { historyEndpoints } from './history.endpoints';
 import { runScheduledAnnualFees } from './annual-fee.service';
 import { importEndpoints } from './import.endpoints';
@@ -239,6 +241,8 @@ export default defineModule({
 			run: (ctx) => runScheduledAnnualFees(ctx)
 		}
 	],
+	resetAreas,
+	resetUsers,
 	endpoints: [
 		...accountEndpoints,
 		...transactionEndpoints,
@@ -249,6 +253,7 @@ export default defineModule({
 		...importEndpoints,
 		...reportEndpoints,
 		...annualFeeEndpoints,
-		...historyEndpoints
+		...historyEndpoints,
+		...familyEndpoints
 	]
 });

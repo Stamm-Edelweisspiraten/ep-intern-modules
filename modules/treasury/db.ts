@@ -1,6 +1,6 @@
 /**
- * Datenbank-Hilfen und Loader der Kasse. Alles mit `tx` laeuft INNERHALB einer Modul-Transaktion;
- * Namensaufloesung (`resolveNames`) nutzt die Dienste von `members`/`actions` und laeuft DANACH.
+ * Datenbank-Hilfen und Loader der Kasse. Alles mit `tx` läuft INNERHALB einer Modul-Transaktion;
+ * Namensauflösung (`resolveNames`) nutzt die Dienste von `members`/`actions` und läuft DANACH.
  */
 import { sql } from 'drizzle-orm';
 import { core, errors, type Tx } from '$lib/sdk/server';
@@ -44,7 +44,7 @@ export const idList = (ids: string[]) =>
 	);
 
 let todayOverride: string | null = null;
-/** Nur fuer Tests: festes „heute“ (`YYYY-MM-DD`) */
+/** Nur für Tests: festes „heute“ (`YYYY-MM-DD`) */
 export function setTreasuryTodayForTests(d: string | null): void {
 	todayOverride = d;
 }
@@ -103,7 +103,7 @@ export interface RawTransaction {
 
 /**
  * Einnahmen, die einer Rechnung zugeordnet werden sollten: ohne Kategorie oder als
- * Teilnehmerbeitrag gebucht, keine Umbuchung, noch nicht vollstaendig verteilt (Alias `t`).
+ * Teilnehmerbeitrag gebucht, keine Umbuchung, noch nicht vollständig verteilt (Alias `t`).
  */
 export const NEEDS_ALLOCATION_SQL = sql`(t.amount_cents > 0 AND t.transfer_id IS NULL
 	AND (t.category_id IS NULL OR t.category_id = ${CONTRIBUTIONS_CATEGORY_ID})
@@ -208,7 +208,7 @@ export interface RawInvoice {
 	lastReminderOn: string | null;
 }
 
-/** Laedt Rechnungen inkl. Posten (mit bezahltem Betrag) und Erinnerungsstand. */
+/** Lädt Rechnungen inkl. Posten (mit bezahltem Betrag) und Erinnerungsstand. */
 export async function loadRawInvoices(
 	tx: Tx,
 	where: ReturnType<typeof sql> = sql`TRUE`
@@ -257,13 +257,13 @@ export async function loadRawInvoices(
 export interface NameMaps {
 	members: Map<string, string>;
 	memberEmails: Map<string, string[]>;
-	/** Abgewaehlte, abschaltbare Mail-Kategorien je Mitglied (fehlt = alle an) */
+	/** Abgewählte, abschaltbare Mail-Kategorien je Mitglied (fehlt = alle an) */
 	memberMailOptOut: Map<string, string[]>;
 	actions: Map<string, string>;
 	payers: Map<string, { name: string; email: string | null }>;
 }
 
-/** Namen von Mitgliedern/Aktionen aufloesen (AUSSERHALB der Transaktion). */
+/** Namen von Mitgliedern/Aktionen auflösen (AUSSERHALB der Transaktion). */
 export async function resolveNames(p: {
 	memberIds?: Iterable<string>;
 	actionIds?: Iterable<string>;
@@ -290,7 +290,7 @@ export async function resolveNames(p: {
 	return { members, memberEmails, memberMailOptOut, actions, payers: p.payers ?? new Map() };
 }
 
-/** Zahler je hinterlegter IBAN (HMAC) – fuer Zuordnungsvorschlaege beim Import */
+/** Zahler je hinterlegter IBAN (HMAC) – für Zuordnungsvorschläge beim Import */
 export async function payerByIbanHash(): Promise<Map<string, string>> {
 	const found = await mdb().transaction((tx) =>
 		rows(tx, sql`SELECT id, iban_hash FROM payers WHERE iban_hash IS NOT NULL`)
@@ -390,15 +390,15 @@ export function toSummary(inv: RawInvoice, names: NameMaps, todayIso: string): I
 	};
 }
 
-/** Alle Empfaengeradressen einer Rechnung: Mitglieder der Posten, Rechnungs- und Zahler-Adresse */
+/** Alle Empfängeradressen einer Rechnung: Mitglieder der Posten, Rechnungs- und Zahler-Adresse */
 export function invoiceAddresses(
 	inv: RawInvoice,
 	names: NameMaps,
 	/**
-	 * Abschaltbare Mail-Kategorie (z. B. `payment-confirmation`): Mitglieder, die sie abgewaehlt haben,
-	 * liefern keine Adresse. Haben ALLE Mitglieder der Posten abgewaehlt, entfallen auch Rechnungs- und
+	 * Abschaltbare Mail-Kategorie (z. B. `payment-confirmation`): Mitglieder, die sie abgewählt haben,
+	 * liefern keine Adresse. Haben ALLE Mitglieder der Posten abgewählt, entfallen auch Rechnungs- und
 	 * Zahleradresse. Eine gemeinsame Elternadresse (Geschwister) bleibt, solange mindestens ein Kind
-	 * nicht abgewaehlt hat. Ohne Kategorie (verbindliche Mails) wird nichts gefiltert.
+	 * nicht abgewählt hat. Ohne Kategorie (verbindliche Mails) wird nichts gefiltert.
 	 */
 	category?: string
 ): string[] {
@@ -475,7 +475,7 @@ export function toDetail(
 	};
 }
 
-/** Naechste Rechnungsnummer `R-JJJJ-NNNN` (innerhalb der Transaktion; UNIQUE schuetzt) */
+/** Nächste Rechnungsnummer `R-JJJJ-NNNN` (innerhalb der Transaktion; UNIQUE schützt) */
 export async function nextInvoiceNumber(
 	tx: Tx,
 	issuedOn: string

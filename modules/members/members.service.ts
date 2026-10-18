@@ -41,7 +41,7 @@ const MEMBER_COLUMNS = sql`m.id, m.first_name, m.last_name, m.scout_name,
 	to_char(m.entry_date, 'YYYY-MM-DD') AS entry_date, to_char(m.exit_date, 'YYYY-MM-DD') AS exit_date,
 	m.secondary_member, array_to_string(m.fee_levels, ',') AS fee_levels`;
 
-/** `text[]` als kommagetrennter String (treiberunabhaengig) → Ebenen in fester Reihenfolge */
+/** `text[]` als kommagetrennter String (treiberunabhängig) → Ebenen in fester Reihenfolge */
 export function parseFeeLevels(v: unknown): FeeLevel[] {
 	const list = String(v ?? '').split(',');
 	return FEE_LEVELS.filter((f) => list.includes(f));
@@ -58,7 +58,7 @@ const feeLevelsSql = (levels: FeeLevel[]) =>
 		sql`, `
 	)}]::text[]`;
 
-/** Baut Member-DTOs fuer die geladenen Zeilen (Telefone, E-Mails, Gruppen in Reihenfolge). */
+/** Baut Member-DTOs für die geladenen Zeilen (Telefone, E-Mails, Gruppen in Reihenfolge). */
 async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 	if (!list.length) return [];
 	const ids = sql.join(
@@ -115,13 +115,13 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 	});
 }
 
-/** Laedt ein Member-DTO innerhalb einer Modul-Transaktion; null, wenn nicht vorhanden. */
+/** Lädt ein Member-DTO innerhalb einer Modul-Transaktion; null, wenn nicht vorhanden. */
 export async function loadMember(tx: Tx, id: string): Promise<Member | null> {
 	const found = await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id = ${id}`);
 	return (await hydrate(tx, found))[0] ?? null;
 }
 
-/** Laedt Member-DTOs zu IDs (Reihenfolge wie `ids`, unbekannte entfallen). */
+/** Lädt Member-DTOs zu IDs (Reihenfolge wie `ids`, unbekannte entfallen). */
 export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]> {
 	if (!ids.length) return [];
 	const list = sql.join(
@@ -135,7 +135,7 @@ export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]>
 	return ids.map((i) => found.find((m) => m.id === i)).filter((m): m is Member => !!m);
 }
 
-/** Laedt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
+/** Lädt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
 export async function getMember(id: string): Promise<Member> {
 	const m = await core.database.forModule(MODULE_ID).transaction((tx) => loadMember(tx, id));
 	if (!m) throw errors.notFound('Mitglied nicht gefunden');
@@ -268,9 +268,9 @@ export async function updateMember(
 }
 
 /**
- * Sammelaktion auf markierten Mitgliedern. Nicht vorhandene IDs → 404 (nichts wird geaendert);
- * Mitglieder, bei denen die Regeln verletzt wuerden (letzte Gruppe, einziger Leiter), werden
- * uebersprungen und mit Grund gemeldet. Audit ohne Namen (nur Aktion und Zaehler).
+ * Sammelaktion auf markierten Mitgliedern. Nicht vorhandene IDs → 404 (nichts wird geändert);
+ * Mitglieder, bei denen die Regeln verletzt würden (letzte Gruppe, einziger Leiter), werden
+ * übersprungen und mit Grund gemeldet. Audit ohne Namen (nur Aktion und Zähler).
  */
 export async function bulkUpdateMembers(
 	ctx: RequestContext,
@@ -414,7 +414,7 @@ export async function deleteMember(ctx: RequestContext, id: string): Promise<voi
 		);
 		if (sole.length) {
 			throw errors.conflict(
-				`Mitglied ist einziger Leiter der Gruppe ${sole.map((s) => s.name).join(', ')} und kann nicht geloescht werden`
+				`Mitglied ist einziger Leiter der Gruppe ${sole.map((s) => s.name).join(', ')} und kann nicht gelöscht werden`
 			);
 		}
 		await tx.execute(sql`DELETE FROM group_leaders WHERE member_id = ${id}`);

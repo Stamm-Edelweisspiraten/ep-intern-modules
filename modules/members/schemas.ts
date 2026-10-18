@@ -1,4 +1,4 @@
-/** API-Vertrag des Moduls "members": Zod-Schemas fuer Server und UI sowie die DTO-Typen. */
+/** API-Vertrag des Moduls "members": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
 import { LIST_MAX_COLUMNS } from '$lib/pdf-lists/types';
 
@@ -58,7 +58,7 @@ export const FEE_LEVEL_LABELS: Record<FeeLevel, string> = {
 	bund: 'Bund'
 };
 
-/** Maximale Dokumentgroesse (Bytes) und erlaubte Typen beim Upload */
+/** Maximale Dokumentgröße (Bytes) und erlaubte Typen beim Upload */
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_CONTENT_TYPES = [
 	'application/pdf',
@@ -73,7 +73,7 @@ export const GROUP_IMAGE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp
 
 // --- Hilfsfunktionen --------------------------------------------------------
 
-/** Alter in vollen Jahren zum Stichtag `today` (Standard: heute); `null` bei ungueltigem Datum. */
+/** Alter in vollen Jahren zum Stichtag `today` (Standard: heute); `null` bei ungültigem Datum. */
 export function ageFromBirthDate(iso: string, today: Date = new Date()): number | null {
 	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
 	if (!m) return null;
@@ -271,7 +271,7 @@ export const memberInput = z
 		noDuplicates(m.emails, ctx, 'emails');
 	});
 export type MemberInput = z.infer<typeof memberInput>;
-/** Eingabeform vor dem Parsen (z. B. fuer Formulare) */
+/** Eingabeform vor dem Parsen (z. B. für Formulare) */
 export type MemberFormInput = z.input<typeof memberInput>;
 
 export const memberListQuery = z.object({
@@ -464,9 +464,9 @@ export interface Group {
 	meetingWeekday: number | null;
 	meetingTime: string | null;
 	color: string | null;
-	/** Bild vorhanden? Abruf ueber GET /groups/:id/image */
+	/** Bild vorhanden? Abruf über GET /groups/:id/image */
 	hasImage: boolean;
-	/** Cache-Busting-Wert fuer die Bild-URL (ISO-Zeitstempel der letzten Aenderung) */
+	/** Cache-Busting-Wert für die Bild-URL (ISO-Zeitstempel der letzten Änderung) */
 	imageVersion: string | null;
 	leaders: MemberRef[];
 	memberCount: number;

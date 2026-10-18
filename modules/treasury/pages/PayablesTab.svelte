@@ -6,15 +6,24 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Wallet from '@lucide/svelte/icons/wallet';
+	import X from '@lucide/svelte/icons/x';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable, FormField, MoneyInput, toastWithUndo } from '$lib/components/layout';
+	import {
+		DataTable,
+		FormField,
+		MobileActionBar,
+		MoneyInput,
+		toastWithUndo
+	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		PAYABLE_SOURCES,
@@ -31,17 +40,27 @@
 		todayIso,
 		type SharedData
 	} from './helpers';
+	import BulkPayDialog from './BulkPayDialog.svelte';
+	import FilterChips from './FilterChips.svelte';
 	import HistorySheet from './HistorySheet.svelte';
+	import type { FamilyRef } from './navigation';
+	import StatusBadge from './StatusBadge.svelte';
 	import PayableDialog from './PayableDialog.svelte';
 
 	let {
 		accounts,
 		actions,
+		categories,
 		payers,
 		perm,
 		version,
-		onchanged
-	}: SharedData & { onchanged: () => void | Promise<void> } = $props();
+		onchanged,
+		onfamily
+	}: SharedData & {
+		onchanged: () => void | Promise<void>;
+		/** öffnet das Familienkonto eines Zahlers */
+		onfamily?: (ref: FamilyRef) => void;
+	} = $props();
 
 	let status = $state<'open' | 'paid' | 'cancelled' | 'all'>('open');
 	let source = $state<string | null>(null);
@@ -71,6 +90,23 @@
 
 	let dialogOpen = $state(false);
 	let edit = $state<Payable | null>(null);
+
+	// Auswahl für Sammelaktionen (nur offene, nicht stornierte; Recht wie der Einzel-Knopf „Bezahlt“)
+	const isOpenItem = (p: Payable) => p.openCents > 0 && !p.cancelledAt;
+	const canBulk = $derived(perm.payable);
+	let selected = $state<string[]>([]);
+	const selectable = $derived((data?.items ?? []).filter(isOpenItem));
+	const selectedItems = $derived(selectable.filter((p) => selected.includes(p.id)));
+	const selectedSum = $derived(selectedItems.reduce((s, p) => s + p.openCents, 0));
+	const allSelected = $derived(selectable.length > 0 && selectedItems.length === selectable.length);
+	const someSelected = $derived(selectedItems.length > 0 && !allSelected);
+	function toggleAll(on: boolean) {
+		selected = on ? selectable.map((p) => p.id) : [];
+	}
+	function toggleOne(id: string, on: boolean) {
+		selected = on ? [...new Set([...selected, id])] : selected.filter((x) => x !== id);
+	}
+	let bulkPayOpen = $state(false);
 
 	// Überweisung buchen
 	let payOpen = $state(false);
@@ -194,12 +230,12 @@
 		}
 	}
 
-	const statuses = [
+	const statuses: { value: typeof status; label: string }[] = [
 		{ value: 'open', label: 'Offen' },
 		{ value: 'paid', label: 'Bezahlt' },
 		{ value: 'cancelled', label: 'Storniert' },
 		{ value: 'all', label: 'Alle' }
-	] as const;
+	];
 	const sourceOptions = PAYABLE_SOURCES.map((s) => ({
 		value: s as string,
 		label: PAYABLE_SOURCE_LABELS[s]
@@ -209,168 +245,237 @@
 	);
 </script>
 
-<DataTable
-	mobile="cards"
-	caption="Ausstehende Überweisungen"
-	{loading}
-	{error}
-	empty={!!data && !data.items.length}
-	emptyTitle={status === 'open' ? 'Nichts auszuzahlen' : 'Keine Einträge'}
-	emptyDescription={status === 'open'
-		? 'Auslagen aus Abrechnungen, Rückzahlungen und Guthaben erscheinen hier automatisch. Eingangsrechnungen kannst du selbst erfassen.'
-		: undefined}
->
-	{#snippet toolbar()}
-		<div class="flex flex-wrap gap-1" role="group" aria-label="Status">
-			{#each statuses as s (s.value)}
-				<Button
-					size="sm"
-					variant={status === s.value ? 'default' : 'outline'}
-					aria-pressed={status === s.value}
-					onclick={() => (status = s.value)}
+<div class={canBulk && selectedItems.length ? 'max-sm:pb-20' : ''}>
+	<DataTable
+		mobile="cards"
+		caption="Ausstehende Überweisungen"
+		{loading}
+		{error}
+		empty={!!data && !data.items.length}
+		emptyTitle={status === 'open' ? 'Nichts auszuzahlen' : 'Keine Einträge'}
+		emptyDescription={status === 'open'
+			? 'Auslagen aus Abrechnungen, Rückzahlungen und Guthaben erscheinen hier automatisch. Eingangsrechnungen kannst du selbst erfassen.'
+			: undefined}
+	>
+		{#snippet toolbar()}
+			<FilterChips
+				options={statuses}
+				bind:value={status}
+				label="Auszahlungen nach Status filtern"
+				onchange={() => (selected = [])}
+			/>
+			<SelectField
+				class="w-48"
+				size="sm"
+				label="Art"
+				options={sourceOptions}
+				bind:value={source}
+				emptyLabel="Alle Arten"
+				placeholder="Alle Arten"
+			/>
+			<div class="ml-auto flex flex-wrap gap-2">
+				<Button size="sm" variant="outline" onclick={exportCsv}
+					><Download /> Überweisungsliste</Button
 				>
-					{s.label}
-				</Button>
-			{/each}
-		</div>
-		<SelectField
-			class="w-48"
-			size="sm"
-			label="Art"
-			options={sourceOptions}
-			bind:value={source}
-			emptyLabel="Alle Arten"
-			placeholder="Alle Arten"
-		/>
-		<div class="ml-auto flex flex-wrap gap-2">
-			<Button size="sm" variant="outline" onclick={exportCsv}><Download /> Überweisungsliste</Button
+				{#if perm.payable}
+					<Button
+						size="sm"
+						onclick={() => {
+							edit = null;
+							dialogOpen = true;
+						}}
+					>
+						<Plus /> Eingangsrechnung
+					</Button>
+				{/if}
+			</div>
+			<MobileActionBar
+				show={canBulk && selectedItems.length > 0}
+				label="Sammelaktionen für Auszahlungen"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
 			>
-			{#if perm.payable}
-				<Button
-					size="sm"
-					onclick={() => {
-						edit = null;
-						dialogOpen = true;
-					}}
-				>
-					<Plus /> Eingangsrechnung
+				<span class="text-sm font-medium" aria-live="polite">
+					{selectedItems.length} ausgewählt ·
+					<span class="tabular-nums">{formatEuro(selectedSum)}</span>
+				</span>
+				<Button size="sm" onclick={() => (bulkPayOpen = true)}>
+					<Wallet /> Als bezahlt buchen
 				</Button>
-			{/if}
-		</div>
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			<Table.Head>Empfänger*in</Table.Head>
-			<Table.Head>Grund</Table.Head>
-			<Table.Head>Fällig</Table.Head>
-			<Table.Head>IBAN</Table.Head>
-			<Table.Head class="text-right">Betrag</Table.Head>
-			<Table.Head class="text-right">Offen</Table.Head>
-			<Table.Head class="text-right"><span class="sr-only">Aktionen</span></Table.Head>
-		</Table.Row>
-	{/snippet}
-	{#each data?.items ?? [] as p (p.id)}
-		<Table.Row class={p.cancelledAt ? 'text-muted-foreground' : ''}>
-			<Table.Cell class="max-w-56">
-				<div class="truncate font-medium">{p.recipientName}</div>
-				{#if p.payer}<div class="truncate text-xs text-muted-foreground">{p.payer.name}</div>{/if}
-			</Table.Cell>
-			<Table.Cell class="max-w-72">
-				<div class="truncate">{p.description}</div>
-				<div class="mt-1 flex flex-wrap gap-1">
-					<Badge variant="outline">{PAYABLE_SOURCE_LABELS[p.source]}</Badge>
-					{#if p.action}<Badge variant="secondary">{p.action.name}</Badge>{/if}
-					{#if p.cancelledAt}<Badge variant="outline">storniert</Badge>{/if}
-					{#if p.openCents === 0 && !p.cancelledAt}<Badge variant="secondary">bezahlt</Badge>{/if}
-				</div>
-			</Table.Cell>
-			<Table.Cell class="whitespace-nowrap tabular-nums {p.overdue ? 'text-destructive' : ''}">
-				{fmtDate(p.dueOn)}
-			</Table.Cell>
-			<Table.Cell class="whitespace-nowrap">
-				{#if p.ibanMasked}
-					<span class="font-mono text-xs">{p.ibanMasked}</span>
-				{:else}
-					<span class="text-xs text-amber-700 dark:text-amber-400">fehlt</span>
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</MobileActionBar>
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				{#if canBulk}
+					<Table.Head class="w-10">
+						<Checkbox
+							aria-label="Alle offenen Auszahlungen auswählen"
+							checked={allSelected}
+							indeterminate={someSelected}
+							disabled={!selectable.length}
+							onCheckedChange={(v) => toggleAll(v === true)}
+						/>
+					</Table.Head>
 				{/if}
-			</Table.Cell>
-			<Table.Cell class="text-right tabular-nums">{formatEuro(p.amountCents)}</Table.Cell>
-			<Table.Cell class="text-right font-medium tabular-nums">{formatEuro(p.openCents)}</Table.Cell>
-			<Table.Cell class="text-right whitespace-nowrap">
-				{#if perm.payable && p.openCents > 0}
-					<Button size="sm" variant="outline" onclick={() => startPay(p)}>Bezahlt</Button>
+				<Table.Head>Empfänger*in</Table.Head>
+				<Table.Head>Grund</Table.Head>
+				<Table.Head>Fällig</Table.Head>
+				<Table.Head>IBAN</Table.Head>
+				<Table.Head>Status</Table.Head>
+				<Table.Head class="text-right">Betrag</Table.Head>
+				<Table.Head class="text-right">Offen</Table.Head>
+				<Table.Head class="text-right"><span class="sr-only">Aktionen</span></Table.Head>
+			</Table.Row>
+		{/snippet}
+		{#each data?.items ?? [] as p (p.id)}
+			<Table.Row
+				class={p.cancelledAt ? 'text-muted-foreground' : ''}
+				data-state={selected.includes(p.id) ? 'selected' : undefined}
+			>
+				{#if canBulk}
+					<Table.Cell onclick={(e: MouseEvent) => e.stopPropagation()}>
+						{#if isOpenItem(p)}
+							<Checkbox
+								aria-label={`Auszahlung an ${p.recipientName} auswählen`}
+								checked={selected.includes(p.id)}
+								onCheckedChange={(v) => toggleOne(p.id, v === true)}
+							/>
+						{/if}
+					</Table.Cell>
 				{/if}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button
-								{...props}
-								variant="ghost"
-								size="icon"
-								aria-label={`Aktionen für ${p.recipientName}`}
-							>
-								<Ellipsis />
-							</Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end">
-						{#if canHistory}
-							<DropdownMenu.Item
-								onclick={() => {
-									historyItem = p;
-									historyOpen = true;
+				<Table.Cell class="max-w-56">
+					<div class="truncate font-medium">{p.recipientName}</div>
+					{#if p.payer}
+						{@const payer = p.payer}
+						{#if onfamily}
+							<button
+								type="button"
+								class="block max-w-full truncate text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+								title="Familienkonto öffnen"
+								onclick={(e) => {
+									e.stopPropagation();
+									onfamily({ payerId: payer.id });
 								}}
 							>
-								Verlauf anzeigen
-							</DropdownMenu.Item>
+								{payer.name}
+							</button>
+						{:else}
+							<div class="truncate text-xs text-muted-foreground">{payer.name}</div>
 						{/if}
-						{#if perm.bank && p.hasIban}
-							<DropdownMenu.Item onclick={() => showIban(p)}
-								>IBAN anzeigen und kopieren</DropdownMenu.Item
-							>
-						{/if}
-						{#if p.receipt || p.source === 'reimbursement' || p.source === 'expense'}
-							<DropdownMenu.Item onclick={() => showReceipts(p)}>Belege ansehen</DropdownMenu.Item>
-						{/if}
-						{#if p.source === 'reimbursement' && p.action && perm.report}
-							<DropdownMenu.Item
-								onclick={() => p.action && goto(`/modules/treasury/accountings/${p.action.id}`)}
-								>Abrechnung ansehen</DropdownMenu.Item
-							>
-						{/if}
-						{#if perm.payable}
-							<DropdownMenu.Item
-								onclick={() => {
-									edit = p;
-									dialogOpen = true;
-								}}
-							>
-								Bearbeiten
-							</DropdownMenu.Item>
-							{#if p.cancelledAt}
-								<DropdownMenu.Item onclick={() => setCancelled(p, false)}
-									>Wieder aufnehmen</DropdownMenu.Item
+					{/if}
+				</Table.Cell>
+				<Table.Cell class="max-w-72">
+					<div class="truncate">{p.description}</div>
+					<div class="mt-1 flex flex-wrap gap-1">
+						<Badge variant="outline">{PAYABLE_SOURCE_LABELS[p.source]}</Badge>
+						{#if p.action}<Badge variant="secondary">{p.action.name}</Badge>{/if}
+					</div>
+				</Table.Cell>
+				<Table.Cell class="whitespace-nowrap tabular-nums {p.overdue ? 'text-destructive' : ''}">
+					{fmtDate(p.dueOn)}
+				</Table.Cell>
+				<Table.Cell class="whitespace-nowrap">
+					{#if p.ibanMasked}
+						<span class="font-mono text-xs">{p.ibanMasked}</span>
+					{:else}
+						<span class="text-xs text-amber-700 dark:text-amber-400">fehlt</span>
+					{/if}
+				</Table.Cell>
+				<Table.Cell><StatusBadge payable={p} /></Table.Cell>
+				<Table.Cell class="text-right tabular-nums">{formatEuro(p.amountCents)}</Table.Cell>
+				<Table.Cell class="text-right font-medium tabular-nums"
+					>{formatEuro(p.openCents)}</Table.Cell
+				>
+				<Table.Cell class="text-right whitespace-nowrap">
+					{#if perm.payable && p.openCents > 0}
+						<Button size="sm" variant="outline" onclick={() => startPay(p)}>Bezahlt</Button>
+					{/if}
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									variant="ghost"
+									size="icon"
+									aria-label={`Aktionen für ${p.recipientName}`}
 								>
-							{:else if p.paidCents === 0}
-								<DropdownMenu.Item class="text-destructive" onclick={() => setCancelled(p, true)}>
-									Stornieren
+									<Ellipsis />
+								</Button>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end">
+							{#if canHistory}
+								<DropdownMenu.Item
+									onclick={() => {
+										historyItem = p;
+										historyOpen = true;
+									}}
+								>
+									Verlauf anzeigen
 								</DropdownMenu.Item>
 							{/if}
-						{/if}
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-			</Table.Cell>
-		</Table.Row>
-	{/each}
-	{#snippet footer()}
-		{#if data && data.items.length}
-			<span class="text-sm text-muted-foreground">
-				{data.totals.count} offen · Summe
-				<span class="tabular-nums">{formatEuro(data.totals.openCents)}</span>
-			</span>
-		{/if}
-	{/snippet}
-</DataTable>
+							{#if perm.bank && p.hasIban}
+								<DropdownMenu.Item onclick={() => showIban(p)}
+									>IBAN anzeigen und kopieren</DropdownMenu.Item
+								>
+							{/if}
+							{#if p.receipt || p.source === 'reimbursement' || p.source === 'expense'}
+								<DropdownMenu.Item onclick={() => showReceipts(p)}>Belege ansehen</DropdownMenu.Item
+								>
+							{/if}
+							{#if p.source === 'reimbursement' && p.action && perm.report}
+								<DropdownMenu.Item
+									onclick={() => p.action && goto(`/modules/treasury/accountings/${p.action.id}`)}
+									>Abrechnung ansehen</DropdownMenu.Item
+								>
+							{/if}
+							{#if perm.payable}
+								<DropdownMenu.Item
+									onclick={() => {
+										edit = p;
+										dialogOpen = true;
+									}}
+								>
+									Bearbeiten
+								</DropdownMenu.Item>
+								{#if p.cancelledAt}
+									<DropdownMenu.Item onclick={() => setCancelled(p, false)}
+										>Wieder aufnehmen</DropdownMenu.Item
+									>
+								{:else if p.paidCents === 0}
+									<DropdownMenu.Item class="text-destructive" onclick={() => setCancelled(p, true)}>
+										Stornieren
+									</DropdownMenu.Item>
+								{/if}
+							{/if}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</Table.Cell>
+			</Table.Row>
+		{/each}
+		{#snippet footer()}
+			{#if data && data.items.length}
+				<span class="text-sm text-muted-foreground">
+					{data.totals.count} offen · Summe
+					<span class="tabular-nums">{formatEuro(data.totals.openCents)}</span>
+				</span>
+			{/if}
+		{/snippet}
+	</DataTable>
+</div>
+
+<BulkPayDialog
+	bind:open={bulkPayOpen}
+	items={selectedItems}
+	{accounts}
+	{categories}
+	onfinished={async () => {
+		selected = [];
+		await onchanged();
+	}}
+/>
 
 <HistorySheet
 	bind:open={historyOpen}

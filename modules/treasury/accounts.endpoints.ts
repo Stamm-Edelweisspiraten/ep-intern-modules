@@ -37,7 +37,7 @@ async function uniqueName<T>(fn: () => Promise<T>, what: string): Promise<T> {
 	}
 }
 
-/** Ohne Standardkonto wird das aelteste nicht archivierte Konto Standard. */
+/** Ohne Standardkonto wird das älteste nicht archivierte Konto Standard. */
 async function ensureDefault(tx: Tx): Promise<void> {
 	await tx.execute(
 		sql`UPDATE accounts SET is_default = true
@@ -128,7 +128,7 @@ export const accountEndpoints = [
 	{
 		method: 'PUT',
 		path: '/accounts/:id',
-		summary: 'Konto aendern (Archivieren statt Loeschen, sobald Buchungen existieren)',
+		summary: 'Konto ändern (Archivieren statt Löschen, sobald Buchungen existieren)',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,
@@ -169,7 +169,7 @@ export const accountEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/accounts/:id',
-		summary: 'Konto ohne Buchungen loeschen',
+		summary: 'Konto ohne Buchungen löschen',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,
@@ -207,8 +207,7 @@ export const accountEndpoints = [
 					sql`SELECT archived_at FROM accounts WHERE id = ${id} FOR UPDATE`
 				);
 				if (!cur) throw errors.notFound('Konto nicht gefunden');
-				if (cur.archived_at)
-					throw errors.conflict('Archivierte Konten koennen nicht Standard sein');
+				if (cur.archived_at) throw errors.conflict('Archivierte Konten können nicht Standard sein');
 				await tx.execute(
 					sql`UPDATE accounts SET is_default = false WHERE is_default AND id <> ${id}`
 				);
@@ -257,7 +256,7 @@ export const accountEndpoints = [
 	{
 		method: 'PUT',
 		path: '/categories/:id',
-		summary: 'Kategorie aendern/archivieren',
+		summary: 'Kategorie ändern/archivieren',
 		tags: TAGS,
 		permission: MANAGE,
 		params: categoryParams,
@@ -303,7 +302,7 @@ export const accountEndpoints = [
 		body: settingsInput,
 		handler: async ({ ctx, body }) => {
 			const input = body as TreasurySettings;
-			// Kassen-Einstellungen gehoeren dem Modul: Recht wird hier geprueft, gespeichert als System
+			// Kassen-Einstellungen gehören dem Modul: Recht wird hier geprüft, gespeichert als System
 			const system = core.auth.systemContext('treasury-settings');
 			for (const [field, key] of SETTING_MAP) {
 				await core.settings.set(system, key, input[field]);

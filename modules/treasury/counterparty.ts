@@ -1,10 +1,10 @@
-/** Gegenpartei einer Buchung: Zahler und IBAN (verschluesselt + HMAC) */
+/** Gegenpartei einer Buchung: Zahler und IBAN (verschlüsselt + HMAC) */
 import { sql } from 'drizzle-orm';
 import { errors, type Tx } from '$lib/sdk/server';
 import { storeIban } from './bank';
 import { rows } from './db';
 
-/** IBAN der Gegenpartei und Zahler speichern; ohne eigene IBAN wird die des Zahlers uebernommen */
+/** IBAN der Gegenpartei und Zahler speichern; ohne eigene IBAN wird die des Zahlers übernommen */
 export async function applyCounterparty(
 	tx: Tx,
 	id: string,

@@ -33,7 +33,7 @@ const HEAVY_LIMIT = { limit: 30, windowSec: 60 };
 type Id = { id: string };
 type PreviewQuery = { mode?: AnnualMode; key?: string };
 
-/** Lesen braucht zusaetzlich das Kassen-Basisrecht (Namen, Betraege, Zahler) */
+/** Lesen braucht zusätzlich das Kassen-Basisrecht (Namen, Beträge, Zahler) */
 const requireCashView = (ctx: RequestContext) =>
 	core.permissions.require(ctx, 'treasury.cash.view');
 /** Versand, Planung und Nachberechnung verschicken Rechnungen */
@@ -43,7 +43,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'GET',
 		path: '/annual-fees',
-		summary: 'Beitragslaeufe (Jahresbeitrag) auflisten',
+		summary: 'Beitragsläufe (Jahresbeitrag) auflisten',
 		tags: TAGS,
 		permission: VIEW,
 		handler: async ({ ctx }) => {
@@ -54,7 +54,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'POST',
 		path: '/annual-fees',
-		summary: 'Beitragslauf fuer ein Jahr anlegen (Stichtag = heute)',
+		summary: 'Beitragslauf für ein Jahr anlegen (Stichtag = heute)',
 		tags: TAGS,
 		permission: MANAGE,
 		body: annualRunInput,
@@ -76,7 +76,7 @@ export const annualFeeEndpoints = [
 		method: 'PUT',
 		path: '/annual-fees/:id',
 		summary:
-			'Beitragslauf aendern (Frist, Saetze, Texte; nicht nach dem Versand; geplanter Versand wird zurueckgenommen)',
+			'Beitragslauf ändern (Frist, Sätze, Texte; nicht nach dem Versand; geplanter Versand wird zurückgenommen)',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,
@@ -86,7 +86,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/annual-fees/:id',
-		summary: 'Beitragslauf loeschen (nur Entwurf/geplant)',
+		summary: 'Beitragslauf löschen (nur Entwurf/geplant)',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,
@@ -127,7 +127,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'GET',
 		path: '/annual-fees/:id/preview-mail',
-		summary: 'Mail-Vorschau einer geplanten Rechnung (Empfaenger nur mit invoice.send/edit)',
+		summary: 'Mail-Vorschau einer geplanten Rechnung (Empfänger nur mit invoice.send/edit)',
 		tags: TAGS,
 		permission: VIEW,
 		params: idParams,
@@ -168,7 +168,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'POST',
 		path: '/annual-fees/:id/schedule',
-		summary: 'Versand planen (Datum ab heute; der stuendliche Job versendet)',
+		summary: 'Versand planen (Datum ab heute; der stündliche Job versendet)',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,
@@ -181,7 +181,7 @@ export const annualFeeEndpoints = [
 	{
 		method: 'POST',
 		path: '/annual-fees/:id/unschedule',
-		summary: 'Geplanten Versand zuruecknehmen (wieder Entwurf)',
+		summary: 'Geplanten Versand zurücknehmen (wieder Entwurf)',
 		tags: TAGS,
 		permission: MANAGE,
 		params: idParams,

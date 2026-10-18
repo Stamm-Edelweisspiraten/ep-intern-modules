@@ -65,14 +65,14 @@ export const documentEndpoints: ApiEndpoint[] = [
 		path: '/members/:id/documents/:kind',
 		summary: 'Dokument hochladen (multipart, Feld "file")',
 		description:
-			'Ersetzt ein vorhandenes Dokument. Erlaubt: PDF, JPEG, PNG, WebP bis 10 MB. Rueckgabe: { name }.',
+			'Ersetzt ein vorhandenes Dokument. Erlaubt: PDF, JPEG, PNG, WebP bis 10 MB. Rückgabe: { name }.',
 		tags: ['Modul: members'],
 		permission: 'members.member.edit',
 		params: documentParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id, kind } = params as { id: string; kind: DocumentKind };
 			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungueltige Formulardaten');
+				throw errors.badRequest('Ungültige Formulardaten');
 			});
 			const file = form.get('file');
 			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
@@ -82,7 +82,7 @@ export const documentEndpoints: ApiEndpoint[] = [
 			}
 			if (file.size === 0) throw errors.badRequest('Datei ist leer');
 			if (file.size > MAX_DOCUMENT_BYTES) {
-				throw errors.tooLarge('Datei ueberschreitet das Limit von 10 MB');
+				throw errors.tooLarge('Datei überschreitet das Limit von 10 MB');
 			}
 
 			const old = await mdb().transaction((tx) => readRef(tx, id, kind));
@@ -140,7 +140,7 @@ export const documentEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/members/:id/documents/:kind',
-		summary: 'Dokument loeschen',
+		summary: 'Dokument löschen',
 		tags: ['Modul: members'],
 		permission: 'members.member.edit',
 		params: documentParams,

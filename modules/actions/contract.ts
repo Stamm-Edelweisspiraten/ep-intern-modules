@@ -1,7 +1,7 @@
 /**
  * Vertrag der Dienste, die `actions` anderen Modulen anbietet (`ModuleDefinition.provides`).
  * Abruf: `await core.modules.use<ActionsService>('actions', '<aufrufendes Modul>')`.
- * Die Funktionen pruefen KEINE Objektrechte – der Aufrufer verantwortet den Zugriff (z. B. Kasse).
+ * Die Funktionen prüfen KEINE Objektrechte – der Aufrufer verantwortet den Zugriff (z. B. Kasse).
  */
 import type {
 	AccountingEntry,
@@ -28,7 +28,7 @@ export interface ReceivableSource {
 	/** JJJJ-MM-TT */
 	startsOn: string;
 	endsOn: string | null;
-	/** Aktion liegt bereits in der Vergangenheit (nachtraegliche Abrechnung) */
+	/** Aktion liegt bereits in der Vergangenheit (nachträgliche Abrechnung) */
 	isPast: boolean;
 	/** Beitrag je Teilnehmende*r (Cent) */
 	feeCents: number;
@@ -56,6 +56,23 @@ export interface ReimbursementSource {
 	totalCents: number;
 	/** davon noch nicht als ausgezahlt markiert */
 	openCents: number;
+	/**
+	 * Seit Migration 0016 immer `null`: je (Aktion, Empfänger*in) eine Zeile mit allen freigegebenen
+	 * Auslagen (in einer Zwischenabrechnung enthalten oder Abrechnung abgeschlossen).
+	 */
+	interimId?: string | null;
+	interimNumber?: number | null;
+}
+
+/** Zwischenabrechnung einer Aktion (für die Kasse); Summen aus dem eingefrorenen Abbild. */
+export interface InterimRef {
+	id: string;
+	actionId: string;
+	number: number;
+	createdAt: string;
+	incomeCents: number;
+	expenseCents: number;
+	reimbursementCents: number;
 }
 
 export interface RefundItemSource {
@@ -89,7 +106,7 @@ export interface ClosedAccounting {
 	balanceCents: number;
 }
 
-/** Ausgabe „bezahlt vom Stamm“ mit Empfaenger fuer die Ueberweisung durch die Kasse. */
+/** Ausgabe „bezahlt vom Stamm“ mit Empfänger für die Überweisung durch die Kasse. */
 export interface ClubExpenseSource {
 	actionId: string;
 	entryId: string;
@@ -121,20 +138,50 @@ export interface ClosedAccountingDetail extends ClosedAccounting {
 }
 
 export interface ActionsService {
-	/** Aktionen mit uebernommenem Beitrag (`fee_applied_at` gesetzt) inkl. Teilnehmender */
+	/** Aktionen mit übernommenem Beitrag (`fee_applied_at` gesetzt) inkl. Teilnehmender */
 	listReceivableSources(query?: { actionIds?: string[] }): Promise<ReceivableSource[]>;
 	/** Kurzdaten von Aktionen (Anzeige, Auswahl); `search` im Namen, max. 200 */
 	listActionRefs(query?: { ids?: string[]; search?: string; limit?: number }): Promise<ActionRef[]>;
-	/** Auslagen je Aktion und Empfaenger*in (bezahlt von Person), nur aus abgeschlossenen Abrechnungen */
+	/**
+	 * Auslagen je Aktion, Empfänger*in und Zwischenabrechnung (bezahlt von Person): aus Zwischenabrechnungen
+	 * sofort, die übrigen erst aus abgeschlossenen Abrechnungen.
+	 */
 	listReimbursements(): Promise<ReimbursementSource[]>;
-	/** Klartext-IBAN der Empfaenger*in (Aufrufer prueft eigene Rechte und auditiert) */
+	/** Klartext-IBAN der Empfänger*in (Aufrufer prüft eigene Rechte und auditiert) */
 	getPayeeIban(actionId: string, payeeId: string): Promise<string | null>;
-	/** Auslagen als ausgezahlt markieren bzw. zuruecknehmen (auch bei abgeschlossener Abrechnung) */
-	markReimbursed(actionId: string, payeeId: string, reimbursed: boolean): Promise<number>;
-	/** Einzelbetraege gebuchter Rueckzahlungen des Ueberschusses */
+	/** Auslagen als ausgezahlt markieren bzw. zurücknehmen (auch bei abgeschlossener Abrechnung) */
+	markReimbursed(
+		actionId: string,
+		payeeId: string,
+		reimbursed: boolean,
+		/**
+		 * `null` (Kasse) = alle freigegebenen Auslagen der Person (in einer Zwischenabrechnung enthalten oder
+		 * abgeschlossen); fehlt = alle Auslagen der Person; ein konkreter (Alt-)Schlüssel einer
+		 * Zwischenabrechnung ändert nichts (Rückgabe 0).
+		 */
+		interimId?: string | null
+	): Promise<number>;
+	/** Zwischenabrechnungen (alle Aktionen oder die genannten) */
+	listInterims(query?: { actionIds?: string[] }): Promise<InterimRef[]>;
+	/** PDF einer Zwischenabrechnung (mit Beleg-Anhängen) */
+	interimReportPdf(
+		actionId: string,
+		interimId: string,
+		withBank: boolean,
+		auditCtx: import('$lib/sdk/types').RequestContext
+	): Promise<{ data: Uint8Array; fileName: string }>;
+	/** Einzelbeträge gebuchter Rückzahlungen des Überschusses */
 	listRefundItems(): Promise<RefundItemSource[]>;
-	/** Belege der Auslagen einer Empfaenger*in (fuer die Kasse) */
-	listReimbursementReceipts(actionId: string, payeeId: string): Promise<ReceiptRef[]>;
+	/** Belege der Auslagen einer Empfänger*in (für die Kasse) */
+	listReimbursementReceipts(
+		actionId: string,
+		payeeId: string,
+		/**
+		 * `null` (Kasse) = Belege aller freigegebenen Auslagen der Person; fehlt = alle Auslagen der Person;
+		 * ein konkreter (Alt-)Schlüssel einer Zwischenabrechnung liefert eine leere Liste.
+		 */
+		interimId?: string | null
+	): Promise<ReceiptRef[]>;
 	/** Beleg einer Buchung laden (Systemkontext; nur Belege der genannten Aktion) */
 	downloadReceipt(
 		actionId: string,
@@ -144,16 +191,16 @@ export interface ActionsService {
 	listClosedAccountings(): Promise<ClosedAccounting[]>;
 	/** Detail einer abgeschlossenen Abrechnung; `null`, wenn offen oder unbekannt */
 	getClosedAccounting(actionId: string): Promise<ClosedAccountingDetail | null>;
-	/** Ausgaben des Stammes (ohne Rueckzahlung), offen oder bezahlt */
+	/** Ausgaben des Stammes (ohne Rückzahlung), offen oder bezahlt */
 	listClubExpenses(): Promise<ClubExpenseSource[]>;
-	/** Klartext-IBAN des Empfaengers einer Stamm-Ausgabe (Aufrufer prueft Rechte und auditiert) */
+	/** Klartext-IBAN des Empfängers einer Stamm-Ausgabe (Aufrufer prüft Rechte und auditiert) */
 	getClubExpenseIban(actionId: string, entryId: string): Promise<string | null>;
 	/**
-	 * Stamm-Ausgabe als von der Kasse ueberwiesen markieren bzw. zuruecknehmen (auch bei abgeschlossener
-	 * Abrechnung). Eine manuelle Markierung („bereits bezahlt“) bleibt unberuehrt.
+	 * Stamm-Ausgabe als von der Kasse überwiesen markieren bzw. zurücknehmen (auch bei abgeschlossener
+	 * Abrechnung). Eine manuelle Markierung („bereits bezahlt“) bleibt unberührt.
 	 */
 	markClubExpensePaid(actionId: string, entryId: string, paid: boolean): Promise<boolean>;
-	/** Abrechnungsbericht als PDF (mit Beleg-Anhaengen); `withBank` = IBAN im Klartext */
+	/** Abrechnungsbericht als PDF (mit Beleg-Anhängen); `withBank` = IBAN im Klartext */
 	accountingReportPdf(
 		actionId: string,
 		withBank: boolean,

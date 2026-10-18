@@ -5,10 +5,8 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Download from '@lucide/svelte/icons/download';
-	import FileDown from '@lucide/svelte/icons/file-down';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { Badge } from '$lib/components/ui/badge';
@@ -16,11 +14,9 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		ConfirmDialog,
-		DataTable,
 		EmptyState,
 		PageHeader,
 		PdfExportDialog,
@@ -28,11 +24,8 @@
 		type ShareCandidate
 	} from '$lib/components/layout';
 	import {
-		DIET_LABELS,
-		PARTICIPANT_ROLE_LABELS,
 		SHARE_LEVELS,
 		SHARE_LEVEL_LABELS,
-		ageAt,
 		type ActionShares,
 		type ActionSummary,
 		type Participant,
@@ -44,7 +37,7 @@
 	import { formatEuro } from '$lib/components/layout/money';
 	import ActionForm from './ActionForm.svelte';
 	import ParticipantForm from './ParticipantForm.svelte';
-	import PaymentCell from './PaymentCell.svelte';
+	import ParticipantsTab from './ParticipantsTab.svelte';
 	import AccountingTab from './AccountingTab.svelte';
 	import CalculationTab from './CalculationTab.svelte';
 	import RegistrationTab from './RegistrationTab.svelte';
@@ -257,14 +250,6 @@
 		await loadShares();
 	}
 
-	function fmtAge(p: Participant): string {
-		if (!p.birthDate || !action) return '–';
-		const a = ageAt(p.birthDate, action.startsOn);
-		return a === null || a < 0 ? '–' : String(a);
-	}
-	function truncate(s: string, n = 60) {
-		return s.length > n ? `${s.slice(0, n - 1)}…` : s;
-	}
 	function levelLabel(l: ShareLevel) {
 		return SHARE_LEVEL_LABELS[l];
 	}
@@ -440,90 +425,24 @@
 		</Tabs.Content>
 
 		<Tabs.Content value="participants">
-			<DataTable
-				caption="Teilnehmende"
-				mobile="cards"
-				title="Teilnehmende"
-				description={paymentSummary}
+			<ParticipantsTab
+				{participants}
 				loading={partLoading}
 				error={partError}
-				empty={!participants.length}
-				emptyTitle="Noch keine Teilnehmenden"
-				emptyDescription="Füge Teilnehmende manuell hinzu."
-			>
-				{#snippet toolbar()}
-					<Button variant="outline" href={`/api/v1${base}/participants.csv`} download>
-						<Download /> CSV exportieren
-					</Button>
-					{#if canExportSheets}
-						<Button variant="outline" disabled={sheetsBusy} onclick={openSheets}>
-							<FileDown />
-							{sheetsBusy ? 'Erzeuge PDF …' : 'Teilnehmerliste (PDF)'}
-						</Button>
-					{/if}
-					{#if canEdit}
-						<Button onclick={openAddParticipant}><UserPlus /> Teilnehmende*n hinzufügen</Button>
-					{/if}
-				{/snippet}
-				{#snippet head()}
-					<Table.Row>
-						<Table.Head>Name</Table.Head>
-						<Table.Head>Gruppe</Table.Head>
-						<Table.Head>E-Mail</Table.Head>
-						<Table.Head>Alter</Table.Head>
-						<Table.Head>Rolle</Table.Head>
-						<Table.Head>Ernährung</Table.Head>
-						<Table.Head>Allergien / Hinweise</Table.Head>
-						{#if showPayments}<Table.Head>Beitrag</Table.Head>{/if}
-						<Table.Head>Quelle</Table.Head>
-						{#if canEdit}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
-					</Table.Row>
-				{/snippet}
-				{#each participants as p (p.id)}
-					{@const hint = [p.allergies, p.notes].filter(Boolean).join(' · ')}
-					<Table.Row>
-						<Table.Cell class="font-medium">{p.name}</Table.Cell>
-						<Table.Cell>{p.groupLabel ?? '–'}</Table.Cell>
-						<Table.Cell class="max-w-48 truncate text-xs" title={p.contactEmail ?? undefined}>
-							{p.contactEmail ?? '–'}
-						</Table.Cell>
-						<Table.Cell>{fmtAge(p)}</Table.Cell>
-						<Table.Cell>
-							{PARTICIPANT_ROLE_LABELS[p.role]}{p.role === 'team' && p.juleica ? ' (Juleica)' : ''}
-						</Table.Cell>
-						<Table.Cell>{p.diet ? DIET_LABELS[p.diet] : '–'}</Table.Cell>
-						<Table.Cell class="max-w-64" title={hint || undefined}>
-							{hint ? truncate(hint) : '–'}
-						</Table.Cell>
-						{#if showPayments}
-							<Table.Cell>
-								<PaymentCell payment={p.payment} linkToInvoice={canOpenInvoices} />
-							</Table.Cell>
-						{/if}
-						<Table.Cell>
-							<Badge variant="outline">{p.source === 'link' ? 'Anmeldelink' : 'Manuell'}</Badge>
-						</Table.Cell>
-						{#if canEdit}
-							<Table.Cell class="text-right">
-								<div class="flex justify-end gap-2">
-									<Button
-										size="icon"
-										variant="outline"
-										aria-label={`${p.name} bearbeiten`}
-										onclick={() => openEditParticipant(p)}><Pencil /></Button
-									>
-									<Button
-										size="icon"
-										variant="destructive"
-										aria-label={`${p.name} entfernen`}
-										onclick={() => openDeleteParticipant(p)}><Trash2 /></Button
-									>
-								</div>
-							</Table.Cell>
-						{/if}
-					</Table.Row>
-				{/each}
-			</DataTable>
+				{base}
+				startsOn={action.startsOn}
+				{canEdit}
+				{showPayments}
+				description={paymentSummary}
+				{canOpenInvoices}
+				{canExportSheets}
+				{sheetsBusy}
+				onadd={openAddParticipant}
+				onedit={openEditParticipant}
+				ondelete={openDeleteParticipant}
+				onsheets={openSheets}
+				onchanged={refreshAfterParticipant}
+			/>
 		</Tabs.Content>
 
 		<Tabs.Content value="accounting">

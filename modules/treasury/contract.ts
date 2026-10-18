@@ -1,13 +1,13 @@
 /**
  * Vertrag der Dienste, die die Kasse anderen Modulen anbietet (`ModuleDefinition.provides`).
- * `actions` nutzt ihn als optionale Abhaengigkeit: `core.modules.useOptional<TreasuryService>('treasury', 'actions')`.
+ * `actions` nutzt ihn als optionale Abhängigkeit: `core.modules.useOptional<TreasuryService>('treasury', 'actions')`.
  */
 export interface ActionContributions {
 	/** Rechnungen (nicht storniert) mit Posten dieser Aktion */
 	invoiceCount: number;
-	/** Soll nach Ermaessigungen */
+	/** Soll nach Ermäßigungen */
 	dueCents: number;
-	/** Tatsaechlich eingegangene, zugeordnete Zahlungen */
+	/** Tatsächlich eingegangene, zugeordnete Zahlungen */
 	paidCents: number;
 	openCents: number;
 }
@@ -17,11 +17,11 @@ export interface ParticipantPayment {
 	participantId: string;
 	invoiceId: string;
 	invoiceNumber: string;
-	/** Soll nach Ermaessigung */
+	/** Soll nach Ermäßigung */
 	dueCents: number;
 	paidCents: number;
 	openCents: number;
-	/** `waived` = vollstaendig erlassen */
+	/** `waived` = vollständig erlassen */
 	status: 'paid' | 'partial' | 'open' | 'waived';
 	/** JJJJ-MM-TT */
 	dueOn: string | null;
@@ -29,7 +29,7 @@ export interface ParticipantPayment {
 }
 
 export interface TreasuryService {
-	/** `null`, wenn die Kasse fuer diese Aktion keine Rechnungen fuehrt */
+	/** `null`, wenn die Kasse für diese Aktion keine Rechnungen führt */
 	contributionsForAction(actionId: string): Promise<ActionContributions | null>;
 	/** Zahlstand je Teilnehmende*r (nur nicht stornierte Rechnungen aus der Aktion) */
 	participantPayments(actionId: string): Promise<ParticipantPayment[]>;
@@ -52,7 +52,7 @@ export interface RegistrationInvoice {
 	data: Uint8Array;
 	number: string;
 	totalCents: number;
-	/** Zahlungsangaben fuer die Bestaetigungsmail (Text bzw. HTML-Block) */
+	/** Zahlungsangaben für die Bestätigungsmail (Text bzw. HTML-Block) */
 	paymentText: string;
 	paymentHtml: string;
 }

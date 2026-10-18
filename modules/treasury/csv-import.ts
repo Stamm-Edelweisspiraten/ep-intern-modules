@@ -1,10 +1,10 @@
 /**
- * Kontoauszug-Import (CSV), rein: Parser, Spaltenerkennung (Sparkasse CSV-CAMT und gaengige
- * deutsche Exporte), Betrags-/Datumsformate und Duplikat-Schluessel.
+ * Kontoauszug-Import (CSV), rein: Parser, Spaltenerkennung (Sparkasse CSV-CAMT und gängige
+ * deutsche Exporte), Betrags-/Datumsformate und Duplikat-Schlüssel.
  */
 import type { ImportMapping } from './schemas';
 
-/** CSV nach RFC 4180 (Anfuehrungszeichen, doppelte Quotes, Zeilenumbrueche in Feldern). */
+/** CSV nach RFC 4180 (Anführungszeichen, doppelte Quotes, Zeilenumbrüche in Feldern). */
 export function parseCsv(text: string, delimiter: string): string[][] {
 	const s = text.replace(/^\ufeff/, '');
 	const rows: string[][] = [];
@@ -64,7 +64,7 @@ function pick(headers: string[], patterns: RegExp[]): string | null {
 	return null;
 }
 
-/** Schlaegt eine Spaltenzuordnung vor; `null`, wenn Datum oder Betrag fehlen. */
+/** Schlägt eine Spaltenzuordnung vor; `null`, wenn Datum oder Betrag fehlen. */
 export function guessMapping(
 	headers: string[],
 	sample: string[] | undefined,
@@ -108,7 +108,7 @@ export function guessMapping(
 	return { delimiter, date, amount, counterparty, purpose, iban, dateFormat, decimal };
 }
 
-/** Betrag in Cent; `null`, wenn unlesbar. Erlaubt Vorzeichen, Tausendertrenner, Waehrung. */
+/** Betrag in Cent; `null`, wenn unlesbar. Erlaubt Vorzeichen, Tausendertrenner, Währung. */
 export function parseAmount(raw: string, decimal: ImportMapping['decimal']): number | null {
 	let s = raw.replace(/[\s€]|EUR/gi, '');
 	let sign = 1;
@@ -157,7 +157,7 @@ export interface ParsedRow {
 	/** IBAN der Gegenpartei (Rohwert, nur zum Hashen) */
 	iban: string | null;
 	error: string | null;
-	/** Fachlicher Schluessel fuer Duplikate (vor dem Hashen) */
+	/** Fachlicher Schlüssel für Duplikate (vor dem Hashen) */
 	key: string | null;
 }
 
@@ -166,7 +166,7 @@ const clip = (v: string | undefined, max: number) => {
 	return s ? s.slice(0, max) : null;
 };
 
-/** Wendet die Zuordnung an. Gleiche Zeilen in einer Datei erhalten fortlaufende Schluessel. */
+/** Wendet die Zuordnung an. Gleiche Zeilen in einer Datei erhalten fortlaufende Schlüssel. */
 export function applyMapping(rows: string[][], mapping: ImportMapping): ParsedRow[] {
 	const [header, ...data] = rows;
 	if (!header) return [];

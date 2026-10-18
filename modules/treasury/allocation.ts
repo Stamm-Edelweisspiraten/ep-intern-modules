@@ -1,6 +1,6 @@
 /**
- * Zuordnung von Einnahmen zu Rechnungsposten (auch Sammelzahlungen fuer Geschwister) und die
- * Datengrundlage fuer Zuordnungsvorschlaege.
+ * Zuordnung von Einnahmen zu Rechnungsposten (auch Sammelzahlungen für Geschwister) und die
+ * Datengrundlage für Zuordnungsvorschläge.
  */
 import { sql } from 'drizzle-orm';
 import { errors, type Tx } from '$lib/sdk/server';
@@ -19,8 +19,8 @@ import { lineOpen, normalizeName, type MatchLine } from './logic';
 import { CONTRIBUTIONS_CATEGORY_ID, MEMBERSHIP_CATEGORY_ID, type OpenLine } from './schemas';
 
 /**
- * Ersetzt alle Zuordnungen einer Buchung. Prueft: Einnahme (keine Umbuchung), Summe ≤ Betrag,
- * je Posten keine Ueberzahlung, keine stornierten Rechnungen. Liefert betroffene Rechnungen.
+ * Ersetzt alle Zuordnungen einer Buchung. Prüft: Einnahme (keine Umbuchung), Summe ≤ Betrag,
+ * je Posten keine Überzahlung, keine stornierten Rechnungen. Liefert betroffene Rechnungen.
  */
 export async function replaceAllocations(
 	tx: Tx,
@@ -35,7 +35,7 @@ export async function replaceAllocations(
 	if (!t) throw errors.notFound('Buchung nicht gefunden');
 	const amount = num(t.amount_cents);
 	if (allocations.length && (amount <= 0 || t.transfer_id)) {
-		throw errors.conflict('Nur Einnahmen koennen Rechnungen zugeordnet werden');
+		throw errors.conflict('Nur Einnahmen können Rechnungen zugeordnet werden');
 	}
 	const merged = new Map<string, number>();
 	for (const a of allocations) merged.set(a.lineId, (merged.get(a.lineId) ?? 0) + a.amountCents);
@@ -94,7 +94,7 @@ export async function replaceAllocations(
 		);
 	}
 	if (merged.size) {
-		// Fehlende Kategorie/Aktion ergaenzen (nie ueberschreiben): Beitraege aus Aktionen
+		// Fehlende Kategorie/Aktion ergänzen (nie überschreiben): Beiträge aus Aktionen
 		const meta = await rows(
 			tx,
 			sql`SELECT DISTINCT coalesce(l.action_id, i.action_id) AS action_id, i.source
@@ -129,8 +129,8 @@ export async function replaceAllocations(
 }
 
 /**
- * Offene Posten (und die der Buchung `transactionId` bereits zugeordneten) mit Namen fuer
- * Auswahl und Vorschlaege. Laeuft selbst in Transaktion + Namensaufloesung danach.
+ * Offene Posten (und die der Buchung `transactionId` bereits zugeordneten) mit Namen für
+ * Auswahl und Vorschläge. Läuft selbst in Transaktion + Namensauflösung danach.
  */
 export async function loadMatchLines(transactionId?: string): Promise<{
 	open: OpenLine[];

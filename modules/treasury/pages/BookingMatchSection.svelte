@@ -29,7 +29,8 @@
 		payerId,
 		amounts = $bindable({}),
 		payableId = $bindable(null),
-		notify = $bindable(true)
+		notify = $bindable(true),
+		onpending
 	}: {
 		direction: 'income' | 'expense';
 		amountCents: number;
@@ -40,6 +41,8 @@
 		amounts?: Record<string, number>;
 		payableId?: string | null;
 		notify?: boolean;
+		/** Vorschläge werden gerade geladen bzw. stehen kurz bevor (Debounce) */
+		onpending?: (pending: boolean) => void;
 	} = $props();
 
 	let preview = $state<MatchPreview | null>(null);
@@ -62,6 +65,7 @@
 		};
 		if (!amountCents) {
 			untrack(() => {
+				onpending?.(false);
 				preview = null;
 				if (!touched) {
 					amounts = {};
@@ -70,6 +74,7 @@
 			});
 			return;
 		}
+		untrack(() => onpending?.(true));
 		const timer = setTimeout(() => void load(input), 400);
 		return () => clearTimeout(timer);
 	});
@@ -91,7 +96,10 @@
 				error = e instanceof ApiClientError ? e.message : 'Vorschläge konnten nicht geladen werden';
 			}
 		} finally {
-			if (mine === seq) loading = false;
+			if (mine === seq) {
+				loading = false;
+				onpending?.(false);
+			}
 		}
 	}
 
@@ -305,6 +313,10 @@
 						: 'Empfänger*in, Grund oder Aktion suchen …'}
 					aria-label="Offene Posten durchsuchen"
 					bind:value={search}
+					onkeydown={(e) => {
+						// Enter in der Suche speichert nicht die Buchung
+						if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) e.preventDefault();
+					}}
 				/>
 				{#if direction === 'income' && selectedCount > 1}
 					<Button variant="outline" size="sm" onclick={spread}>Betrag verteilen</Button>

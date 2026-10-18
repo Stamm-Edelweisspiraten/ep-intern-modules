@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { resetAreas, resetUsers } from './reset';
 import { addressEndpoints } from './address.endpoints';
 import { fieldEndpoints } from './fields.endpoints';
 import { membersService } from './fields.service';
@@ -8,6 +9,7 @@ import { groupEndpoints } from './groups.endpoints';
 import { groupImageEndpoints } from './group-image.endpoints';
 import { linkEndpoints } from './link.endpoints';
 import { listMemberSheets } from './sheets.service';
+import { principalsService } from './principals.service';
 import { sheetEndpoints } from './sheets.endpoints';
 import { memberEndpoints } from './members.endpoints';
 import { LINK_DEFAULT_ROLE } from './schemas';
@@ -72,7 +74,11 @@ export default defineModule({
 		]
 	},
 	/** Dienste für abhängige Module (Vertrag: `contract.ts`, Abruf: `core.modules.use`) */
-	provides: { ...membersService, listMemberSheets } as unknown as Record<string, unknown>,
+	provides: {
+		...membersService,
+		listMemberSheets,
+		...principalsService
+	} as unknown as Record<string, unknown>,
 	settings: [
 		{
 			key: 'members.address.photonUrl',
@@ -92,6 +98,8 @@ export default defineModule({
 		{ name: '0006_membership', sql: m0006 },
 		{ name: '0008_member_mail_prefs', sql: m0008 }
 	],
+	resetAreas,
+	resetUsers,
 	endpoints: [
 		// Vor `memberEndpoints`: `GET /members/sheet-columns` darf nicht von `/members/:id` abgefangen werden
 		...sheetEndpoints,

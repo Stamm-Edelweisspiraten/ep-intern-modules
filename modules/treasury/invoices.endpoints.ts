@@ -86,7 +86,7 @@ export interface LoadedInvoices {
 	summaries: InvoiceSummary[];
 }
 
-/** Rechnungen laden + Namen aufloesen + Summen berechnen */
+/** Rechnungen laden + Namen auflösen + Summen berechnen */
 export async function loadSummaries(where = sql`TRUE`): Promise<LoadedInvoices> {
 	const { raw, payers } = await mdb().transaction(async (tx) => ({
 		raw: await loadRawInvoices(tx, where),
@@ -144,7 +144,7 @@ async function detail(ctx: RequestContext, id: string) {
 	return toDetail(d, names, today(), canSeeRecipients(ctx), await listDocuments(id));
 }
 
-/** Pruefen, dass referenzierte Mitglieder/Aktionen existieren (vor der Transaktion) */
+/** Prüfen, dass referenzierte Mitglieder/Aktionen existieren (vor der Transaktion) */
 async function validateRefs(lines: { memberId: string | null; actionId: string | null }[]) {
 	const memberIds = [...new Set(lines.map((l) => l.memberId).filter(Boolean) as string[])];
 	const actionIds = [...new Set(lines.map((l) => l.actionId).filter(Boolean) as string[])];
@@ -298,7 +298,7 @@ async function openItems(
 
 // --- Zahler --------------------------------------------------------------------
 
-async function loadPayers(): Promise<Payer[]> {
+export async function loadPayers(): Promise<Payer[]> {
 	const { payers, links, summaries } = await (async () => {
 		const base = await mdb().transaction(async (tx) => ({
 			payers: await rows(
@@ -343,7 +343,7 @@ async function savePayer(tx: Tx, id: string, input: PayerInput) {
 			sql`SELECT member_id FROM payer_members WHERE member_id IN (${idList(input.memberIds)}) AND payer_id <> ${id}`
 		);
 		if (taken.length) {
-			throw errors.conflict('Mindestens ein Mitglied gehoert bereits zu einem anderen Zahler');
+			throw errors.conflict('Mindestens ein Mitglied gehört bereits zu einem anderen Zahler');
 		}
 	}
 	const bank = storeIban(input.iban);
@@ -495,16 +495,16 @@ export const invoiceEndpoints = [
 	{
 		method: 'PUT',
 		path: '/invoices/:id',
-		summary: 'Rechnung aendern (manuell: inkl. Posten; aus Aktionen: Empfaenger, Frist, Notiz)',
+		summary: 'Rechnung ändern (manuell: inkl. Posten; aus Aktionen: Empfänger, Frist, Notiz)',
 		description:
-			'Posten bereits (teil-)bezahlter Rechnungen lassen sich nicht mehr aendern (409); dafuer gibt es die Ermaessigung je Posten.',
+			'Posten bereits (teil-)bezahlter Rechnungen lassen sich nicht mehr ändern (409); dafür gibt es die Ermäßigung je Posten.',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
 			const raw = await request.json().catch(() => {
-				throw errors.badRequest('Ungueltiger JSON-Body');
+				throw errors.badRequest('Ungültiger JSON-Body');
 			});
 			const source = await mdb().transaction(async (tx) =>
 				String((await lockInvoice(tx, id)).source)
@@ -539,7 +539,7 @@ export const invoiceEndpoints = [
 					if (!same) {
 						if ((await paidOf(tx, id)) > 0) {
 							throw errors.conflict(
-								'Die Rechnung ist bereits (teilweise) bezahlt. Posten koennen nicht mehr geaendert werden.'
+								'Die Rechnung ist bereits (teilweise) bezahlt. Posten können nicht mehr geändert werden.'
 							);
 						}
 						await tx.execute(sql`DELETE FROM invoice_lines WHERE invoice_id = ${id}`);
@@ -562,7 +562,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/invoices/:id',
-		summary: 'Manuelle Rechnung ohne Zahlungen loeschen',
+		summary: 'Manuelle Rechnung ohne Zahlungen löschen',
 		tags: TAGS,
 		permission: 'treasury.invoice.delete',
 		params: idParams,
@@ -572,11 +572,11 @@ export const invoiceEndpoints = [
 				const cur = await lockInvoice(tx, id);
 				if (cur.source !== 'manual') {
 					throw errors.conflict(
-						'Rechnungen aus Aktionen oder Jahresbeitraegen werden storniert, nicht geloescht'
+						'Rechnungen aus Aktionen oder Jahresbeiträgen werden storniert, nicht gelöscht'
 					);
 				}
 				if ((await paidOf(tx, id)) > 0) {
-					throw errors.conflict('Bezahlte Rechnungen koennen nur storniert werden');
+					throw errors.conflict('Bezahlte Rechnungen können nur storniert werden');
 				}
 				await tx.execute(sql`DELETE FROM invoices WHERE id = ${id}`);
 			});
@@ -611,7 +611,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'POST',
 		path: '/invoices/:id/reactivate',
-		summary: 'Stornierung zuruecknehmen',
+		summary: 'Stornierung zurücknehmen',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -637,7 +637,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'PUT',
 		path: '/invoices/:id/lines/:lineId',
-		summary: 'Posten: Ermaessigung/Erlass und Mitglied',
+		summary: 'Posten: Ermäßigung/Erlass und Mitglied',
 		tags: TAGS,
 		permission: EDIT,
 		params: lineParams,
@@ -674,7 +674,7 @@ export const invoiceEndpoints = [
 				metadata: { lineId, waivedCents: input.waivedCents }
 			});
 			await refreshSentDocuments(ctx, [id]);
-			// Ein Erlass kann die Rechnung vollstaendig begleichen → keine Bestaetigung (nichts gezahlt)
+			// Ein Erlass kann die Rechnung vollständig begleichen → keine Bestätigung (nichts gezahlt)
 			return detail(ctx, id);
 		}
 	},
@@ -746,7 +746,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'POST',
 		path: '/invoices/:id/remind',
-		summary: 'Zahlungserinnerung jetzt senden (naechste Stufe)',
+		summary: 'Zahlungserinnerung jetzt senden (nächste Stufe)',
 		tags: TAGS,
 		permission: 'treasury.invoice.send',
 		params: idParams,
@@ -755,7 +755,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'POST',
 		path: '/reminders/run',
-		summary: 'Faellige Erinnerungen jetzt versenden (wie der taegliche Job)',
+		summary: 'Fällige Erinnerungen jetzt versenden (wie der tägliche Job)',
 		tags: TAGS,
 		permission: 'treasury.invoice.send',
 		handler: ({ ctx }) => runReminderJob(ctx)
@@ -832,7 +832,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'GET',
 		path: '/actions',
-		summary: 'Forderungen je Aktion (Beitraege)',
+		summary: 'Forderungen je Aktion (Beiträge)',
 		tags: TAGS,
 		permission: VIEW,
 		handler: ({ ctx }) => actionReceivables(ctx)
@@ -840,8 +840,8 @@ export const invoiceEndpoints = [
 	{
 		method: 'PUT',
 		path: '/actions/:id/settings',
-		summary: 'Aktion ausschliessen bzw. Faelligkeit festlegen',
-		description: 'Eine feste Faelligkeit gilt fuer alle offenen Rechnungen der Aktion.',
+		summary: 'Aktion ausschließen bzw. Fälligkeit festlegen',
+		description: 'Eine feste Fälligkeit gilt für alle offenen Rechnungen der Aktion.',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -874,7 +874,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'GET',
 		path: '/payers',
-		summary: 'Zahler (Familien) mit Mitgliedern und offenen Betraegen',
+		summary: 'Zahler (Familien) mit Mitgliedern und offenen Beträgen',
 		tags: TAGS,
 		permission: VIEW,
 		handler: () => loadPayers()
@@ -882,7 +882,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'GET',
 		path: '/payers/suggestions',
-		summary: 'Vorschlaege fuer Zahler aus Geschwistern (gleiche E-Mail/Anschrift)',
+		summary: 'Vorschläge für Zahler aus Geschwistern (gleiche E-Mail/Anschrift)',
 		tags: TAGS,
 		permission: VIEW,
 		handler: async () => {
@@ -930,7 +930,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'PUT',
 		path: '/payers/:id',
-		summary: 'Zahler aendern',
+		summary: 'Zahler ändern',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -990,7 +990,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'DELETE',
 		path: '/payers/:id',
-		summary: 'Zahler loeschen (Rechnungen bleiben erhalten)',
+		summary: 'Zahler löschen (Rechnungen bleiben erhalten)',
 		tags: TAGS,
 		permission: EDIT,
 		params: idParams,
@@ -1007,7 +1007,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'GET',
 		path: '/members',
-		summary: 'Mitglieder suchen (Auswahl fuer Rechnungen/Zahler)',
+		summary: 'Mitglieder suchen (Auswahl für Rechnungen/Zahler)',
 		tags: TAGS,
 		permission: VIEW,
 		query: z.object({
@@ -1034,7 +1034,7 @@ export const invoiceEndpoints = [
 	{
 		method: 'GET',
 		path: '/action-refs',
-		summary: 'Aktionen suchen (Auswahl fuer Buchungen/Rechnungen)',
+		summary: 'Aktionen suchen (Auswahl für Buchungen/Rechnungen)',
 		tags: TAGS,
 		permission: VIEW,
 		query: z.object({ search: z.string().trim().max(100).optional() }),

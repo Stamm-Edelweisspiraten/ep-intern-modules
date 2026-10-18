@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import { Button } from '$lib/components/ui/button';
 	import Loader from '@lucide/svelte/icons/loader-circle';
 	import { Label } from '$lib/components/ui/label';
@@ -31,9 +30,6 @@
 		onapply?: () => void;
 		disabled?: boolean;
 	} = $props();
-
-	/** Nur mobil relevant: Zusammenfassung unten aufklappen */
-	let expanded = $state(false);
 
 	const showSubsidy = $derived(includeSubsidy && !!subsidy);
 	const noPayers = $derived(result.payingParticipants <= 0);
@@ -78,16 +74,14 @@
 	);
 </script>
 
-<div
-	class="bg-card fixed inset-x-0 bottom-0 z-30 rounded-t-xl border-t shadow-lg lg:sticky lg:top-4 lg:z-auto lg:rounded-xl lg:border lg:shadow-none"
+<!-- Ziel der Live-Leiste unten (`CalculationTab`): `id` + `tabindex` für Scrollen/Fokus -->
+<section
+	id="calc-summary"
+	tabindex="-1"
+	aria-label="Zusammenfassung der Kalkulation"
+	class="bg-card scroll-mt-4 rounded-xl border focus-visible:outline-none lg:sticky lg:top-4"
 >
-	<button
-		type="button"
-		class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left lg:pt-4 lg:pointer-events-none lg:cursor-default"
-		aria-expanded={expanded}
-		aria-controls="calc-summary-body"
-		onclick={() => (expanded = !expanded)}
-	>
+	<div class="flex w-full items-center justify-between gap-3 px-4 pt-4 pb-2.5">
 		<span class="flex flex-col">
 			<span class="text-muted-foreground text-xs">Beitrag Teilnehmende (empfohlen)</span>
 			<span class="text-2xl font-semibold tabular-nums">
@@ -101,18 +95,8 @@
 				</span>
 			{/if}
 		</span>
-		<ChevronUp
-			class={['size-5 transition-transform lg:hidden', expanded && 'rotate-180']}
-			aria-hidden="true"
-		/>
-	</button>
-	<div
-		id="calc-summary-body"
-		class={[
-			'max-h-[60vh] flex-col gap-3 overflow-y-auto px-4 pb-4 lg:flex lg:max-h-none lg:overflow-visible',
-			expanded ? 'flex' : 'hidden'
-		]}
-	>
+	</div>
+	<div class="flex flex-col gap-3 px-4 pb-4">
 		{#if noPayers}
 			<p class="text-muted-foreground text-sm">
 				Trage mindestens eine zahlende Person ein, um den Beitrag zu berechnen.
@@ -159,4 +143,4 @@
 			<CostBar {segments} format={formatEuro} />
 		{/if}
 	</div>
-</div>
+</section>

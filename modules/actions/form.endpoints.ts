@@ -161,7 +161,7 @@ async function loadById(tx: Tx, id: string): Promise<Loaded> {
 	return { form: row ? toFormRow(row) : null, action, ...(await counts(tx, id)) };
 }
 
-/** Kontodaten fuer Anmeldetexte: bei aktiver Kasse aus deren Einstellungen, sonst aus `actions.bank.*` */
+/** Kontodaten für Anmeldetexte: bei aktiver Kasse aus deren Einstellungen, sonst aus `actions.bank.*` */
 async function readSettings() {
 	const s = await core.settings.getMany(SETTING_KEYS);
 	const s1 = (k: string) => (typeof s[k] === 'string' ? (s[k] as string) : '');
@@ -235,7 +235,7 @@ async function configFor(
 	return toConfig(loaded, await readSettings());
 }
 
-// --- Oeffentlich ------------------------------------------------------------
+// --- Öffentlich ------------------------------------------------------------
 
 const NOT_AVAILABLE = 'Anmeldung nicht verfügbar';
 
@@ -283,7 +283,7 @@ function toPublicForm(
 }
 
 const MEMBERS_MODULE = 'members';
-/** Dienste des Moduls `members` (harte Abhaengigkeit); Aufruf immer AUSSERHALB von Transaktionen */
+/** Dienste des Moduls `members` (harte Abhängigkeit); Aufruf immer AUSSERHALB von Transaktionen */
 const membersService = () => core.modules.use<MembersService>(MEMBERS_MODULE, MODULE_ID);
 
 const MEMBER_REQUIRED = 'Bitte wähle das Mitglied, das angemeldet werden soll.';
@@ -295,7 +295,7 @@ async function accountEmail(ctx: RequestContext): Promise<string | null> {
 	return u?.email ?? null;
 }
 
-/** Mit dem Konto verknuepfte Mitglieder inkl. Vorbelegung (leer ohne Session). */
+/** Mit dem Konto verknüpfte Mitglieder inkl. Vorbelegung (leer ohne Session). */
 async function memberOptions(
 	ctx: RequestContext,
 	actionId: string,
@@ -359,7 +359,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 	const status = computeFormStatus(form, loaded.participantCount);
 	if (status !== 'open') throw errors.conflict(STATUS_CONFLICT_MESSAGES[status]);
 
-	// Anmeldung mit Mitglied: Konto und Verknuepfung pruefen (Core-/Modul-Dienste vor der Transaktion)
+	// Anmeldung mit Mitglied: Konto und Verknüpfung prüfen (Core-/Modul-Dienste vor der Transaktion)
 	let member: LinkedMemberData | null = null;
 	let accountMail: string | null = null;
 	if (input.memberId) {
@@ -375,7 +375,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 		...form.definition,
 		fields: form.definition.fields.filter((f) => !f.hidden)
 	};
-	// Mit Mitglied kommen Stammdaten vom Server (Client-Werte dafuer werden nicht gelesen)
+	// Mit Mitglied kommen Stammdaten vom Server (Client-Werte dafür werden nicht gelesen)
 	const validated = validateFormValues(member ? withoutIdentityFields(def) : def, input.values);
 	if (!validated.ok) throw errors.validation(validated.errors);
 	const values: FormValues = member
@@ -401,7 +401,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 
 	try {
 		await mdb().transaction(async (tx) => {
-			// Serialisiert gleichzeitige Anmeldungen derselben Aktion (Plaetze + Duplikate)
+			// Serialisiert gleichzeitige Anmeldungen derselben Aktion (Plätze + Duplikate)
 			await tx.execute(sql`SELECT id FROM actions WHERE id = ${loaded.id} FOR UPDATE`);
 			const { participantCount } = await counts(tx, loaded.id);
 			if (form.maxParticipants != null && participantCount >= form.maxParticipants) {
@@ -453,7 +453,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 	}
 	let emailSent = false;
 	if (m.email) {
-		// Kasse aktiv: Rechnung als PDF an die Bestaetigung haengen (Fehler verhindern die Mail nicht)
+		// Kasse aktiv: Rechnung als PDF an die Bestätigung hängen (Fehler verhindern die Mail nicht)
 		let invoice: Awaited<ReturnType<TreasuryService['invoiceForRegistration']>> = null;
 		try {
 			const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
@@ -496,7 +496,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 			metadata: { actionId: loaded.id, participantId, emailSent, memberLinked: !!member }
 		});
 	} catch {
-		/* Audit-Fehler duerfen die Anmeldung nicht verwerfen */
+		/* Audit-Fehler dürfen die Anmeldung nicht verwerfen */
 	}
 	const result: PublicSubmitResult = { name: m.name, emailSent, disclaimer, memberUpdated };
 	return result;
@@ -574,7 +574,7 @@ export const formEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/form/rotate-token',
-		summary: 'Anmeldelink erneuern (alter Link wird ungueltig)',
+		summary: 'Anmeldelink erneuern (alter Link wird ungültig)',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -664,7 +664,7 @@ export const formEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/public/forms/:token',
-		summary: 'Oeffentliches Anmeldeformular lesen',
+		summary: 'Öffentliches Anmeldeformular lesen',
 		tags: TAGS,
 		permission: null,
 		public: true,
@@ -682,7 +682,7 @@ export const formEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/public/forms/:token/submit',
-		summary: 'Anmeldung ueber den oeffentlichen Link absenden',
+		summary: 'Anmeldung über den öffentlichen Link absenden',
 		tags: TAGS,
 		permission: null,
 		public: true,
