@@ -1,9 +1,15 @@
 /**
  * Öffentliche Links (für Personen ohne Konto): Anlegen, Auflisten, Widerrufen; öffentliche Auflösung.
- * VERTRAG (Welle 0) – Implementierung: Welle 1.5. Signaturen nicht ändern.
+ * VERTRAG (Welle 0) – Implementierung: Welle 1.5, Umbau 0003 (Link-Arten, wieder abrufbare URL, öffentlicher Upload).
  *
  * Sicherheit:
- *   - Token: 32 Byte `crypto.getRandomValues` → base64url; gespeichert nur `core.crypto.forModule('files').hash(token)`.
+ *   - Token: 32 Byte `crypto.getRandomValues` → base64url; gesucht wird über `core.crypto.forModule('files').hash(token)`
+ *     (`token_hash`). Seit 0003 zusätzlich AES-256-GCM-verschlüsselt (`token_enc`), damit Verwaltende die URL später
+ *     wieder sehen/kopieren können; alte Links ohne `token_enc` liefern `url = null`.
+ *   - Link-Art (`mode`): `view` (ansehen), `upload` (nur hochladen, Inhalt bleibt verborgen), `view-upload`. Upload-Arten
+ *     nur für Ordner. Ansehen (`nodes`/`content`) ohne Ansehen-Art → 403, Upload ohne Upload-Art → 403.
+ *   - Öffentlicher Upload: nur in den Link-Ordner selbst, Eigentum und Kontingent = Eigentümer*in des Ordners,
+ *     `created_by = NULL`, `uploaded_by_name`/`uploaded_via_link` gesetzt; Link wird in jeder Speicher-Transaktion erneut geprüft.
  *   - Passwort: scrypt (`node:crypto`, Salt 16 Byte, Format `scrypt$<salt>$<hash>`), Vergleich `timingSafeEqual`.
  *   - Nach `unlock`: Zugriffstoken `<linkId>.<exp>.<sig>` mit `sig = hash('access:' + linkId + '.' + exp)`
  *     (Präfix trennt die Domäne vom Token-Hash), gültig `LINK_ACCESS_TTL_SEC`.
@@ -20,28 +26,38 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, isCoreError, type RequestContext, type Tx } from '$lib/sdk/server';
 import { requireNode, resolveAccess } from './access';
+import { normalizeName } from './names';
+import { storeIntoFolder } from './upload.service';
 import {
 	NODE_COLUMNS,
 	ancestorsOf,
 	mdb,
 	nodeRowOf,
 	rowsOf,
+	filesSettings,
 	toIso,
 	userRefs,
 	type NodeRow,
 	type Row
 } from './db';
-import { contentResponse, thumbResponse } from './storage';
+import { contentResponse, quotaUsed, storageLimits, thumbResponse } from './storage';
 import {
 	LINK_ACCESS_TTL_SEC,
 	MAX_LINKS_PER_NODE,
+	MAX_PUBLIC_UPLOAD_BYTES,
+	MAX_PUBLIC_UPLOAD_FILES,
 	MAX_UNLOCK_FAILURES,
 	MODULE_ID,
 	PERMISSIONS,
+	linkCanUpload,
+	linkCanView,
 	type Breadcrumb,
 	type LinkCreateInput,
+	type LinkMode,
+	type PublicUploadFields,
+	type PublicUploadResult,
 	type PublicLinkInfo,
 	type PublicListing,
 	type PublicNode,
@@ -135,7 +151,7 @@ function isRealDate(v: string): boolean {
 // ---------------------------------------------------------------------------
 
 /** Spalten für `share_links l`; `active`/`audit_due` in SQL, Datum als Text */
-const LINK_COLUMNS = sql`l.id, l.node_id, to_char(l.expires_on, 'YYYY-MM-DD') AS expires_on,
+const LINK_COLUMNS = sql`l.id, l.node_id, l.mode, l.token_enc, to_char(l.expires_on, 'YYYY-MM-DD') AS expires_on,
 	l.password_hash, l.created_by, l.created_at, l.revoked_at, l.last_access_at, l.access_count,
 	(l.revoked_at IS NULL AND (l.expires_on IS NULL OR l.expires_on >= CURRENT_DATE)) AS active,
 	(l.last_access_at IS NULL OR l.last_access_at < now() - interval '1 hour') AS audit_due`;
@@ -143,6 +159,8 @@ const LINK_COLUMNS = sql`l.id, l.node_id, to_char(l.expires_on, 'YYYY-MM-DD') AS
 interface LinkRow {
 	id: string;
 	nodeId: string;
+	mode: LinkMode;
+	tokenEnc: string | null;
 	expiresOn: string | null;
 	passwordHash: string | null;
 	createdBy: string | null;
@@ -158,10 +176,17 @@ const textOrNull = (v: unknown): string | null =>
 	v === null || v === undefined ? null : String(v);
 const bool = (v: unknown): boolean => v === true || v === 't' || v === 'true' || v === 1;
 
+/** Unbekannte Werte (sollte der CHECK verhindern) → `view` */
+function modeOf(v: unknown): LinkMode {
+	return v === 'upload' || v === 'view-upload' ? v : 'view';
+}
+
 function linkRowOf(r: Row): LinkRow {
 	return {
 		id: String(r.id),
 		nodeId: String(r.node_id),
+		mode: modeOf(r.mode),
+		tokenEnc: textOrNull(r.token_enc),
 		expiresOn: textOrNull(r.expires_on),
 		passwordHash: textOrNull(r.password_hash),
 		createdBy: textOrNull(r.created_by),
@@ -175,11 +200,24 @@ function linkRowOf(r: Row): LinkRow {
 	};
 }
 
-function toShareLink(row: LinkRow, users: Map<string, UserRef>, url: string | null): ShareLink {
+const publicUrl = (token: string) => `${core.app.origin()}${PUBLIC_PATH}/${token}`;
+
+/** URL aus `token_enc`; `null` bei alten Links oder nicht entschlüsselbarem Wert (z. B. geänderter Schlüssel) */
+function urlOf(row: LinkRow): string | null {
+	if (!row.tokenEnc) return null;
+	try {
+		return publicUrl(core.crypto.forModule(MODULE_ID).decrypt(row.tokenEnc));
+	} catch {
+		return null;
+	}
+}
+
+function toShareLink(row: LinkRow, users: Map<string, UserRef>): ShareLink {
 	return {
 		id: row.id,
 		nodeId: row.nodeId,
-		url,
+		mode: row.mode,
+		url: urlOf(row),
 		expiresOn: row.expiresOn,
 		hasPassword: row.passwordHash !== null,
 		active: row.active,
@@ -232,6 +270,13 @@ async function loadValidLink(tx: Tx, token: string): Promise<ValidLink> {
 		throw unavailable();
 	}
 	return { link, node };
+}
+
+/** Ansehen (Ordnerinhalt, Dateien) nur bei Link-Arten mit Ansehen */
+function assertCanView(link: LinkRow): void {
+	if (!linkCanView(link.mode)) {
+		throw errors.forbidden('Über diesen Link kann nur hochgeladen werden');
+	}
 }
 
 /** Zugriffstoken prüfen, wenn der Link ein Passwort hat */
@@ -299,13 +344,13 @@ export async function listLinks(ctx: RequestContext, nodeId: string): Promise<Sh
 		ctx,
 		rows.map((r) => r.createdBy)
 	);
-	return rows.map((r) => toShareLink(r, users, null));
+	return rows.map((r) => toShareLink(r, users));
 }
 
 /**
  * POST `/nodes/:id/links` (Bereichsberechtigte + `files.link.create`): Ablaufdatum nicht in der Vergangenheit (422),
- * max `MAX_LINKS_PER_NODE` aktive (409). Antwort enthält einmalig `url` = `<origin>/p/files/link/<token>`
- * (`core` liefert die Origin, siehe andere Module: `app.origin`).
+ * max `MAX_LINKS_PER_NODE` aktive (409), Upload-Arten nur für Ordner (422, Pfad `mode`).
+ * `url` = `<origin>/p/files/link/<token>` (auch später über `listLinks` abrufbar).
  */
 export async function createLink(
 	ctx: RequestContext,
@@ -319,13 +364,22 @@ export async function createLink(
 	if (expiresOn !== null && !isRealDate(expiresOn)) {
 		throw errors.validation([{ path: ['expiresOn'], message: 'Ungültiges Datum' }]);
 	}
+	const mode: LinkMode = input.mode ?? 'view';
 	const keys = await keysFor(ctx);
 	const passwordHash = input.password ? await hashPassword(input.password) : null;
 	const token = newToken();
+	const tokenEnc = core.crypto.forModule(MODULE_ID).encrypt(token);
 	const id = crypto.randomUUID();
 
 	const row = await mdb().transaction(async (tx) => {
-		assertCanManageShares(ctx, await requireNode(tx, ctx, nodeId, keys, 'edit'));
+		const access = await requireNode(tx, ctx, nodeId, keys, 'edit');
+		assertCanManageShares(ctx, access);
+		if (linkCanUpload(mode) && access.node.kind !== 'folder') {
+			throw errors.validation(
+				[{ path: ['mode'], message: 'Hochladen ist nur bei Ordnern möglich' }],
+				'Hochladen ist nur bei Ordnern möglich'
+			);
+		}
 		if (expiresOn !== null) {
 			const [r] = await rowsOf(tx, sql`SELECT (${expiresOn}::date < CURRENT_DATE) AS past`);
 			if (r && bool(r.past)) {
@@ -346,8 +400,10 @@ export async function createLink(
 			);
 		}
 		await tx.execute(
-			sql`INSERT INTO share_links (id, node_id, token_hash, expires_on, password_hash, created_by)
-				VALUES (${id}, ${nodeId}, ${hashValue(token)}, ${expiresOn}::date, ${passwordHash}, ${ctx.userId})`
+			sql`INSERT INTO share_links
+					(id, node_id, token_hash, token_enc, mode, expires_on, password_hash, created_by)
+				VALUES (${id}, ${nodeId}, ${hashValue(token)}, ${tokenEnc}, ${mode}, ${expiresOn}::date,
+					${passwordHash}, ${ctx.userId})`
 		);
 		const created = await loadLinkById(tx, id);
 		if (!created) throw errors.notFound();
@@ -357,9 +413,9 @@ export async function createLink(
 	const users = await userRefs(ctx, [row.createdBy]);
 	await core.audit.logFromContext(ctx, 'files.link.created', {
 		target: id,
-		metadata: { linkId: id, nodeId, hasPassword: passwordHash !== null, expiresOn }
+		metadata: { linkId: id, nodeId, mode, hasPassword: passwordHash !== null, expiresOn }
 	});
-	return toShareLink(row, users, `${core.app.origin()}${PUBLIC_PATH}/${token}`);
+	return toShareLink(row, users);
 }
 
 /**
@@ -389,7 +445,7 @@ export async function revokeLink(ctx: RequestContext, linkId: string): Promise<S
 			metadata: { linkId, nodeId: row.nodeId }
 		});
 	}
-	return toShareLink(row, users, null);
+	return toShareLink(row, users);
 }
 
 // ---------------------------------------------------------------------------
@@ -410,12 +466,26 @@ export async function publicInfo(
 	await auditAccess(ctx, link, true);
 	// Nach dem Freischalten (gültiges `t`) gibt es den Datei-Knoten auch bei Passwort-Links
 	const needsPassword = link.passwordHash !== null && !accessTokenValid(link.id, accessToken);
+	let upload: PublicLinkInfo['upload'] = null;
+	if (linkCanUpload(link.mode) && node.kind === 'folder') {
+		const limits = await storageLimits();
+		upload = {
+			maxFileBytes: Math.min(limits.maxFileBytes, MAX_PUBLIC_UPLOAD_BYTES),
+			maxFiles: MAX_PUBLIC_UPLOAD_FILES,
+			maxRequestBytes: MAX_PUBLIC_UPLOAD_BYTES,
+			allowedContentTypes: limits.allowedContentTypes
+		};
+	}
 	return {
 		name: node.name,
 		kind: node.kind,
+		mode: link.mode,
 		needsPassword,
 		expiresOn: link.expiresOn,
-		node: !needsPassword && node.kind === 'file' ? toPublicNode(node) : null
+		upload,
+		// Nur-Hochladen-Links verraten keinen Inhalt
+		node:
+			!needsPassword && linkCanView(link.mode) && node.kind === 'file' ? toPublicNode(node) : null
 	};
 }
 
@@ -481,6 +551,7 @@ export async function publicList(
 ): Promise<PublicListing> {
 	return mdb().transaction(async (tx) => {
 		const { link, node: linkNode } = await loadValidLink(tx, token);
+		assertCanView(link);
 		assertUnlocked(link, input.accessToken);
 
 		let path: NodeRow[];
@@ -528,6 +599,7 @@ export async function publicContent(
 	const counted = !input.thumb;
 	const { link, file } = await mdb().transaction(async (tx) => {
 		const valid = await loadValidLink(tx, token);
+		assertCanView(valid.link);
 		assertUnlocked(valid.link, input.accessToken);
 		const path = await nodeInLink(tx, valid.node, nodeId);
 		const target = path?.[path.length - 1];
@@ -546,4 +618,170 @@ export async function publicContent(
 		contentType: file.contentType ?? 'application/octet-stream',
 		download: input.download
 	});
+}
+
+const uploadNotAllowed = () => errors.forbidden('Über diesen Link kann nicht hochgeladen werden');
+/** Neutrale Meldungen im öffentlichen Upload: keine Belegungszahlen der Eigentümer*in, keine Link-Summen */
+const NO_SPACE = 'In diesem Ordner ist nicht genug Speicherplatz frei';
+const LINK_FULL = 'Über diesen Link kann nichts mehr hochgeladen werden';
+const noSpace = () => errors.tooLarge(NO_SPACE);
+const linkFull = () => errors.tooLarge(LINK_FULL);
+
+/** Kontingent-Fehler (`assertQuota`, 413 mit Belegungszahlen) erkennen; eigene neutrale Meldungen ausgenommen */
+function isQuotaError(e: unknown): boolean {
+	return (
+		isCoreError(e) &&
+		e.code === 'payload_too_large' &&
+		e.message !== LINK_FULL &&
+		/Speicherplatz/u.test(e.message)
+	);
+}
+
+/** Summe der Dateien, die über diesen Link hochgeladen wurden (inkl. Papierkorb; endgültig gelöschte fehlen) */
+async function linkUploadedBytes(tx: Tx, linkId: string): Promise<number> {
+	const [r] = await rowsOf(
+		tx,
+		sql`SELECT COALESCE(SUM(size_bytes), 0)::bigint AS used FROM nodes
+			WHERE uploaded_via_link = ${linkId} AND kind = 'file'`
+	);
+	return Number(r?.used ?? 0);
+}
+
+/** Audit des öffentlichen Uploads (NACH dem Speichern; ohne Namen der Person und ohne Dateinamen) */
+async function auditUpload(
+	ctx: RequestContext,
+	link: LinkRow,
+	count: number,
+	bytes: number
+): Promise<void> {
+	if (count === 0) return;
+	try {
+		await core.audit.log({
+			action: 'files.link.uploaded',
+			actor: AUDIT_ACTOR,
+			target: link.id,
+			ip: ctx.ip,
+			requestId: ctx.requestId,
+			metadata: { linkId: link.id, nodeId: link.nodeId, count, bytes }
+		});
+	} catch {
+		// Audit-Fehler dürfen den Upload nicht scheitern lassen
+	}
+}
+
+/**
+ * POST `/public/links/:token/upload` (multipart, Dateien in `files`): Dateien in den Link-Ordner hochladen.
+ * Link gültig (sonst 404), Link-Art mit Upload und Ordner (403), Passwort → gültiges `t` (403), mindestens
+ * eine Datei (422). Vorab für ALLE Dateien: Größe (413), Obergrenze des Links (`linkUploadBytes`, 413) und
+ * Kontingent der Eigentümer*in (413, neutrale Meldung ohne Belegungszahlen), damit ein Request nach
+ * Möglichkeit ganz oder gar nicht gespeichert wird. Die Link-Obergrenze prüft `recheck` je Datei erneut. Danach je Datei `storeIntoFolder`
+ * (Typ/Name/Kontingent erneut, Namenskonflikt → „Name (2)“). Scheitert eine spätere Datei trotzdem (z. B. Typ
+ * nicht erlaubt, paralleler Upload füllt das Kontingent, Link inzwischen widerrufen), bleiben die bereits
+ * gespeicherten Dateien erhalten und der Fehler wird weitergegeben; das Audit nennt dann nur die gespeicherten.
+ * Antwort bei „Hochladen“ (ohne Ansehen): angefragter, normalisierter Name statt „X (2)“ (kein Namens-Orakel).
+ */
+export async function publicUpload(
+	ctx: RequestContext,
+	token: string,
+	body: PublicUploadFields,
+	files: readonly File[]
+): Promise<PublicUploadResult> {
+	const { link, node } = await mdb().transaction((tx) => loadValidLink(tx, token));
+	if (!linkCanUpload(link.mode) || node.kind !== 'folder') throw uploadNotAllowed();
+	assertUnlocked(link, body.t);
+
+	if (files.length === 0) {
+		throw errors.validation(
+			[{ path: ['file'], message: 'Bitte mindestens eine Datei auswählen' }],
+			'Bitte mindestens eine Datei auswählen'
+		);
+	}
+	if (files.length > MAX_PUBLIC_UPLOAD_FILES) {
+		throw errors.validation(
+			[{ path: ['file'], message: `Höchstens ${MAX_PUBLIC_UPLOAD_FILES} Dateien auf einmal` }],
+			`Höchstens ${MAX_PUBLIC_UPLOAD_FILES} Dateien auf einmal`
+		);
+	}
+
+	const ownerId = node.ownerId;
+	const [{ maxFileBytes }, { quotaBytes, linkUploadBytes }] = await Promise.all([
+		storageLimits(),
+		filesSettings()
+	]);
+	const total = files.reduce((sum, f) => sum + f.size, 0);
+	for (const f of files) {
+		if (f.size > maxFileBytes) {
+			throw errors.tooLarge(
+				`Die Datei ist zu groß (höchstens ${Math.floor(maxFileBytes / (1024 * 1024))} MB)`
+			);
+		}
+	}
+	if (quotaBytes !== null || linkUploadBytes !== null) {
+		const { used, viaLink } = await mdb().transaction(async (tx) => ({
+			used: quotaBytes !== null ? await quotaUsed(tx, ownerId) : 0,
+			viaLink: linkUploadBytes !== null ? await linkUploadedBytes(tx, link.id) : 0
+		}));
+		if (linkUploadBytes !== null && viaLink + total > linkUploadBytes) throw linkFull();
+		if (quotaBytes !== null && used + total > quotaBytes) throw noSpace();
+	}
+
+	/** Größe der Datei, die gerade gespeichert wird (für die Link-Obergrenze im `recheck`) */
+	let pendingBytes = 0;
+	/**
+	 * In jeder Speicher-Transaktion: Link noch gültig, Art mit Upload, Ordner nicht im Papierkorb,
+	 * Link-Obergrenze inkl. der aktuellen Datei. Die Advisory-Sperre je Link serialisiert parallele
+	 * Uploads über denselben Link bis zum Ende der Transaktion (sonst könnten beide die Grenze unterschreiten).
+	 */
+	const recheck = async (tx: Tx): Promise<void> => {
+		if (linkUploadBytes !== null) {
+			await tx.execute(
+				sql`SELECT pg_advisory_xact_lock(hashtext(${'files:link-upload:' + link.id}))`
+			);
+		}
+		const current = await loadLinkById(tx, link.id);
+		if (!current || !current.active) throw unavailable();
+		if (!linkCanUpload(current.mode)) throw uploadNotAllowed();
+		const chain = await ancestorsOf(tx, current.nodeId);
+		const folder = chain[chain.length - 1];
+		if (!folder || folder.id !== current.nodeId || chain.some((n) => n.deletedAt !== null)) {
+			throw unavailable();
+		}
+		if (folder.kind !== 'folder' || folder.ownerId !== ownerId) throw unavailable();
+		if (linkUploadBytes !== null) {
+			if ((await linkUploadedBytes(tx, link.id)) + pendingBytes > linkUploadBytes) throw linkFull();
+		}
+	};
+
+	const uploaded: PublicUploadResult['uploaded'] = [];
+	let bytes = 0;
+	try {
+		for (const file of files) {
+			pendingBytes = file.size;
+			const stored = await storeIntoFolder({
+				parentId: link.nodeId,
+				ownerId,
+				bytes: new Uint8Array(await file.arrayBuffer()),
+				name: file.name,
+				contentType: file.type || null,
+				conflict: 'rename',
+				createdBy: null,
+				// `storeIntoFolder` bereinigt den Namen selbst (`cleanUploaderName`)
+				uploadedByName: body.name ?? null,
+				viaLinkId: link.id,
+				quotaBytes,
+				recheck
+			}).catch((e: unknown) => {
+				// Belegung der Eigentümer*in nicht verraten
+				if (isQuotaError(e)) throw noSpace();
+				throw e;
+			});
+			// Nur-Hochladen: den angefragten Namen zurückgeben, sonst verrät „X (2).pdf“, was im Ordner liegt
+			const name = linkCanView(link.mode) ? stored.name : normalizeName(file.name);
+			uploaded.push({ name, sizeBytes: stored.sizeBytes });
+			bytes += stored.sizeBytes;
+		}
+	} finally {
+		await auditUpload(ctx, link, uploaded.length, bytes);
+	}
+	return { uploaded };
 }

@@ -14,7 +14,7 @@
 	import Upload from '@lucide/svelte/icons/upload';
 	import X from '@lucide/svelte/icons/x';
 	import { Button } from '$lib/components/ui/button';
-	import { SPACE_LABELS, UPLOAD_CONCURRENCY, type FilesMeta, type Space } from '../schemas';
+	import { ROOT_LABEL, UPLOAD_CONCURRENCY, type FilesMeta } from '../schemas';
 	import { RAW_API } from './helpers';
 	import {
 		STATUS_LABELS,
@@ -27,21 +27,20 @@
 		sizeText,
 		summaryToast,
 		uploadError,
+		xhrUpload,
 		type EntryLike,
 		type QueueInput,
 		type UploadItem
 	} from './upload-queue';
 
 	let {
-		space,
 		parentId,
 		disabled = false,
 		meta,
 		onuploaded,
 		children
 	}: {
-		space: Space;
-		/** Zielordner (`null` = Wurzel des Bereichs) */
+		/** Zielordner (`null` = eigene Wurzel) */
 		parentId: string | null;
 		/** Kein Bearbeiten-Recht: Ablegen zeigt einen Hinweis statt hochzuladen */
 		disabled?: boolean;
@@ -80,7 +79,7 @@
 	let folderInput = $state<HTMLInputElement | null>(null);
 
 	let active = 0;
-	const xhrs = new Map<string, XMLHttpRequest>();
+	const aborts = new Map<string, AbortController>();
 	let batch = { ok: 0, failed: 0, rejected: 0 };
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastRefresh = 0;
@@ -91,7 +90,7 @@
 	const percent = $derived(Math.round(progress.fraction * 100));
 	const retryable = $derived(items.filter((i) => i.status === 'error' && !i.rejected));
 	const dragging = $derived(dragDepth > 0);
-	const targetLabel = $derived(parentId ? 'diesen Ordner' : `„${SPACE_LABELS[space]}“`);
+	const targetLabel = $derived(parentId ? 'diesen Ordner' : `„${ROOT_LABEL}“`);
 	const statusText = $derived.by(() => {
 		if (!items.length) return '';
 		const total = items.length;
@@ -111,8 +110,13 @@
 			return;
 		}
 		const wasBusy = progress.busy;
-		const checked = precheck(inputs, meta, space, space === 'personal' ? pendingBytes(items) : 0);
-		const added = makeItems(checked, { space, parentId });
+		// Kontingent nur in der eigenen Wurzel sicher bekannt; in (evtl. fremden) Ordnern prüft der Server
+		const own = parentId === null;
+		const checked = precheck(inputs, meta, {
+			checkQuota: own,
+			pendingBytes: own ? pendingBytes(items.filter((i) => i.parentId === null)) : 0
+		});
+		const added = makeItems(checked, { parentId });
 		if (!wasBusy) batch = { ok: 0, failed: 0, rejected: 0 };
 		batch.rejected += added.filter((i) => i.rejected).length;
 		items = [...items, ...added];
@@ -135,16 +139,15 @@
 	}
 
 	function upload(item: UploadItem) {
-		const xhr = new XMLHttpRequest();
-		xhrs.set(item.key, xhr);
+		const controller = new AbortController();
+		aborts.set(item.key, controller);
 		const form = new FormData();
-		form.append('space', item.space);
 		if (item.relativePath) form.append('relativePath', item.relativePath);
 		form.append('conflict', 'rename');
 		form.append('file', item.file, item.file.name);
 
 		const settle = (ok: boolean, status: number, body: unknown, aborted = false) => {
-			xhrs.delete(item.key);
+			aborts.delete(item.key);
 			active = Math.max(0, active - 1);
 			if (ok) {
 				item.status = 'done';
@@ -167,24 +170,12 @@
 			if (active === 0 && !items.some((i) => i.status === 'waiting')) finishBatch();
 		};
 
-		xhr.upload.onprogress = (e) => {
-			if (e.lengthComputable && e.total > 0) item.progress = Math.min(0.99, e.loaded / e.total);
-		};
-		xhr.onload = () => {
-			let body: unknown;
-			try {
-				body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-			} catch {
-				body = null;
-			}
-			settle(xhr.status >= 200 && xhr.status < 300, xhr.status, body);
-		};
-		xhr.onerror = () => settle(false, 0, null);
-		xhr.onabort = () => settle(false, 0, null, true);
-
-		xhr.open('POST', `${RAW_API}/nodes/${item.parentId ?? 'root'}/upload`);
-		xhr.setRequestHeader('accept', 'application/json');
-		xhr.send(form);
+		void xhrUpload(
+			`${RAW_API}/nodes/${item.parentId ?? 'root'}/upload`,
+			form,
+			(loaded, total) => (item.progress = Math.min(0.99, loaded / total)),
+			controller.signal
+		).then((r) => settle(r.status >= 200 && r.status < 300, r.status, r.body, r.aborted));
 	}
 
 	// ---------------------------------------------------------------- Neu laden (gebündelt)
@@ -232,7 +223,7 @@
 
 	function cancelItem(item: UploadItem) {
 		if (item.status === 'uploading') {
-			xhrs.get(item.key)?.abort();
+			aborts.get(item.key)?.abort();
 		} else if (item.status === 'waiting') {
 			item.status = 'error';
 			item.message = 'Abgebrochen';
@@ -243,7 +234,7 @@
 
 	function cancelAll() {
 		for (const i of items) if (i.status === 'waiting') cancelItem(i);
-		for (const x of [...xhrs.values()]) x.abort();
+		for (const c of [...aborts.values()]) c.abort();
 	}
 
 	function removeItem(key: string) {
@@ -343,7 +334,7 @@
 	onDestroy(() => {
 		destroyed = true;
 		if (refreshTimer) clearTimeout(refreshTimer);
-		for (const x of [...xhrs.values()]) x.abort();
+		for (const c of [...aborts.values()]) c.abort();
 	});
 </script>
 

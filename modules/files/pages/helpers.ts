@@ -130,12 +130,10 @@ export type ContentUrlFn = (
 export const internalUrl: ContentUrlFn = (node, opts) =>
 	opts.thumb ? `${RAW_API}/nodes/${node.id}/thumb` : contentUrl(node.id, !!opts.download);
 
-/** Bereiche der Seite (`?view=`) */
-export const VIEWS = ['personal', 'shared', 'shared-with-me', 'trash'] as const;
+/** Ansichten der Seite (`?view=`): Dateien (Standard) oder Papierkorb */
+export const VIEWS = ['files', 'trash'] as const;
 export type View = (typeof VIEWS)[number];
 export const VIEW_LABELS: Record<View, string> = {
-	personal: 'Meine Dateien',
-	shared: 'Stamm',
-	'shared-with-me': 'Mit mir geteilt',
+	files: 'Dateien',
 	trash: 'Papierkorb'
 };

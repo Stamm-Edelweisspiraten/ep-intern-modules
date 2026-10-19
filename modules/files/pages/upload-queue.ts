@@ -1,8 +1,10 @@
 /**
- * Reine Logik der Upload-Warteschlange im Modul `files` (ohne Svelte, ohne Netzwerk) – testbar.
- * Vorprüfung (Größe, Typ, Kontingent), Fortschritt, Fehlerauswertung, Ordner aus Drag & Drop lesen.
+ * Logik der Upload-Warteschlange im Modul `files` (ohne Svelte) – testbar.
+ * Vorprüfung (Größe, Typ, Kontingent), Fortschritt, Fehlerauswertung, Pakete für den öffentlichen Upload,
+ * XHR-Upload mit Fortschritt, Ordner aus Drag & Drop lesen.
+ * Genutzt von `UploadDropzone.svelte` (intern) und `PublicLinkPage.svelte` (Upload-Links).
  */
-import type { FilesMeta, Space } from '../schemas';
+import type { Quota } from '../schemas';
 
 export type UploadStatus = 'waiting' | 'uploading' | 'done' | 'error';
 
@@ -26,8 +28,7 @@ export interface UploadItem<F extends FileLike = File> {
 	name: string;
 	relativePath: string | null;
 	size: number;
-	/** Ziel zum Zeitpunkt des Einreihens (Navigation während des Uploads ändert es nicht) */
-	space: Space;
+	/** Zielordner zum Zeitpunkt des Einreihens (`null` = eigene Wurzel; Navigation ändert ihn nicht) */
 	parentId: string | null;
 	status: UploadStatus;
 	/** 0..1 */
@@ -74,33 +75,59 @@ export interface PrecheckResult<F extends FileLike = File> extends QueueInput<F>
 	problem: string | null;
 }
 
+/** Grenzen für die Vorprüfung – `FilesMeta` (intern) passt strukturell, öffentlich `PublicLinkInfo.upload` */
+export interface UploadLimits {
+	maxFileBytes: number;
+	allowedContentTypes: readonly string[];
+	/** Kontingent (nur mit `checkQuota`) */
+	quota?: Quota | null;
+	/** Öffentlicher Upload: Datei samt multipart-Aufschlag muss in einen Request passen */
+	maxRequestBytes?: number;
+}
+
+export interface PrecheckOptions {
+	/** Kontingent prüfen – nur, wenn das Ziel sicher die eigene Ablage ist (sonst prüft der Server) */
+	checkQuota?: boolean;
+	/** Bytes, die schon in der Warteschlange stehen (wartend/laufend) */
+	pendingBytes?: number;
+}
+
 /**
  * Vorprüfung im Browser (der Server prüft zusätzlich):
- * - größer als `maxFileBytes` → „zu groß (x, max y)“
+ * - größer als `maxFileBytes` (bzw. passt nicht in `maxRequestBytes`) → „Zu groß (x, max. y)“
  * - `allowedContentTypes` gesetzt, Browser-Typ bekannt und nicht erlaubt → „Dateityp nicht erlaubt“
- * - nur `personal` mit Grenze: ab der ersten Datei, die nicht mehr ins Kontingent passt, wird abgelehnt.
- *   `pendingBytes` = Bytes, die schon in der Warteschlange stehen (wartend/laufend).
- * Ohne `meta` wird nichts abgelehnt.
+ * - nur mit `checkQuota` und Grenze: ab der ersten Datei, die nicht mehr ins Kontingent passt, wird abgelehnt.
+ * Ohne `limits` wird nichts abgelehnt.
  */
 export function precheck<F extends FileLike>(
 	files: readonly QueueInput<F>[],
-	meta: FilesMeta | null,
-	space: Space,
-	pendingBytes = 0
+	limits: UploadLimits | null,
+	opts: PrecheckOptions = {}
 ): PrecheckResult<F>[] {
-	if (!meta) return files.map((f) => ({ ...f, problem: null }));
-	const limit = space === 'personal' ? meta.quota.limitBytes : null;
+	if (!limits) return files.map((f) => ({ ...f, problem: null }));
+	const quota = opts.checkQuota ? (limits.quota ?? null) : null;
+	const limit = quota ? quota.limitBytes : null;
 	let free =
-		limit === null
+		limit === null || !quota
 			? Infinity
-			: Math.max(0, limit - meta.quota.usedBytes - Math.max(0, pendingBytes));
+			: Math.max(0, limit - quota.usedBytes - Math.max(0, opts.pendingBytes ?? 0));
 	let quotaExceeded = false;
 	return files.map((f) => {
 		const { size, type } = f.file;
+		const maxFor =
+			limits.maxRequestBytes === undefined
+				? limits.maxFileBytes
+				: Math.max(
+						0,
+						Math.min(
+							limits.maxFileBytes,
+							limits.maxRequestBytes - MULTIPART_BASE_RESERVE - partReserve(f.file.name)
+						)
+					);
 		let problem: string | null = null;
-		if (size > meta.maxFileBytes) {
-			problem = `Zu groß (${sizeText(size)}, max. ${sizeText(meta.maxFileBytes)})`;
-		} else if (type && !typeAllowed(type, meta.allowedContentTypes)) {
+		if (size > maxFor) {
+			problem = `Zu groß (${sizeText(size)}, max. ${sizeText(maxFor)})`;
+		} else if (type && !typeAllowed(type, limits.allowedContentTypes)) {
 			problem = `Dateityp nicht erlaubt (${type})`;
 		} else if (quotaExceeded || size > free) {
 			quotaExceeded = true;
@@ -115,7 +142,7 @@ export function precheck<F extends FileLike>(
 /** Neue Einträge aus der Vorprüfung (abgelehnte direkt als Fehler) */
 export function makeItems<F extends FileLike>(
 	checked: readonly PrecheckResult<F>[],
-	target: { space: Space; parentId: string | null },
+	target: { parentId: string | null },
 	makeKey: () => string = () => crypto.randomUUID()
 ): UploadItem<F>[] {
 	return checked.map((c) => ({
@@ -124,7 +151,6 @@ export function makeItems<F extends FileLike>(
 		name: c.relativePath || c.file.name || 'Unbenannt',
 		relativePath: c.relativePath,
 		size: c.file.size,
-		space: target.space,
 		parentId: target.parentId,
 		status: c.problem ? 'error' : 'waiting',
 		progress: 0,
@@ -245,10 +271,160 @@ export function uploadError(status: number, body: unknown): { message: string; r
 						? 'Keine Berechtigung für diesen Ordner'
 						: status === 404
 							? 'Zielordner nicht gefunden'
-							: status === 503
-								? 'Dateispeicher nicht eingerichtet'
-								: 'Hochladen fehlgeschlagen';
+							: status === 429
+								? 'Gerade zu viele Uploads – bitte kurz warten'
+								: status === 503
+									? 'Dateispeicher nicht eingerichtet'
+									: 'Hochladen fehlgeschlagen';
 	return { message: fromServer ?? fallback, rejected: status === 413 || status === 422 };
+}
+
+/** Wie wird ein Fehler beim öffentlichen Upload behandelt? */
+export type PublicUploadErrorKind =
+	/** Meldung anzeigen, Dateien bleiben zum erneuten Versuch */
+	| 'retry'
+	/** Meldung anzeigen, erneuter Versuch sinnlos (413/422) */
+	| 'rejected'
+	/** Passwort erneut abfragen (403 bei Passwort-Link) */
+	| 'relock'
+	/** Link nicht (mehr) verfügbar (404) – neutrale Seite */
+	| 'unavailable';
+
+/**
+ * Fehler einer Antwort von `POST /public/links/:token/upload`:
+ * 413 → feste Meldung, 422 → Server-Meldung, 429 → „bitte kurz warten“, 403 → bei Passwort-Links neu
+ * freischalten, sonst „kann nicht hochgeladen werden“, 404 → neutral.
+ */
+export function publicUploadError(
+	status: number,
+	body: unknown,
+	needsPassword: boolean
+): { kind: PublicUploadErrorKind; message: string } {
+	const msg =
+		body && typeof body === 'object' && 'error' in body
+			? (body as { error?: { message?: unknown } }).error?.message
+			: undefined;
+	const fromServer = typeof msg === 'string' && msg.trim() ? msg.trim() : null;
+	if (status === 413)
+		return { kind: 'rejected', message: 'Zu groß bzw. kein Speicherplatz mehr frei' };
+	if (status === 422) {
+		return { kind: 'rejected', message: fromServer ?? 'Datei oder Angaben ungültig' };
+	}
+	if (status === 429) {
+		return { kind: 'retry', message: 'Gerade zu viele Uploads – bitte kurz warten' };
+	}
+	if (status === 404)
+		return { kind: 'unavailable', message: 'Dieser Link ist nicht (mehr) verfügbar.' };
+	if (status === 403) {
+		return needsPassword
+			? { kind: 'relock', message: 'Bitte gib das Passwort erneut ein.' }
+			: { kind: 'rejected', message: 'Über diesen Link kann nicht hochgeladen werden.' };
+	}
+	if (status === 0) {
+		return { kind: 'retry', message: 'Netzwerkfehler – Hochladen fehlgeschlagen' };
+	}
+	return { kind: 'retry', message: 'Hochladen fehlgeschlagen – bitte erneut versuchen' };
+}
+
+// ---------------------------------------------------------------------------
+// Pakete für den öffentlichen Upload (mehrere Dateien je Request)
+// ---------------------------------------------------------------------------
+
+/** Aufschlag je Request für Boundary-Ende und Textfelder (`name` ≤ 100 Zeichen, `t` ≤ 500) */
+export const MULTIPART_BASE_RESERVE = 4 * 1024;
+
+/** Aufschlag je Datei-Teil im multipart-Body (Kopfzeilen + Dateiname, UTF-8, ggf. maskiert) */
+export function partReserve(name: string): number {
+	return 512 + new TextEncoder().encode(name).length * 3;
+}
+
+/**
+ * Dateien in Requests aufteilen (Reihenfolge bleibt): je Paket ≤ `maxFiles` Dateien und Summe aus Größen +
+ * Aufschlägen ≤ `maxRequestBytes`. Eine Datei, die allein nicht passt, kommt in ein eigenes Paket (der Server
+ * lehnt sie dann mit 413 ab – die Vorprüfung sollte sie vorher aussortieren). Ergebnis: Indizes je Paket.
+ */
+export function planBatches(
+	files: readonly Pick<FileLike, 'name' | 'size'>[],
+	maxFiles: number,
+	maxRequestBytes: number
+): number[][] {
+	const per = Math.max(1, Math.floor(maxFiles));
+	const batches: number[][] = [];
+	let current: number[] = [];
+	let bytes = MULTIPART_BASE_RESERVE;
+	files.forEach((f, i) => {
+		const need = Math.max(0, f.size) + partReserve(f.name);
+		if (current.length && (current.length >= per || bytes + need > maxRequestBytes)) {
+			batches.push(current);
+			current = [];
+			bytes = MULTIPART_BASE_RESERVE;
+		}
+		current.push(i);
+		bytes += need;
+	});
+	if (current.length) batches.push(current);
+	return batches;
+}
+
+// ---------------------------------------------------------------------------
+// XHR-Upload mit Fortschritt (fetch kennt keinen Upload-Fortschritt)
+// ---------------------------------------------------------------------------
+
+export interface XhrResult {
+	/** HTTP-Status, `0` = Netzwerkfehler oder abgebrochen */
+	status: number;
+	/** JSON-Antwort (oder `null`) */
+	body: unknown;
+	aborted: boolean;
+}
+
+/**
+ * `POST url` mit `form` als multipart (Browser setzt Content-Type mit Boundary und Content-Length).
+ * `onProgress(loaded, total)` beim Hochladen; `signal` bricht ab. Wirft nie – Fehler stehen im Ergebnis.
+ */
+export function xhrUpload(
+	url: string,
+	form: FormData,
+	onProgress?: (loaded: number, total: number) => void,
+	signal?: AbortSignal
+): Promise<XhrResult> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) {
+			resolve({ status: 0, body: null, aborted: true });
+			return;
+		}
+		const xhr = new XMLHttpRequest();
+		let settled = false;
+		const done = (r: XhrResult) => {
+			if (settled) return;
+			settled = true;
+			signal?.removeEventListener('abort', onAbort);
+			resolve(r);
+		};
+		const onAbort = () => xhr.abort();
+		signal?.addEventListener('abort', onAbort);
+		xhr.upload.onprogress = (e) => {
+			if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded, e.total);
+		};
+		xhr.onload = () => {
+			let body: unknown;
+			try {
+				body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+			} catch {
+				body = null;
+			}
+			done({ status: xhr.status, body, aborted: false });
+		};
+		xhr.onerror = () => done({ status: 0, body: null, aborted: false });
+		xhr.onabort = () => done({ status: 0, body: null, aborted: true });
+		try {
+			xhr.open('POST', url);
+			xhr.setRequestHeader('accept', 'application/json');
+			xhr.send(form);
+		} catch {
+			done({ status: 0, body: null, aborted: false });
+		}
+	});
 }
 
 // ---------------------------------------------------------------------------

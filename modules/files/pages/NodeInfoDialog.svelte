@@ -1,12 +1,14 @@
 <script lang="ts">
 	// VERTRAG (Welle 0) – Props nicht ändern; Implementierung: Welle 4.4.
 	import Link from '@lucide/svelte/icons/link';
+	import Tent from '@lucide/svelte/icons/tent';
+	import Upload from '@lucide/svelte/icons/upload';
 	import Users from '@lucide/svelte/icons/users';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { SummaryList, type SummaryRow } from '$lib/components/layout';
-	import { SPACE_LABELS, type FileNode } from '../schemas';
+	import type { FileNode } from '../schemas';
 	import { formatBytes, formatDateTime, iconFor, thumbUrl } from './helpers';
 
 	let {
@@ -68,12 +70,24 @@
 				value: node.kind === 'folder' ? entriesLabel(node.childCount) : formatBytes(node.sizeBytes),
 				hint: node.kind === 'folder' ? 'Nur direkte Einträge, ohne Unterordner-Inhalte.' : undefined
 			},
-			{ label: 'Bereich', value: SPACE_LABELS[node.space] ?? node.space },
-			{ label: 'Angelegt von', value: node.createdBy?.name ?? 'Unbekannt' },
+			{ label: 'Gehört', value: node.own ? 'dir' : node.owner.name || 'Unbekannt' }
+		];
+		if (node.stamm) r.push({ label: 'Mit dem Stamm geteilt', value: 'Ja' });
+		if (node.viaLink) {
+			r.push({
+				label: 'Hochgeladen über Link',
+				value: node.uploadedByName
+					? `von „${node.uploadedByName}“ (eigene Angabe, nicht geprüft)`
+					: 'ohne Namensangabe'
+			});
+		} else {
+			r.push({ label: 'Angelegt von', value: node.createdBy?.name ?? 'Unbekannt' });
+		}
+		r.push(
 			{ label: 'Angelegt am', value: formatDateTime(node.createdAt) },
 			{ label: 'Geändert am', value: formatDateTime(node.updatedAt) },
 			{ label: 'Dein Zugriff', value: node.access === 'edit' ? 'Bearbeiten' : 'Nur ansehen' }
-		];
+		);
 		return r;
 	});
 
@@ -110,8 +124,20 @@
 				</div>
 				<div class="min-w-0 flex-1">
 					<p class="font-semibold break-words">{node.name}</p>
-					{#if node.shared || node.linked}
+					{#if node.shared || node.linked || node.stamm || node.viaLink}
 						<div class="mt-1 flex flex-wrap gap-1.5">
+							{#if node.stamm}
+								<Badge variant="secondary">
+									<Tent aria-hidden="true" />
+									Mit dem Stamm geteilt
+								</Badge>
+							{/if}
+							{#if node.viaLink}
+								<Badge variant="outline">
+									<Upload aria-hidden="true" />
+									Über Link hochgeladen
+								</Badge>
+							{/if}
 							{#if node.shared}
 								<Badge variant="secondary">
 									<Users aria-hidden="true" />

@@ -5,12 +5,14 @@
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Copy from '@lucide/svelte/icons/copy';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import Lock from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Upload from '@lucide/svelte/icons/upload';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -21,10 +23,15 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { ConfirmDialog, FormField } from '$lib/components/layout';
 	import {
+		LINK_MODES,
+		LINK_MODE_DESCRIPTIONS,
+		LINK_MODE_LABELS,
 		MAX_PASSWORD,
 		MIN_PASSWORD,
+		linkCanUpload,
 		linkCreateInput,
 		type FileNode,
+		type LinkMode,
 		type ShareLink
 	} from '../schemas';
 	import { API, errorText, formatDateTime } from './helpers';
@@ -48,14 +55,15 @@
 		{ value: 'never', label: 'Unbegrenzt' }
 	];
 
+	const UPLOAD_HINT = 'Hochgeladene Dateien zählen zu deinem Speicherplatz.';
 	const dateId = 'files-link-date';
 	const pwId = 'files-link-password';
-	const urlId = 'files-link-url';
 
 	let links = $state<ShareLink[]>([]);
 	let loading = $state(false);
 	let loadError = $state<string | null>(null);
 
+	let mode = $state<LinkMode>('view');
 	let expiry = $state<Expiry>('7');
 	let customDate = $state('');
 	let usePassword = $state(false);
@@ -66,9 +74,10 @@
 	let formError = $state<string | null>(null);
 	let busy = $state(false);
 
-	/** Gerade erstellter Link (Klartext-URL nur jetzt) */
-	let created = $state<{ url: string; hasPassword: boolean } | null>(null);
-	let copied = $state(false);
+	/** Zuletzt erstellter Link (Hervorhebung „Neu“ in der Liste) */
+	let createdId = $state<string | null>(null);
+	/** Link, dessen Adresse gerade kopiert wurde */
+	let copiedId = $state<string | null>(null);
 
 	let showInactive = $state(false);
 	let revokeTarget = $state<ShareLink | null>(null);
@@ -77,9 +86,10 @@
 
 	let dateEl = $state<HTMLInputElement | null>(null);
 	let passwordEl = $state<HTMLInputElement | null>(null);
-	let urlEl = $state<HTMLInputElement | null>(null);
 
 	const isFolder = $derived(node?.kind === 'folder');
+	/** Bei Dateien gibt es nur „Ansehen“ */
+	const effectiveMode = $derived<LinkMode>(isFolder ? mode : 'view');
 	const activeLinks = $derived(links.filter((l) => l.active));
 	const inactiveLinks = $derived(links.filter((l) => !l.active));
 
@@ -117,6 +127,7 @@
 	}
 
 	function resetForm() {
+		mode = 'view';
 		expiry = '7';
 		customDate = localDate(7);
 		usePassword = false;
@@ -145,8 +156,8 @@
 	$effect(() => {
 		if (open && !wasOpen) {
 			resetForm();
-			created = null;
-			copied = false;
+			createdId = null;
+			copiedId = null;
 			busy = false;
 			showInactive = false;
 			links = [];
@@ -174,6 +185,9 @@
 			} else if (field === 'password' && !passwordError) {
 				passwordError = msg;
 				hit = true;
+			} else if (field === 'mode' && !formError) {
+				formError = msg;
+				hit = true;
 			}
 		}
 		return hit;
@@ -194,7 +208,8 @@
 
 		const input = {
 			expiresOn: expiresOnValue(),
-			password: usePassword ? password : null
+			password: usePassword ? password : null,
+			mode: effectiveMode
 		};
 		if (expiry === 'custom' && !customDate) dateError = 'Bitte ein Datum wählen';
 		else if (expiry === 'custom' && customDate < localDate(0))
@@ -214,14 +229,17 @@
 				method: 'POST',
 				body: JSON.stringify(parsed.data)
 			});
-			created = { url: link.url ?? '', hasPassword: link.hasPassword };
-			copied = false;
-			toast.success('Link erstellt');
+			createdId = link.id;
+			copiedId = null;
+			toast.success('Link erstellt', {
+				description: link.hasPassword
+					? 'Er steht jetzt in der Liste. Teile das Passwort getrennt vom Link.'
+					: 'Er steht jetzt in der Liste.'
+			});
 			resetForm();
+			links = [link, ...links.filter((l) => l.id !== link.id)];
 			onchanged();
 			void loadLinks();
-			await tick();
-			urlEl?.select();
 		} catch (err) {
 			if (err instanceof ApiClientError && err.status === 403) {
 				formError = 'Du darfst keine öffentlichen Links anlegen.';
@@ -241,14 +259,15 @@
 		}
 	}
 
-	async function copyLink() {
-		if (!created?.url) return;
+	async function copyLink(l: ShareLink) {
+		if (!l.url) return;
 		try {
-			await navigator.clipboard.writeText(created.url);
-			copied = true;
+			await navigator.clipboard.writeText(l.url);
+			copiedId = l.id;
 			toast.success('Link kopiert');
 		} catch {
-			urlEl?.select();
+			const el = document.getElementById(`files-link-url-${l.id}`);
+			if (el instanceof HTMLInputElement) el.select();
 			toast.error('Kopieren nicht möglich – markiere den Link und kopiere ihn von Hand.');
 		}
 	}
@@ -278,11 +297,23 @@
 	}
 </script>
 
+{#snippet modeIcon(m: LinkMode, cls: string)}
+	{#if linkCanUpload(m)}
+		<Upload class={cls} aria-hidden="true" />
+	{:else}
+		<Eye class={cls} aria-hidden="true" />
+	{/if}
+{/snippet}
+
 {#snippet linkRow(l: ShareLink)}
 	{@const status = statusOf(l)}
 	<li class="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
-		<div class="min-w-0 space-y-1">
+		<div class="min-w-0 flex-1 space-y-1">
 			<div class="flex flex-wrap items-center gap-2">
+				<Badge variant="secondary" class="font-normal">
+					{@render modeIcon(l.mode, 'size-3')}
+					{LINK_MODE_LABELS[l.mode] ?? l.mode}
+				</Badge>
 				{#if status === 'active'}
 					<Badge
 						variant="outline"
@@ -294,6 +325,9 @@
 					<Badge variant="secondary">Widerrufen</Badge>
 				{:else}
 					<Badge variant="destructive">Abgelaufen</Badge>
+				{/if}
+				{#if createdId === l.id}
+					<Badge>Neu</Badge>
 				{/if}
 				<span class="text-sm">{expiryText(l)}</span>
 				{#if l.hasPassword}
@@ -312,6 +346,46 @@
 					</span>
 				{/if}
 			</div>
+			{#if status === 'active'}
+				{#if l.url}
+					<div class="flex flex-col gap-2 pt-1 sm:flex-row">
+						<Label for="files-link-url-{l.id}" class="sr-only">Link-Adresse</Label>
+						<Input
+							id="files-link-url-{l.id}"
+							value={l.url}
+							readonly
+							class="h-8 min-w-0 font-mono text-xs"
+							onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+						/>
+						<div class="flex shrink-0 gap-2">
+							<Button size="sm" variant="outline" onclick={() => copyLink(l)}>
+								{#if copiedId === l.id}
+									<Check class="size-4" aria-hidden="true" /> Kopiert
+								{:else}
+									<Copy class="size-4" aria-hidden="true" /> Kopieren
+								{/if}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								href={l.url}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<ExternalLink class="size-4" aria-hidden="true" /> Öffnen
+							</Button>
+						</div>
+					</div>
+				{:else}
+					<p class="flex items-start gap-1.5 pt-1 text-xs text-amber-800 dark:text-amber-300">
+						<TriangleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+						Link-Adresse nicht mehr abrufbar – neuen Link erstellen.
+					</p>
+				{/if}
+				{#if linkCanUpload(l.mode)}
+					<p class="text-xs text-muted-foreground">{UPLOAD_HINT}</p>
+				{/if}
+			{/if}
 			<p class="text-xs text-muted-foreground">
 				Erstellt am {formatDateTime(l.createdAt)}{l.createdBy ? ` von ${l.createdBy.name}` : ''}
 			</p>
@@ -343,180 +417,166 @@
 				Öffentlicher Link für „{node?.name ?? ''}“
 			</Dialog.Title>
 			<Dialog.Description>
-				Jede*r mit dem Link kann {isFolder ? 'den Ordner (mit Unterordnern)' : 'die Datei'} ansehen und
-				herunterladen – ohne Konto.
+				{isFolder
+					? 'Jede*r mit dem Link kann – je nach Art – den Ordner ansehen und herunterladen oder Dateien hineinladen, ganz ohne Konto.'
+					: 'Jede*r mit dem Link kann die Datei ansehen und herunterladen – ohne Konto.'}
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="grid gap-6">
-			{#if created}
-				<section
-					class="grid gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4"
-					aria-labelledby="files-link-created-title"
-				>
-					<h3 id="files-link-created-title" class="flex items-center gap-2 font-semibold">
-						<LinkIcon class="size-4" aria-hidden="true" /> Dein neuer Link
-					</h3>
-					<div class="grid gap-1.5">
-						<Label for={urlId} class="sr-only">Öffentlicher Link</Label>
-						<div class="flex flex-col gap-2 sm:flex-row">
-							<Input
-								id={urlId}
-								bind:ref={urlEl}
-								value={created.url}
-								readonly
-								class="font-mono text-sm"
-								onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-							/>
-							<Button onclick={copyLink} class="shrink-0">
-								{#if copied}
-									<Check class="size-4" aria-hidden="true" /> Kopiert
-								{:else}
-									<Copy class="size-4" aria-hidden="true" /> Kopieren
-								{/if}
-							</Button>
-						</div>
-					</div>
-					<p
-						class="flex items-start gap-2 rounded-md bg-amber-500/10 p-2 text-sm text-amber-800 dark:text-amber-300"
-						role="status"
-					>
-						<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-						<span>
-							<strong>Der Link wird nur jetzt angezeigt. Kopiere ihn jetzt.</strong>
-							Später lässt er sich nicht mehr abrufen.
-						</span>
-					</p>
-					{#if created.hasPassword}
-						<p class="flex items-start gap-2 text-sm text-muted-foreground">
-							<Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-							Teile das Passwort getrennt vom Link.
-						</p>
-					{/if}
-					<div>
-						<Button variant="ghost" size="sm" onclick={() => (created = null)}>
-							Weiteren Link erstellen
-						</Button>
-					</div>
-				</section>
-			{:else}
-				<form class="grid gap-4" onsubmit={submit} novalidate>
+			<form class="grid gap-4" onsubmit={submit} novalidate>
+				{#if isFolder}
 					<fieldset class="grid gap-2">
-						<legend class="mb-1.5 text-sm font-medium">Gültig für</legend>
-						<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Gültig für">
-							{#each EXPIRY_OPTIONS as opt (opt.value)}
-								<Button
+						<legend class="mb-1.5 text-sm font-medium">Art</legend>
+						<div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Art des Links">
+							{#each LINK_MODES as m (m)}
+								<button
 									type="button"
-									size="sm"
-									variant={expiry === opt.value ? 'default' : 'outline'}
 									role="radio"
-									aria-checked={expiry === opt.value}
+									aria-checked={mode === m}
+									class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 {mode ===
+									m
+										? 'border-primary bg-primary/5 ring-1 ring-primary'
+										: ''}"
 									onclick={() => {
-										expiry = opt.value;
-										dateError = null;
-										if (opt.value === 'custom') {
-											if (!customDate) customDate = localDate(7);
-											void tick().then(() => dateEl?.focus());
-										}
+										mode = m;
+										formError = null;
 									}}
 								>
-									{opt.label}
-								</Button>
+									<span class="flex items-center gap-1.5 text-sm font-medium">
+										{@render modeIcon(m, 'size-4')}
+										{LINK_MODE_LABELS[m]}
+									</span>
+									<span class="text-xs text-muted-foreground">{LINK_MODE_DESCRIPTIONS[m]}</span>
+								</button>
 							{/each}
 						</div>
-						{#if expiry === 'custom'}
-							<FormField label="Gültig bis einschließlich *" id={dateId} error={dateError}>
-								<Input
-									id={dateId}
-									type="date"
-									bind:ref={dateEl}
-									bind:value={customDate}
-									min={localDate(0)}
-									class="sm:max-w-48"
-									aria-invalid={dateError ? 'true' : undefined}
-									aria-describedby={dateError ? `${dateId}-error` : undefined}
-									oninput={() => (dateError = null)}
-								/>
-							</FormField>
-						{:else if expiry === 'never'}
-							<p class="text-xs text-muted-foreground">
-								Der Link bleibt gültig, bis du ihn widerrufst.
-							</p>
-						{:else}
-							<p class="text-xs text-muted-foreground">
-								Gültig bis einschließlich {formatDate(localDate(Number(expiry)))}.
-							</p>
+						{#if linkCanUpload(mode)}
+							<p class="text-xs text-muted-foreground">{UPLOAD_HINT}</p>
 						{/if}
 					</fieldset>
+				{/if}
 
-					<div class="grid gap-3">
-						<div class="flex items-center gap-3">
-							<Switch
-								id="files-link-use-password"
-								bind:checked={usePassword}
-								onCheckedChange={(v) => {
-									passwordError = null;
-									if (v) void tick().then(() => passwordEl?.focus());
+				<fieldset class="grid gap-2">
+					<legend class="mb-1.5 text-sm font-medium">Gültig für</legend>
+					<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Gültig für">
+						{#each EXPIRY_OPTIONS as opt (opt.value)}
+							<Button
+								type="button"
+								size="sm"
+								variant={expiry === opt.value ? 'default' : 'outline'}
+								role="radio"
+								aria-checked={expiry === opt.value}
+								onclick={() => {
+									expiry = opt.value;
+									dateError = null;
+									if (opt.value === 'custom') {
+										if (!customDate) customDate = localDate(7);
+										void tick().then(() => dateEl?.focus());
+									}
 								}}
-							/>
-							<Label for="files-link-use-password">Mit Passwort schützen</Label>
-						</div>
-						{#if usePassword}
-							<FormField
-								label="Passwort *"
-								id={pwId}
-								error={passwordError}
-								hint="Mindestens {MIN_PASSWORD} Zeichen."
 							>
-								<div class="flex gap-2">
-									<Input
-										id={pwId}
-										bind:ref={passwordEl}
-										bind:value={password}
-										type={showPassword ? 'text' : 'password'}
-										autocomplete="new-password"
-										maxlength={MAX_PASSWORD}
-										aria-invalid={passwordError ? 'true' : undefined}
-										aria-describedby={passwordError ? `${pwId}-error` : `${pwId}-hint`}
-										oninput={() => (passwordError = null)}
-									/>
-									<Button
-										type="button"
-										variant="outline"
-										size="icon"
-										class="shrink-0"
-										aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
-										aria-pressed={showPassword}
-										onclick={() => (showPassword = !showPassword)}
-									>
-										{#if showPassword}
-											<EyeOff class="size-4" aria-hidden="true" />
-										{:else}
-											<Eye class="size-4" aria-hidden="true" />
-										{/if}
-									</Button>
-								</div>
-							</FormField>
-						{/if}
+								{opt.label}
+							</Button>
+						{/each}
 					</div>
-
-					{#if formError}
-						<p role="alert" class="text-sm text-destructive">{formError}</p>
+					{#if expiry === 'custom'}
+						<FormField label="Gültig bis einschließlich *" id={dateId} error={dateError}>
+							<Input
+								id={dateId}
+								type="date"
+								bind:ref={dateEl}
+								bind:value={customDate}
+								min={localDate(0)}
+								class="sm:max-w-48"
+								aria-invalid={dateError ? 'true' : undefined}
+								aria-describedby={dateError ? `${dateId}-error` : undefined}
+								oninput={() => (dateError = null)}
+							/>
+						</FormField>
+					{:else if expiry === 'never'}
+						<p class="text-xs text-muted-foreground">
+							Der Link bleibt gültig, bis du ihn widerrufst.
+						</p>
+					{:else}
+						<p class="text-xs text-muted-foreground">
+							Gültig bis einschließlich {formatDate(localDate(Number(expiry)))}.
+						</p>
 					{/if}
+				</fieldset>
 
-					<div class="flex justify-end">
-						<Button type="submit" disabled={busy || !node}>
-							<LinkIcon class="size-4" aria-hidden="true" />
-							{busy ? 'Erstellt …' : 'Link erstellen'}
-						</Button>
+				<div class="grid gap-3">
+					<div class="flex items-center gap-3">
+						<Switch
+							id="files-link-use-password"
+							bind:checked={usePassword}
+							onCheckedChange={(v) => {
+								passwordError = null;
+								if (v) void tick().then(() => passwordEl?.focus());
+							}}
+						/>
+						<Label for="files-link-use-password">Mit Passwort schützen</Label>
 					</div>
-				</form>
-			{/if}
+					{#if usePassword}
+						<FormField
+							label="Passwort *"
+							id={pwId}
+							error={passwordError}
+							hint="Mindestens {MIN_PASSWORD} Zeichen."
+						>
+							<div class="flex gap-2">
+								<Input
+									id={pwId}
+									bind:ref={passwordEl}
+									bind:value={password}
+									type={showPassword ? 'text' : 'password'}
+									autocomplete="new-password"
+									maxlength={MAX_PASSWORD}
+									aria-invalid={passwordError ? 'true' : undefined}
+									aria-describedby={passwordError ? `${pwId}-error` : `${pwId}-hint`}
+									oninput={() => (passwordError = null)}
+								/>
+								<Button
+									type="button"
+									variant="outline"
+									size="icon"
+									class="shrink-0"
+									aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+									aria-pressed={showPassword}
+									onclick={() => (showPassword = !showPassword)}
+								>
+									{#if showPassword}
+										<EyeOff class="size-4" aria-hidden="true" />
+									{:else}
+										<Eye class="size-4" aria-hidden="true" />
+									{/if}
+								</Button>
+							</div>
+						</FormField>
+					{/if}
+				</div>
+
+				{#if formError}
+					<p role="alert" class="text-sm text-destructive">{formError}</p>
+				{/if}
+
+				<div class="flex justify-end">
+					<Button type="submit" disabled={busy || !node}>
+						<LinkIcon class="size-4" aria-hidden="true" />
+						{busy ? 'Erstellt …' : 'Link erstellen'}
+					</Button>
+				</div>
+			</form>
 
 			<section class="grid gap-2" aria-labelledby="files-link-list-title">
 				<h3 id="files-link-list-title" class="font-semibold">
-					Aktive Links{#if !loading && !loadError}
-						<span class="ml-1 font-normal text-muted-foreground">({activeLinks.length})</span>{/if}
+					{#if !loading && !loadError}
+						Aktive Links <span class="font-normal text-muted-foreground"
+							>({activeLinks.length})</span
+						>
+					{:else}
+						Aktive Links
+					{/if}
 				</h3>
 				{#if loading && links.length === 0}
 					<div class="grid gap-2">
@@ -577,9 +637,9 @@
 <ConfirmDialog
 	bind:open={revokeOpen}
 	title="Link widerrufen?"
-	description="Der Link funktioniert danach sofort nicht mehr. Wer ihn hat, kann {isFolder
-		? 'den Ordner'
-		: 'die Datei'} nicht mehr öffnen. Das lässt sich nicht rückgängig machen."
+	description={isFolder
+		? 'Der Link funktioniert danach sofort nicht mehr: Wer ihn hat, kann den Ordner nicht mehr öffnen und nichts mehr hochladen. Das lässt sich nicht rückgängig machen.'
+		: 'Der Link funktioniert danach sofort nicht mehr: Wer ihn hat, kann die Datei nicht mehr öffnen. Das lässt sich nicht rückgängig machen.'}
 	confirmLabel="Widerrufen"
 	destructive
 	onconfirm={revoke}

@@ -8,38 +8,36 @@ import { trashEndpoints } from './trash.endpoints';
 import { uploadEndpoints } from './upload.endpoints';
 import { resetAreas, resetUsers } from './reset';
 import { purgeExpired } from './trash.service';
-import { DEFAULT_QUOTA_MB, DEFAULT_TRASH_DAYS, PERMISSIONS, SETTING_KEYS } from './schemas';
+import {
+	DEFAULT_LINK_UPLOAD_MB,
+	DEFAULT_QUOTA_MB,
+	DEFAULT_TRASH_DAYS,
+	PERMISSIONS,
+	SETTING_KEYS
+} from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_link_lockout.sql?raw';
+import m0003 from './migrations/0003_single_view_upload_links.sql?raw';
 
-/** Dateien: eigene Ablage, Stammesordner, Freigaben an Principals, öffentliche Links, Papierkorb */
+/** Dateien: eine Ansicht (eigene + freigegebene), Freigaben an Principals, öffentliche Ansicht-/Upload-Links, Papierkorb */
 export default defineModule({
 	manifest: {
 		id: 'files',
 		name: 'Dateien',
 		description: 'Cloud-Ablage mit Ordnern, Vorschau, Freigaben und öffentlichen Links',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele */
 		optionalDependencies: ['members'],
 		/** Verknüpfungs-Konten bekommen eine eigene Ablage und sehen Freigegebenes */
 		defaultRoleGrants: { Mitglied: [PERMISSIONS.view] },
-		permissions: [
-			PERMISSIONS.view,
-			PERMISSIONS.sharedView,
-			PERMISSIONS.sharedEdit,
-			PERMISSIONS.linkCreate,
-			PERMISSIONS.manageAll
-		],
+		permissions: [PERMISSIONS.view, PERMISSIONS.linkCreate, PERMISSIONS.manageAll],
 		permissionDescriptions: {
 			[PERMISSIONS.view]:
-				'Eigene Ablage „Meine Dateien“ nutzen und für mich freigegebene Dateien sehen; Grundrecht für das Modul',
-			[PERMISSIONS.sharedView]: 'Stammesordner ansehen und herunterladen',
-			[PERMISSIONS.sharedEdit]:
-				'Im Stammesordner hochladen, Ordner anlegen, umbenennen, verschieben und löschen',
+				'Eigene Dateien ablegen und für mich (oder den ganzen Stamm) freigegebene Dateien sehen; Grundrecht für das Modul',
 			[PERMISSIONS.linkCreate]:
-				'Öffentliche Links für Personen ohne Konto anlegen (nur für Dateien mit Bearbeiten-Zugriff)',
-			[PERMISSIONS.manageAll]: 'Alle Dateien sehen und verwalten, auch die Ablagen anderer Personen'
+				'Öffentliche Links zum Ansehen oder Hochladen für Personen ohne Konto anlegen (nur für eigene Dateien und Ordner)',
+			[PERMISSIONS.manageAll]: 'Alle Dateien sehen und verwalten, auch die anderer Personen'
 		},
 		navigation: [
 			{
@@ -62,11 +60,18 @@ export default defineModule({
 			label: 'Dateien: Tage im Papierkorb bis zum endgültigen Löschen',
 			schema: z.number().int().min(1).max(365),
 			default: DEFAULT_TRASH_DAYS
+		},
+		{
+			key: SETTING_KEYS.linkUploadMb,
+			label: 'Dateien: Höchstmenge je Upload-Link (MB, 0 = unbegrenzt)',
+			schema: z.number().int().min(0).max(1_000_000),
+			default: DEFAULT_LINK_UPLOAD_MB
 		}
 	],
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_link_lockout', sql: m0002 }
+		{ name: '0002_link_lockout', sql: m0002 },
+		{ name: '0003_single_view_upload_links', sql: m0003 }
 	],
 	resetAreas,
 	resetUsers,

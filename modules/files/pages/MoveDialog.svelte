@@ -1,37 +1,35 @@
 <script lang="ts">
-	// VERTRAG (Welle 0) – Props nicht ändern; Implementierung: Welle 3.5.
+	// Zielordner wählen: ein Baum ab „Dateien“ (eigene Wurzel + freigegebene Ordner), Kinder werden beim Aufklappen geladen.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Folder from '@lucide/svelte/icons/folder';
 	import HardDrive from '@lucide/svelte/icons/hard-drive';
-	import Users from '@lucide/svelte/icons/users';
 	import { apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import {
-		SPACE_LABELS,
+		ROOT_LABEL,
 		type BulkResult,
 		type FileNode,
 		type FilesMeta,
-		type FolderListing,
-		type Space
+		type FolderListing
 	} from '../schemas';
 	import { API, compareNodes, errorText } from './helpers';
 
 	let {
 		open = $bindable(false),
 		nodes,
-		meta,
+		meta: _meta = null,
 		onmoved
 	}: {
 		open?: boolean;
-		/** Zu verschiebende Einträge (alle aus einem Bereich) */
+		/** Zu verschiebende Einträge */
 		nodes: FileNode[];
-		/** Rechte-Flags: Stamm als Ziel nur mit `can.sharedEdit` */
-		meta: FilesMeta | null;
+		/** Fähigkeiten des Aufrufers (Ziele bestimmt der Zugriff je Ordner) */
+		meta?: FilesMeta | null;
 		onmoved: () => void;
 	} = $props();
 
@@ -41,12 +39,14 @@
 		folders: FileNode[];
 	}
 	interface Target {
-		space: Space;
+		/** `null` = eigene Wurzel („Dateien“) */
 		id: string | null;
 		name: string;
+		/** Zielordner (für den Eigentümer-Hinweis), `null` bei der Wurzel */
+		node: FileNode | null;
 	}
 
-	const keyOf = (space: Space, id: string | null) => `${space}:${id ?? 'root'}`;
+	const keyOf = (id: string | null) => id ?? 'root';
 
 	let branches = $state<Record<string, Branch>>({});
 	let expanded = $state<Record<string, boolean>>({});
@@ -54,25 +54,30 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 
+	/** Zu verschiebende Ordner ausblenden – damit sind auch ihre Unterbäume nicht erreichbar */
 	const movingIds = $derived(new Set(nodes.map((n) => n.id)));
-	const roots = $derived<Space[]>(meta?.can.sharedEdit ? ['personal', 'shared'] : ['personal']);
-	const sourceSpace = $derived<Space>(nodes[0]?.space ?? 'personal');
 
 	/** Ziel = aktueller Ort aller Einträge → nichts zu tun */
 	const isCurrent = $derived(
-		!!target &&
-			nodes.length > 0 &&
-			nodes.every((n) => n.space === target!.space && n.parentId === target!.id)
+		!!target && nodes.length > 0 && nodes.every((n) => n.parentId === target!.id)
 	);
 	const canSubmit = $derived(!!target && !isCurrent && !busy && nodes.length > 0);
 
-	async function load(space: Space, id: string | null) {
-		const key = keyOf(space, id);
+	/** Hinweis, wenn der Zielordner einer anderen Person gehört */
+	const ownerHint = $derived.by(() => {
+		const t = target?.node;
+		if (!t || t.own) return null;
+		return nodes.length === 1
+			? `Der Eintrag gehört danach ${t.owner.name}.`
+			: `Die Einträge gehören danach ${t.owner.name}.`;
+	});
+
+	async function load(id: string | null) {
+		const key = keyOf(id);
 		branches[key] = { loading: true, error: null, folders: [] };
 		try {
-			const qs = new URLSearchParams({ space });
-			if (id) qs.set('parent', id);
-			const listing = await apiFetch<FolderListing>(`${API}/nodes?${qs}`);
+			const qs = id ? `?${new URLSearchParams({ parent: id }).toString()}` : '';
+			const listing = await apiFetch<FolderListing>(`${API}/nodes${qs}`);
 			branches[key] = {
 				loading: false,
 				error: null,
@@ -89,22 +94,21 @@
 		}
 	}
 
-	function toggle(space: Space, id: string | null) {
-		const key = keyOf(space, id);
+	function toggle(id: string | null) {
+		const key = keyOf(id);
 		const next = !expanded[key];
 		expanded[key] = next;
-		if (next && !branches[key]) void load(space, id);
+		if (next && !branches[key]) void load(id);
 	}
 
-	function select(space: Space, id: string | null, name: string) {
-		target = { space, id, name };
+	function select(id: string | null, name: string, node: FileNode | null) {
+		target = { id, name, node };
 		error = null;
 	}
 
-	const isSelected = (space: Space, id: string | null) =>
-		!!target && target.space === space && target.id === id;
+	const isSelected = (id: string | null) => !!target && target.id === id;
 
-	/** Beim Öffnen zurücksetzen; Wurzel des Herkunftsbereichs aufklappen */
+	/** Beim Öffnen zurücksetzen; Wurzel aufklappen */
 	let wasOpen = false;
 	$effect(() => {
 		if (open && !wasOpen) {
@@ -114,8 +118,7 @@
 				target = null;
 				error = null;
 				busy = false;
-				const start = roots.includes(sourceSpace) ? sourceSpace : 'personal';
-				toggle(start, null);
+				toggle(null);
 			});
 		}
 		wasOpen = open;
@@ -128,11 +131,7 @@
 		try {
 			const res = await apiFetch<BulkResult>(`${API}/nodes/move`, {
 				method: 'POST',
-				body: JSON.stringify({
-					ids: nodes.map((n) => n.id),
-					targetId: target.id,
-					space: target.space
-				})
+				body: JSON.stringify({ ids: nodes.map((n) => n.id), targetId: target.id })
 			});
 			const n = res?.affected ?? nodes.length;
 			toast.success(n === 1 ? '1 Eintrag verschoben' : `${n} Einträge verschoben`);
@@ -151,19 +150,19 @@
 </script>
 
 {#snippet row(
-	space: Space,
-	id: string | null,
+	node: FileNode | null,
 	name: string,
 	depth: number,
 	selectable: boolean,
-	hasChildren: boolean,
-	isRoot: boolean
+	hasChildren: boolean
 )}
-	{@const key = keyOf(space, id)}
+	{@const id = node?.id ?? null}
+	{@const key = keyOf(id)}
 	{@const isOpen = !!expanded[key]}
+	{@const isRoot = id === null}
 	<li>
 		<div
-			class="flex items-center gap-1 rounded-md pr-2 {isSelected(space, id)
+			class="flex items-center gap-1 rounded-md pr-2 {isSelected(id)
 				? 'bg-primary/10'
 				: 'hover:bg-muted'}"
 			style="padding-left: {depth * 1.25}rem"
@@ -175,7 +174,7 @@
 					class="size-7 shrink-0"
 					aria-expanded={isOpen}
 					aria-label={isOpen ? `${name} zuklappen` : `${name} aufklappen`}
-					onclick={() => toggle(space, id)}
+					onclick={() => toggle(id)}
 				>
 					{#if isOpen}
 						<ChevronDown class="size-4" aria-hidden="true" />
@@ -189,22 +188,21 @@
 			<button
 				type="button"
 				class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-				aria-pressed={isSelected(space, id)}
+				aria-pressed={isSelected(id)}
 				disabled={!selectable}
 				title={selectable ? undefined : 'Keine Berechtigung zum Bearbeiten'}
-				onclick={() => select(space, id, name)}
-				ondblclick={() => hasChildren && toggle(space, id)}
+				onclick={() => select(id, name, node)}
+				ondblclick={() => hasChildren && toggle(id)}
 			>
 				{#if isRoot}
-					{#if space === 'shared'}
-						<Users class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-					{:else}
-						<HardDrive class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-					{/if}
+					<HardDrive class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 				{:else}
 					<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 				{/if}
 				<span class="truncate {isRoot ? 'font-medium' : ''}">{name}</span>
+				{#if node && !node.own}
+					<span class="shrink-0 text-xs text-muted-foreground">von {node.owner.name}</span>
+				{/if}
 			</button>
 		</div>
 		{#if hasChildren && isOpen}
@@ -220,7 +218,7 @@
 						class="flex flex-wrap items-center gap-2 py-1 text-xs text-destructive"
 					>
 						<span role="alert">{branch.error}</span>
-						<Button variant="link" size="sm" class="h-auto p-0" onclick={() => load(space, id)}>
+						<Button variant="link" size="sm" class="h-auto p-0" onclick={() => load(id)}>
 							Erneut versuchen
 						</Button>
 					</li>
@@ -233,15 +231,7 @@
 					</li>
 				{:else}
 					{#each branch.folders as f (f.id)}
-						{@render row(
-							space,
-							f.id,
-							f.name,
-							depth + 1,
-							f.access === 'edit',
-							(f.childCount ?? 1) > 0,
-							false
-						)}
+						{@render row(f, f.name, depth + 1, f.access === 'edit', (f.childCount ?? 1) > 0)}
 					{/each}
 				{/if}
 			</ul>
@@ -261,17 +251,7 @@
 			class="max-h-[50vh] min-h-40 overflow-y-auto rounded-md border p-1"
 		>
 			<ul class="grid gap-0.5">
-				{#each roots as space (space)}
-					{@render row(
-						space,
-						null,
-						SPACE_LABELS[space],
-						0,
-						space === 'personal' || !!meta?.can.sharedEdit,
-						true,
-						true
-					)}
-				{/each}
+				{@render row(null, ROOT_LABEL, 0, true, true)}
 			</ul>
 		</nav>
 
@@ -281,9 +261,13 @@
 			{:else if isCurrent}
 				Die Einträge liegen bereits in „{target.name}“.
 			{:else}
-				Ziel: {SPACE_LABELS[target.space]}{target.id ? ` / ${target.name}` : ''}
+				Ziel: {target.id ? `„${target.name}“` : ROOT_LABEL}
 			{/if}
 		</p>
+
+		{#if ownerHint && !isCurrent}
+			<p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{ownerHint}</p>
+		{/if}
 
 		{#if error}
 			<p role="alert" class="text-sm text-destructive">{error}</p>

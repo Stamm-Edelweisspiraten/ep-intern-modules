@@ -1,5 +1,5 @@
 /**
- * Ordner/Dateien: Auflisten, „Für mich freigegeben“, Suche, Ordner anlegen, Einzelabruf, Umbenennen, Verschieben.
+ * Ordner/Dateien: Auflisten (eine Ansicht: eigene + freigegebene Einträge), Suche, Ordner anlegen, Einzelabruf, Umbenennen, Verschieben.
  * Dünne Endpunkte – Zugriffsprüfung und Logik in `nodes.service.ts` / `access.ts`.
  * Pfade: `/nodes/move` (POST) vor `/nodes/:id` (GET/PATCH) – Methoden unterscheiden sich ohnehin.
  */
@@ -12,8 +12,7 @@ import {
 	loadFileNode,
 	moveNodes,
 	renameNode,
-	searchNodes,
-	sharedWithMe
+	searchNodes
 } from './nodes.service';
 import { keysFor } from './shares.service';
 import {
@@ -36,24 +35,12 @@ export const nodesEndpoints = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/nodes',
-		summary: 'Inhalt eines Ordners (ohne `parent` = Wurzel des Bereichs)',
+		summary: 'Inhalt eines Ordners (ohne `parent` = Wurzel: eigene und mir freigegebene Einträge)',
 		tags,
 		permission: PERMISSIONS.view,
 		query: listQuery,
 		handler: async ({ ctx, query }): Promise<FolderListing> =>
-			listFolder(ctx, {
-				space: query.space,
-				parentId: query.parent ?? null,
-				ownerId: query.owner
-			})
-	}),
-	defineEndpoint({
-		method: 'GET',
-		path: '/shared-with-me',
-		summary: 'Für mich freigegebene Ordner und Dateien',
-		tags,
-		permission: PERMISSIONS.view,
-		handler: async ({ ctx }): Promise<FileNode[]> => sharedWithMe(ctx)
+			listFolder(ctx, { parentId: query.parent ?? null, ownerId: query.owner })
 	}),
 	defineEndpoint({
 		method: 'GET',
@@ -62,8 +49,7 @@ export const nodesEndpoints = [
 		tags,
 		permission: PERMISSIONS.view,
 		query: searchQuery,
-		handler: async ({ ctx, query }): Promise<SearchResult> =>
-			searchNodes(ctx, { q: query.q, space: query.space })
+		handler: async ({ ctx, query }): Promise<SearchResult> => searchNodes(ctx, { q: query.q })
 	}),
 	defineEndpoint({
 		method: 'POST',

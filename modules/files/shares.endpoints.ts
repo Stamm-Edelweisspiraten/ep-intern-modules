@@ -25,7 +25,7 @@ export const sharesEndpoints = [
 		path: '/nodes/:id/shares',
 		summary: 'Freigaben eines Ordners bzw. einer Datei ersetzen',
 		description:
-			'Ersetzt die komplette Liste (Stamm, Gruppe, Rolle, Mitglied, Benutzer*in; Stufe `read`/`edit`). Braucht Bearbeiten-Zugriff, sonst 404/403. Unbekannte oder doppelte Ziele → 422.',
+			'Ersetzt die komplette Liste (Stamm, Gruppe, Rolle, Mitglied, Benutzer*in; Stufe `read`/`edit`). Nur Eigentümer*in oder `files.file.manage-all` (ohne Zugriff 404, Bearbeiten über eine Freigabe reicht nicht → 403). Unbekannte oder doppelte Ziele → 422.',
 		tags,
 		permission: PERMISSIONS.view,
 		params: idParams,

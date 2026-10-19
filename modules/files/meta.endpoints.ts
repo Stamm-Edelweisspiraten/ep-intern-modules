@@ -2,7 +2,7 @@
  * Metadaten für die Oberfläche: Kontingent, Upload-Grenzen, Papierkorb-Dauer, Fähigkeiten des Aufrufers.
  */
 import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
-import { canManageAll, canSharedEdit, canSharedView } from './access';
+import { canManageAll } from './access';
 import { filesSettings, mdb } from './db';
 import { quotaUsed, storageLimits } from './storage';
 import { PERMISSIONS, type FilesMeta } from './schemas';
@@ -28,8 +28,6 @@ export const metaEndpoints = [
 				allowedContentTypes: limits.allowedContentTypes,
 				trashDays: settings.trashDays,
 				can: {
-					sharedView: canSharedView(ctx),
-					sharedEdit: canSharedEdit(ctx),
 					linkCreate: core.permissions.has(ctx, PERMISSIONS.linkCreate),
 					manageAll: canManageAll(ctx)
 				}

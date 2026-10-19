@@ -1,20 +1,30 @@
+<script module lang="ts">
+	/** Aktionen des Kontextmenüs auf leerer Fläche */
+	export type BackgroundAction = 'new-folder' | 'upload-files' | 'upload-folder';
+</script>
+
 <script lang="ts">
 	// Dateiliste des Moduls `files`: Raster- oder Listenansicht mit Auswahl, Menü je Eintrag,
-	// Tastaturbedienung und Drag & Drop zum Verschieben auf Ordner.
-	import { onMount, type Snippet } from 'svelte';
+	// Tastaturbedienung, Kontextmenü (Rechtsklick an der Mausposition, Long-Press auf Touch)
+	// und Drag & Drop zum Verschieben auf Ordner.
+	import { onMount, type Component, type Snippet } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
+	import FolderPlus from '@lucide/svelte/icons/folder-plus';
+	import FolderUp from '@lucide/svelte/icons/folder-up';
 	import Info from '@lucide/svelte/icons/info';
 	import Link from '@lucide/svelte/icons/link';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Upload from '@lucide/svelte/icons/upload';
 	import Users from '@lucide/svelte/icons/users';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
@@ -39,9 +49,11 @@
 		emptyTitle = 'Dieser Ordner ist leer',
 		emptyDescription = 'Ziehe Dateien hierher oder nutze „Hochladen“.',
 		emptyAction,
+		canCreate = false,
 		onopen,
 		onaction,
-		onmove
+		onmove,
+		onbackground
 	}: {
 		items: FileNode[];
 		view?: 'grid' | 'list';
@@ -55,12 +67,16 @@
 		emptyTitle?: string;
 		emptyDescription?: string;
 		emptyAction?: Snippet;
+		/** Im aktuellen Ordner anlegen/hochladen erlaubt (Kontextmenü auf leerer Fläche) */
+		canCreate?: boolean;
 		/** Doppelklick/Enter: Ordner öffnen bzw. Datei in der Vorschau */
 		onopen: (node: FileNode) => void;
 		/** Menü-/Tastatur-Aktion auf einem oder mehreren Einträgen */
 		onaction: (action: NodeAction, nodes: FileNode[]) => void;
 		/** Einträge per Drag & Drop auf einen Ordner gezogen (`targetId` = Ordner-ID) */
 		onmove: (ids: string[], targetId: string) => void;
+		/** Kontextmenü auf leerer Fläche (nur mit `canCreate`) */
+		onbackground?: (action: BackgroundAction) => void;
 	} = $props();
 
 	// ---------- Umgebung (Touch / schmale Ansicht) ----------
@@ -136,6 +152,8 @@
 	}
 
 	function onItemClick(e: MouseEvent, node: FileNode) {
+		// Loslassen nach einem Long-Press soll den Eintrag nicht zusätzlich öffnen
+		if (ctxOpen) return;
 		focusId = node.id;
 		if (isCoarse) {
 			onopen(node);
@@ -149,28 +167,134 @@
 		onopen(node);
 	}
 
-	/** Klick auf freie Fläche hebt die Auswahl auf */
-	function onBackgroundClick(e: MouseEvent) {
-		if (e.target === e.currentTarget && !e.ctrlKey && !e.metaKey && !e.shiftKey) selected = [];
-	}
+	// ---------- Menü (gemeinsame Aktionsliste für „…“-Menü und Kontextmenü) ----------
 
-	// ---------- Menü ----------
+	interface MenuEntry {
+		key: string;
+		label: string;
+		icon: Component;
+		run: () => void;
+		destructive?: boolean;
+		/** Trennlinie davor */
+		separator?: boolean;
+	}
 
 	let menuOpenId = $state<string | null>(null);
 
 	function run(action: NodeAction, nodes: FileNode[]) {
 		menuOpenId = null;
+		ctxOpen = false;
 		if (nodes.length) onaction(action, nodes);
 	}
 
-	function onContextMenu(e: MouseEvent, node: FileNode) {
-		e.preventDefault();
-		if (!selectedSet.has(node.id)) {
+	/**
+	 * Aktionen für einen oder mehrere Einträge: Öffnen/Umbenennen/Freigeben/Link/Details nur bei genau einem,
+	 * Herunterladen nur bei genau einer Datei, Verschieben/Papierkorb für alle mit Bearbeiten-Zugriff.
+	 */
+	function actionsFor(nodes: FileNode[]): MenuEntry[] {
+		const one = nodes.length === 1 ? nodes[0]! : null;
+		const editable = nodes.filter((n) => n.access === 'edit');
+		const entries: MenuEntry[] = [];
+		const add = (action: NodeAction, label: string, icon: Component, targets: FileNode[]) =>
+			entries.push({ key: action, label, icon, run: () => run(action, targets) });
+		if (one) add('open', 'Öffnen', FolderOpen, [one]);
+		if (one?.kind === 'file') add('download', 'Herunterladen', Download, [one]);
+		if (one?.access === 'edit') add('rename', 'Umbenennen', Pencil, [one]);
+		if (editable.length) add('move', 'Verschieben', FolderInput, editable);
+		// Freigaben/Links nur bereichsberechtigt (Bearbeiten über eine Freigabe reicht nicht)
+		if (one?.canShare) {
+			add('share', 'Freigeben', Share2, [one]);
+			if (canLink) add('link', 'Öffentlicher Link', Link, [one]);
+		}
+		if (one) add('info', 'Details', Info, [one]);
+		if (editable.length) {
+			entries.push({
+				key: 'trash',
+				label: 'In den Papierkorb',
+				icon: Trash2,
+				run: () => run('trash', editable),
+				destructive: true,
+				separator: entries.length > 0
+			});
+		}
+		return entries;
+	}
+
+	function backgroundActions(): MenuEntry[] {
+		if (!canCreate || !onbackground) return [];
+		const bg = (action: BackgroundAction) => () => {
+			ctxOpen = false;
+			onbackground?.(action);
+		};
+		return [
+			{ key: 'new-folder', label: 'Neuer Ordner', icon: FolderPlus, run: bg('new-folder') },
+			{ key: 'upload-files', label: 'Dateien hochladen', icon: Upload, run: bg('upload-files') },
+			{ key: 'upload-folder', label: 'Ordner hochladen', icon: FolderUp, run: bg('upload-folder') }
+		];
+	}
+
+	// ---------- Kontextmenü (Rechtsklick / Long-Press) ----------
+
+	let ctxOpen = $state(false);
+	/** Ziel des nächsten Öffnens: Eintrag-ID oder `null` = leere Fläche */
+	let ctxPending: string | null = null;
+	let ctxTitle = $state<string | null>(null);
+	let ctxEntries = $state<MenuEntry[]>([]);
+
+	function nodeIdAt(target: EventTarget | null): string | null {
+		const el = target instanceof Element ? target.closest('[data-node-id]') : null;
+		const id = el?.getAttribute('data-node-id') ?? null;
+		return id && items.some((n) => n.id === id) ? id : null;
+	}
+
+	/** Rechtsklick (läuft vor bits-ui; `preventDefault` verhindert das Öffnen) */
+	function onCtxMenu(e: MouseEvent) {
+		ctxPending = nodeIdAt(e.target);
+		if (ctxPending === null && backgroundActions().length === 0) {
+			e.preventDefault(); // kein leeres Menü
+			return;
+		}
+		if (ctxOpen) onCtxOpenChange(true); // schon offen: Inhalt für das neue Ziel
+	}
+
+	/** Touch/Stift: bits-ui öffnet nach einem Long-Press ohne `contextmenu`-Ereignis – Ziel vorab merken */
+	function onCtxPointerDown(e: PointerEvent) {
+		if (e.pointerType !== 'mouse') ctxPending = nodeIdAt(e.target);
+	}
+
+	function onCtxOpenChange(open: boolean) {
+		if (!open) return;
+		const id = ctxPending;
+		const node = id ? items.find((n) => n.id === id) : undefined;
+		if (!node) {
+			const bg = backgroundActions();
+			if (bg.length === 0) {
+				ctxOpen = false;
+				return;
+			}
+			ctxTitle = null;
+			ctxEntries = bg;
+			return;
+		}
+		// Rechtsklick auf einen nicht markierten Eintrag markiert nur ihn; sonst gilt die ganze Auswahl
+		let targets: FileNode[];
+		if (selectedSet.has(node.id)) {
+			targets = selectedNodes;
+		} else {
 			selected = [node.id];
 			anchorId = node.id;
+			targets = [node];
 		}
 		focusId = node.id;
-		menuOpenId = node.id;
+		menuOpenId = null;
+		ctxTitle = targets.length > 1 ? `${targets.length} Einträge ausgewählt` : null;
+		ctxEntries = actionsFor(targets);
+	}
+
+	/** Klick auf freie Fläche hebt die Auswahl auf */
+	function onBackgroundClick(e: MouseEvent) {
+		if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+		if (e.target === e.currentTarget || e.target === container) selected = [];
 	}
 
 	// ---------- Tastatur ----------
@@ -376,9 +500,14 @@
 </script>
 
 {#snippet badges(node: FileNode)}
-	{#if node.shared}
-		<span class="inline-flex text-muted-foreground" title="Freigegeben">
+	{#if node.stamm}
+		<span class="inline-flex text-muted-foreground" title="Mit dem ganzen Stamm geteilt">
 			<Users class="size-3.5" aria-hidden="true" />
+			<span class="sr-only">Mit dem ganzen Stamm geteilt</span>
+		</span>
+	{:else if node.shared}
+		<span class="inline-flex text-muted-foreground" title="Freigegeben">
+			<Share2 class="size-3.5" aria-hidden="true" />
 			<span class="sr-only">Freigegeben</span>
 		</span>
 	{/if}
@@ -388,10 +517,55 @@
 			<span class="sr-only">Öffentlicher Link aktiv</span>
 		</span>
 	{/if}
+	{#if node.viaLink}
+		{@const via = node.uploadedByName
+			? `Über Link hochgeladen von „${node.uploadedByName}“ (eigene Angabe)`
+			: 'Über Link hochgeladen'}
+		<span class="inline-flex text-muted-foreground" title={via}>
+			<Upload class="size-3.5" aria-hidden="true" />
+			<span class="sr-only">{via}</span>
+		</span>
+	{/if}
+{/snippet}
+
+<!-- „von …“ bei fremden Einträgen -->
+{#snippet ownerBadge(node: FileNode, extra: string)}
+	{#if !node.own}
+		<span
+			class={[
+				'inline-flex max-w-full min-w-0 items-center rounded bg-muted px-1.5 py-px text-xs text-muted-foreground',
+				extra
+			]}
+			title={`Gehört ${node.owner.name}`}
+		>
+			<span class="truncate">von {node.owner.name}</span>
+		</span>
+	{/if}
+{/snippet}
+
+{#snippet dropdownEntries(entries: MenuEntry[])}
+	{#each entries as entry (entry.key)}
+		{@const Icon = entry.icon}
+		{#if entry.separator}<DropdownMenu.Separator />{/if}
+		<DropdownMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
+			<Icon />
+			{entry.label}
+		</DropdownMenu.Item>
+	{/each}
+{/snippet}
+
+{#snippet contextEntries(entries: MenuEntry[])}
+	{#each entries as entry (entry.key)}
+		{@const Icon = entry.icon}
+		{#if entry.separator}<ContextMenu.Separator />{/if}
+		<ContextMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
+			<Icon />
+			{entry.label}
+		</ContextMenu.Item>
+	{/each}
 {/snippet}
 
 {#snippet menu(node: FileNode, triggerClass: string, tabbable: boolean)}
-	{@const edit = node.access === 'edit'}
 	<DropdownMenu.Root
 		bind:open={() => menuOpenId === node.id, (v) => (menuOpenId = v ? node.id : null)}
 	>
@@ -410,42 +584,7 @@
 			{/snippet}
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content align="end" class="w-52">
-			<DropdownMenu.Item onclick={() => run('open', [node])}>
-				<FolderOpen /> Öffnen
-			</DropdownMenu.Item>
-			{#if node.kind === 'file'}
-				<DropdownMenu.Item onclick={() => run('download', [node])}>
-					<Download /> Herunterladen
-				</DropdownMenu.Item>
-			{/if}
-			{#if edit}
-				<DropdownMenu.Item onclick={() => run('rename', [node])}>
-					<Pencil /> Umbenennen
-				</DropdownMenu.Item>
-				<DropdownMenu.Item onclick={() => run('move', [node])}>
-					<FolderInput /> Verschieben
-				</DropdownMenu.Item>
-			{/if}
-			<!-- Freigaben/Links nur bereichsberechtigt (Bearbeiten über eine Freigabe reicht nicht) -->
-			{#if node.canShare}
-				<DropdownMenu.Item onclick={() => run('share', [node])}>
-					<Share2 /> Freigeben
-				</DropdownMenu.Item>
-				{#if canLink}
-					<DropdownMenu.Item onclick={() => run('link', [node])}>
-						<Link /> Öffentlicher Link
-					</DropdownMenu.Item>
-				{/if}
-			{/if}
-			<DropdownMenu.Item onclick={() => run('info', [node])}>
-				<Info /> Details
-			</DropdownMenu.Item>
-			{#if edit}
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item variant="destructive" onclick={() => run('trash', [node])}>
-					<Trash2 /> In den Papierkorb
-				</DropdownMenu.Item>
-			{/if}
+			{@render dropdownEntries(actionsFor([node]))}
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 {/snippet}
@@ -462,235 +601,265 @@
 	</div>
 {/snippet}
 
-{#if view === 'grid'}
-	{#if loading && items.length === 0}
-		<div
-			class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
-			aria-busy="true"
-			aria-label="Lade Dateien"
-		>
-			{#each Array.from({ length: 12 }, (_, i) => i) as i (i)}
-				<div class="space-y-2 rounded-lg border p-2">
-					<Skeleton class="aspect-[4/3] w-full" />
-					<Skeleton class="h-4 w-3/4" />
-					<Skeleton class="h-3 w-1/2" />
-				</div>
-			{/each}
-		</div>
-	{:else if items.length === 0}
-		<EmptyState title={emptyTitle} description={emptyDescription}>
-			{#if emptyAction}{@render emptyAction()}{/if}
-		</EmptyState>
-	{:else}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			bind:this={container}
-			role="listbox"
-			tabindex="-1"
-			aria-multiselectable="true"
-			aria-label="Dateien und Ordner"
-			aria-busy={loading}
-			class="grid grid-cols-2 gap-3 transition-opacity select-none sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
-			class:opacity-60={loading}
-			onclick={onBackgroundClick}
-		>
-			{#each items as node (node.id)}
-				{@const Icon = iconFor(node.kind, node.contentType)}
-				{@const thumb = thumbOf(node)}
-				{@const isSel = selectedSet.has(node.id)}
-				{@const isActive = node.id === activeId}
-				<div
-					data-node-item
-					role="option"
-					aria-selected={isSel}
-					aria-label={`${node.name}, ${kindText(node)}`}
-					tabindex={isActive ? 0 : -1}
-					draggable={canDrag(node) ? 'true' : undefined}
-					class={[
-						'group relative flex min-w-0 cursor-default flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-						isSel && 'border-primary bg-primary/5 hover:bg-primary/10',
-						dropTargetId === node.id && 'ring-2 ring-primary',
-						dragIds?.includes(node.id) && 'opacity-50'
-					]}
-					onclick={(e) => onItemClick(e, node)}
-					ondblclick={() => onItemDblClick(node)}
-					oncontextmenu={(e) => onContextMenu(e, node)}
-					onkeydown={(e) => onItemKeydown(e, node)}
-					onfocus={() => (focusId = node.id)}
-					ondragstart={(e) => onDragStart(e, node)}
-					ondragend={onDragEnd}
-					ondragover={(e) => onDragOver(e, node)}
-					ondragleave={(e) => onDragLeave(e, node)}
-					ondrop={(e) => onDrop(e, node)}
-				>
-					<div
-						class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
-					>
-						{#if thumb}
-							<img
-								src={thumb}
-								alt=""
-								loading="lazy"
-								draggable="false"
-								class="size-full object-cover"
-								use:watchThumb
-							/>
-						{:else if node.kind === 'folder'}
-							<Icon class="size-14 text-primary/80" aria-hidden="true" />
-						{:else}
-							<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
-						{/if}
-						{@render selectBox(
-							node,
-							[
-								'absolute top-1.5 left-1.5 flex rounded-md bg-background/90 p-1 shadow-sm transition-opacity',
-								isSel || selected.length > 0 || isCoarse
-									? 'opacity-100'
-									: 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
-							].join(' ')
-						)}
-						<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<ContextMenu.Root bind:open={ctxOpen} onOpenChange={onCtxOpenChange}>
+	<ContextMenu.Trigger
+		oncontextmenu={onCtxMenu}
+		onpointerdown={onCtxPointerDown}
+		onclick={onBackgroundClick}
+	>
+		{#snippet child({ props })}
+			<!-- Fläche für das Kontextmenü (auch leerer Bereich unter der Liste) -->
+			<div {...props} class="min-h-64 pb-6 [-webkit-touch-callout:none]">
+				{#if view === 'grid'}
+					{#if loading && items.length === 0}
 						<div
-							class="absolute top-1.5 right-1.5"
-							onclick={(e) => e.stopPropagation()}
-							ondblclick={(e) => e.stopPropagation()}
+							class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+							aria-busy="true"
+							aria-label="Lade Dateien"
 						>
-							{@render menu(node, 'bg-background/90 shadow-sm hover:bg-background', isActive)}
+							{#each Array.from({ length: 12 }, (_, i) => i) as i (i)}
+								<div class="space-y-2 rounded-lg border p-2">
+									<Skeleton class="aspect-[4/3] w-full" />
+									<Skeleton class="h-4 w-3/4" />
+									<Skeleton class="h-3 w-1/2" />
+								</div>
+							{/each}
 						</div>
-					</div>
-					<div class="flex min-w-0 flex-1 flex-col gap-0.5 p-2">
-						<span
-							class="line-clamp-2 text-sm leading-snug font-medium break-words"
-							title={node.name}
+					{:else if items.length === 0}
+						<EmptyState title={emptyTitle} description={emptyDescription}>
+							{#if emptyAction}{@render emptyAction()}{/if}
+						</EmptyState>
+					{:else}
+						<div
+							bind:this={container}
+							role="listbox"
+							tabindex="-1"
+							aria-multiselectable="true"
+							aria-label="Dateien und Ordner"
+							aria-busy={loading}
+							class="grid grid-cols-2 gap-3 transition-opacity select-none sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+							class:opacity-60={loading}
 						>
-							{node.name}
-						</span>
-						<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-							<span class="truncate tabular-nums">
-								{sizeText(node)} · {formatDateTime(node.updatedAt)}
-							</span>
-							<span class="ml-auto flex shrink-0 items-center gap-1">{@render badges(node)}</span>
-						</span>
-						{#if isSel}<span class="sr-only">ausgewählt</span>{/if}
+							{#each items as node (node.id)}
+								{@const Icon = iconFor(node.kind, node.contentType)}
+								{@const thumb = thumbOf(node)}
+								{@const isSel = selectedSet.has(node.id)}
+								{@const isActive = node.id === activeId}
+								<div
+									data-node-item
+									role="option"
+									aria-selected={isSel}
+									aria-label={`${node.name}, ${kindText(node)}`}
+									tabindex={isActive ? 0 : -1}
+									draggable={canDrag(node) ? 'true' : undefined}
+									class={[
+										'group relative flex min-w-0 cursor-default flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+										isSel && 'border-primary bg-primary/5 hover:bg-primary/10',
+										dropTargetId === node.id && 'ring-2 ring-primary',
+										dragIds?.includes(node.id) && 'opacity-50'
+									]}
+									onclick={(e) => onItemClick(e, node)}
+									ondblclick={() => onItemDblClick(node)}
+									data-node-id={node.id}
+									onkeydown={(e) => onItemKeydown(e, node)}
+									onfocus={() => (focusId = node.id)}
+									ondragstart={(e) => onDragStart(e, node)}
+									ondragend={onDragEnd}
+									ondragover={(e) => onDragOver(e, node)}
+									ondragleave={(e) => onDragLeave(e, node)}
+									ondrop={(e) => onDrop(e, node)}
+								>
+									<div
+										class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
+									>
+										{#if thumb}
+											<img
+												src={thumb}
+												alt=""
+												loading="lazy"
+												draggable="false"
+												class="size-full object-cover"
+												use:watchThumb
+											/>
+										{:else if node.kind === 'folder'}
+											<Icon class="size-14 text-primary/80" aria-hidden="true" />
+										{:else}
+											<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
+										{/if}
+										{@render selectBox(
+											node,
+											[
+												'absolute top-1.5 left-1.5 flex rounded-md bg-background/90 p-1 shadow-sm transition-opacity',
+												isSel || selected.length > 0 || isCoarse
+													? 'opacity-100'
+													: 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+											].join(' ')
+										)}
+										<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+										<div
+											class="absolute top-1.5 right-1.5"
+											onclick={(e) => e.stopPropagation()}
+											ondblclick={(e) => e.stopPropagation()}
+										>
+											{@render menu(
+												node,
+												'bg-background/90 shadow-sm hover:bg-background',
+												isActive
+											)}
+										</div>
+									</div>
+									<div class="flex min-w-0 flex-1 flex-col gap-0.5 p-2">
+										<span
+											class="line-clamp-2 text-sm leading-snug font-medium break-words"
+											title={node.name}
+										>
+											{node.name}
+										</span>
+										<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+											<span class="truncate tabular-nums">
+												{sizeText(node)} · {formatDateTime(node.updatedAt)}
+											</span>
+											<span class="ml-auto flex shrink-0 items-center gap-1"
+												>{@render badges(node)}</span
+											>
+										</span>
+										{@render ownerBadge(node, 'mt-0.5 self-start')}
+										{#if isSel}<span class="sr-only">ausgewählt</span>{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{:else}
+					{#snippet mobileToolbar()}
+						<label class="flex items-center gap-2 text-sm">
+							<Checkbox
+								checked={allSelected}
+								indeterminate={someSelected}
+								onCheckedChange={(v) => toggleAll(v)}
+							/>
+							Alle auswählen
+						</label>
+						{#if selected.length}
+							<span class="text-xs text-muted-foreground">{selected.length} ausgewählt</span>
+						{/if}
+					{/snippet}
+					<div bind:this={container} class="select-none">
+						<DataTable
+							caption="Dateien und Ordner"
+							mobile="cards"
+							{loading}
+							empty={items.length === 0}
+							{emptyTitle}
+							{emptyDescription}
+							{emptyAction}
+							skeletonRows={6}
+							toolbar={isNarrow && items.length > 0 ? mobileToolbar : undefined}
+						>
+							{#snippet head()}
+								<Table.Row>
+									<Table.Head class="w-10">
+										<Checkbox
+											checked={allSelected}
+											indeterminate={someSelected}
+											onCheckedChange={(v) => toggleAll(v)}
+											aria-label="Alle auswählen"
+										/>
+									</Table.Head>
+									<Table.Head>Name</Table.Head>
+									<Table.Head>Geändert</Table.Head>
+									<Table.Head class="text-right">Größe</Table.Head>
+									<Table.Head class="w-10"><span class="sr-only">Aktionen</span></Table.Head>
+								</Table.Row>
+							{/snippet}
+							{#each items as node (node.id)}
+								{@const Icon = iconFor(node.kind, node.contentType)}
+								{@const thumb = thumbOf(node)}
+								{@const isSel = selectedSet.has(node.id)}
+								{@const isActive = node.id === activeId}
+								<Table.Row
+									data-node-item
+									data-state={isSel ? 'selected' : undefined}
+									tabindex={isActive ? 0 : -1}
+									aria-label={`${node.name}, ${kindText(node)}${isSel ? ', ausgewählt' : ''}`}
+									draggable={canDrag(node) ? 'true' : undefined}
+									class={[
+										'cursor-default outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+										dropTargetId === node.id && 'ring-2 ring-primary ring-inset',
+										dragIds?.includes(node.id) && 'opacity-50'
+									]}
+									onclick={(e: MouseEvent) => onItemClick(e, node)}
+									ondblclick={() => onItemDblClick(node)}
+									data-node-id={node.id}
+									onkeydown={(e: KeyboardEvent) => onItemKeydown(e, node)}
+									onfocus={() => (focusId = node.id)}
+									ondragstart={(e: DragEvent) => onDragStart(e, node)}
+									ondragend={onDragEnd}
+									ondragover={(e: DragEvent) => onDragOver(e, node)}
+									ondragleave={(e: DragEvent) => onDragLeave(e, node)}
+									ondrop={(e: DragEvent) => onDrop(e, node)}
+								>
+									<Table.Cell class="w-10">
+										{@render selectBox(node, 'flex')}
+									</Table.Cell>
+									<Table.Cell class="max-w-0 min-w-40 sm:w-full">
+										<span class="flex min-w-0 items-center gap-2">
+											<span
+												class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted/50"
+											>
+												{#if thumb}
+													<img
+														src={thumb}
+														alt=""
+														loading="lazy"
+														draggable="false"
+														class="size-full object-cover"
+														use:watchThumb
+													/>
+												{:else}
+													<Icon
+														class={node.kind === 'folder'
+															? 'size-5 text-primary/80'
+															: 'size-5 text-muted-foreground'}
+														aria-hidden="true"
+													/>
+												{/if}
+											</span>
+											<span class="truncate font-medium" title={node.name}>{node.name}</span>
+											<span class="flex shrink-0 items-center gap-1">{@render badges(node)}</span>
+											{@render ownerBadge(node, 'shrink')}
+										</span>
+									</Table.Cell>
+									<Table.Cell class="whitespace-nowrap text-muted-foreground tabular-nums">
+										{formatDateTime(node.updatedAt)}
+									</Table.Cell>
+									<Table.Cell class="text-right whitespace-nowrap tabular-nums">
+										{sizeText(node)}
+									</Table.Cell>
+									<Table.Cell
+										class="w-10 text-right"
+										onclick={(e: MouseEvent) => e.stopPropagation()}
+										ondblclick={(e: MouseEvent) => e.stopPropagation()}
+									>
+										{@render menu(node, '', isActive)}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</DataTable>
 					</div>
-				</div>
-			{/each}
-		</div>
-	{/if}
-{:else}
-	{#snippet mobileToolbar()}
-		<label class="flex items-center gap-2 text-sm">
-			<Checkbox
-				checked={allSelected}
-				indeterminate={someSelected}
-				onCheckedChange={(v) => toggleAll(v)}
-			/>
-			Alle auswählen
-		</label>
-		{#if selected.length}
-			<span class="text-xs text-muted-foreground">{selected.length} ausgewählt</span>
+				{/if}
+			</div>
+		{/snippet}
+	</ContextMenu.Trigger>
+	<ContextMenu.Content class="w-56">
+		{#if ctxTitle}
+			<ContextMenu.Label>{ctxTitle}</ContextMenu.Label>
+			<ContextMenu.Separator />
 		{/if}
-	{/snippet}
-	<div bind:this={container} class="select-none">
-		<DataTable
-			caption="Dateien und Ordner"
-			mobile="cards"
-			{loading}
-			empty={items.length === 0}
-			{emptyTitle}
-			{emptyDescription}
-			{emptyAction}
-			skeletonRows={6}
-			toolbar={isNarrow && items.length > 0 ? mobileToolbar : undefined}
-		>
-			{#snippet head()}
-				<Table.Row>
-					<Table.Head class="w-10">
-						<Checkbox
-							checked={allSelected}
-							indeterminate={someSelected}
-							onCheckedChange={(v) => toggleAll(v)}
-							aria-label="Alle auswählen"
-						/>
-					</Table.Head>
-					<Table.Head>Name</Table.Head>
-					<Table.Head>Geändert</Table.Head>
-					<Table.Head class="text-right">Größe</Table.Head>
-					<Table.Head class="w-10"><span class="sr-only">Aktionen</span></Table.Head>
-				</Table.Row>
-			{/snippet}
-			{#each items as node (node.id)}
-				{@const Icon = iconFor(node.kind, node.contentType)}
-				{@const thumb = thumbOf(node)}
-				{@const isSel = selectedSet.has(node.id)}
-				{@const isActive = node.id === activeId}
-				<Table.Row
-					data-node-item
-					data-state={isSel ? 'selected' : undefined}
-					tabindex={isActive ? 0 : -1}
-					aria-label={`${node.name}, ${kindText(node)}${isSel ? ', ausgewählt' : ''}`}
-					draggable={canDrag(node) ? 'true' : undefined}
-					class={[
-						'cursor-default outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-						dropTargetId === node.id && 'ring-2 ring-primary ring-inset',
-						dragIds?.includes(node.id) && 'opacity-50'
-					]}
-					onclick={(e: MouseEvent) => onItemClick(e, node)}
-					ondblclick={() => onItemDblClick(node)}
-					oncontextmenu={(e: MouseEvent) => onContextMenu(e, node)}
-					onkeydown={(e: KeyboardEvent) => onItemKeydown(e, node)}
-					onfocus={() => (focusId = node.id)}
-					ondragstart={(e: DragEvent) => onDragStart(e, node)}
-					ondragend={onDragEnd}
-					ondragover={(e: DragEvent) => onDragOver(e, node)}
-					ondragleave={(e: DragEvent) => onDragLeave(e, node)}
-					ondrop={(e: DragEvent) => onDrop(e, node)}
-				>
-					<Table.Cell class="w-10">
-						{@render selectBox(node, 'flex')}
-					</Table.Cell>
-					<Table.Cell class="max-w-0 min-w-40 sm:w-full">
-						<span class="flex min-w-0 items-center gap-2">
-							<span
-								class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted/50"
-							>
-								{#if thumb}
-									<img
-										src={thumb}
-										alt=""
-										loading="lazy"
-										draggable="false"
-										class="size-full object-cover"
-										use:watchThumb
-									/>
-								{:else}
-									<Icon
-										class={node.kind === 'folder'
-											? 'size-5 text-primary/80'
-											: 'size-5 text-muted-foreground'}
-										aria-hidden="true"
-									/>
-								{/if}
-							</span>
-							<span class="truncate font-medium" title={node.name}>{node.name}</span>
-							<span class="flex shrink-0 items-center gap-1">{@render badges(node)}</span>
-						</span>
-					</Table.Cell>
-					<Table.Cell class="whitespace-nowrap text-muted-foreground tabular-nums">
-						{formatDateTime(node.updatedAt)}
-					</Table.Cell>
-					<Table.Cell class="text-right whitespace-nowrap tabular-nums">
-						{sizeText(node)}
-					</Table.Cell>
-					<Table.Cell
-						class="w-10 text-right"
-						onclick={(e: MouseEvent) => e.stopPropagation()}
-						ondblclick={(e: MouseEvent) => e.stopPropagation()}
-					>
-						{@render menu(node, '', isActive)}
-					</Table.Cell>
-				</Table.Row>
-			{/each}
-		</DataTable>
-	</div>
-{/if}
+		{#if ctxEntries.length}
+			{@render contextEntries(ctxEntries)}
+		{:else}
+			<ContextMenu.Label>Keine Aktionen verfügbar</ContextMenu.Label>
+		{/if}
+	</ContextMenu.Content>
+</ContextMenu.Root>

@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
@@ -23,7 +24,6 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		ConfirmDialog,
 		EmptyState,
@@ -32,13 +32,12 @@
 		toastWithUndo
 	} from '$lib/components/layout';
 	import {
-		SPACE_LABELS,
+		ROOT_LABEL,
 		type BulkResult,
 		type FileNode,
 		type FilesMeta,
 		type FolderListing,
-		type SearchResult,
-		type Space
+		type SearchResult
 	} from '../schemas';
 	import {
 		API,
@@ -63,10 +62,7 @@
 	import TrashView from './TrashView.svelte';
 	import UploadDropzone from './UploadDropzone.svelte';
 
-	type SearchHit = SearchResult['items'][number];
-
 	const VIEW_MODE_KEY = 'files.view-mode';
-	const SHARED_WITH_ME_ROOT = VIEW_LABELS['shared-with-me'];
 
 	// --- Meta (Kontingent, Rechte) ---------------------------------------------------------
 	let meta = $state<FilesMeta | null>(null);
@@ -79,24 +75,19 @@
 		}
 	}
 
-	// --- Zustand aus der URL (?view=&folder=) ----------------------------------------------
-	const urlView = $derived.by<View>(() => {
+	// --- Zustand aus der URL (?view=trash, ?folder=) -----------------------------------------
+	const view = $derived.by<View>(() => {
 		const v = page.url.searchParams.get('view') ?? '';
-		return (VIEWS as readonly string[]).includes(v) ? (v as View) : 'personal';
+		return (VIEWS as readonly string[]).includes(v) ? (v as View) : 'files';
 	});
-	/** Stamm nur mit Recht – sonst „Meine Dateien“ */
-	const view = $derived<View>(
-		urlView === 'shared' && meta && !meta.can.sharedView ? 'personal' : urlView
-	);
 	const folderId = $derived(view === 'trash' ? null : page.url.searchParams.get('folder'));
-	const visibleViews = $derived(VIEWS.filter((v) => v !== 'shared' || !!meta?.can.sharedView));
 
 	function navigate(v: View, folder: string | null, replace = false) {
 		const url = new URL(page.url);
 		url.searchParams.delete('view');
 		url.searchParams.delete('folder');
-		if (v !== 'personal') url.searchParams.set('view', v);
-		if (folder) url.searchParams.set('folder', folder);
+		if (v !== 'files') url.searchParams.set('view', v);
+		if (folder && v === 'files') url.searchParams.set('folder', folder);
 		clearSearch();
 		void goto(url, { keepFocus: true, noScroll: true, replaceState: replace });
 	}
@@ -108,9 +99,6 @@
 	let reloadKey = $state(0);
 	let selected = $state<string[]>([]);
 
-	/** „Mit mir geteilt“ ohne Ordner = Liste der Freigaben (kein echter Ordner) */
-	const pseudoRoot = $derived(view === 'shared-with-me' && !folderId);
-
 	$effect(() => {
 		const v = view;
 		const f = folderId;
@@ -119,22 +107,8 @@
 		let stale = false;
 		loading = true;
 		selected = [];
-		const request: Promise<FolderListing> =
-			v === 'shared-with-me' && !f
-				? apiFetch<FileNode[]>(`${API}/shared-with-me`).then((items) => ({
-						space: 'personal' as Space,
-						folder: null,
-						breadcrumbs: [{ id: null, name: SHARED_WITH_ME_ROOT }],
-						access: 'read' as const,
-						items
-					}))
-				: apiFetch<FolderListing>(
-						`${API}/nodes?${new URLSearchParams({
-							space: v === 'shared' ? 'shared' : 'personal',
-							...(f ? { parent: f } : {})
-						}).toString()}`
-					);
-		request
+		const qs = f ? `?${new URLSearchParams({ parent: f }).toString()}` : '';
+		apiFetch<FolderListing>(`${API}/nodes${qs}`)
 			.then((r) => {
 				if (stale) return;
 				listing = r;
@@ -144,7 +118,7 @@
 				if (stale) return;
 				if (f && e instanceof ApiClientError && (e.status === 404 || e.status === 422)) {
 					toast.error('Der Ordner wurde nicht gefunden oder gelöscht.');
-					navigate(v, null, true);
+					navigate('files', null, true);
 					return;
 				}
 				listing = null;
@@ -168,11 +142,11 @@
 	}
 
 	const items = $derived(listing?.items ?? []);
-	const space = $derived<Space>(listing?.space ?? (view === 'shared' ? 'shared' : 'personal'));
-	const canEdit = $derived(!!listing && !pseudoRoot && listing.access === 'edit' && !loadError);
+	const canEdit = $derived(!!listing && listing.access === 'edit' && !loadError);
 	const parentId = $derived(listing?.folder?.id ?? null);
+	const atRoot = $derived(!listing?.folder);
 
-	// --- Suche -----------------------------------------------------------------------------
+	// --- Suche (über alles, was ich sehe) ------------------------------------------------------
 	let searchText = $state('');
 	let searchQ = $state('');
 	let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -205,9 +179,7 @@
 		if (q.length < 2 || v === 'trash') return;
 		let stale = false;
 		searchLoading = true;
-		const params = new URLSearchParams({ q });
-		if (v === 'personal' || v === 'shared') params.set('space', v);
-		apiFetch<SearchResult>(`${API}/search?${params.toString()}`)
+		apiFetch<SearchResult>(`${API}/search?${new URLSearchParams({ q }).toString()}`)
 			.then((r) => {
 				if (stale) return;
 				searchResult = r;
@@ -224,9 +196,9 @@
 		};
 	});
 
-	/** Bereich, in dem ein Treffer geöffnet wird */
-	function viewForHit(hit: SearchHit): View {
-		return hit.path.startsWith(SHARED_WITH_ME_ROOT) ? 'shared-with-me' : hit.space;
+	/** Ordner eines Treffers: liegt er direkt in der Wurzel (auch freigegebene Einträge), dann die Wurzel */
+	function hitFolder(hit: SearchResult['items'][number]): string | null {
+		return hit.path === ROOT_LABEL ? null : hit.parentId;
 	}
 
 	// --- Raster/Liste ----------------------------------------------------------------------
@@ -255,24 +227,25 @@
 	let uploadZone = $state<ReturnType<typeof UploadDropzone>>();
 	const canUpload = $derived(view !== 'trash' && canEdit && !searching);
 
+	function onbackground(action: 'new-folder' | 'upload-files' | 'upload-folder') {
+		if (!canEdit) return;
+		if (action === 'new-folder') newFolder();
+		else if (action === 'upload-files') uploadZone?.openFilePicker();
+		else uploadZone?.openFolderPicker();
+	}
+
 	// --- Breadcrumbs -----------------------------------------------------------------------
 	const crumbs = $derived(listing?.breadcrumbs ?? []);
-	/** Echte Wurzel des Bereichs (nicht „Mit mir geteilt“) */
-	const rootIsSpace = $derived(!!listing && crumbs[0]?.name === SPACE_LABELS[listing.space]);
 	let dropCrumb = $state<number | null>(null);
 
 	function openCrumb(i: number) {
 		const c = crumbs[i];
 		if (!c || i === crumbs.length - 1) return;
-		if (c.id !== null) navigate(view, c.id);
-		else if (rootIsSpace && listing) navigate(listing.space, null);
-		else navigate('shared-with-me', null);
+		navigate('files', c.id);
 	}
 
 	function crumbDroppable(i: number): boolean {
-		const c = crumbs[i];
-		if (!c || i === crumbs.length - 1 || searching) return false;
-		return c.id !== null || rootIsSpace;
+		return !!crumbs[i] && i !== crumbs.length - 1 && !searching;
 	}
 
 	function onCrumbDragOver(e: DragEvent, i: number) {
@@ -299,24 +272,33 @@
 	// --- Verschieben per Drag & Drop ---------------------------------------------------------
 	async function moveTo(ids: string[], targetId: string | null, targetName?: string) {
 		if (!listing) return;
-		const from = listing.folder?.id ?? null;
-		const sp = listing.space;
+		// Rückweg: je Eintrag der bisherige Elternordner (in der Wurzel können freigegebene Einträge
+		// anderer liegen, deren echter Elternordner nicht die eigene Wurzel ist)
+		const fallback = listing.folder?.id ?? null;
+		const origins = new Map<string | null, string[]>();
+		for (const id of ids) {
+			const from = items.find((n) => n.id === id)?.parentId ?? fallback;
+			origins.set(from, [...(origins.get(from) ?? []), id]);
+		}
 		const target =
 			targetName ?? (targetId ? items.find((n) => n.id === targetId)?.name : null) ?? 'Ordner';
 		try {
 			const r = await apiFetch<BulkResult>(`${API}/nodes/move`, {
 				method: 'POST',
-				body: JSON.stringify({ ids, targetId, space: sp })
+				body: JSON.stringify({ ids, targetId })
 			});
 			const n = r?.affected ?? ids.length;
 			toastWithUndo({
 				message:
 					n === 1 ? `Nach „${target}“ verschoben` : `${n} Einträge nach „${target}“ verschoben`,
-				undo: () =>
-					apiFetch(`${API}/nodes/move`, {
-						method: 'POST',
-						body: JSON.stringify({ ids, targetId: from, space: sp })
-					}),
+				undo: async () => {
+					for (const [from, group] of origins) {
+						await apiFetch(`${API}/nodes/move`, {
+							method: 'POST',
+							body: JSON.stringify({ ids: group, targetId: from })
+						});
+					}
+				},
 				onundone: reload
 			});
 			selected = [];
@@ -348,8 +330,7 @@
 
 	function openNode(node: FileNode, siblings: FileNode[] = items) {
 		if (node.kind === 'folder') {
-			const target = searching ? viewForHit(node as SearchHit) : view;
-			navigate(target, node.id);
+			navigate('files', node.id);
 			return;
 		}
 		previewNodes = siblings.filter((n) => n.kind === 'file');
@@ -480,24 +461,12 @@
 
 	// --- Leere Zustände --------------------------------------------------------------------
 	const empty = $derived.by(() => {
-		if (pseudoRoot)
-			return {
-				title: 'Noch nichts mit dir geteilt',
-				description:
-					'Wenn jemand einen Ordner oder eine Datei für dich freigibt, erscheint sie hier.'
-			};
-		if (!listing?.folder && view === 'personal')
+		if (atRoot)
 			return {
 				title: 'Noch keine Dateien',
-				description: 'Ziehe Dateien hierher oder nutze „Hochladen“.'
+				description:
+					'Ziehe Dateien hierher, nutze „Hochladen“ oder lass dir einen Ordner freigeben.'
 			};
-		if (!listing?.folder && view === 'shared')
-			return canEdit
-				? {
-						title: 'Der Stammesordner ist leer',
-						description: 'Ziehe Dateien hierher oder nutze „Hochladen“.'
-					}
-				: { title: 'Der Stammesordner ist leer', description: 'Hier liegen noch keine Dateien.' };
 		return canEdit
 			? {
 					title: 'Dieser Ordner ist leer',
@@ -507,13 +476,27 @@
 	});
 </script>
 
-<svelte:head><title>Dateien</title></svelte:head>
+<svelte:head><title>{VIEW_LABELS[view]}</title></svelte:head>
 
-<PageHeader title="Dateien" description="Dateien ablegen, ordnen und mit anderen teilen.">
+<PageHeader
+	title={VIEW_LABELS[view]}
+	description={view === 'trash'
+		? 'Gelöschte Einträge wiederherstellen oder endgültig löschen.'
+		: 'Dateien ablegen, ordnen und mit anderen teilen.'}
+>
 	{#snippet actions()}
-		{#if canUpload}
-			{@render uploadMenu()}
-			<Button variant="outline" onclick={newFolder}><FolderPlus /> Neuer Ordner</Button>
+		{#if view === 'trash'}
+			<Button variant="outline" onclick={() => navigate('files', null)}>
+				<ArrowLeft /> Zurück zu Dateien
+			</Button>
+		{:else}
+			{#if canUpload}
+				{@render uploadMenu()}
+				<Button variant="outline" onclick={newFolder}><FolderPlus /> Neuer Ordner</Button>
+			{/if}
+			<Button variant="ghost" onclick={() => navigate('trash', null)}>
+				<Trash2 /> Papierkorb
+			</Button>
 		{/if}
 	{/snippet}
 </PageHeader>
@@ -536,19 +519,35 @@
 	</DropdownMenu.Root>
 {/snippet}
 
-<Tabs.Root value={view} onValueChange={(v) => navigate(v as View, null)}>
-	<Tabs.List variant="line" class="mb-4" aria-label="Bereiche">
-		{#each visibleViews as v (v)}
-			<Tabs.Trigger value={v}>{VIEW_LABELS[v]}</Tabs.Trigger>
-		{/each}
-	</Tabs.List>
-</Tabs.Root>
-
 {#if view === 'trash'}
-	<TrashView {meta} onchanged={() => void loadMeta()} />
+	<div class="space-y-4">
+		<nav aria-label="Ordnerpfad" class="min-w-0">
+			<ol class="flex min-w-0 items-center gap-0.5 text-sm">
+				<li class="flex items-center">
+					<button
+						type="button"
+						class="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+						onclick={() => navigate('files', null)}
+					>
+						{ROOT_LABEL}
+					</button>
+					<ChevronRight class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+				</li>
+				<li class="flex items-center">
+					<span class="rounded-md px-2 py-1 font-medium" aria-current="page">
+						{VIEW_LABELS.trash}
+					</span>
+				</li>
+			</ol>
+		</nav>
+		{#if meta}
+			<QuotaBar quota={meta.quota} class="max-w-sm" />
+		{/if}
+		<TrashView {meta} onchanged={() => void loadMeta()} />
+	</div>
 {:else}
 	<div class={['space-y-4', showSelection && 'max-sm:pb-20']}>
-		{#if view === 'personal' && meta}
+		{#if meta}
 			<QuotaBar quota={meta.quota} class="max-w-sm" />
 		{/if}
 
@@ -562,9 +561,7 @@
 				<Input
 					type="search"
 					class="pr-8 pl-8"
-					placeholder={view === 'shared-with-me'
-						? 'In allem suchen, was du siehst …'
-						: `In „${VIEW_LABELS[view]}“ suchen …`}
+					placeholder="In allen Dateien suchen …"
 					aria-label="Dateien und Ordner suchen"
 					bind:value={searchText}
 					oninput={onSearchInput}
@@ -712,7 +709,6 @@
 			{:else}
 				<UploadDropzone
 					bind:this={uploadZone}
-					{space}
 					{parentId}
 					disabled={!canEdit}
 					{meta}
@@ -724,6 +720,7 @@
 						bind:selected
 						loading={loading && !listing}
 						{canEdit}
+						canCreate={canEdit}
 						canLink={!!meta?.can.linkCreate}
 						emptyTitle={empty.title}
 						emptyDescription={empty.description}
@@ -731,6 +728,7 @@
 						onopen={(n) => openNode(n)}
 						{onaction}
 						onmove={(ids, targetId) => void moveTo(ids, targetId)}
+						{onbackground}
 					/>
 				</UploadDropzone>
 			{/if}
@@ -788,7 +786,9 @@
 						/>
 						<span class="min-w-0">
 							<span class="block truncate font-medium">{hit.name}</span>
-							<span class="block truncate text-xs text-muted-foreground">{hit.path}</span>
+							<span class="block truncate text-xs text-muted-foreground">
+								{hit.path}{hit.own ? '' : ` · von ${hit.owner.name}`}
+							</span>
 						</span>
 					</button>
 					<DropdownMenu.Root>
@@ -813,11 +813,9 @@
 									<Download /> Herunterladen
 								</DropdownMenu.Item>
 							{/if}
-							{#if hit.path !== SHARED_WITH_ME_ROOT}
-								<DropdownMenu.Item onclick={() => navigate(viewForHit(hit), hit.parentId)}>
-									<FolderInput /> Im Ordner anzeigen
-								</DropdownMenu.Item>
-							{/if}
+							<DropdownMenu.Item onclick={() => navigate('files', hitFolder(hit))}>
+								<FolderInput /> Im Ordner anzeigen
+							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={() => onaction('info', [hit])}>
 								<Info /> Informationen
 							</DropdownMenu.Item>
@@ -840,14 +838,7 @@
 
 <FilePreview bind:open={previewOpen} nodes={previewNodes} bind:current={previewCurrent} />
 
-<NameDialog
-	bind:open={nameOpen}
-	mode={nameMode}
-	{space}
-	{parentId}
-	node={nameNode}
-	onsaved={afterChange}
-/>
+<NameDialog bind:open={nameOpen} mode={nameMode} {parentId} node={nameNode} onsaved={afterChange} />
 
 <MoveDialog bind:open={moveOpen} nodes={moveNodes} {meta} onmoved={afterChange} />
 <ShareNodeDialog bind:open={shareOpen} node={dialogNode} onchanged={afterChange} />

@@ -2,10 +2,13 @@
 // Voraussetzung: demo-server läuft (http://localhost:4300), `node scripts/seed-demo.mjs` wurde ausgeführt,
 // Storage ist konfiguriert (MinIO per `docker compose -f docker-compose.demo.yml up -d` +
 // `node scripts/setup-demo-storage.mjs`).
-// Aktiviert `members` und `files`, legt in „Meine Dateien“ den Ordner „Fotos Sommerlager“ (erzeugte Bilder,
-// Packliste) und im Stammesordner „Elternbriefe“ (PDF, Freigabe an „Stamm“ zum Lesen) sowie
-// „Satzung und Protokolle“ (PDF, Textdatei) an und erzeugt einen öffentlichen Link auf die Fotos.
-// Vorhandene Ordner und Dateien gleichen Namens werden wiederverwendet, nicht doppelt angelegt.
+// Aktiviert `members` und `files` und legt in der Ansicht „Dateien“ (eigene Wurzel des Admins) an:
+// „Fotos Sommerlager“ (erzeugte Bilder, Packliste), „Elternbriefe“ (PDF) und „Satzung und Protokolle“
+// (PDF, Textdatei) – die beiden letzten mit Freigabe an den ganzen Stamm (`everyone:*`, Lesen), denn einen
+// eigenen Stammesordner gibt es nicht mehr. Dazu je ein öffentlicher Link auf die Fotos zum Ansehen und
+// zum Hochladen; die URLs werden ausgegeben (sie lassen sich über `GET /nodes/:id/links` jederzeit abrufen).
+// Vorhandene Ordner, Dateien, Freigaben und aktive Links werden wiederverwendet, nicht doppelt angelegt.
+// Neue Links erzwingen: NEW_LINK=1 node scripts/seed-demo-files.mjs
 import sharp from 'sharp';
 
 const BASE = 'http://127.0.0.1:4300';
@@ -80,20 +83,24 @@ if (bucket && !bucket.value) storageMissing();
 
 // --- Ordner ---------------------------------------------------------------------------
 
-async function list(space, parentId) {
-	const q = new URLSearchParams({ space, ...(parentId ? { parent: parentId } : {}) });
-	const r = await call('GET', `${F}/nodes?${q}`);
+/** Ordnerinhalt; ohne `parentId` die Wurzel „Dateien“ (eigene Einträge + mir Freigegebenes) */
+async function list(parentId) {
+	const q = parentId ? `?${new URLSearchParams({ parent: parentId })}` : '';
+	const r = await call('GET', `${F}/nodes${q}`);
 	if (r.status >= 400) throw new Error(`Ordnerinhalt nicht lesbar (${r.status})`);
 	return r.json.data.items;
 }
 
-async function ensureFolder(space, parentId, name) {
-	const found = (await list(space, parentId)).find((n) => n.kind === 'folder' && n.name === name);
+/** Eigener Ordner (in der Wurzel zählen nur eigene Einträge, nicht Freigegebenes anderer) */
+async function ensureFolder(parentId, name) {
+	const found = (await list(parentId)).find(
+		(n) => n.kind === 'folder' && n.name === name && (parentId !== null || n.own)
+	);
 	if (found) {
 		console.log(`Ordner „${name}“ vorhanden`);
 		return found;
 	}
-	const r = await call('POST', `${F}/folders`, { space, parentId, name });
+	const r = await call('POST', `${F}/folders`, { parentId, name });
 	if (r.status >= 400)
 		throw new Error(`Ordner „${name}“ konnte nicht angelegt werden (${r.status})`);
 	console.log(`Ordner „${name}“ angelegt`);
@@ -102,14 +109,13 @@ async function ensureFolder(space, parentId, name) {
 
 // --- Upload ---------------------------------------------------------------------------
 
-async function upload(space, parentId, name, bytes, type) {
-	const existing = (await list(space, parentId)).find((n) => n.kind === 'file' && n.name === name);
+async function upload(parentId, name, bytes, type) {
+	const existing = (await list(parentId)).find((n) => n.kind === 'file' && n.name === name);
 	if (existing) {
 		console.log(`  ${name} vorhanden`);
 		return existing;
 	}
 	const fd = new FormData();
-	fd.set('space', space);
 	fd.set('file', new Blob([bytes], { type }), name);
 	// Der Endpoint verlangt Content-Length → Formular vorher in einen Puffer umwandeln
 	const req = new Response(fd);
@@ -128,6 +134,57 @@ async function upload(space, parentId, name, bytes, type) {
 	}
 	console.log(`  ${name} hochgeladen`);
 	return json.data;
+}
+
+// --- Freigabe an den ganzen Stamm ---------------------------------------------------------
+
+async function shareWithStamm(folder) {
+	const current = await call('GET', `${F}/nodes/${folder.id}/shares`);
+	if (current.status >= 400) {
+		throw new Error(`Freigaben „${folder.name}“ nicht lesbar (${current.status})`);
+	}
+	const own = current.json?.data?.shares ?? [];
+	if (own.some((s) => s.type === 'everyone' && s.id === '*')) {
+		console.log(`Freigabe „${folder.name}“ an Stamm vorhanden`);
+		return;
+	}
+	const r = await call('PUT', `${F}/nodes/${folder.id}/shares`, {
+		shares: [
+			...own.map((s) => ({ type: s.type, id: s.id, level: s.level })),
+			{ type: 'everyone', id: '*', level: 'read' }
+		]
+	});
+	console.log(`Freigabe „${folder.name}“ an Stamm (Lesen):`, r.status);
+}
+
+// --- Öffentliche Links (URL jederzeit abrufbar) ---------------------------------------------
+
+const MODE_LABELS = {
+	view: 'Ansehen',
+	upload: 'Hochladen',
+	'view-upload': 'Ansehen und hochladen'
+};
+
+/** Aktiven Link der Art (ohne Passwort, mit abrufbarer URL) wiederverwenden, sonst anlegen */
+async function ensureLink(folder, mode) {
+	const label = `„${MODE_LABELS[mode]}“ auf „${folder.name}“`;
+	const current = await call('GET', `${F}/nodes/${folder.id}/links`);
+	if (current.status >= 400) throw new Error(`Links ${label} nicht lesbar (${current.status})`);
+	const found = (current.json?.data ?? []).find(
+		(l) => l.active && !l.hasPassword && (l.mode ?? 'view') === mode && l.url
+	);
+	if (found && !process.env.NEW_LINK) {
+		console.log(`Link ${label} vorhanden`);
+		return found.url;
+	}
+	const r = await call('POST', `${F}/nodes/${folder.id}/links`, {
+		expiresOn: null,
+		password: null,
+		mode
+	});
+	if (r.status >= 400) throw new Error(`Link ${label} konnte nicht angelegt werden (${r.status})`);
+	console.log(`Link ${label} angelegt`);
+	return r.json.data.url;
 }
 
 // --- Beispielinhalte ------------------------------------------------------------------
@@ -196,12 +253,11 @@ function pdf(lines) {
 	return Buffer.from(out, 'latin1');
 }
 
-// --- Meine Dateien: Fotos Sommerlager ---------------------------------------------------
+// --- Fotos Sommerlager ------------------------------------------------------------------
 
-const fotos = await ensureFolder('personal', null, 'Fotos Sommerlager');
+const fotos = await ensureFolder(null, 'Fotos Sommerlager');
 for (let i = 0; i < captions.length; i++) {
 	await upload(
-		'personal',
 		fotos.id,
 		`Sommerlager-${String(i + 1).padStart(2, '0')}.jpg`,
 		await picture(i),
@@ -209,7 +265,6 @@ for (let i = 0; i < captions.length; i++) {
 	);
 }
 await upload(
-	'personal',
 	fotos.id,
 	'Packliste.txt',
 	Buffer.from(
@@ -218,11 +273,10 @@ await upload(
 	'text/plain'
 );
 
-// --- Stamm: Elternbriefe (Freigabe an „Stamm“) -------------------------------------------
+// --- Elternbriefe (an den ganzen Stamm freigegeben) ----------------------------------------
 
-const eltern = await ensureFolder('shared', null, 'Elternbriefe');
+const eltern = await ensureFolder(null, 'Elternbriefe');
 await upload(
-	'shared',
 	eltern.id,
 	'Elternbrief Sommerlager 2026.pdf',
 	pdf([
@@ -234,26 +288,12 @@ await upload(
 	]),
 	'application/pdf'
 );
+await shareWithStamm(eltern);
 
-const shares = await call('GET', `${F}/nodes/${eltern.id}/shares`);
-const own = shares.json?.data?.shares ?? [];
-if (own.some((s) => s.type === 'everyone' && s.id === '*')) {
-	console.log('Freigabe „Elternbriefe“ an Stamm vorhanden');
-} else {
-	const r = await call('PUT', `${F}/nodes/${eltern.id}/shares`, {
-		shares: [
-			...own.map((s) => ({ type: s.type, id: s.id, level: s.level })),
-			{ type: 'everyone', id: '*', level: 'read' }
-		]
-	});
-	console.log('Freigabe „Elternbriefe“ an Stamm (Lesen):', r.status);
-}
+// --- Satzung und Protokolle (an den ganzen Stamm freigegeben) -----------------------------
 
-// --- Stamm: Satzung und Protokolle --------------------------------------------------------
-
-const satzung = await ensureFolder('shared', null, 'Satzung und Protokolle');
+const satzung = await ensureFolder(null, 'Satzung und Protokolle');
 await upload(
-	'shared',
 	satzung.id,
 	'Satzung.pdf',
 	pdf([
@@ -265,7 +305,6 @@ await upload(
 	'application/pdf'
 );
 await upload(
-	'shared',
 	satzung.id,
 	'Protokoll Stammesrat 2026-09.txt',
 	Buffer.from(
@@ -273,19 +312,13 @@ await upload(
 	),
 	'text/plain'
 );
+await shareWithStamm(satzung);
 
-// --- Öffentlicher Link auf die Fotos -----------------------------------------------------
+// --- Öffentliche Links auf die Fotos: Ansehen und Hochladen --------------------------------
 
-const links = await call('GET', `${F}/nodes/${fotos.id}/links`);
-const active = (links.json?.data ?? []).filter((l) => l.active && !l.hasPassword);
-if (active.length && !process.env.NEW_LINK) {
-	console.log(
-		'\nÖffentlicher Link auf „Fotos Sommerlager“ existiert bereits (die URL ist nur beim Anlegen sichtbar).\n' +
-			'Neuen Link erzeugen: NEW_LINK=1 node scripts/seed-demo-files.mjs'
-	);
-} else {
-	const r = await call('POST', `${F}/nodes/${fotos.id}/links`, { expiresOn: null, password: null });
-	if (r.status >= 400) throw new Error(`Link konnte nicht angelegt werden (${r.status})`);
-	console.log(`\nÖffentlicher Link auf „Fotos Sommerlager“:\n  ${r.json.data.url}`);
-}
+const viewUrl = await ensureLink(fotos, 'view');
+const uploadUrl = await ensureLink(fotos, 'upload');
+const shown = (url) => url ?? '(URL nicht abrufbar – NEW_LINK=1 legt einen neuen Link an)';
+console.log(`\nÖffentlicher Link „Ansehen“ auf „Fotos Sommerlager“:\n  ${shown(viewUrl)}`);
+console.log(`Öffentlicher Link „Hochladen“ auf „Fotos Sommerlager“:\n  ${shown(uploadUrl)}`);
 console.log('\nFertig. Ansehen: http://localhost:4300/modules/files');

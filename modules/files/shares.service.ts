@@ -17,7 +17,7 @@ import {
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';
-import { accessForMany, canManageAll, requireNode, rootAccess, type NodeAccess } from './access';
+import { accessForMany, canManageAll, requireNode, type NodeAccess } from './access';
 import { ancestorsOf, mdb, rowsOf, type NodeRow } from './db';
 import {
 	MODULE_ID,
@@ -69,14 +69,13 @@ async function sharesOf(tx: Tx, nodeIds: readonly string[]): Promise<ShareRow[]>
 }
 
 /**
- * Freigaben und öffentliche Links verwalten dürfen nur bereichsberechtigte Personen:
- * `files.file.manage-all` bzw. System, die Eigentümer*in in „Meine Dateien“ oder `files.shared.edit`
- * im Stammesordner. Wer nur über eine Principal-Freigabe `edit` hat, darf das nicht (sonst könnte er
- * fremde Inhalte weiterverteilen).
+ * Freigaben und öffentliche Links verwalten dürfen nur die Eigentümer*in und `files.file.manage-all`
+ * bzw. System. Wer nur über eine Principal-Freigabe `edit` hat (auch an den ganzen Stamm), darf das nicht
+ * (sonst könnte er fremde Inhalte weiterverteilen).
  */
 export function canManageShares(ctx: RequestContext, node: NodeRow): boolean {
 	if (canManageAll(ctx)) return true;
-	return rootAccess(ctx, node.space, node.space === 'personal' ? node.ownerId : null) === 'edit';
+	return !!ctx.userId && node.ownerId === ctx.userId;
 }
 
 /** Wie `canManageShares`, wirft sonst 403 */
@@ -89,7 +88,7 @@ export function assertCanManageShares(ctx: RequestContext, access: NodeAccess): 
 /**
  * Eigene und geerbte Freigaben eines Knotens laden (Zugriff auf den Knoten prüft der Aufrufer).
  * Geerbte Freigaben nur von Vorfahren, auf die der Aufrufer selbst Zugriff hat – sonst würden Namen
- * fremder Ordner über die Freigabe-Grenze sichtbar. Bereichsberechtigte sehen alles.
+ * fremder Ordner über die Freigabe-Grenze sichtbar. Eigentümer*in und `manage-all` sehen alles.
  */
 async function loadRawShares(
 	tx: Tx,
@@ -152,7 +151,7 @@ export async function getShares(ctx: RequestContext, nodeId: string): Promise<No
 	return describeRaw(ctx, raw);
 }
 
-/** PUT `/nodes/:id/shares` (nur Bereichsberechtigte, siehe `canManageShares`): Liste ersetzen; Principals validieren (422); Audit `files.share.updated` */
+/** PUT `/nodes/:id/shares` (nur Eigentümer*in oder `manage-all`, siehe `canManageShares`): Liste ersetzen; Principals validieren (422); Audit `files.share.updated` */
 export async function putShares(
 	ctx: RequestContext,
 	nodeId: string,

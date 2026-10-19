@@ -275,11 +275,11 @@ export async function removeObjects(paths: readonly (string | null | undefined)[
 	}
 }
 
-/** Belegter Platz einer Person in „Meine Dateien“ (inkl. Papierkorb), in der Transaktion */
+/** Belegter Platz einer Person (alle eigenen Dateien inkl. Papierkorb), in der Transaktion */
 export async function quotaUsed(tx: Tx, ownerId: string): Promise<number> {
 	const res = (await tx.execute(
 		sql`SELECT COALESCE(SUM(size_bytes), 0)::bigint AS used FROM nodes
-			WHERE space = 'personal' AND owner_id = ${ownerId} AND kind = 'file'`
+			WHERE owner_id = ${ownerId} AND kind = 'file'`
 	)) as unknown as { rows: Record<string, unknown>[] };
 	return Number(res.rows[0]?.used ?? 0);
 }

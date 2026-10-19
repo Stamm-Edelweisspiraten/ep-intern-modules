@@ -1,10 +1,10 @@
 /**
- * Ordner/Dateien: Auflisten, Anlegen, Umbenennen, Verschieben, Suche, „Mit mir geteilt“, DTO-Aufbau.
- * VERTRAG (Welle 0) – Implementierung: Welle 1.3. Signaturen nicht ändern.
+ * Ordner/Dateien: Auflisten (eine Ansicht: eigene + mir freigegebene Einträge), Anlegen, Umbenennen,
+ * Verschieben, Suche, DTO-Aufbau.
  * Muster: `principalKeysFor` vor der Transaktion → DB in `mdb().transaction` → Namen (`userRefs`) danach → Audit danach.
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, principalMatchSql, type RequestContext, type Tx } from '$lib/sdk/server';
 import {
 	accessForMany,
 	canManageAll,
@@ -12,6 +12,7 @@ import {
 	requireNode,
 	rootAccess,
 	sharedWithMeRoots,
+	stammSharedSql,
 	visibleNodesFilter
 } from './access';
 import {
@@ -32,7 +33,7 @@ import { assertQuota } from './storage';
 import {
 	MAX_DEPTH,
 	MAX_SEARCH_RESULTS,
-	SPACE_LABELS,
+	ROOT_LABEL,
 	type AccessLevel,
 	type Breadcrumb,
 	type BulkResult,
@@ -41,15 +42,18 @@ import {
 	type FolderListing,
 	type MoveInput,
 	type SearchResult,
-	type Space,
 	type UserRef
 } from './schemas';
 
 /** Zusatzinfos je Knoten für `FileNode` (in der Transaktion ermittelt) */
 export interface NodeExtras {
 	access: AccessLevel;
-	/** Darf Freigaben/Links verwalten (Bereichsrecht, nicht über eine Freigabe) */
+	/** Darf Freigaben/Links verwalten (Eigentümer*in oder `manage-all`, nicht über eine Freigabe) */
 	canShare: boolean;
+	/** Gehört dem Aufrufer */
+	own: boolean;
+	/** An `everyone:*` freigegeben (Knoten oder Vorfahr) */
+	stamm: boolean;
 	shared: boolean;
 	linked: boolean;
 	childCount: number | null;
@@ -61,7 +65,6 @@ export interface NodeExtras {
 
 /** Größe der `IN (…)`-Listen je Abfrage */
 const CHUNK = 500;
-const SHARED_WITH_ME_LABEL = 'Mit mir geteilt';
 
 function chunks<T>(list: readonly T[], size = CHUNK): T[][] {
 	const out: T[][] = [];
@@ -84,11 +87,16 @@ function compareNodes(a: NodeRow, b: NodeRow): number {
 	return a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true });
 }
 
-/** Bedingung „gleicher Ordner“ (Alias `n`) – passend zum Unique-Index der Migration */
-function siblingCondition(input: { space: Space; ownerId: string; parentId: string | null }): SQL {
+/** Ort eines Knotens: Ordner (`parentId`) oder Wurzel der Eigentümer*in (`parentId = null`) */
+export interface SiblingScope {
+	ownerId: string;
+	parentId: string | null;
+}
+
+/** Bedingung „gleicher Ordner“ (Alias `n`) – passend zum Unique-Index der Migration (alle Knoten `personal`) */
+function siblingCondition(input: SiblingScope): SQL {
 	if (input.parentId) return sql`n.parent_id = ${input.parentId}`;
-	if (input.space === 'shared') return sql`n.parent_id IS NULL AND n.space = 'shared'`;
-	return sql`n.parent_id IS NULL AND n.space = 'personal' AND n.owner_id = ${input.ownerId}`;
+	return sql`n.parent_id IS NULL AND n.owner_id = ${input.ownerId}`;
 }
 
 const sameKey = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -150,10 +158,6 @@ async function subtreeBytes(tx: Tx, id: string): Promise<number> {
 	return Number(rows[0]?.b ?? 0);
 }
 
-/** Wurzel-Eigentümer*in für die Wurzel-Prüfung (`null` bei shared) */
-const rootOwner = (node: Pick<NodeRow, 'space' | 'ownerId'>) =>
-	node.space === 'personal' ? node.ownerId : null;
-
 /** Daten für DTOs aus der Transaktion: Zeilen + Extras */
 interface NodeBundle {
 	rows: NodeRow[];
@@ -173,10 +177,11 @@ async function bundle(
 	return { rows, extras: await extrasForMany(tx, rows, access, ctx) };
 }
 
+/** Namen für `toFileNode`: Eigentümer*innen und anlegende Personen */
 async function usersFor(ctx: RequestContext, rows: readonly NodeRow[]) {
 	return userRefs(
 		ctx,
-		rows.map((r) => r.createdBy)
+		rows.flatMap((r) => [r.ownerId, r.createdBy])
 	);
 }
 
@@ -197,12 +202,15 @@ async function loadWithKeys(ctx: RequestContext, id: string, keys: readonly stri
 // Öffentliche Funktionen
 // ---------------------------------------------------------------------------
 
-/** Bereichsberechtigt (Eigentümer*in, Stammesordner mit `files.shared.edit`, `manage-all`) – Freigaben zählen nicht */
-function hasRootEdit(ctx: RequestContext, row: Pick<NodeRow, 'space' | 'ownerId'>): boolean {
-	return canManageAll(ctx) || rootAccess(ctx, row.space, rootOwner(row)) === 'edit';
+/** Eigentümer*in oder `manage-all`/System – Freigaben zählen nicht */
+function hasRootEdit(ctx: RequestContext, row: Pick<NodeRow, 'ownerId'>): boolean {
+	return rootAccess(ctx, row.ownerId) === 'edit';
 }
 
-/** Extras (Freigaben/Links/Kinderzahl) für viele Knoten in der Transaktion; ohne `ctx` ist `canShare` immer `false` */
+/**
+ * Extras (Freigaben/Links/Kinderzahl/Stamm) für viele Knoten in der Transaktion;
+ * ohne `ctx` sind `canShare` und `own` immer `false`.
+ */
 export async function extrasForMany(
 	tx: Tx,
 	rows: readonly NodeRow[],
@@ -215,12 +223,17 @@ export async function extrasForMany(
 		const row = byId.get(id);
 		return !!ctx && !!row && hasRootEdit(ctx, row);
 	};
+	const ownOf = (id: string) => {
+		const row = byId.get(id);
+		return !!ctx?.userId && !!row && row.ownerId === ctx.userId;
+	};
 	const ids = [...new Set(rows.map((r) => r.id))];
 	for (const part of chunks(ids)) {
 		const res = await rowsOf(
 			tx,
 			sql`SELECT n.id,
 					EXISTS (SELECT 1 FROM node_shares s WHERE s.node_id = n.id) AS shared,
+					${stammSharedSql(sql`n.id`)} AS stamm,
 					EXISTS (SELECT 1 FROM share_links l WHERE l.node_id = n.id AND l.revoked_at IS NULL
 						AND (l.expires_on IS NULL OR l.expires_on >= CURRENT_DATE)) AS linked,
 					CASE WHEN n.kind = 'folder' THEN
@@ -233,6 +246,8 @@ export async function extrasForMany(
 			out.set(id, {
 				access: access.get(id) ?? 'read',
 				canShare: canShareOf(id),
+				own: ownOf(id),
+				stamm: r.stamm === true || r.stamm === 't',
 				shared: r.shared === true || r.shared === 't',
 				linked: r.linked === true || r.linked === 't',
 				childCount: r.child_count == null ? null : Number(r.child_count)
@@ -245,6 +260,8 @@ export async function extrasForMany(
 			out.set(r.id, {
 				access: access.get(r.id) ?? 'read',
 				canShare: canShareOf(r.id),
+				own: ownOf(r.id),
+				stamm: false,
 				shared: false,
 				linked: false,
 				childCount: r.kind === 'folder' ? 0 : null
@@ -254,7 +271,7 @@ export async function extrasForMany(
 	return out;
 }
 
-/** DTO aus Zeile + Extras + Namen (rein) */
+/** DTO aus Zeile + Extras + Namen (rein); `users` sollte Eigentümer*in und `createdBy` enthalten (sonst „Unbekannt“) */
 export function toFileNode(
 	row: NodeRow,
 	extras: NodeExtras,
@@ -265,9 +282,11 @@ export function toFileNode(
 		id: row.id,
 		parentId: row.parentId,
 		kind: row.kind,
-		space: row.space,
 		name: row.name,
 		ownerId: row.ownerId,
+		owner: users.get(row.ownerId) ?? { id: row.ownerId, name: 'Unbekannt' },
+		own: extras.own,
+		stamm: extras.stamm,
 		contentType: isFile ? row.contentType : null,
 		sizeBytes: isFile ? (row.sizeBytes ?? 0) : null,
 		hasThumb: isFile && !!row.thumbPath,
@@ -279,6 +298,8 @@ export function toFileNode(
 		createdBy: row.createdBy
 			? (users.get(row.createdBy) ?? { id: row.createdBy, name: 'Unbekannt' })
 			: null,
+		uploadedByName: row.uploadedByName,
+		viaLink: row.uploadedViaLink !== null,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt
 	};
@@ -290,74 +311,79 @@ export async function loadFileNode(ctx: RequestContext, id: string): Promise<Fil
 	return loadWithKeys(ctx, id, keys);
 }
 
-/** GET `/nodes`: Ordnerinhalt (Ordner zuerst, dann Name, `localeCompare('de')`) + Breadcrumbs */
+/**
+ * GET `/nodes`: Ordnerinhalt (Ordner zuerst, dann Name, `localeCompare('de')`) + Breadcrumbs.
+ * Wurzel (`parentId = null`) = eigene Wurzelknoten + mir freigegebene Einträge anderer (`sharedWithMeRoots`,
+ * auch an den ganzen Stamm); mit `manage-all` und `ownerId` die Wurzel einer anderen Person (nur deren Knoten).
+ * Breadcrumbs: `ROOT_LABEL` + Vorfahren; bei fremden Ordnern erst ab dem ersten zugänglichen Vorfahren.
+ */
 export async function listFolder(
 	ctx: RequestContext,
-	input: { space: Space; parentId: string | null; ownerId?: string }
+	input: { parentId: string | null; ownerId?: string }
 ): Promise<FolderListing> {
 	const keys = await keysFor(ctx);
 	const data = await mdb().transaction(async (tx) => {
-		let space: Space = input.space;
-		let folder: NodeRow | null = null;
-		let level: AccessLevel;
-		let ownerId: string;
-		const breadcrumbs: Breadcrumb[] = [];
+		const breadcrumbs: Breadcrumb[] = [{ id: null, name: ROOT_LABEL }];
 
 		if (input.parentId === null) {
-			if (space === 'personal') {
-				const owner = input.ownerId ?? ctx.userId;
-				if (!owner) throw errors.notFound('Ordner nicht gefunden');
-				ownerId = owner;
-			} else {
-				ownerId = '';
-			}
-			const root = rootAccess(ctx, space, space === 'personal' ? ownerId : null);
-			if (!root) throw errors.notFound('Ordner nicht gefunden');
-			level = root;
-			breadcrumbs.push({ id: null, name: SPACE_LABELS[space] });
-		} else {
-			const acc = await requireNode(tx, ctx, input.parentId, keys, 'read');
-			if (acc.node.kind !== 'folder') {
-				throw errors.validation([{ path: ['parent'], message: 'Das ist kein Ordner' }]);
-			}
-			folder = acc.node;
-			level = acc.level;
-			space = folder.space;
-			ownerId = folder.ownerId;
+			const owner = input.ownerId ?? ctx.userId;
+			if (!owner) throw errors.notFound('Ordner nicht gefunden');
+			const self = owner === ctx.userId;
+			if (!self && !canManageAll(ctx)) throw errors.notFound('Ordner nicht gefunden');
 
-			const chain = await ancestorsOf(tx, folder.id);
-			const root = rootAccess(ctx, space, rootOwner(folder));
-			if (root) {
-				breadcrumbs.push({ id: null, name: SPACE_LABELS[space] });
-				for (const a of chain) breadcrumbs.push({ id: a.id, name: a.name });
-			} else {
-				breadcrumbs.push({ id: null, name: SHARED_WITH_ME_LABEL });
-				const levels = await accessForMany(tx, ctx, chain, keys);
-				const first = chain.findIndex((a) => levels.has(a.id));
-				const visible = first < 0 ? chain.slice(-1) : chain.slice(first);
-				for (const a of visible) breadcrumbs.push({ id: a.id, name: a.name });
+			const rows = (
+				await rowsOf(
+					tx,
+					sql`SELECT ${NODE_COLUMNS} FROM nodes n
+						WHERE ${siblingCondition({ ownerId: owner, parentId: null })} AND n.deleted_at IS NULL`
+				)
+			).map(nodeRowOf);
+			if (self) {
+				const seen = new Set(rows.map((r) => r.id));
+				for (const r of await sharedWithMeRoots(tx, ctx, keys)) {
+					if (!seen.has(r.id)) rows.push(r);
+				}
 			}
+			rows.sort(compareNodes);
+			// keine Mindeststufe: freigegebene Einträge behalten ihre eigene Freigabestufe
+			const items = await bundle(tx, ctx, rows, keys);
+			const level: AccessLevel = 'edit';
+			return { level, breadcrumbs, items, self: null };
 		}
 
-		const cond =
-			folder === null
-				? siblingCondition({ space, ownerId, parentId: null })
-				: sql`n.parent_id = ${folder.id}`;
+		const acc = await requireNode(tx, ctx, input.parentId, keys, 'read');
+		if (acc.node.kind !== 'folder') {
+			throw errors.validation([{ path: ['parent'], message: 'Das ist kein Ordner' }]);
+		}
+		const folder = acc.node;
+		const level = acc.level;
+
+		const chain = await ancestorsOf(tx, folder.id);
+		if (rootAccess(ctx, folder.ownerId)) {
+			for (const a of chain) breadcrumbs.push({ id: a.id, name: a.name });
+		} else {
+			// keine Namen privater Oberordner: erst ab dem ersten Vorfahren mit Zugriff
+			const levels = await accessForMany(tx, ctx, chain, keys);
+			const first = chain.findIndex((a) => levels.has(a.id));
+			const visible = first < 0 ? chain.slice(-1) : chain.slice(first);
+			for (const a of visible) breadcrumbs.push({ id: a.id, name: a.name });
+		}
+
 		const rows = (
 			await rowsOf(
 				tx,
-				sql`SELECT ${NODE_COLUMNS} FROM nodes n WHERE ${cond} AND n.deleted_at IS NULL`
+				sql`SELECT ${NODE_COLUMNS} FROM nodes n
+					WHERE n.parent_id = ${folder.id} AND n.deleted_at IS NULL`
 			)
 		).map(nodeRowOf);
 		rows.sort(compareNodes);
 		const items = await bundle(tx, ctx, rows, keys, level);
-		const self = folder ? await bundle(tx, ctx, [folder], keys, level) : null;
-		return { space, level, breadcrumbs, items, self };
+		const self = await bundle(tx, ctx, [folder], keys, level);
+		return { level, breadcrumbs, items, self };
 	});
 
 	const users = await usersFor(ctx, [...data.items.rows, ...(data.self?.rows ?? [])]);
 	return {
-		space: data.space,
 		folder: data.self ? toDtos(data.self, users)[0]! : null,
 		breadcrumbs: data.breadcrumbs,
 		access: data.level,
@@ -375,16 +401,15 @@ export async function createFolder(
 	if (!name) throw errors.validation([{ path: ['name'], message: 'Bitte einen Namen angeben' }]);
 	const id = crypto.randomUUID();
 	await mdb().transaction(async (tx) => {
-		const target = await requireFolderTarget(tx, ctx, input.space, input.parentId, keys, 'edit');
-		const space = target.folder?.space ?? input.space;
+		const target = await requireFolderTarget(tx, ctx, input.parentId, keys, 'edit');
 		const parentId = target.folder?.id ?? null;
 		if ((await depthOf(tx, parentId)) + 1 > MAX_DEPTH) throw depthError('parentId');
-		const siblings = await siblingNames(tx, { space, ownerId: target.ownerId, parentId });
+		const siblings = await siblingNames(tx, { ownerId: target.ownerId, parentId });
 		if (siblings.some((s) => sameKey(s, name))) throw conflictError(name, siblings);
 		try {
 			await tx.execute(
 				sql`INSERT INTO nodes (id, parent_id, kind, space, owner_id, name, created_by)
-					VALUES (${id}, ${parentId}, 'folder', ${space}, ${target.ownerId}, ${name}, ${ctx.userId})`
+					VALUES (${id}, ${parentId}, 'folder', 'personal', ${target.ownerId}, ${name}, ${ctx.userId})`
 			);
 		} catch (e) {
 			if (isUniqueViolation(e)) throw conflictError(name, siblings);
@@ -394,7 +419,7 @@ export async function createFolder(
 	const node = await loadWithKeys(ctx, id, keys);
 	await core.audit.logFromContext(ctx, 'files.node.created', {
 		target: id,
-		metadata: { kind: 'folder', space: node.space }
+		metadata: { kind: 'folder' }
 	});
 	return node;
 }
@@ -407,7 +432,6 @@ export async function createFolder(
 export async function ensureFolderPath(
 	tx: Tx,
 	input: {
-		space: Space;
 		ownerId: string;
 		parentId: string | null;
 		folders: readonly string[];
@@ -422,7 +446,7 @@ export async function ensureFolderPath(
 		if (!wanted || wanted === '.' || wanted === '..') continue;
 		if (++depth > MAX_DEPTH) throw depthError('relativePath');
 
-		const cond = siblingCondition({ space: input.space, ownerId: input.ownerId, parentId });
+		const cond = siblingCondition({ ownerId: input.ownerId, parentId });
 		// gleichnamige Datei blockiert → „Name (2)“ usw.; ein vorhandener Ordner mit dem Namen wird genutzt
 		const blocked: string[] = [];
 		let candidate = wanted;
@@ -449,7 +473,7 @@ export async function ensureFolderPath(
 		const id = crypto.randomUUID();
 		await tx.execute(
 			sql`INSERT INTO nodes (id, parent_id, kind, space, owner_id, name, created_by)
-				VALUES (${id}, ${parentId}, 'folder', ${input.space}, ${input.ownerId}, ${candidate},
+				VALUES (${id}, ${parentId}, 'folder', 'personal', ${input.ownerId}, ${candidate},
 					${input.createdBy})`
 		);
 		parentId = id;
@@ -458,10 +482,7 @@ export async function ensureFolderPath(
 }
 
 /** Namen der nicht gelöschten Geschwister in einem Ordner (für `uniqueName`) */
-export async function siblingNames(
-	tx: Tx,
-	input: { space: Space; ownerId: string; parentId: string | null }
-): Promise<string[]> {
+export async function siblingNames(tx: Tx, input: SiblingScope): Promise<string[]> {
 	const rows = await rowsOf(
 		tx,
 		sql`SELECT n.name FROM nodes n WHERE ${siblingCondition(input)} AND n.deleted_at IS NULL`
@@ -479,11 +500,7 @@ export async function renameNode(ctx: RequestContext, id: string, name: string):
 		const { node } = await requireNode(tx, ctx, id, keys, 'edit');
 		kind = node.kind;
 		if (node.name === wanted) return false;
-		const siblings = await siblingNames(tx, {
-			space: node.space,
-			ownerId: node.ownerId,
-			parentId: node.parentId
-		});
+		const siblings = await siblingNames(tx, { ownerId: node.ownerId, parentId: node.parentId });
 		// den Knoten selbst einmal herausnehmen (Umbenennen nur in Groß/Klein ist erlaubt)
 		const own = siblings.indexOf(node.name);
 		if (own >= 0) siblings.splice(own, 1);
@@ -507,9 +524,30 @@ export async function renameNode(ctx: RequestContext, id: string, name: string):
 }
 
 /**
- * POST `/nodes/move`: edit auf jedem Knoten und auf dem Ziel; nicht in sich selbst/Nachfahren (422),
- * Tiefe ≤ `MAX_DEPTH`; Namenskonflikt im Ziel → automatisch `uniqueName`. Wechsel des Bereichs bzw. der
- * Eigentümer*in setzt `space`/`owner_id` für den ganzen Teilbaum; Ziel „Meine Dateien“ prüft das Kontingent.
+ * IDs der Knoten aus `chainIds` (Quelle + Vorfahren), auf denen eine edit-Freigabe an einen der `keys` liegt –
+ * die „Anker“, die einem Nicht-Eigentümer das Bearbeiten verleihen.
+ */
+async function editShareAnchors(
+	tx: Tx,
+	chainIds: readonly string[],
+	keys: readonly string[]
+): Promise<Set<string>> {
+	if (chainIds.length === 0 || keys.length === 0) return new Set();
+	const rows = await rowsOf(
+		tx,
+		sql`SELECT DISTINCT s.node_id FROM node_shares s
+			WHERE s.node_id IN (${idList(chainIds)}) AND s.level = 'edit' AND ${principalMatchSql('s', keys)}`
+	);
+	return new Set(rows.map((r) => String(r.node_id)));
+}
+
+/**
+ * POST `/nodes/move`: edit auf jedem Knoten und auf dem Ziel (`targetId = null` = eigene Wurzel); nicht in sich
+ * selbst/Nachfahren (422), Tiefe ≤ `MAX_DEPTH`; Namenskonflikt im Ziel → automatisch `uniqueName`. Gehört das Ziel
+ * jemand anderem, wechselt `owner_id` für den ganzen Teilbaum – nur mit Eigentümerschaft bzw. `manage-all` an der
+ * Quelle (sonst 403) und mit Prüfung des Kontingents der neuen Eigentümer*in; aktive öffentliche Links im Teilbaum
+ * werden dabei widerrufen (Freigaben bleiben). Wer nur über eine edit-Freigabe bearbeitet, darf nur innerhalb des
+ * freigegebenen Ordners verschieben (Ziel = Anker der Freigabe oder ein Nachfahre davon), sonst 403.
  */
 export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<BulkResult> {
 	const keys = await keysFor(ctx);
@@ -518,9 +556,8 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
 	const moved = await mdb().transaction(async (tx) => {
 		// Verschiebungen serialisieren: zwei gleichzeitige Moves könnten sonst einen Zyklus bilden
 		await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('files:move'))`);
-		const target = await requireFolderTarget(tx, ctx, input.space, input.targetId, keys, 'edit');
+		const target = await requireFolderTarget(tx, ctx, input.targetId, keys, 'edit');
 		const targetId = target.folder?.id ?? null;
-		const targetSpace = target.folder?.space ?? input.space;
 		const targetOwner = target.ownerId;
 		const targetChain = targetId ? await ancestorsOf(tx, targetId) : [];
 		const targetChainIds = new Set(targetChain.map((a) => a.id));
@@ -529,18 +566,18 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
 		// Zugriff auf alle Knoten prüfen, dann nur die obersten bewegen
 		const idSet = new Set(ids);
 		const nodes: NodeRow[] = [];
+		const chains = new Map<string, NodeRow[]>();
 		for (const id of ids) {
 			const { node } = await requireNode(tx, ctx, id, keys, 'edit');
 			const chain = await ancestorsOf(tx, id);
 			if (chain.some((a) => a.id !== id && idSet.has(a.id))) continue;
 			nodes.push(node);
+			chains.set(node.id, chain);
 		}
 
 		interface Plan {
 			node: NodeRow;
-			space: Space;
-			ownerId: string;
-			rewriteSubtree: boolean;
+			ownerChange: boolean;
 		}
 		const plans: Plan[] = [];
 		let addBytes = 0;
@@ -553,85 +590,94 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
 					}
 				]);
 			}
-			const newOwner = targetSpace === 'personal' ? targetOwner : node.ownerId;
-			const spaceChange = node.space !== targetSpace;
-			const ownerChange = newOwner !== node.ownerId;
-			const sameParent =
-				node.parentId === targetId && !spaceChange && (targetSpace === 'shared' || !ownerChange);
-			if (sameParent) continue;
-			// Aus der Ablage heraus (anderer Bereich / andere Eigentümer*in) nur mit Bereichsrecht am Quellknoten –
+			const ownerChange = node.ownerId !== targetOwner;
+			if (node.parentId === targetId && !ownerChange) continue;
+			// Aus einer fremden Ablage heraus nur mit Eigentümerschaft/`manage-all` am Quellknoten –
 			// eine edit-Freigabe reicht nicht (sonst ließen sich fremde private Ordner übernehmen)
-			if ((spaceChange || ownerChange) && !hasRootEdit(ctx, node)) {
+			if (ownerChange && !hasRootEdit(ctx, node)) {
 				throw errors.forbidden(
 					'Nur die Eigentümer*in kann Einträge aus dieser Ablage herausverschieben'
 				);
+			}
+			// Nur über eine Freigabe: Ziel muss im Teilbaum eines Ankers mit edit-Freigabe liegen – sonst ließe sich
+			// ein nur an mich freigegebener Inhalt in einen weiter freigegebenen/verlinkten Ordner schieben
+			if (!hasRootEdit(ctx, node)) {
+				const chainIds = (chains.get(node.id) ?? []).map((a) => a.id);
+				const anchors = await editShareAnchors(tx, chainIds, keys);
+				if (![...anchors].some((a) => targetChainIds.has(a))) {
+					throw errors.forbidden(
+						'Mit einer Freigabe kannst du nur innerhalb des freigegebenen Ordners verschieben'
+					);
+				}
 			}
 
 			const height = node.kind === 'folder' ? await subtreeHeight(tx, node.id) : 0;
 			if (targetDepth + 1 + height > MAX_DEPTH) throw depthError('targetId');
 
-			if (targetSpace === 'personal' && (spaceChange || ownerChange)) {
+			if (ownerChange) {
 				addBytes += node.kind === 'file' ? (node.sizeBytes ?? 0) : await subtreeBytes(tx, node.id);
 			}
-			plans.push({
-				node,
-				space: targetSpace,
-				ownerId: newOwner,
-				rewriteSubtree: node.kind === 'folder' && (spaceChange || ownerChange)
-			});
+			plans.push({ node, ownerChange });
 		}
 
 		if (addBytes > 0) await assertQuota(tx, targetOwner, addBytes, settings.quotaBytes);
 
-		const siblings = await siblingNames(tx, {
-			space: targetSpace,
-			ownerId: targetOwner,
-			parentId: targetId
-		});
+		const siblings = await siblingNames(tx, { ownerId: targetOwner, parentId: targetId });
+		let revokedLinks = 0;
 		for (const p of plans) {
 			const name = uniqueName(siblings, p.node.name);
 			siblings.push(name);
 			await tx.execute(
-				sql`UPDATE nodes SET parent_id = ${targetId}, name = ${name}, space = ${p.space},
-					owner_id = ${p.ownerId}, updated_at = now() WHERE id = ${p.node.id}`
+				sql`UPDATE nodes SET parent_id = ${targetId}, name = ${name}, space = 'personal',
+					owner_id = ${targetOwner}, updated_at = now() WHERE id = ${p.node.id}`
 			);
-			if (p.rewriteSubtree) {
-				const sub = await descendantIds(tx, p.node.id);
-				for (const part of chunks(sub)) {
-					await tx.execute(
-						sql`UPDATE nodes SET space = ${p.space}, owner_id = ${p.ownerId}
-							WHERE id IN (${idList(part)})`
-					);
-				}
+			if (!p.ownerChange) continue;
+			const sub = p.node.kind === 'folder' ? await descendantIds(tx, p.node.id) : [];
+			for (const part of chunks(sub)) {
+				await tx.execute(
+					sql`UPDATE nodes SET space = 'personal', owner_id = ${targetOwner}
+						WHERE id IN (${idList(part)})`
+				);
+			}
+			// Eigentumsübergabe: öffentliche Links der bisherigen Eigentümer*in gelten nicht weiter
+			for (const part of chunks([p.node.id, ...sub])) {
+				const revoked = await rowsOf(
+					tx,
+					sql`UPDATE share_links SET revoked_at = now()
+						WHERE revoked_at IS NULL AND node_id IN (${idList(part)}) RETURNING id`
+				);
+				revokedLinks += revoked.length;
 			}
 		}
-		return plans.length;
+		return { count: plans.length, revokedLinks };
 	});
-	if (moved > 0) {
+	if (moved.count > 0) {
 		await core.audit.logFromContext(ctx, 'files.node.moved', {
 			target: input.targetId ?? undefined,
-			metadata: { count: moved, space: input.space }
+			metadata: { count: moved.count, revokedLinks: moved.revokedLinks }
 		});
 	}
-	return { affected: moved };
+	return { affected: moved.count };
 }
 
-/** GET `/search`: Name enthält `q` (ohne Groß/Klein), nur sichtbare, nicht gelöschte; max `MAX_SEARCH_RESULTS` */
+/**
+ * GET `/search`: Name enthält `q` (ohne Groß/Klein), nur sichtbare, nicht gelöschte; max `MAX_SEARCH_RESULTS`.
+ * Pfad: `ROOT_LABEL` + Vorfahren; bei fremden Einträgen erst ab dem ersten zugänglichen Vorfahren.
+ */
 export async function searchNodes(
 	ctx: RequestContext,
-	input: { q: string; space?: Space }
+	input: { q: string }
 ): Promise<SearchResult> {
 	const keys = await keysFor(ctx);
 	const q = input.q.trim().toLowerCase();
 	const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 	const data = await mdb().transaction(async (tx) => {
-		const spaceCond = input.space ? sql`AND n.space = ${input.space}` : sql``;
 		const rows = (
 			await rowsOf(
 				tx,
 				sql`SELECT ${NODE_COLUMNS} FROM nodes n
 					WHERE ${visibleNodesFilter(ctx, keys)} AND n.deleted_at IS NULL
-						AND lower(n.name) LIKE ${pattern} ESCAPE '\\' ${spaceCond}
+						AND lower(n.name) LIKE ${pattern} ESCAPE '\\'
 					ORDER BY CASE WHEN n.kind = 'folder' THEN 0 ELSE 1 END, lower(n.name), n.id
 					LIMIT ${MAX_SEARCH_RESULTS + 1}`
 			)
@@ -640,25 +686,24 @@ export async function searchNodes(
 		const hits = rows.slice(0, MAX_SEARCH_RESULTS);
 		hits.sort(compareNodes);
 
-		// Vorfahren je Treffer; ohne Zugang über die Wurzel nur ab dem ersten zugänglichen Vorfahren
+		// Vorfahren je Treffer; ohne Eigentümerschaft nur ab dem ersten zugänglichen Vorfahren
 		const chains = new Map<string, NodeRow[]>();
 		const hidden: NodeRow[] = [];
 		for (const h of hits) {
 			const chain = (await ancestorsOf(tx, h.id)).filter((a) => a.id !== h.id);
 			chains.set(h.id, chain);
-			if (!rootAccess(ctx, h.space, rootOwner(h))) hidden.push(...chain);
+			if (!rootAccess(ctx, h.ownerId)) hidden.push(...chain);
 		}
 		const hiddenLevels = hidden.length ? await accessForMany(tx, ctx, hidden, keys) : new Map();
 		const paths = new Map<string, string>();
 		for (const h of hits) {
 			const chain = chains.get(h.id)!;
-			if (rootAccess(ctx, h.space, rootOwner(h))) {
-				paths.set(h.id, displayPath([SPACE_LABELS[h.space], ...chain.map((a) => a.name)]));
-			} else {
+			let visible = chain;
+			if (!rootAccess(ctx, h.ownerId)) {
 				const first = chain.findIndex((a) => hiddenLevels.has(a.id));
-				const visible = first < 0 ? [] : chain.slice(first);
-				paths.set(h.id, displayPath([SHARED_WITH_ME_LABEL, ...visible.map((a) => a.name)]));
+				visible = first < 0 ? [] : chain.slice(first);
 			}
+			paths.set(h.id, displayPath([ROOT_LABEL, ...visible.map((a) => a.name)]));
 		}
 		return { b: await bundle(tx, ctx, hits, keys), truncated, paths };
 	});
@@ -667,15 +712,4 @@ export async function searchNodes(
 		items: toDtos(data.b, users).map((n) => ({ ...n, path: data.paths.get(n.id) ?? '' })),
 		truncated: data.truncated
 	};
-}
-
-/** GET `/shared-with-me` */
-export async function sharedWithMe(ctx: RequestContext): Promise<FileNode[]> {
-	const keys = await keysFor(ctx);
-	const b = await mdb().transaction(async (tx) => {
-		const roots = await sharedWithMeRoots(tx, ctx, keys);
-		roots.sort(compareNodes);
-		return bundle(tx, ctx, roots, keys);
-	});
-	return toDtos(b, await usersFor(ctx, b.rows));
 }

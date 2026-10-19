@@ -9,15 +9,11 @@ export const MODULE_ID = 'files';
 export const BASE_PATH = '/modules/files';
 
 export const PERMISSIONS = {
-	/** Grundrecht: eigene Ablage („Meine Dateien“) und für mich Freigegebenes */
+	/** Grundrecht: eigene Dateien und für mich Freigegebenes (auch an den ganzen Stamm) */
 	view: 'files.file.view',
-	/** Stammesordner lesen */
-	sharedView: 'files.shared.view',
-	/** Stammesordner bearbeiten (hochladen, umbenennen, verschieben, löschen) */
-	sharedEdit: 'files.shared.edit',
 	/** Öffentliche Links anlegen (nur für Knoten mit Bearbeiten-Zugriff) */
 	linkCreate: 'files.link.create',
-	/** Alles sehen und verwalten (auch fremde „Meine Dateien“) */
+	/** Alles sehen und verwalten (auch fremde Dateien) */
 	manageAll: 'files.file.manage-all'
 } as const;
 
@@ -25,15 +21,35 @@ export const SETTING_KEYS = {
 	/** Kontingent je Person in MB (gilt für „Meine Dateien“), 0 = unbegrenzt */
 	quotaMb: 'files.quota.mb',
 	/** Tage im Papierkorb bis zum endgültigen Löschen */
-	trashDays: 'files.trash.days'
+	trashDays: 'files.trash.days',
+	/** Obergrenze je Upload-Link in MB (Summe aller darüber hochgeladenen Dateien), 0 = unbegrenzt */
+	linkUploadMb: 'files.link.upload-mb'
 } as const;
 
-export const SPACES = ['personal', 'shared'] as const;
+/**
+ * Seit 0003 gibt es nur noch eine Ansicht: alle Knoten haben `space = 'personal'` (Spalte bleibt aus der
+ * ersten Version, nur intern). Der frühere Stammesordner ist eine Freigabe an `everyone:*` („Stamm“).
+ */
+export const SPACES = ['personal'] as const;
 export type Space = (typeof SPACES)[number];
-export const SPACE_LABELS: Record<Space, string> = {
-	personal: 'Meine Dateien',
-	shared: 'Stamm'
+/** Name der Wurzel in Breadcrumbs/Pfaden */
+export const ROOT_LABEL = 'Dateien';
+
+/** Art eines öffentlichen Links */
+export const LINK_MODES = ['view', 'upload', 'view-upload'] as const;
+export type LinkMode = (typeof LINK_MODES)[number];
+export const LINK_MODE_LABELS: Record<LinkMode, string> = {
+	view: 'Ansehen',
+	upload: 'Hochladen',
+	'view-upload': 'Ansehen und hochladen'
 };
+export const LINK_MODE_DESCRIPTIONS: Record<LinkMode, string> = {
+	view: 'Ansehen und herunterladen, nichts hochladen',
+	upload: 'Nur hochladen – der Inhalt des Ordners bleibt verborgen',
+	'view-upload': 'Ansehen, herunterladen und neue Dateien hochladen'
+};
+export const linkCanView = (m: LinkMode) => m === 'view' || m === 'view-upload';
+export const linkCanUpload = (m: LinkMode) => m === 'upload' || m === 'view-upload';
 
 export const NODE_KINDS = ['folder', 'file'] as const;
 export type NodeKind = (typeof NODE_KINDS)[number];
@@ -58,8 +74,13 @@ export const MIN_PASSWORD = 8;
 export const MAX_UNLOCK_FAILURES = 10;
 /** Gleichzeitige Uploads im Browser */
 export const UPLOAD_CONCURRENCY = 3;
+/** Öffentlicher Upload: Dateien je Request (Core-Grenze für öffentliches Multipart: 10 Dateien, 30 MB je Request) */
+export const MAX_PUBLIC_UPLOAD_FILES = 10;
+export const MAX_PUBLIC_UPLOAD_BYTES = 30 * 1024 * 1024;
+export const MAX_UPLOADER_NAME = 100;
 export const DEFAULT_QUOTA_MB = 1024;
 export const DEFAULT_TRASH_DAYS = 30;
+export const DEFAULT_LINK_UPLOAD_MB = 500;
 /** Zugriffstoken nach Passwort-Eingabe (öffentlicher Link) */
 export const LINK_ACCESS_TTL_SEC = 15 * 60;
 /** Textvorschau nur bis zu dieser Größe */
@@ -88,10 +109,15 @@ export const NEVER_INLINE_TYPES = ['text/html', 'image/svg+xml', 'application/xh
 // Bausteine
 // ---------------------------------------------------------------------------
 
-/** Ordner-/Dateiname: keine Pfadtrenner, keine Steuerzeichen, nicht „.“/„..“ */
-/** Unsichtbare Zeichen und Bidi-Steuerung (z. B. U+202E dreht die Anzeige von Dateinamen um) sind in Namen nicht erlaubt */
-export const INVISIBLE_CHARS = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/u;
+/**
+ * Unsichtbare/Steuer-Zeichen (Zero-Width, Bidi wie U+202E, C1, Füllzeichen, weiche Trennung) sind in Namen
+ * nicht erlaubt. Absichtlich einzelne (auch kombinierende) Zeichen, kein Graphem-Abgleich.
+ */
+export const INVISIBLE_CHARS =
+	// eslint-disable-next-line no-misleading-character-class
+	/[\u00AD\u0080-\u009F\u034F\u061C\u115F\u1160\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\u3164\uFEFF\uFFF9-\uFFFB]/u;
 
+/** Ordner-/Dateiname: keine Pfadtrenner, keine Steuerzeichen, nicht „.“/„..“ */
 export const nodeName = z
 	.string()
 	.trim()
@@ -133,17 +159,15 @@ export const tokenParams = z.object({
 });
 export const tokenNodeParams = tokenParams.extend({ nodeId });
 
-/** GET `/nodes` – Inhalt eines Ordners; ohne `parent` = Wurzel des Bereichs */
+/** GET `/nodes` – Inhalt eines Ordners; ohne `parent` = Wurzel (eigene + mir freigegebene Einträge) */
 export const listQuery = z.object({
-	space: z.enum(SPACES).default('personal'),
 	parent: nodeId.optional(),
-	/** nur mit `manage-all`: „Meine Dateien“ einer anderen Person */
+	/** nur mit `manage-all`: Wurzel einer anderen Person */
 	owner: z.string().min(1).max(64).optional()
 });
 
 export const searchQuery = z.object({
-	q: z.string().trim().min(2, 'Mindestens 2 Zeichen').max(100),
-	space: z.enum(SPACES).optional()
+	q: z.string().trim().min(2, 'Mindestens 2 Zeichen').max(100)
 });
 
 export const contentQuery = z.object({
@@ -152,7 +176,7 @@ export const contentQuery = z.object({
 
 export const folderCreateInput = z
 	.object({
-		space: z.enum(SPACES),
+		/** `null` = eigene Wurzel */
 		parentId: parentRef,
 		name: nodeName
 	})
@@ -164,9 +188,8 @@ export const renameInput = z.object({ name: nodeName }).strict();
 export const moveInput = z
 	.object({
 		ids: z.array(nodeId).min(1).max(MAX_BULK),
-		/** Ziel: Ordner-ID oder `null` = Wurzel von `space` */
-		targetId: parentRef,
-		space: z.enum(SPACES)
+		/** Ziel: Ordner-ID oder `null` = eigene Wurzel */
+		targetId: parentRef
 	})
 	.strict();
 export type MoveInput = z.input<typeof moveInput>;
@@ -175,7 +198,6 @@ export const bulkInput = z.object({ ids: z.array(nodeId).min(1).max(MAX_BULK) })
 
 /** Upload (multipart): Textfelder neben `file` */
 export const uploadFields = z.object({
-	space: z.enum(SPACES),
 	/** Relativer Pfad bei Ordner-Upload, z. B. „Fotos/2026/bild.jpg“ – Ordner werden angelegt */
 	relativePath: z.string().max(1000).optional(),
 	/** `rename` (Standard) = „Name (2)“, `replace` = vorhandene Datei ersetzen */
@@ -216,7 +238,9 @@ export const linkCreateInput = z
 			.string()
 			.min(MIN_PASSWORD, `Mindestens ${MIN_PASSWORD} Zeichen`)
 			.max(MAX_PASSWORD)
-			.nullable()
+			.nullable(),
+		/** Upload-Arten nur für Ordner (sonst 422) */
+		mode: z.enum(LINK_MODES).default('view')
 	})
 	.strict();
 export type LinkCreateInput = z.input<typeof linkCreateInput>;
@@ -229,6 +253,21 @@ export const publicNodesQuery = z.object({
 	parent: nodeId.optional(),
 	t: z.string().max(500).optional()
 });
+/** Öffentlicher Upload (multipart): Textfelder neben `file` (mehrere Dateien möglich) */
+export const publicUploadFields = z
+	.object({
+		/** Optionaler Name der hochladenden Person */
+		name: z
+			.string()
+			.trim()
+			.max(MAX_UPLOADER_NAME, `Höchstens ${MAX_UPLOADER_NAME} Zeichen`)
+			.optional(),
+		/** Zugriffstoken nach Passwort-Eingabe */
+		t: z.string().max(500).optional()
+	})
+	.strict();
+export type PublicUploadFields = z.infer<typeof publicUploadFields>;
+
 export const publicContentQuery = z.object({
 	t: z.string().max(500).optional(),
 	download: z.enum(['0', '1']).optional(),
@@ -248,16 +287,21 @@ export interface FileNode {
 	id: string;
 	parentId: string | null;
 	kind: NodeKind;
-	space: Space;
 	name: string;
 	ownerId: string;
+	/** Eigentümer*in (für „von …“ bei fremden Einträgen) */
+	owner: UserRef;
+	/** Gehört dem Aufrufer */
+	own: boolean;
+	/** An den ganzen Stamm freigegeben (direkt oder geerbt) */
+	stamm: boolean;
 	/** nur Dateien */
 	contentType: string | null;
 	sizeBytes: number | null;
 	hasThumb: boolean;
 	/** Zugriff des Aufrufers */
 	access: AccessLevel;
-	/** Darf Freigaben und öffentliche Links verwalten (Eigentümer*in bzw. Stammesordner mit `files.shared.edit`, `manage-all`) – Bearbeiten über eine Freigabe reicht NICHT */
+	/** Darf Freigaben und öffentliche Links verwalten (Eigentümer*in oder `manage-all`) – Bearbeiten über eine Freigabe reicht NICHT */
 	canShare: boolean;
 	/** Hat eigene Freigaben (Principals) */
 	shared: boolean;
@@ -266,18 +310,21 @@ export interface FileNode {
 	/** Ordner: Anzahl direkter Einträge */
 	childCount: number | null;
 	createdBy: UserRef | null;
+	/** Über einen Upload-Link hochgeladen: angegebener Name (oder leer = ohne Namen) */
+	uploadedByName: string | null;
+	/** Über einen öffentlichen Upload-Link hochgeladen */
+	viaLink: boolean;
 	createdAt: string;
 	updatedAt: string;
 }
 
 export interface Breadcrumb {
-	/** `null` = Wurzel des Bereichs */
+	/** `null` = Wurzel („Dateien“) */
 	id: string | null;
 	name: string;
 }
 
 export interface FolderListing {
-	space: Space;
 	/** `null` = Wurzel */
 	folder: FileNode | null;
 	breadcrumbs: Breadcrumb[];
@@ -295,9 +342,8 @@ export interface SearchResult {
 export interface TrashItem {
 	id: string;
 	kind: NodeKind;
-	space: Space;
 	name: string;
-	/** Ursprünglicher Ort, z. B. „Meine Dateien / Fotos“ */
+	/** Ursprünglicher Ort, z. B. „Dateien / Fotos“ */
 	originalPath: string;
 	sizeBytes: number;
 	deletedAt: string;
@@ -319,7 +365,8 @@ export interface NodeShares {
 export interface ShareLink {
 	id: string;
 	nodeId: string;
-	/** Nur direkt nach dem Anlegen gesetzt (Klartext-Token), sonst `null` */
+	mode: LinkMode;
+	/** Link-URL (jederzeit; `null` nur bei alten Links aus der Zeit vor 0003) */
 	url: string | null;
 	expiresOn: string | null;
 	hasPassword: boolean;
@@ -344,8 +391,16 @@ export interface PublicNode {
 export interface PublicLinkInfo {
 	name: string;
 	kind: NodeKind;
+	mode: LinkMode;
 	needsPassword: boolean;
 	expiresOn: string | null;
+	/** Grenzen für Upload-Links (sonst `null`) */
+	upload: {
+		maxFileBytes: number;
+		maxFiles: number;
+		maxRequestBytes: number;
+		allowedContentTypes: string[];
+	} | null;
 	/** nur bei Datei-Links bzw. nach Freischalten */
 	node: PublicNode | null;
 }
@@ -367,8 +422,6 @@ export interface FilesMeta {
 	allowedContentTypes: string[];
 	trashDays: number;
 	can: {
-		sharedView: boolean;
-		sharedEdit: boolean;
 		linkCreate: boolean;
 		manageAll: boolean;
 	};
@@ -376,4 +429,9 @@ export interface FilesMeta {
 
 export interface BulkResult {
 	affected: number;
+}
+
+/** Antwort auf einen öffentlichen Upload */
+export interface PublicUploadResult {
+	uploaded: { name: string; sizeBytes: number }[];
 }

@@ -27,19 +27,13 @@ import { displayPath, uniqueName } from './names';
 import { siblingNames } from './nodes.service';
 import { keysFor } from './shares.service';
 import { removeObjects } from './storage';
-import { PERMISSIONS, SPACE_LABELS, type BulkResult, type TrashItem } from './schemas';
+import { ROOT_LABEL, type BulkResult, type TrashItem } from './schemas';
 
 /** Höchstzahl Papierkorb-Einträge je Job-Lauf (Rest beim nächsten Lauf) */
 const PURGE_BATCH = 500;
 /** Höchstzahl Einträge in der Papierkorb-Liste */
 const MAX_TRASH_LIST = 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Pfad-Präfix, wenn der Aufrufer den Bereich nicht sieht (wie in `nodes.service.ts`) */
-const SHARED_WITH_ME_LABEL = 'Mit mir geteilt';
-
-const rootOwner = (node: Pick<NodeRow, 'space' | 'ownerId'>) =>
-	node.space === 'personal' ? node.ownerId : null;
-
 const idList = (ids: readonly string[]) =>
 	sql.join(
 		ids.map((id) => sql`${id}`),
@@ -77,15 +71,14 @@ async function canSeeTrashRoot(
 	keys: readonly string[]
 ): Promise<boolean> {
 	if (canManageAll(ctx)) return true;
-	if (node.space === 'personal' && ctx.userId && node.ownerId === ctx.userId) return true;
-	if (node.space === 'shared' && ctx.permissions.has(PERMISSIONS.sharedEdit)) return true;
+	if (ctx.userId && node.ownerId === ctx.userId) return true;
 	// Selbst gelöscht und am ursprünglichen Ort (noch) Bearbeiten-Zugriff
 	if (!ctx.userId || node.deletedBy !== ctx.userId) return false;
 	if (node.parentId) {
 		const parent = await loadNode(tx, node.parentId);
 		if (parent) return (await resolveAccess(tx, ctx, parent.id, keys))?.level === 'edit';
 	}
-	return rootAccess(ctx, node.space, node.space === 'personal' ? node.ownerId : null) === 'edit';
+	return rootAccess(ctx, node.ownerId) === 'edit';
 }
 
 /** Sichtbare Papierkorb-Wurzeln zu `ids` laden, sonst 404 */
@@ -172,23 +165,17 @@ export async function trashNodes(ctx: RequestContext, ids: readonly string[]): P
 }
 
 /**
- * GET `/trash`: Papierkorb-Wurzeln, die der Aufrufer sieht: eigene „Meine Dateien“, Stammesordner mit
- * `files.shared.edit`, alles mit `manage-all`; sowie Knoten, die man selbst gelöscht hat und auf deren
- * Ort man noch edit hätte. `purgeOn` = `deletedAt` + `trashDays`.
+ * GET `/trash`: Papierkorb-Wurzeln, die der Aufrufer sieht: eigene Einträge, alles mit `manage-all`;
+ * sowie Knoten, die man selbst gelöscht hat und auf deren Ort man (über eine Freigabe) noch edit hätte. `purgeOn` = `deletedAt` + `trashDays`.
  */
 export async function listTrash(ctx: RequestContext): Promise<TrashItem[]> {
 	const keys = await keysFor(ctx);
 	const { trashDays } = await filesSettings();
 	const uid = ctx.userId ?? '';
 	const all = canManageAll(ctx);
-	const sharedEdit = ctx.permissions.has(PERMISSIONS.sharedEdit);
 
 	const data = await mdb().transaction(async (tx) => {
-		const cond = all
-			? sql`TRUE`
-			: sql`((n.space = 'personal' AND n.owner_id = ${uid})
-				OR (n.space = 'shared' AND ${sharedEdit})
-				OR n.deleted_by = ${uid})`;
+		const cond = all ? sql`TRUE` : sql`(n.owner_id = ${uid} OR n.deleted_by = ${uid})`;
 		const rows = (
 			await rowsOf(
 				tx,
@@ -219,25 +206,25 @@ export async function listTrash(ctx: RequestContext): Promise<TrashItem[]> {
 			for (const s of sizeRows) sizes.set(String(s.root), Number(s.size ?? 0));
 		}
 
-		// Ursprünglicher Ort: ohne Zugang über den Bereich nur ab dem ersten zugänglichen Vorfahren
-		// (wie `searchNodes`), damit keine Namen fremder Ordner sichtbar werden
+		// Ursprünglicher Ort: ohne Zugang zur Wurzel der Eigentümer*in nur ab dem ersten zugänglichen
+		// Vorfahren (wie `searchNodes`), damit keine Namen fremder Ordner sichtbar werden
 		const chains = new Map<string, NodeRow[]>();
 		const hidden: NodeRow[] = [];
 		for (const v of visible) {
 			const chain = (await ancestorsOf(tx, v.id)).filter((a) => a.id !== v.id);
 			chains.set(v.id, chain);
-			if (!rootAccess(ctx, v.space, rootOwner(v))) hidden.push(...chain);
+			if (!rootAccess(ctx, v.ownerId)) hidden.push(...chain);
 		}
 		const hiddenLevels = hidden.length ? await accessForMany(tx, ctx, hidden, keys) : new Map();
 		const paths = new Map<string, string>();
 		for (const v of visible) {
 			const chain = chains.get(v.id) ?? [];
-			if (rootAccess(ctx, v.space, rootOwner(v))) {
-				paths.set(v.id, displayPath([SPACE_LABELS[v.space], ...chain.map((a) => a.name)]));
+			if (rootAccess(ctx, v.ownerId)) {
+				paths.set(v.id, displayPath([ROOT_LABEL, ...chain.map((a) => a.name)]));
 			} else {
 				const first = chain.findIndex((a) => hiddenLevels.has(a.id));
 				const shown = first < 0 ? [] : chain.slice(first);
-				paths.set(v.id, displayPath([SHARED_WITH_ME_LABEL, ...shown.map((a) => a.name)]));
+				paths.set(v.id, displayPath([ROOT_LABEL, ...shown.map((a) => a.name)]));
 			}
 		}
 		return { visible, sizes, paths };
@@ -252,9 +239,8 @@ export async function listTrash(ctx: RequestContext): Promise<TrashItem[]> {
 		return {
 			id: v.id,
 			kind: v.kind,
-			space: v.space,
 			name: v.name,
-			originalPath: data.paths.get(v.id) ?? SHARED_WITH_ME_LABEL,
+			originalPath: data.paths.get(v.id) ?? ROOT_LABEL,
 			sizeBytes: data.sizes.get(v.id) ?? 0,
 			deletedAt,
 			deletedBy: v.deletedBy ? (users.get(v.deletedBy) ?? null) : null,
@@ -265,7 +251,7 @@ export async function listTrash(ctx: RequestContext): Promise<TrashItem[]> {
 
 /**
  * POST `/trash/restore`: Teilbaum zurück; ist der ursprüngliche Ordner weg (gelöscht/nicht mehr vorhanden),
- * landet der Knoten in der Wurzel seines Bereichs; Namenskonflikt → `uniqueName`. Kontingent wird nicht erneut geprüft
+ * landet der Knoten in der Wurzel seiner Eigentümer*in; Namenskonflikt → `uniqueName`. Kontingent wird nicht erneut geprüft
  * (Papierkorb zählt bereits).
  */
 export async function restoreNodes(
@@ -276,23 +262,14 @@ export async function restoreNodes(
 	const affected = await mdb().transaction(async (tx) => {
 		const roots = await requireTrashRoots(tx, ctx, ids, keys);
 		for (const root of roots) {
-			// Elternordner noch da (nicht gelöscht, gleicher Bereich/gleiche Ablage)? Sonst Wurzel des Bereichs
+			// Elternordner noch da (nicht gelöscht, gleiche Eigentümer*in)? Sonst eigene Wurzel der Eigentümer*in
 			let parentId: string | null = null;
 			if (root.parentId) {
 				const parent = await loadNode(tx, root.parentId);
-				if (
-					parent &&
-					parent.kind === 'folder' &&
-					parent.space === root.space &&
-					(root.space !== 'personal' || parent.ownerId === root.ownerId)
-				)
+				if (parent && parent.kind === 'folder' && parent.ownerId === root.ownerId)
 					parentId = parent.id;
 			}
-			const existing = await siblingNames(tx, {
-				space: root.space,
-				ownerId: root.ownerId,
-				parentId
-			});
+			const existing = await siblingNames(tx, { ownerId: root.ownerId, parentId });
 			const name = uniqueName(existing, root.name);
 			const own = (await subtree(tx, [root.id], true)).map((r) => r.id);
 			// Wurzel zuerst (Name/Ort ändern sich), dann der Rest des eigenen Teilbaums

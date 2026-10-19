@@ -11,10 +11,13 @@ import {
 	publicContent,
 	publicInfo,
 	publicList,
+	publicUpload,
 	revokeLink,
 	unlockLink
 } from './links.service';
 import {
+	MAX_PUBLIC_UPLOAD_BYTES,
+	MAX_PUBLIC_UPLOAD_FILES,
 	PERMISSIONS,
 	idParams,
 	linkCreateInput,
@@ -23,9 +26,11 @@ import {
 	linkUnlockInput,
 	publicContentQuery,
 	publicNodesQuery,
+	publicUploadFields,
 	tokenNodeParams,
 	tokenParams,
-	type LinkCreateInput
+	type LinkCreateInput,
+	type PublicUploadFields
 } from './schemas';
 
 const TAGS = ['Dateien – Links'];
@@ -46,7 +51,8 @@ export const linksEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/nodes/:id/links',
-		summary: 'Öffentlichen Link anlegen (optional mit Ablaufdatum und Passwort)',
+		summary:
+			'Öffentlichen Link anlegen (Art Ansehen/Hochladen/beides, optional mit Ablaufdatum und Passwort)',
 		tags: TAGS,
 		permission: PERMISSIONS.view,
 		params: idParams,
@@ -68,7 +74,7 @@ export const linksEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/public/links/:token',
-		summary: 'Öffentlichen Link lesen (Name, Art, Passwortpflicht)',
+		summary: 'Öffentlichen Link lesen (Name, Art, Passwortpflicht, Upload-Grenzen)',
 		tags: TAGS,
 		permission: null,
 		public: true,
@@ -130,5 +136,21 @@ export const linksEndpoints: ApiEndpoint[] = [
 				thumb: q.thumb === '1'
 			});
 		}
+	},
+	{
+		method: 'POST',
+		path: '/public/links/:token/upload',
+		summary:
+			'Dateien über einen Upload-Link hochladen (multipart, Dateien im Feld "file", optional "name" und "t")',
+		tags: TAGS,
+		permission: null,
+		public: true,
+		// Missbrauchsschutz: je IP höchstens 20 Requests (à bis zu 10 Dateien) in 10 Minuten
+		rateLimit: { limit: 20, windowSec: 600 },
+		multipart: { maxBytes: MAX_PUBLIC_UPLOAD_BYTES, maxFiles: MAX_PUBLIC_UPLOAD_FILES },
+		params: tokenParams,
+		body: publicUploadFields,
+		handler: async ({ ctx, params, body, files }) =>
+			publicUpload(ctx, (params as TokenP).token, body as PublicUploadFields, files ?? [])
 	}
 ] as ApiEndpoint[];

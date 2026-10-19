@@ -1,19 +1,19 @@
 /**
  * Objektbezogene Zugriffsprüfung für Ordner/Dateien. Alle internen Endpunkte gehen hier durch.
- * VERTRAG (Welle 0) – Implementierung: Welle 1.1. Signaturen nicht ändern.
+ * Seit Migration 0003 gibt es nur eine Ansicht: alle Knoten haben `space = 'personal'` und eine Eigentümer*in.
  *
  * Regeln (Basisrecht `files.file.view` prüft der Router):
  *   - System-Kontext, `files.file.manage-all`                        -> edit (alles)
- *   - space `personal`: owner_id = ctx.userId                        -> edit
- *   - space `shared`: `files.shared.edit` -> edit, `files.shared.view` -> read
- *   - Principal-Freigabe auf dem Knoten ODER einem Vorfahren (vererbt) -> höchste Stufe gewinnt
+ *   - owner_id = ctx.userId                                          -> edit
+ *   - Principal-Freigabe auf dem Knoten ODER einem Vorfahren (vererbt, auch `everyone:*` = ganzer Stamm)
+ *                                                                    -> höchste Stufe gewinnt
  *   - gelöschte Knoten (Papierkorb) und ohne Zugriff                  -> 404 (Existenz nicht verraten)
  * `keys` = `principalKeysFor(ctx, 'files')`, immer VOR der Transaktion ermitteln.
  */
 import { sql, type SQL } from 'drizzle-orm';
 import { core, errors, principalMatchSql, type RequestContext, type Tx } from '$lib/sdk/server';
 import { ancestorsOf, nodeRowOf, NODE_COLUMNS, rowsOf, type NodeRow } from './db';
-import { PERMISSIONS, type AccessLevel, type Space } from './schemas';
+import { PERMISSIONS, type AccessLevel } from './schemas';
 
 export interface NodeAccess {
 	node: NodeRow;
@@ -27,33 +27,19 @@ export function canManageAll(ctx: RequestContext): boolean {
 	return ctx.actor.type === 'system' || core.permissions.has(ctx, PERMISSIONS.manageAll);
 }
 
-export function canSharedEdit(ctx: RequestContext): boolean {
-	return canManageAll(ctx) || core.permissions.has(ctx, PERMISSIONS.sharedEdit);
-}
-
-export function canSharedView(ctx: RequestContext): boolean {
-	return canSharedEdit(ctx) || core.permissions.has(ctx, PERMISSIONS.sharedView);
-}
-
 /** Höhere der beiden Stufen (`null` = kein Zugriff) */
 function maxLevel(a: AccessLevel | null, b: AccessLevel | null): AccessLevel | null {
 	if (a === 'edit' || b === 'edit') return 'edit';
 	return a ?? b;
 }
 
-/** Zugriff auf die (virtuelle) Wurzel eines Bereichs; `ownerId` nur für `personal` */
-export function rootAccess(
-	ctx: RequestContext,
-	space: Space,
-	ownerId: string | null
-): AccessLevel | null {
+/**
+ * Zugriff über die Eigentümerschaft (ohne Freigaben): edit für die Eigentümer*in, `manage-all` und System,
+ * sonst `null`. Auch für die (virtuelle) Wurzel einer Person (`ownerId` = deren ID).
+ */
+export function rootAccess(ctx: RequestContext, ownerId: string | null): AccessLevel | null {
 	if (canManageAll(ctx)) return 'edit';
-	if (space === 'personal') {
-		return ctx.userId && ownerId === ctx.userId ? 'edit' : null;
-	}
-	if (core.permissions.has(ctx, PERMISSIONS.sharedEdit)) return 'edit';
-	if (core.permissions.has(ctx, PERMISSIONS.sharedView)) return 'read';
-	return null;
+	return ctx.userId && ownerId === ctx.userId ? 'edit' : null;
 }
 
 const idList = (ids: readonly string[]): SQL =>
@@ -90,7 +76,7 @@ export async function resolveAccess(
 	if (!node || node.id !== nodeId) return null;
 	if (chain.some((n) => n.deletedAt !== null)) return null;
 
-	let level = rootAccess(ctx, node.space, node.ownerId);
+	let level = rootAccess(ctx, node.ownerId);
 	if (level !== 'edit') {
 		const shared = await shareLevelOn(
 			tx,
@@ -119,33 +105,23 @@ export async function requireNode(
 }
 
 /**
- * Zielordner für Anlegen/Hochladen/Verschieben prüfen. `parentId = null` = Wurzel von `space`
- * (personal: Ablage von `ctx.userId`). Ziel muss ein Ordner sein (sonst 422). Liefert den Ordner
- * (`null` bei Wurzel), die Stufe und den `ownerId`, den neue Kinder bekommen (personal: Eigentümer*in des Ordners).
+ * Zielordner für Anlegen/Hochladen/Verschieben prüfen. `parentId = null` = eigene Wurzel von `ctx.userId`.
+ * Ziel muss ein Ordner sein (sonst 422). Liefert den Ordner (`null` bei Wurzel), die Stufe und den `ownerId`,
+ * den neue Kinder bekommen (Eigentümer*in des Ordners bzw. `ctx.userId` bei der Wurzel).
  */
 export async function requireFolderTarget(
 	tx: Tx,
 	ctx: RequestContext,
-	space: Space,
 	parentId: string | null,
 	keys: readonly string[],
 	need: AccessLevel = 'edit'
 ): Promise<{ folder: NodeRow | null; level: AccessLevel; ownerId: string }> {
 	if (parentId === null) {
-		let ownerId: string;
-		if (space === 'personal') {
-			if (!ctx.userId)
-				throw errors.forbidden('„Meine Dateien“ gibt es nur für angemeldete Personen');
-			ownerId = ctx.userId;
-		} else {
-			ownerId = ctx.userId ?? ctx.actor.id ?? 'system';
+		if (!ctx.userId) {
+			throw errors.forbidden('Eine eigene Ablage gibt es nur für angemeldete Personen');
 		}
-		const level = rootAccess(ctx, space, space === 'personal' ? ownerId : null);
-		if (!level) throw errors.forbidden('Kein Zugriff auf diesen Bereich');
-		if (need === 'edit' && level !== 'edit') {
-			throw errors.forbidden('Keine Berechtigung zum Bearbeiten');
-		}
-		return { folder: null, level, ownerId };
+		// eigene Wurzel: immer edit
+		return { folder: null, level: 'edit', ownerId: ctx.userId };
 	}
 
 	const { node, level } = await requireNode(tx, ctx, parentId, keys, need);
@@ -153,12 +129,6 @@ export async function requireFolderTarget(
 		throw errors.validation(
 			[{ path: ['parentId'], message: 'Ziel ist kein Ordner' }],
 			'Ziel ist kein Ordner'
-		);
-	}
-	if (node.space !== space) {
-		throw errors.validation(
-			[{ path: ['parentId'], message: 'Ordner gehört zu einem anderen Bereich' }],
-			'Ordner gehört zu einem anderen Bereich'
 		);
 	}
 	return { folder: node, level, ownerId: node.ownerId };
@@ -175,7 +145,7 @@ export async function accessForMany(
 	const open: NodeRow[] = [];
 	for (const n of nodes) {
 		if (n.deletedAt !== null) continue;
-		const base = rootAccess(ctx, n.space, n.ownerId);
+		const base = rootAccess(ctx, n.ownerId);
 		if (base) map.set(n.id, base);
 		if (base !== 'edit') open.push(n);
 	}
@@ -220,24 +190,22 @@ function sharedOnChainSql(startExpr: SQL, keys: readonly string[]): SQL {
 }
 
 /**
- * „Mit mir geteilt“: Knoten mit direkter Freigabe an einen meiner Principals, die mir nicht ohnehin
- * gehören/über den Bereich zugänglich sind und deren Vorfahren mir nicht schon freigegeben sind.
+ * Freigegebene Einträge für die Wurzel: Knoten anderer Personen mit direkter Freigabe an einen meiner
+ * Principals (auch `everyone:*`), deren Vorfahren mir nicht schon freigegeben sind (sonst erscheinen sie im
+ * freigegebenen Oberordner). Eigene Knoten nie (die stehen ohnehin in der eigenen Wurzel).
  */
 export async function sharedWithMeRoots(
 	tx: Tx,
 	ctx: RequestContext,
 	keys: readonly string[]
 ): Promise<NodeRow[]> {
-	if (keys.length === 0 || canManageAll(ctx)) return [];
+	if (keys.length === 0) return [];
 	const uid = ctx.userId ?? '';
-	const notViaSpace = canSharedView(ctx)
-		? sql`n.space = 'personal' AND n.owner_id <> ${uid}`
-		: sql`NOT (n.space = 'personal' AND n.owner_id = ${uid})`;
 	const rows = await rowsOf(
 		tx,
 		sql`SELECT ${NODE_COLUMNS} FROM nodes n
 			WHERE n.deleted_at IS NULL
-				AND ${notViaSpace}
+				AND n.owner_id <> ${uid}
 				AND EXISTS (
 					SELECT 1 FROM node_shares s
 					WHERE s.node_id = n.id AND ${principalMatchSql('s', keys)}
@@ -255,8 +223,14 @@ export async function sharedWithMeRoots(
 export function visibleNodesFilter(ctx: RequestContext, keys: readonly string[]): SQL {
 	if (canManageAll(ctx)) return sql`TRUE`;
 	const uid = ctx.userId ?? '';
-	const parts: SQL[] = [sql`(n.space = 'personal' AND n.owner_id = ${uid})`];
-	if (canSharedView(ctx)) parts.push(sql`n.space = 'shared'`);
+	const parts: SQL[] = [sql`n.owner_id = ${uid}`];
 	if (keys.length > 0) parts.push(sharedOnChainSql(sql`n.id`, keys));
 	return sql`(${sql.join(parts, sql` OR `)})`;
+}
+
+/**
+ * SQL-Ausdruck (boolesch): Knoten `startExpr` oder ein Vorfahr ist an den ganzen Stamm (`everyone:*`) freigegeben.
+ */
+export function stammSharedSql(startExpr: SQL): SQL {
+	return sharedOnChainSql(startExpr, ['everyone:*']);
 }

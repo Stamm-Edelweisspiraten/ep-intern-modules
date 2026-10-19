@@ -1,5 +1,4 @@
 <script lang="ts">
-	// VERTRAG (Welle 0) – Props nicht ändern; Implementierung: Welle 3.5.
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -7,21 +6,19 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { FormField } from '$lib/components/layout';
-	import { MAX_NAME, nodeName, type FileNode, type Space } from '../schemas';
+	import { MAX_NAME, nodeName, type FileNode } from '../schemas';
 	import { API, errorText } from './helpers';
 
 	let {
 		open = $bindable(false),
 		mode,
-		space,
 		parentId = null,
 		node = null,
 		onsaved
 	}: {
 		open?: boolean;
-		/** `create` = neuer Ordner in `space`/`parentId`, `rename` = `node` umbenennen */
+		/** `create` = neuer Ordner in `parentId` (`null` = eigene Wurzel), `rename` = `node` umbenennen */
 		mode: 'create' | 'rename';
-		space: Space;
 		parentId?: string | null;
 		node?: FileNode | null;
 		onsaved: (node: FileNode) => void;
@@ -104,7 +101,7 @@
 			} else {
 				saved = await apiFetch<FileNode>(`${API}/folders`, {
 					method: 'POST',
-					body: JSON.stringify({ space, parentId, name: value })
+					body: JSON.stringify({ parentId, name: value })
 				});
 				toast.success('Ordner angelegt');
 			}

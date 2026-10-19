@@ -4,12 +4,15 @@
 	import { toast } from 'svelte-sonner';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import Info from '@lucide/svelte/icons/info';
+	import Tent from '@lucide/svelte/icons/tent';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { PRINCIPAL_TYPE_LABELS, type PrincipalInfo } from '$lib/sdk/types/sharing';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Switch } from '$lib/components/ui/switch';
 	import { SharePanel } from '$lib/components/layout';
 	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
@@ -44,12 +47,31 @@
 	const canManage = $derived(!!node?.canShare);
 	const isFolder = $derived(node?.kind === 'folder');
 	const sharesUrl = $derived(node ? `${API}/nodes/${encodeURIComponent(node.id)}/shares` : '');
-	const entries = $derived<ShareEntry[]>((data?.shares ?? []).map(toEntry));
-	const owner = $derived(
-		node && node.space === 'personal' && node.createdBy && node.createdBy.id === node.ownerId
-			? { name: node.createdBy.name }
-			: undefined
+	/** Freigaben an Einzelne (ohne „Stamm“ – der hat eine eigene Karte) */
+	const entries = $derived<ShareEntry[]>(
+		(data?.shares ?? []).filter((s) => s.type !== 'everyone').map(toEntry)
 	);
+	/** Eigene Stamm-Freigabe an diesem Eintrag */
+	const stammOwn = $derived(data?.shares.find((s) => s.type === 'everyone') ?? null);
+	/** Von einem Oberordner geerbte Stamm-Freigabe (höchste Stufe) */
+	const stammInherited = $derived.by(() => {
+		const list = (data?.inherited ?? []).filter((s) => s.type === 'everyone');
+		return list.find((s) => s.level === 'edit') ?? list[0] ?? null;
+	});
+	const inheritedOthers = $derived((data?.inherited ?? []).filter((s) => s.type !== 'everyone'));
+	const owner = $derived(
+		node ? { name: node.own ? `${node.owner.name} (du)` : node.owner.name } : undefined
+	);
+
+	/** Gewählte Stufe für die Stamm-Freigabe (bleibt beim Ausschalten erhalten) */
+	let stammLevel = $state<ShareLevel>('read');
+	let stammBusy = $state(false);
+	const stammOn = $derived(!!stammOwn);
+	const stammLocked = $derived(!canManage || stammBusy || (!stammOwn && !!stammInherited));
+
+	$effect(() => {
+		if (stammOwn) stammLevel = stammOwn.level;
+	});
 
 	// Beim Öffnen (bzw. Wechsel des Knotens) Freigaben laden
 	$effect(() => {
@@ -75,6 +97,7 @@
 		loading = true;
 		loadError = '';
 		data = null;
+		stammLevel = 'read';
 		try {
 			const r = await apiFetch<NodeShares>(`${API}/nodes/${encodeURIComponent(id)}/shares`);
 			if (mine === seq) data = r;
@@ -120,8 +143,17 @@
 		return null;
 	}
 
-	async function save(next: ShareEntry[]) {
+	/** Stamm-Eintrag (falls vorhanden) als `ShareEntry` für die komplette Liste */
+	function stammEntry(level: ShareLevel | null): ShareEntry[] {
+		return level
+			? [{ userId: '*', type: 'everyone', name: EVERYONE_LABEL, detail: null, level }]
+			: [];
+	}
+
+	/** Komplette Liste speichern: `others` = Einzelne, `stamm` = Stufe der Stamm-Freigabe oder `null` */
+	async function save(others: ShareEntry[], stamm: ShareLevel | null = stammOwn?.level ?? null) {
 		if (!node) return;
+		const next = [...stammEntry(stamm), ...others];
 		const body = {
 			shares: next.map((s) => ({
 				type: s.type ?? 'user',
@@ -173,6 +205,27 @@
 		await save(entries.filter((s) => shareKey(s) !== key));
 	}
 
+	async function setStamm(level: ShareLevel | null) {
+		if (stammBusy) return;
+		stammBusy = true;
+		try {
+			await save(entries, level);
+		} catch {
+			// Meldung kam bereits als Toast
+		} finally {
+			stammBusy = false;
+		}
+	}
+
+	function toggleStamm(on: boolean) {
+		void setStamm(on ? stammLevel : null);
+	}
+
+	function pickStammLevel(level: ShareLevel) {
+		stammLevel = level;
+		if (stammOwn && stammOwn.level !== level) void setStamm(level);
+	}
+
 	const levelLabel = (l: ShareLevel) => SHARE_LEVEL_LABELS[l] ?? l;
 </script>
 
@@ -202,8 +255,79 @@
 					</Button>
 				</div>
 			{:else if data}
+				<section
+					class="space-y-3 rounded-lg border p-4 {stammOn || stammInherited
+						? 'border-primary/40 bg-primary/5'
+						: 'bg-muted/30'}"
+					aria-labelledby="files-share-stamm"
+				>
+					<div class="flex items-start gap-3">
+						<div
+							class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+						>
+							<Tent class="size-5" aria-hidden="true" />
+						</div>
+						<div class="min-w-0 flex-1 space-y-1">
+							<div class="flex items-center justify-between gap-3">
+								<Label
+									id="files-share-stamm"
+									for="files-share-stamm-switch"
+									class="text-sm font-semibold"
+								>
+									Mit dem ganzen Stamm teilen
+								</Label>
+								<Switch
+									id="files-share-stamm-switch"
+									bind:checked={() => stammOn || !!stammInherited, toggleStamm}
+									disabled={stammLocked}
+									aria-describedby="files-share-stamm-hint"
+								/>
+							</div>
+							<p id="files-share-stamm-hint" class="text-xs text-muted-foreground">
+								Alle Mitglieder mit Konto sehen {isFolder ? 'den Ordner' : 'die Datei'} dann direkt unter
+								„Dateien“.
+							</p>
+							{#if !stammOwn && stammInherited}
+								<p class="flex items-center gap-1 text-xs text-muted-foreground">
+									<FolderTree class="size-3 shrink-0" aria-hidden="true" />
+									<span class="min-w-0 truncate">
+										Geerbt von „{stammInherited.fromName}“ ({levelLabel(stammInherited.level)}) –
+										ändern lässt sich das nur am Ordner.
+									</span>
+								</p>
+							{/if}
+						</div>
+					</div>
+					{#if stammOwn || (!stammInherited && canManage)}
+						<div
+							class="flex flex-wrap items-center gap-2 sm:pl-12"
+							role="radiogroup"
+							aria-label="Stufe für den ganzen Stamm"
+						>
+							{#each LEVELS as l (l.value)}
+								<Button
+									type="button"
+									size="sm"
+									variant={stammLevel === l.value ? 'default' : 'outline'}
+									role="radio"
+									aria-checked={stammLevel === l.value}
+									disabled={!canManage || stammBusy}
+									onclick={() => pickStammLevel(l.value)}
+								>
+									{l.label}
+								</Button>
+							{/each}
+							{#if stammBusy}
+								<span class="text-xs text-muted-foreground" aria-live="polite">Speichert …</span>
+							{:else if !stammOn}
+								<span class="text-xs text-muted-foreground">Gilt, sobald der Schalter an ist.</span>
+							{/if}
+						</div>
+					{/if}
+				</section>
+
 				<section class="space-y-3" aria-labelledby="files-share-own">
-					<h3 id="files-share-own" class="sr-only">Freigaben</h3>
+					<h3 id="files-share-own" class="text-sm font-semibold">Einzelne Personen und Gruppen</h3>
 					{#if !canManage}
 						<p class="text-xs text-muted-foreground">
 							Nur Ansicht – du darfst die Freigaben dieses Eintrags nicht ändern.
@@ -215,7 +339,6 @@
 						levels={LEVELS}
 						defaultLevel="read"
 						{canManage}
-						everyoneLabel={EVERYONE_LABEL}
 						placeholder="Name, Gruppe, Rolle oder Mitglied suchen …"
 						searchLabel="Freigabe hinzufügen"
 						emptyResultText="Niemand gefunden"
@@ -227,15 +350,16 @@
 					<p class="flex gap-2 text-xs text-muted-foreground">
 						<Info class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 						<span>
-							„{EVERYONE_LABEL}“ heißt: alle angemeldeten Mitglieder des Stammes mit eigenem Konto.
 							{#if isFolder}
 								Freigaben an Ordnern gelten für alle enthaltenen Ordner und Dateien.
+							{:else}
+								Personen, Gruppen, Rollen und Mitglieder lassen sich einzeln hinzufügen.
 							{/if}
 						</span>
 					</p>
 				</section>
 
-				{#if data.inherited.length > 0}
+				{#if inheritedOthers.length > 0}
 					<section class="space-y-2" aria-labelledby="files-share-inherited">
 						<div>
 							<h3 id="files-share-inherited" class="text-sm font-semibold">Geerbte Freigaben</h3>
@@ -245,7 +369,7 @@
 							</p>
 						</div>
 						<ul class="divide-y rounded-lg border">
-							{#each data.inherited as s (`${s.fromId}:${s.type}:${s.id}`)}
+							{#each inheritedOthers as s (`${s.fromId}:${s.type}:${s.id}`)}
 								<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
 									<div class="min-w-0 flex-1">
 										<div class="flex flex-wrap items-center gap-2">
