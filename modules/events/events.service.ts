@@ -28,6 +28,7 @@ import {
 import {
 	MAX_OCCURRENCES,
 	MODULE_ID,
+	OPEN_WINDOW_DAYS,
 	checkEventDates,
 	occurrenceOverride,
 	recurrenceRule,
@@ -530,6 +531,41 @@ export function resolveDetailOccurrence(
 		expandOccurrences(dates, row.recurrence, row.startsOn, FAR_FUTURE, 1)[0] ??
 		occurrenceAt(dates, row.startsOn);
 	return materialize(row, first, exceptions?.get(first.date));
+}
+
+/**
+ * Vorkommen für die Website-Detailansicht (`GET /website/events/:id`). Abgesagte Vorkommen gibt es
+ * auf der Website nicht (404). Mit `occurrence`: genau dieses Vorkommen (kein Vorkommen → 404).
+ * Ohne `occurrence` bei Serien: nächstes nicht abgesagtes Vorkommen, das heute noch nicht vorbei
+ * ist (Europe/Berlin), sonst das letzte nicht abgesagte; alle abgesagt → 404.
+ */
+export function resolveWebsiteOccurrence(
+	row: EventRow,
+	exceptions: Map<string, ExceptionRow> | undefined,
+	occurrence: string | undefined,
+	today: string = todayBerlin()
+): OccurrenceRow {
+	if (!row.recurrence || occurrence) {
+		return resolveDetailOccurrence(row, exceptions, occurrence, false);
+	}
+	// Fenster ab heute (bzw. ab Serienbeginn, falls dieser später liegt)
+	const nextTo = addDays(row.startsOn > today ? row.startsOn : today, OPEN_WINDOW_DAYS);
+	const next = expandRow(row, exceptions, today, nextTo, { max: 100 })
+		.sort(compareOccurrences)
+		.find((o) => (o.endsOn ?? o.startsOn) >= today);
+	if (next) return next;
+	// Rückwärts in wachsenden Fenstern nach dem letzten nicht abgesagten Vorkommen suchen
+	const end = lastOccurrence(seriesDates(row), row.recurrence) ?? today;
+	const upper = end < today ? end : today;
+	for (let window = OPEN_WINDOW_DAYS; ; window *= 4) {
+		const lower = addDays(upper, -window);
+		const from = lower > row.startsOn ? lower : row.startsOn;
+		const past = expandRow(row, exceptions, from, upper).sort(compareOccurrences);
+		const last = past[past.length - 1];
+		if (last) return last;
+		if (from === row.startsOn) break;
+	}
+	throw errors.notFound('Termin nicht gefunden');
 }
 
 // ---------------------------------------------------------------------------------------------

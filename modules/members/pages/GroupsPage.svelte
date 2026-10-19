@@ -16,6 +16,7 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import {
 		ConfirmDialog,
@@ -29,11 +30,13 @@
 	} from '$lib/components/layout';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { downloadPdf } from './download';
+	import { slugFromName } from '../slug';
 	import {
 		GROUP_IMAGE_CONTENT_TYPES,
 		GROUP_TYPES,
 		GROUP_TYPE_LABELS,
 		MAX_GROUP_IMAGE_BYTES,
+		MAX_GROUP_SLUG,
 		WEEKDAYS,
 		WEEKDAY_LABELS,
 		groupInput,
@@ -131,6 +134,25 @@
 	let imagePreview = $state<string | null>(null);
 	let removeImage = $state(false);
 
+	// --- Website-Steckbrief -----------------------------------------------------------
+	type DialogTab = 'general' | 'website';
+	let dialogTab = $state<DialogTab>('general');
+	let onWebsite = $state(false);
+	let slug = $state('');
+	/** true, sobald die Adresse von Hand geändert wurde (dann folgt sie nicht mehr dem Namen) */
+	let slugTouched = $state(false);
+	let websiteText = $state('');
+	let ageRange = $state('');
+	let contactEmail = $state('');
+	const nameSlug = $derived(slugFromName(name));
+	const slugPreview = $derived(slug.trim().toLowerCase() || nameSlug || 'adresse');
+	const websiteHasError = $derived(Object.keys(fieldErrors).some((k) => k.startsWith('website.')));
+	const generalHasError = $derived(Object.keys(fieldErrors).some((k) => !k.startsWith('website.')));
+
+	function onNameInput() {
+		if (!slugTouched) slug = slugFromName(name);
+	}
+
 	const imageAccept = GROUP_IMAGE_CONTENT_TYPES.join(',');
 	const maxImageMb = MAX_GROUP_IMAGE_BYTES / 1024 / 1024;
 	const typeOptions = GROUP_TYPES.map((t) => ({ value: t, label: GROUP_TYPE_LABELS[t] }));
@@ -210,10 +232,21 @@
 		meetingTime = '';
 		meetingWeekday = null;
 		color = null;
+		setWebsite(null);
 		resetImage();
 		fieldErrors = {};
 		formError = '';
 		formOpen = true;
+	}
+
+	function setWebsite(g: Group | null) {
+		dialogTab = 'general';
+		onWebsite = g?.website.onWebsite ?? false;
+		slug = g?.website.slug ?? (g ? slugFromName(g.name) : '');
+		slugTouched = Boolean(g?.website.slug);
+		websiteText = g?.website.description ?? '';
+		ageRange = g?.website.ageRange ?? '';
+		contactEmail = g?.website.contactEmail ?? '';
 	}
 
 	function openEdit(g: Group) {
@@ -226,6 +259,7 @@
 		meetingTime = g.meetingTime ?? '';
 		meetingWeekday = g.meetingWeekday ? String(g.meetingWeekday) : null;
 		color = g.color;
+		setWebsite(g);
 		resetImage();
 		fieldErrors = {};
 		formError = '';
@@ -246,10 +280,23 @@
 		meetingPlace: 'g-place',
 		meetingWeekday: 'g-weekday',
 		meetingTime: 'g-time',
-		color: 'g-color'
+		color: 'g-color',
+		'website.onWebsite': 'g-web-on',
+		'website.slug': 'g-web-slug',
+		'website.description': 'g-web-text',
+		'website.ageRange': 'g-web-age',
+		'website.contactEmail': 'g-web-mail'
 	};
 
+	/** Fehlerschlüssel: Website-Felder als `website.<feld>`, sonst das erste Pfadsegment */
+	function errorKey(path: readonly PropertyKey[] | undefined): string {
+		const first = String(path?.[0] ?? '');
+		return first === 'website' && path?.[1] != null ? `website.${String(path[1])}` : first;
+	}
+
 	async function focusFirstError() {
+		if (generalHasError) dialogTab = 'general';
+		else if (websiteHasError) dialogTab = 'website';
 		await tick();
 		for (const k of Object.keys(fieldIds)) {
 			if (!fieldErrors[k]) continue;
@@ -268,7 +315,7 @@
 			?.issues;
 		if (Array.isArray(issues)) {
 			for (const i of issues) {
-				const key = String(i.path?.[0] ?? '');
+				const key = errorKey(i.path);
 				if (key && i.message && !out[key]) out[key] = i.message;
 			}
 		}
@@ -287,13 +334,20 @@
 			meetingPlace: meetingPlace || null,
 			meetingWeekday: meetingWeekday ? Number(meetingWeekday) : null,
 			meetingTime: meetingTime || null,
-			color
+			color,
+			website: {
+				onWebsite,
+				slug: slug.trim() || null,
+				description: websiteText.trim() || null,
+				ageRange: ageRange.trim() || null,
+				contactEmail: contactEmail.trim() || null
+			}
 		};
 		const parsed = groupInput.safeParse(input);
 		const errs: Record<string, string> = {};
 		if (!parsed.success) {
 			for (const i of parsed.error.issues) {
-				const key = String(i.path[0] ?? '');
+				const key = errorKey(i.path);
 				if (key && !errs[key]) errs[key] = i.message;
 			}
 		}
@@ -341,6 +395,10 @@
 			if (err instanceof ApiClientError) {
 				formError = err.message;
 				applyDetails(err.details);
+				// Doppelte Website-Adresse (409) am Feld zeigen
+				if (err.status === 409 && /Website-Adresse/.test(err.message)) {
+					fieldErrors = { ...fieldErrors, 'website.slug': err.message };
+				}
 				void focusFirstError();
 			} else {
 				formError = 'Speichern fehlgeschlagen.';
@@ -443,6 +501,13 @@
 					<div class="flex items-center gap-3">
 						<EntityAvatar name={g.name} src={g.hasImage ? imageUrl(g) : null} color={g.color} />
 						<span>{g.name}</span>
+						{#if g.website.onWebsite && g.website.slug}
+							<Badge
+								variant="outline"
+								class="font-normal text-muted-foreground"
+								title={`Steckbrief auf der Website: /gruppen/${g.website.slug}`}>Website</Badge
+							>
+						{/if}
 					</div>
 				</Table.Cell>
 				<Table.Cell>
@@ -507,135 +572,255 @@
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
-			<FormField label="Name *" id="g-name" error={fieldErrors.name}>
-				<Input
-					id="g-name"
-					required
-					maxlength={100}
-					bind:value={name}
-					aria-invalid={!!fieldErrors.name}
-					aria-describedby={fieldErrors.name ? 'g-name-error' : undefined}
-				/>
-			</FormField>
+			<Tabs.Root bind:value={dialogTab} class="gap-4">
+				<Tabs.List variant="line" class="w-full justify-start">
+					<Tabs.Trigger value="general" class="flex-none">
+						Allgemein
+						{#if generalHasError}
+							<span class="size-1.5 rounded-full bg-destructive" aria-hidden="true"></span>
+							<span class="sr-only">(enthält Fehler)</span>
+						{/if}
+					</Tabs.Trigger>
+					<Tabs.Trigger value="website" class="flex-none">
+						Website
+						{#if websiteHasError}
+							<span class="size-1.5 rounded-full bg-destructive" aria-hidden="true"></span>
+							<span class="sr-only">(enthält Fehler)</span>
+						{:else if onWebsite}
+							<span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
+							<span class="sr-only">(aktiv)</span>
+						{/if}
+					</Tabs.Trigger>
+				</Tabs.List>
+				<Tabs.Content value="general" class="space-y-4">
+					<FormField label="Name *" id="g-name" error={fieldErrors.name}>
+						<Input
+							id="g-name"
+							required
+							maxlength={100}
+							bind:value={name}
+							oninput={onNameInput}
+							aria-invalid={!!fieldErrors.name}
+							aria-describedby={fieldErrors.name ? 'g-name-error' : undefined}
+						/>
+					</FormField>
 
-			<FormField label="Typ *" id="g-type" error={fieldErrors.type}>
-				<SelectField
-					id="g-type"
-					label="Typ"
-					options={typeOptions}
-					bind:value={type}
-					placeholder="Typ wählen"
-					invalid={!!fieldErrors.type}
-				/>
-			</FormField>
+					<FormField label="Typ *" id="g-type" error={fieldErrors.type}>
+						<SelectField
+							id="g-type"
+							label="Typ"
+							options={typeOptions}
+							bind:value={type}
+							placeholder="Typ wählen"
+							invalid={!!fieldErrors.type}
+						/>
+					</FormField>
 
-			<div class="space-y-1.5">
-				{#if members.length === 0}
-					<p class="text-sm font-medium">Gruppenleiter *</p>
+					<div class="space-y-1.5">
+						{#if members.length === 0}
+							<p class="text-sm font-medium">Gruppenleiter *</p>
+							<p class="text-sm text-muted-foreground">
+								Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+							</p>
+						{:else}
+							<MultiSelect
+								id="g-leaders"
+								label="Gruppenleiter *"
+								options={leaderOptions}
+								bind:value={leaderIds}
+								placeholder="Leiter auswählen"
+								searchPlaceholder="Mitglieder durchsuchen …"
+								emptyText="Keine Treffer."
+								invalid={!!fieldErrors.leaderIds}
+							/>
+						{/if}
+						{#if fieldErrors.leaderIds}
+							<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderIds}</p>
+						{/if}
+					</div>
+
+					<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
+						<Textarea
+							id="g-desc"
+							rows={3}
+							maxlength={2000}
+							bind:value={description}
+							aria-invalid={!!fieldErrors.description}
+							aria-describedby={fieldErrors.description ? 'g-desc-error' : undefined}
+						/>
+					</FormField>
+
+					<FormField label="Treffpunkt" id="g-place" error={fieldErrors.meetingPlace}>
+						<Input
+							id="g-place"
+							maxlength={200}
+							bind:value={meetingPlace}
+							aria-invalid={!!fieldErrors.meetingPlace}
+							aria-describedby={fieldErrors.meetingPlace ? 'g-place-error' : undefined}
+						/>
+					</FormField>
+
+					<div class="grid gap-4 sm:grid-cols-2">
+						<FormField label="Wochentag" id="g-weekday" error={fieldErrors.meetingWeekday}>
+							<SelectField
+								id="g-weekday"
+								label="Wochentag"
+								options={weekdayOptions}
+								bind:value={meetingWeekday}
+								emptyLabel="Kein Wochentag"
+								invalid={!!fieldErrors.meetingWeekday}
+							/>
+						</FormField>
+						<FormField label="Uhrzeit" id="g-time" error={fieldErrors.meetingTime}>
+							<Input
+								id="g-time"
+								type="time"
+								bind:value={meetingTime}
+								aria-invalid={!!fieldErrors.meetingTime}
+								aria-describedby={fieldErrors.meetingTime ? 'g-time-error' : undefined}
+							/>
+						</FormField>
+					</div>
+
+					<div class="space-y-1.5">
+						<ColorPicker
+							id="g-color"
+							label="Gruppenfarbe"
+							bind:value={color}
+							allowClear
+							invalid={!!fieldErrors.color}
+						/>
+						{#if fieldErrors.color}
+							<p role="alert" class="text-xs text-destructive">{fieldErrors.color}</p>
+						{/if}
+					</div>
+
+					<div class="space-y-2">
+						<label for="g-image" class="text-sm font-medium">Gruppenbild</label>
+						{#if shownImage}
+							<img
+								src={shownImage}
+								alt="Vorschau des Gruppenbilds"
+								class="size-16 rounded-full border-2 object-cover"
+								style:border-color={color ?? 'transparent'}
+							/>
+						{/if}
+						<FileField
+							id="g-image"
+							bind:file={imageFile}
+							accept={imageAccept}
+							maxBytes={MAX_GROUP_IMAGE_BYTES}
+							existingName={editing?.hasImage && !removeImage && !imageFile
+								? 'Aktuelles Gruppenbild'
+								: null}
+							existingHref={editing?.hasImage ? imageUrl(editing) : null}
+							canRemove
+							onremove={() => (removeImage = true)}
+						/>
+						<p class="text-xs text-muted-foreground">
+							JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
+								? ''
+								: '; wird nach dem Anlegen hochgeladen'}.
+						</p>
+					</div>
+				</Tabs.Content>
+
+				<Tabs.Content value="website" class="space-y-4">
 					<p class="text-sm text-muted-foreground">
-						Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+						Steckbrief für die Stammeswebsite. Gezeigt werden Name, Typ, Text, Alter, Treffen,
+						Farbe, Gruppenbild, Kontakt-E-Mail und die Vornamen der Leitenden.
 					</p>
-				{:else}
-					<MultiSelect
-						id="g-leaders"
-						label="Gruppenleiter *"
-						options={leaderOptions}
-						bind:value={leaderIds}
-						placeholder="Leiter auswählen"
-						searchPlaceholder="Mitglieder durchsuchen …"
-						emptyText="Keine Treffer."
-						invalid={!!fieldErrors.leaderIds}
-					/>
-				{/if}
-				{#if fieldErrors.leaderIds}
-					<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderIds}</p>
-				{/if}
-			</div>
+					<div class="flex items-center gap-2">
+						<Checkbox id="g-web-on" bind:checked={onWebsite} />
+						<label for="g-web-on" class="text-sm font-medium">Auf der Website zeigen</label>
+					</div>
 
-			<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
-				<Textarea
-					id="g-desc"
-					rows={3}
-					maxlength={2000}
-					bind:value={description}
-					aria-invalid={!!fieldErrors.description}
-					aria-describedby={fieldErrors.description ? 'g-desc-error' : undefined}
-				/>
-			</FormField>
+					<FormField
+						label={onWebsite ? 'Adresse *' : 'Adresse'}
+						id="g-web-slug"
+						error={fieldErrors['website.slug']}
+						hint={`Vorschau: /gruppen/${slugPreview} – nur Kleinbuchstaben, Ziffern und Bindestriche.`}
+					>
+						<Input
+							id="g-web-slug"
+							maxlength={MAX_GROUP_SLUG}
+							autocomplete="off"
+							spellcheck={false}
+							bind:value={slug}
+							oninput={() => (slugTouched = true)}
+							placeholder={nameSlug || 'z. B. woelflinge'}
+							aria-invalid={!!fieldErrors['website.slug']}
+							aria-describedby={fieldErrors['website.slug']
+								? 'g-web-slug-error'
+								: 'g-web-slug-hint'}
+						/>
+					</FormField>
+					{#if nameSlug && slug.trim() !== nameSlug}
+						<Button
+							type="button"
+							variant="link"
+							size="sm"
+							class="-mt-2 h-auto px-0"
+							onclick={() => {
+								slug = nameSlug;
+								slugTouched = false;
+							}}
+						>
+							Vorschlag übernehmen: {nameSlug}
+						</Button>
+					{/if}
 
-			<FormField label="Treffpunkt" id="g-place" error={fieldErrors.meetingPlace}>
-				<Input
-					id="g-place"
-					maxlength={200}
-					bind:value={meetingPlace}
-					aria-invalid={!!fieldErrors.meetingPlace}
-					aria-describedby={fieldErrors.meetingPlace ? 'g-place-error' : undefined}
-				/>
-			</FormField>
+					<FormField
+						label="Text für die Website"
+						id="g-web-text"
+						error={fieldErrors['website.description']}
+						hint="Leer = die interne Beschreibung wird gezeigt."
+					>
+						<Textarea
+							id="g-web-text"
+							rows={5}
+							maxlength={5000}
+							bind:value={websiteText}
+							placeholder={description || undefined}
+							aria-invalid={!!fieldErrors['website.description']}
+							aria-describedby={fieldErrors['website.description']
+								? 'g-web-text-error'
+								: 'g-web-text-hint'}
+						/>
+					</FormField>
 
-			<div class="grid gap-4 sm:grid-cols-2">
-				<FormField label="Wochentag" id="g-weekday" error={fieldErrors.meetingWeekday}>
-					<SelectField
-						id="g-weekday"
-						label="Wochentag"
-						options={weekdayOptions}
-						bind:value={meetingWeekday}
-						emptyLabel="Kein Wochentag"
-						invalid={!!fieldErrors.meetingWeekday}
-					/>
-				</FormField>
-				<FormField label="Uhrzeit" id="g-time" error={fieldErrors.meetingTime}>
-					<Input
-						id="g-time"
-						type="time"
-						bind:value={meetingTime}
-						aria-invalid={!!fieldErrors.meetingTime}
-						aria-describedby={fieldErrors.meetingTime ? 'g-time-error' : undefined}
-					/>
-				</FormField>
-			</div>
-
-			<div class="space-y-1.5">
-				<ColorPicker
-					id="g-color"
-					label="Gruppenfarbe"
-					bind:value={color}
-					allowClear
-					invalid={!!fieldErrors.color}
-				/>
-				{#if fieldErrors.color}
-					<p role="alert" class="text-xs text-destructive">{fieldErrors.color}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-2">
-				<label for="g-image" class="text-sm font-medium">Gruppenbild</label>
-				{#if shownImage}
-					<img
-						src={shownImage}
-						alt="Vorschau des Gruppenbilds"
-						class="size-16 rounded-full border-2 object-cover"
-						style:border-color={color ?? 'transparent'}
-					/>
-				{/if}
-				<FileField
-					id="g-image"
-					bind:file={imageFile}
-					accept={imageAccept}
-					maxBytes={MAX_GROUP_IMAGE_BYTES}
-					existingName={editing?.hasImage && !removeImage && !imageFile
-						? 'Aktuelles Gruppenbild'
-						: null}
-					existingHref={editing?.hasImage ? imageUrl(editing) : null}
-					canRemove
-					onremove={() => (removeImage = true)}
-				/>
-				<p class="text-xs text-muted-foreground">
-					JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
-						? ''
-						: '; wird nach dem Anlegen hochgeladen'}.
-				</p>
-			</div>
+					<div class="grid gap-4 sm:grid-cols-2">
+						<FormField label="Alter" id="g-web-age" error={fieldErrors['website.ageRange']}>
+							<Input
+								id="g-web-age"
+								maxlength={50}
+								bind:value={ageRange}
+								placeholder="z. B. 7 bis 10 Jahre"
+								aria-invalid={!!fieldErrors['website.ageRange']}
+								aria-describedby={fieldErrors['website.ageRange'] ? 'g-web-age-error' : undefined}
+							/>
+						</FormField>
+						<FormField
+							label="Kontakt-E-Mail"
+							id="g-web-mail"
+							error={fieldErrors['website.contactEmail']}
+						>
+							<Input
+								id="g-web-mail"
+								type="email"
+								maxlength={200}
+								autocomplete="off"
+								bind:value={contactEmail}
+								placeholder="z. B. woelflinge@stamm.de"
+								aria-invalid={!!fieldErrors['website.contactEmail']}
+								aria-describedby={fieldErrors['website.contactEmail']
+									? 'g-web-mail-error'
+									: undefined}
+							/>
+						</FormField>
+					</div>
+				</Tabs.Content>
+			</Tabs.Root>
 
 			{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
 			<Dialog.Footer>

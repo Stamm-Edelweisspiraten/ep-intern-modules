@@ -316,10 +316,79 @@ export const groupInput = z.object({
 		.regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format HH:MM')
 		.nullish()
 		.transform((v) => (v ? v : null)),
-	color: hexColor
+	color: hexColor,
+	/** Website-Steckbrief; fehlt das Feld, bleiben die gespeicherten Werte unverändert */
+	website: z.lazy(() => groupWebsiteInput).optional()
 });
 export type GroupInput = z.infer<typeof groupInput>;
 export type GroupFormInput = z.input<typeof groupInput>;
+
+// --- Stammeswebsite (Scope `members.website.read`) ---------------------------
+
+export const GROUP_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const MAX_GROUP_SLUG = 60;
+
+export const groupSlug = z
+	.string()
+	.trim()
+	.toLowerCase()
+	.min(1, 'Adresse fehlt')
+	.max(MAX_GROUP_SLUG, `Höchstens ${MAX_GROUP_SLUG} Zeichen`)
+	.regex(GROUP_SLUG_PATTERN, 'Nur Kleinbuchstaben, Ziffern und Bindestriche');
+
+export const groupWebsiteInput = z
+	.object({
+		onWebsite: z.boolean().default(false),
+		/** Teil der Website-Adresse `/gruppen/<slug>`; Pflicht bei `onWebsite` */
+		slug: groupSlug.nullish().transform((v) => v ?? null),
+		/** Text für die Website (ersetzt dort `description`, falls gesetzt) */
+		description: optionalText(5000, true),
+		/** Freitext, z. B. „7 bis 10 Jahre“ */
+		ageRange: optionalText(50),
+		contactEmail: emailValue.nullish().transform((v) => v ?? null)
+	})
+	.superRefine((v, ctx) => {
+		if (v.onWebsite && !v.slug) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['slug'],
+				message: 'Für die Website wird eine Adresse benötigt'
+			});
+		}
+	});
+export type GroupWebsiteInput = z.infer<typeof groupWebsiteInput>;
+
+export const groupSlugParams = z.object({ slug: groupSlug });
+
+/** Website-Einstellungen einer Gruppe (Teil von `Group`, nur intern) */
+export interface GroupWebsite {
+	onWebsite: boolean;
+	slug: string | null;
+	description: string | null;
+	ageRange: string | null;
+	contactEmail: string | null;
+}
+
+/** Öffentliche Felder für die Stammeswebsite – keine Nachnamen, Mitglieder-Mails, Geburtsdaten */
+export interface WebsiteGroup {
+	id: string;
+	slug: string;
+	name: string;
+	type: GroupType;
+	/** Website-Text, sonst die interne Beschreibung */
+	description: string | null;
+	ageRange: string | null;
+	meetingPlace: string | null;
+	/** 1 = Montag … 7 = Sonntag */
+	meetingWeekday: number | null;
+	meetingTime: string | null;
+	color: string | null;
+	contactEmail: string | null;
+	/** Leitende nur mit Vornamen, Reihenfolge nach Vorname */
+	leaders: { firstName: string }[];
+	/** Relativer API-Pfad `/api/v1/modules/members/website/groups/<slug>/image?v=…` oder `null` */
+	imagePath: string | null;
+}
 
 /** Sammelaktionen auf markierten Mitgliedern (`POST /members/bulk`). */
 export const BULK_MAX_IDS = 200;
@@ -470,6 +539,7 @@ export interface Group {
 	imageVersion: string | null;
 	leaders: MemberRef[];
 	memberCount: number;
+	website: GroupWebsite;
 	createdAt: string;
 	updatedAt: string;
 }

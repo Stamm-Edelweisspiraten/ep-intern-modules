@@ -146,6 +146,19 @@ Einwilligungen, Ein-/Austritt, Adresse, Dokumente.
   Migrationsnummer 0008 (0007 ist in `members` unbenutzt).
 - Tests: `tests/integration/members-own.test.ts` (Zugriffsmatrix, Kontakte, Felder, Mail-Prefs, Rate-Limit, Zahlungsbestätigung in der Kasse).
 
+### Gruppen auf der Stammeswebsite (Migration 0009, v1.7.0, 2026-10-19)
+- Spalten an `groups`: `on_website` (Standard `false`), `slug` (Unique, wo gesetzt; `[a-z0-9]+(-[a-z0-9]+)*`, ≤ 60), `website_description` (≤ 5000),
+  `age_range` (≤ 50, Freitext „7 bis 10 Jahre“), `contact_email`. DTO `Group.website: GroupWebsite`; Eingabe `groupInput.website` (**optional** – fehlt es,
+  bleiben die Werte unverändert; `onWebsite` ohne Slug → 422 `website.slug`, Slug doppelt → 409). Audit nur `{ name, onWebsite, slug }`.
+- Recht `members.website.read` (nur Website-Endpunkte, Scope für den API-Key der Website). `website.endpoints.ts` (zuerst registriert):
+  `GET /website/groups` (nur `on_website` mit Slug, Meute vor Sippe, dann Name; 120/60 s), `GET /website/groups/:slug` (404 privat/unbekannt, 422 ungültig),
+  `GET /website/groups/:slug/image` (roh, `public, max-age=86400`, `nosniff`; 404 ohne Bild/Storage/nicht auf Website; 600/60 s; Storage über Systemkontext).
+- `WebsiteGroup`: `id, slug, name, type, description` (Website-Text, sonst interne Beschreibung), `ageRange, meetingPlace, meetingWeekday, meetingTime, color,
+  contactEmail, leaders: [{ firstName }]` (nur Vornamen, ohne Ausgetretene), `imagePath` (`…/image?v=<ms>` oder `null`). **Keine** Nachnamen, Mitglieder-Mails, Geburtsdaten.
+- UI: Gruppendialog mit Reitern **Allgemein / Website** (Checkbox, Adresse mit Vorschlag aus dem Namen über `slug.ts` `slugFromName`, Vorschau `/gruppen/<slug>`,
+  Text, Alter, Kontakt-E-Mail), Badge „Website“ in der Liste. Gruppenbild wird roh ausgeliefert (nicht über `core.images` bereinigt).
+- Tests `tests/integration/members-website.test.ts`. Nutzerin: Stammeswebsite (`rules/website.md`).
+
 Ohne S3 antworten Upload/Download mit `503 unavailable`. Storage-Pfad `<id>/<kind>-<uuid>-<bereinigter Name>`;
 bei DB-Fehler nach Upload wird die Datei wieder entfernt.
 

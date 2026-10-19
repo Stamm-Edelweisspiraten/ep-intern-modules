@@ -16,13 +16,13 @@ als eigener Eintrag (ohne `group`: Sidebar-Gruppen gelten je Modul, „Stamm“ 
 |---|---|
 | `module.ts` | Manifest (Rechte, `defaultRoleGrants`, Navigation), Einstellung `events.stamm.name`, Migration, `resetAreas`/`resetUsers`, Endpoints (Reihenfolge `website` → `meta` → `events`) |
 | `ui.ts` | Route `''` → `EventsPage` |
-| `schemas.ts` | API-Vertrag (Server + UI): `eventInput` (inkl. `recurrence`), `recurrenceRule`/`recurrenceEnd`, `checkRecurrence`, `occurrenceParams`, `detailQuery`, `occurrenceOverride`, `occurrenceInput`, `shareInput`, `listQuery`, `websiteQuery`, `principalSearchQuery`, `tagsQuery`, `idParams`, `checkEventDates`, `normalizeTag(s)`, `isRealDate`, Konstanten (`STAMM_GROUP_ID = 'stamm'`, `MAX_TAGS` 20, `MAX_TAG_LENGTH` 40, `MAX_GROUPS` 50, `MAX_SHARES` 200, `COLOR_PRESETS`, `SHARE_LEVEL_LABELS` Sehen/Bearbeiten, `RECURRENCE_FREQS`/`_LABELS`, `MONTHLY_MODES`, `MAX_RECURRENCE_COUNT` 500, `MAX_OCCURRENCES` 2000, `OPEN_WINDOW_DAYS` 366), DTOs `EventItem`, `EventDetail`, `EventList`, `EventShare`, `EventAccess`, `EventGroupRef` (mit `meeting*`), `WebsiteEvent` |
+| `schemas.ts` | API-Vertrag (Server + UI): `eventInput` (inkl. `recurrence`), `recurrenceRule`/`recurrenceEnd`, `checkRecurrence`, `occurrenceParams`, `detailQuery`, `occurrenceOverride`, `occurrenceInput`, `shareInput`, `listQuery`, `websiteQuery`, `websiteEventQuery` (`occurrence`), `principalSearchQuery`, `tagsQuery`, `idParams`, `checkEventDates`, `normalizeTag(s)`, `isRealDate`, Konstanten (`STAMM_GROUP_ID = 'stamm'`, `MAX_TAGS` 20, `MAX_TAG_LENGTH` 40, `MAX_GROUPS` 50, `MAX_SHARES` 200, `COLOR_PRESETS`, `SHARE_LEVEL_LABELS` Sehen/Bearbeiten, `RECURRENCE_FREQS`/`_LABELS`, `MONTHLY_MODES`, `MAX_RECURRENCE_COUNT` 500, `MAX_OCCURRENCES` 2000, `OPEN_WINDOW_DAYS` 366), DTOs `EventItem`, `EventDetail`, `EventList`, `EventShare`, `EventAccess`, `EventGroupRef` (mit `meeting*`), `WebsiteEvent` |
 | `recurrence.ts` (rein) | Serienlogik nur auf `YYYY-MM-DD`-Strings (UTC): `expandOccurrences`, `isOccurrence`, `lastOccurrence`, `minGapDays`, `describeRecurrence` (deutscher Text), Helfer `addDays`, `daysBetween`, `isoWeekday`, `nextWeekday` – Server **und** UI |
 | `access.ts` | Objektzugriff: `resolveAccess`, `requireAccess` (404/403), `visibleEventsFilter` (SQL, Alias `e`), `accessForMany` (Stufe je Zeile in einer Abfrage), `rowsOf` |
-| `events.service.ts` | In der Transaktion: `hydrateRows`, `loadEventRow`, `loadShares`, `insertEvent`, `updateEvent` (Tags/Gruppen/Freigaben komplett ersetzen, verwaiste Ausnahmen löschen), `loadExceptions`, `upsertException`, `deleteException`. Rein: `expandRow`, `singleOccurrence`, `occurrenceAt`, `mergeOccurrenceDates`, `validateOverride`, `compareOccurrences`, `resolveDetailOccurrence`, `seriesInfo`, `todayBerlin()`. Danach (Core): `validateGroupIds`, `buildItems`, `buildDetail` (Besitzer via `core.users.directory`, Freigaben via `describePrincipals`) |
+| `events.service.ts` | In der Transaktion: `hydrateRows`, `loadEventRow`, `loadShares`, `insertEvent`, `updateEvent` (Tags/Gruppen/Freigaben komplett ersetzen, verwaiste Ausnahmen löschen), `loadExceptions`, `upsertException`, `deleteException`. Rein: `expandRow`, `singleOccurrence`, `occurrenceAt`, `mergeOccurrenceDates`, `validateOverride`, `compareOccurrences`, `resolveDetailOccurrence`, `resolveWebsiteOccurrence` (Website-Detail), `seriesInfo`, `todayBerlin()`. Danach (Core): `validateGroupIds`, `buildItems`, `buildDetail` (Besitzer via `core.users.directory`, Freigaben via `describePrincipals`) |
 | `events.endpoints.ts` | CRUD `/events`, Vorkommen `/events/:id/occurrences/:date` |
 | `meta.endpoints.ts` | `/groups`, `/tags`, `/principals`, `/settings/stamm` |
-| `website.endpoints.ts` | `/website/events` (re-exportiert `todayBerlin` aus dem Service) |
+| `website.endpoints.ts` | `/website/events`, `/website/events/:id`; gemeinsamer DTO-Aufbau `toWebsiteEvents` (Gruppennamen + `groupIds`, nach der Transaktion); re-exportiert `todayBerlin` aus dem Service |
 | `contract.ts` / `refs.service.ts` | Dienst `EventRefsService` (`provides`) für andere Module, z. B. `galleries`: `searchEventRefs(ctx,{search,limit})`, `describeEventRefs(ctx, ids)` (nur für `ctx` sichtbare Termine, ohne `events.event.view` → `[]`, System sieht alles), `websiteEventRefs(ids)` (nur `on_website`, ohne Rechteprüfung); Abruf per `core.modules.useOptional('events', …)`, nie in offener Transaktion |
 | `groups.ts` | `stammName()` (Einstellung, Fallback „Stamm Edelweißpiraten“), `loadGroupMap()` (Stamm + `members.listGroups()`) – ruft Core auf, **nie in einer Transaktion** |
 | `format.ts` (rein) | `isAllDay`, `formatEventTime`, `formatEventDate`, `formatEventRange` (de-DE, für UI) |
@@ -94,7 +94,7 @@ als eigener Eintrag (ohne `group`: Sidebar-Gruppen gelten je Modul, „Stamm“ 
 | `events.event.create` | Termine anlegen (Handler prüft zusätzlich `view`; nur Benutzer, nicht System → 400) |
 | `events.event.view-all` | alle Termine lesen |
 | `events.event.edit-all` | alle Termine bearbeiten/löschen (impliziert Lesen); System-Kontext ebenso |
-| `events.website.read` | **nur** `GET /website/events` – Scope für den API-Key der Stammeswebsite; gibt keinen Zugriff auf interne Endpoints |
+| `events.website.read` | **nur** `GET /website/events[/:id]` – Scope für den API-Key der Stammeswebsite; gibt keinen Zugriff auf interne Endpoints |
 
 ## Zugriffsregeln (`access.ts`)
 1. System oder `edit-all` → bearbeiten. 2. Eigentümer*in (`owner_id`) → bearbeiten. 3. Freigabe `edit` an einen passenden
@@ -133,6 +133,7 @@ Bearbeiten bei `PUT`/`DELETE` → **403**.
 | GET `/principals` | event.view | Query `search` (2–100 Zeichen, sonst 422) → `PrincipalInfo[]` |
 | GET `/settings/stamm` | event.view | `{ name }` (Einstellung `events.stamm.name`) |
 | GET `/website/events` | **website.read** | siehe unten; Rate-Limit 120/60 s |
+| GET `/website/events/:id` | **website.read** | ein `WebsiteEvent`, Query `occurrence`; siehe unten; Rate-Limit 120/60 s |
 
 Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWebsite` und Zähler `tags`, `groups`, `shares`),
 `events.event.occurrence_updated` (metadata `cancelled`, Zähler `fields`) und `events.event.occurrence_reset` – ohne Inhalte.
@@ -141,12 +142,21 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
 - Termine mit „auf der Website“ (`onWebsite: true`) liefert `GET /website/events` – **unabhängig von Freigaben**
   (die Website-Markierung ist die Veröffentlichung). Nur öffentliche Felder (`WebsiteEvent`): `id`, `title`, `description`,
   `location`, `color`, `startsOn`, `startsTime`, `endsOn`, `endsTime`, `tags`, `groups` (Namen, inkl. Stammesname; keine
-  Gruppenstunden-Daten), `recurring`, `occurrenceDate` – keine Freigaben, Eigentümer*innen, Zeitstempel.
+  Gruppenstunden-Daten), `groupIds` (gleiche Reihenfolge wie `groups`: `stamm` zuerst, dann `members`-Gruppen nach Name;
+  Zuordnungen zu unbekannten Gruppen – z. B. `members` aus – fehlen in beiden), `recurring`, `occurrenceDate` – keine Freigaben,
+  Eigentümer*innen, Zeitstempel.
 - **Serien**: jedes Vorkommen ist ein **eigener Eintrag** mit gleicher `id`, `recurring: true` und `occurrenceDate`
   (ursprüngliches Datum; stabiler Schlüssel `id` + `occurrenceDate`), Felder inkl. Override; abgesagte Vorkommen fehlen.
   Einmalige Termine: `recurring: false`, `occurrenceDate: null`. Ohne `to` höchstens `OPEN_WINDOW_DAYS` (366) voraus.
 - Query: `from` (Standard **heute in Europe/Berlin**, `todayBerlin()`), `to` (optional; `to < from` → 422), `tag`,
+  `group` (Gruppen-ID als UUID oder `stamm`, sonst 422; SQL-`EXISTS` auf `event_groups`, unbekannte Gruppe → leere Liste),
   `limit` 1–200 (50, zählt Vorkommen); kein `offset`. Überlappungslogik wie `/events`; Sortierung Beginn, Uhrzeit (ohne zuerst), Titel.
+- **Detail** `GET /website/events/:id?occurrence=YYYY-MM-DD` (`idParams`, `websiteEventQuery`): **404**, wenn unbekannt oder nicht
+  `on_website` (keine UUID → 422). Logik in `resolveWebsiteOccurrence` (nutzt `resolveDetailOccurrence`/`expandRow`):
+  einmaliger Termin → der Termin (mit `occurrence` → 404); Serie **mit** `occurrence` → genau dieses Vorkommen mit Override
+  (kein Vorkommen oder **abgesagt** → 404); Serie **ohne** `occurrence` → nächstes nicht abgesagtes Vorkommen, das heute
+  (Europe/Berlin) noch nicht vorbei ist (inkl. laufender und hineinverschobener; Suche bis 366 Tage voraus), sonst das **letzte**
+  nicht abgesagte (Rückwärtssuche in wachsenden Fenstern), alle abgesagt → 404. Anders als das interne Detail (dort Fallback = erstes).
 - Einrichtung:
   1. Benutzer*in mit `events.website.read` (z. B. Admin) legt unter Administration → API-Keys (`POST /api/v1/api-keys`,
      Session) einen Key mit **nur** dem Scope `events.website.read` an (Rechte = Scopes ∩ Besitzerrechte; Besitzer*in
@@ -158,6 +168,8 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
      ```
   3. Antwort cachen (z. B. einige Minuten); Modul deaktiviert → `404 module_disabled`.
 - Ein Key nur mit diesem Scope bekommt auf `/events` usw. **403** (Test vorhanden).
+- Die Stammeswebsite (`website/`, siehe `website.md`) nutzt Liste (Startseite, `/termine`, Gruppenseiten mit `group`) und Detail
+  (`/termine/[id]?am=`); Übersicht aller vier Website-APIs in `docs/api.md` → „Stammeswebsite“. Demo: `scripts/seed-demo-website.mjs`.
 
 ## UI
 - `EventsPage`: Tabs „Monat“ (**Standard**; `MonthCalendar`, lädt das ganze Raster inkl. Randwochen, `limit` 500, `onday` → Dialog
@@ -189,8 +201,8 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   Absage/Override/Detail mit `occurrence`, Lesende ohne Ausnahme-Daten, Fehlerfälle 404/422/403/400, Zurücksetzen, Website,
   Aufräumen verwaister Ausnahmen beim Ändern der Serie, Audit ohne Inhalte.
 - Integration: `events-module.test.ts` (Tabellen, Rechte, `defaultRoleGrants`, Stammesname, `resetUsers`),
-  `events-crud.test.ts` (CRUD, fremd → 404, Freigabe `everyone`), `events-website.test.ts` (Filter, Felder, Scope,
-  Meta-Endpoints, ohne `members`), `sharing.test.ts` (`principalKeysFor`, `searchPrincipals`, `describePrincipals`,
+  `events-crud.test.ts` (CRUD, fremd → 404, Freigabe `everyone`), `events-website.test.ts` (Filter inkl. `group`/`stamm`/422,
+  Felder inkl. `groupIds`, Detail einmalig/Serie mit und ohne `occurrence`/abgesagt/nicht auf Website, Scope, Meta-Endpoints, ohne `members`), `sharing.test.ts` (`principalKeysFor`, `searchPrincipals`, `describePrincipals`,
   `validatePrincipals`, `members` deaktiviert), `members-principals.test.ts`.
 - `events.test.ts` (Zugriffsmatrix aller Principal-Typen inkl. Leitung/ausgetreten, view-all/edit-all, 422-Pfade, Website-Scope, Audit, `members`/`events` deaktiviert).
 - PUT prüft zuerst den Zugriff (Fremde → 404) und akzeptiert bereits gespeicherte Freigaben/Gruppen ungeprüft (`validatePrincipals(…, { keep })`), damit ein deaktiviertes `members` das Speichern nicht blockiert.

@@ -12,6 +12,7 @@ import { listMemberSheets } from './sheets.service';
 import { principalsService } from './principals.service';
 import { sheetEndpoints } from './sheets.endpoints';
 import { memberEndpoints } from './members.endpoints';
+import { websiteEndpoints } from './website.endpoints';
 import { LINK_DEFAULT_ROLE } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_members_v2.sql?raw';
@@ -20,12 +21,13 @@ import m0004 from './migrations/0004_address_fields.sql?raw';
 import m0005 from './migrations/0005_member_fields.sql?raw';
 import m0006 from './migrations/0006_membership.sql?raw';
 import m0008 from './migrations/0008_member_mail_prefs.sql?raw';
+import m0009 from './migrations/0009_group_website.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.6.0',
+		version: '1.7.0',
 		dependencies: [],
 		/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
 		defaultRoleGrants: { [LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'] },
@@ -42,6 +44,7 @@ export default defineModule({
 			'members.link.view',
 			'members.link.manage',
 			'members.data.export',
+			'members.website.read',
 			'members.storage.read',
 			'members.storage.write',
 			'members.storage.delete'
@@ -61,6 +64,8 @@ export default defineModule({
 			'members.link.manage': 'Verknüpfungscodes und -briefe erzeugen, Verknüpfungen lösen',
 			'members.data.export':
 				'Datenblätter und Teilnehmendenlisten als PDF erzeugen (enthält Kontakt- und Gesundheitsdaten)',
+			'members.website.read':
+				'Nur Website-Endpunkte: öffentliche Gruppen-Steckbriefe (Scope für den API-Key der Stammeswebsite)',
 			'members.storage.read': 'Dateien des Mitgliedermoduls lesen (Dokumente, Gruppenbilder)',
 			'members.storage.write': 'Dateien des Mitgliedermoduls hochladen',
 			'members.storage.delete': 'Dateien des Mitgliedermoduls löschen'
@@ -115,11 +120,14 @@ export default defineModule({
 		{ name: '0004_address_fields', sql: m0004 },
 		{ name: '0005_member_fields', sql: m0005 },
 		{ name: '0006_membership', sql: m0006 },
-		{ name: '0008_member_mail_prefs', sql: m0008 }
+		{ name: '0008_member_mail_prefs', sql: m0008 },
+		{ name: '0009_group_website', sql: m0009 }
 	],
 	resetAreas,
 	resetUsers,
 	endpoints: [
+		// Website-Endpunkte (Scope `members.website.read`) zuerst: feste Pfade vor `:id`-Pfaden
+		...websiteEndpoints,
 		// Vor `memberEndpoints`: `GET /members/sheet-columns` darf nicht von `/members/:id` abgefangen werden
 		...sheetEndpoints,
 		...memberEndpoints,

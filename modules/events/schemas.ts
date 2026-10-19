@@ -329,7 +329,14 @@ export const websiteQuery = z.object({
 	from: dateSchema.optional(),
 	to: dateSchema.optional(),
 	tag: z.string().trim().max(MAX_TAG_LENGTH).optional(),
+	/** Gruppen-ID (`members`) oder `stamm` */
+	group: z.union([z.literal('stamm'), z.uuid('Ungültige Gruppe')]).optional(),
 	limit: z.coerce.number().int().min(1).max(200).default(50)
+});
+
+/** `GET /website/events/:id?occurrence=` – Serie ohne Datum → nächstes Vorkommen ab heute */
+export const websiteEventQuery = z.object({
+	occurrence: dateSchema.optional()
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -419,6 +426,8 @@ export interface WebsiteEvent extends EventDates {
 	tags: string[];
 	/** Gruppennamen (inkl. Stammesname) */
 	groups: string[];
+	/** Gruppen-IDs in gleicher Reihenfolge wie `groups` (`stamm` für den ganzen Stamm) */
+	groupIds: string[];
 	/** Teil einer Serie (jedes Vorkommen ist ein eigener Eintrag mit gleicher `id`) */
 	recurring: boolean;
 	/** Serie: ursprüngliches Datum (stabiler Schlüssel `id` + `occurrenceDate`) */
