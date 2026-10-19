@@ -47,7 +47,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 |---|---|
 | `members.member.view` / `.edit` / `.delete` | Mitglieder lesen (auch Dokument-Download) / anlegen+ändern+Dokumente hoch/löschen / löschen |
 | `members.group.view` / `.edit` / `.delete` | Gruppen lesen (auch Bild) / anlegen+ändern+Bild / löschen |
-| `members.link.view` / `.manage` | verknüpfte Konten + Codestatus sehen / Code erzeugen, Briefe (PDF), Verknüpfung lösen |
+| `members.link.view` / `.manage` | verknüpfte Konten + Codestatus sehen / Code erzeugen, Briefe (PDF), Konten per Hand verknüpfen, Verknüpfung lösen |
 | `members.own.view` / `.edit` | Eigene (verknüpfte) Mitglieder sehen / Kontakte, Zusatzfelder, Mail-Einstellungen ändern (`.edit` setzt `.view` voraus, Handler prüfen beides); Manifest `defaultRoleGrants` vergibt beide an die Rolle „Mitglied“ |
 | `members.data.export` | Mitgliedsdaten-PDF (inkl. Telefone, Gesundheits-Zusatzfelder) erzeugen – auch `GET /actions/:id/participants.pdf`; zusätzlich `members.member.view` (+ `members.group.view` bei Gruppen) |
 | `members.storage.read` / `.write` / `.delete` | Core-Storage-Rechte (Upload braucht `.write`, Entfernen `.delete`); in der UI `canUpload`/`canRemoveDoc` |
@@ -117,6 +117,8 @@ verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem Code eine
 |---|---|---|
 | GET `/members/:id/links` | link.view | Konten (Name/E-Mail via `core.users.directory`), Codestatus (nie der Code) |
 | POST `/members/:id/link-code` | link.manage | neuer Code + Token, Zähler/Sperre zurück |
+| POST `/members/:id/links` | link.manage | **Konto per Hand verknüpfen** (ohne Brief/Code, 2026-10-19): `{ userId, relation? }` strikt → `MemberLinks`; nur aktive Konten (sonst 422 `userId`), schon verknüpft 409, Mitglied unbekannt 404; Rollen bleiben unverändert; Audit `members.link.created` mit `manual: true` |
+| GET `/link-users?search=` | link.manage | aktive Konten zum Verknüpfen (`core.users.directory`, ab 2 Zeichen, ≤ 30) → `LinkUserRef[]` |
 | DELETE `/members/:id/links/:userId` | link.manage | Verknüpfung lösen (404 wenn nicht vorhanden) |
 | GET `/members/:id/link-letter.pdf`, POST `/members/link-letters.pdf` `{ids ≤ 100}` | link.manage | PDF bzw. ein zusammengeführtes PDF (Reihenfolge = ids; unbekannte ID → 404); rohe Response → Status 200 |
 | GET `/my/members` | own.view | eigene Mitglieder, siehe „Eigene Mitglieder im Profil“ |
@@ -125,7 +127,7 @@ verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem Code eine
 | POST `/public/link/:token/register` | öffentlich | `{code,name,email,password≥12,relation?}` → Konto mit Rolle „Mitglied“ (`core.users.registerWithRole`), 409 bei vorhandener E-Mail |
 Schutz: 10 Fehlversuche je Mitglied → 60 min Sperre (Zähler wird vor dem Werfen committet), Rate-Limits claim 10/600 s, register 5/600 s.
 Öffentliche Seite `/p/members/verknuepfen/<token>`: Code, „Ich habe ein Konto“ (Login mit `redirectTo`, Code in `sessionStorage`) oder „Neues Konto“.
-UI: Zeilenaktion „Verknüpfte Konten“ (Badge `linkCount`) → `LinksDialog`; Sammelleiste „Verknüpfungs-Briefe (PDF)“ (`downloadPdf`).
+UI: Zeilenaktion „Verknüpfte Konten“ (Badge `linkCount`) → `LinksDialog` (mit `link.manage` zusätzlich „Konto direkt verknüpfen“: Kontosuche + optionale Beziehung, Klick auf einen Treffer verknüpft sofort); Sammelleiste „Verknüpfungs-Briefe (PDF)“ (`downloadPdf`).
 Audit: `members.link.code_created|created|registered|removed|letters_generated` (nur IDs/Zähler).
 
 ### Eigene Mitglieder im Profil (Migration 0008, 2026-10-17)

@@ -2,13 +2,17 @@
 	import { toast } from 'svelte-sonner';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Search from '@lucide/svelte/icons/search';
 	import Unlink from '@lucide/svelte/icons/unlink';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ConfirmDialog } from '$lib/components/layout';
-	import type { LinkedUser, Member, MemberLinks } from '../schemas';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { ConfirmDialog, EntityAvatar } from '$lib/components/layout';
+	import type { LinkedUser, LinkUserRef, Member, MemberLinks } from '../schemas';
 	import { downloadPdf } from './download';
 
 	let {
@@ -53,9 +57,72 @@
 	$effect(() => {
 		if (open && member) {
 			links = null;
+			search = '';
+			results = [];
+			relation = '';
 			void load();
 		}
 	});
+
+	// --- Konto per Hand verknüpfen -------------------------------------------
+	let search = $state('');
+	let relation = $state('');
+	let results = $state<LinkUserRef[]>([]);
+	let searching = $state(false);
+	let searchError = $state('');
+	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	let searchSeq = 0;
+
+	/** Bereits verknüpfte Konten nicht noch einmal anbieten */
+	const visibleResults = $derived(results.filter((r) => !links?.users.some((u) => u.id === r.id)));
+
+	function onSearchInput() {
+		clearTimeout(searchTimer);
+		const q = search.trim();
+		searchError = '';
+		if (q.length < 2) {
+			results = [];
+			searching = false;
+			return;
+		}
+		searching = true;
+		const seq = ++searchSeq;
+		searchTimer = setTimeout(async () => {
+			try {
+				const found = await apiFetch<LinkUserRef[]>(
+					`/modules/members/link-users?search=${encodeURIComponent(q)}`
+				);
+				if (seq === searchSeq) results = found;
+			} catch (e) {
+				if (seq === searchSeq) {
+					results = [];
+					searchError = e instanceof ApiClientError ? e.message : 'Suche fehlgeschlagen';
+				}
+			} finally {
+				if (seq === searchSeq) searching = false;
+			}
+		}, 250);
+	}
+
+	async function linkUser(u: LinkUserRef) {
+		if (!member || busy) return;
+		busy = true;
+		try {
+			links = await apiFetch<MemberLinks>(`/modules/members/members/${member.id}/links`, {
+				method: 'POST',
+				body: JSON.stringify({ userId: u.id, relation: relation.trim() || null })
+			});
+			toast.success(`${u.name} verknüpft`);
+			search = '';
+			results = [];
+			relation = '';
+			onchanged();
+		} catch (e) {
+			toast.error(e instanceof ApiClientError ? e.message : 'Verknüpfen fehlgeschlagen');
+		} finally {
+			busy = false;
+		}
+	}
 
 	async function newCode() {
 		if (!member) return;
@@ -151,6 +218,81 @@
 				<p class="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
 					Noch kein Konto verknüpft.
 				</p>
+			{/if}
+
+			{#if canManage}
+				<fieldset class="space-y-3 rounded-md border p-3">
+					<legend class="px-1 text-sm font-medium">Konto direkt verknüpfen</legend>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<div class="grid gap-1.5">
+							<Label for="link-user-search">Benutzerkonto</Label>
+							<div class="relative">
+								<Search
+									class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+									aria-hidden="true"
+								/>
+								<Input
+									id="link-user-search"
+									type="search"
+									class="pl-8"
+									bind:value={search}
+									oninput={onSearchInput}
+									autocomplete="off"
+									placeholder="Name oder E-Mail"
+									disabled={busy}
+								/>
+							</div>
+						</div>
+						<div class="grid gap-1.5">
+							<Label for="link-relation">Beziehung (optional)</Label>
+							<Input
+								id="link-relation"
+								bind:value={relation}
+								maxlength={50}
+								placeholder="z. B. Mutter, Vater, selbst"
+								disabled={busy}
+							/>
+						</div>
+					</div>
+					{#if search.trim().length >= 2}
+						<div class="rounded-md border" aria-live="polite">
+							{#if searching}
+								<p class="p-3 text-xs text-muted-foreground">Sucht …</p>
+							{:else if searchError}
+								<p class="p-3 text-xs text-destructive" role="alert">{searchError}</p>
+							{:else if visibleResults.length === 0}
+								<p class="p-3 text-xs text-muted-foreground">Kein passendes Konto gefunden.</p>
+							{:else}
+								<ul class="max-h-56 divide-y overflow-y-auto">
+									{#each visibleResults as u (u.id)}
+										<li>
+											<button
+												type="button"
+												class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none disabled:opacity-60"
+												disabled={busy}
+												onclick={() => linkUser(u)}
+											>
+												<EntityAvatar name={u.name} size={28} />
+												<span class="min-w-0 flex-1">
+													<span class="block truncate text-sm font-medium">{u.name}</span>
+													<span class="block truncate text-xs text-muted-foreground">{u.email}</span
+													>
+												</span>
+												<UserPlus class="size-4 text-muted-foreground" aria-hidden="true" />
+												<span class="sr-only">verknüpfen</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					{:else}
+						<p class="text-xs text-muted-foreground">
+							Nur aktive Konten. Im Profil erscheint das Mitglied, wenn das Konto die Rolle
+							„Mitglied“ (oder das Recht für eigene Mitglieder) hat.
+						</p>
+					{/if}
+				</fieldset>
 			{/if}
 
 			<div class="space-y-1 text-sm">

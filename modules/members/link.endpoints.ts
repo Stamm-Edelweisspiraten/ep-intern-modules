@@ -5,6 +5,7 @@ import {
 	buildLinkLetters,
 	claimLink,
 	ensureLinkCode,
+	linkUserManually,
 	listMemberLinks,
 	myFieldDefinitions,
 	myMembers,
@@ -18,12 +19,15 @@ import {
 	idParams,
 	linkClaimInput,
 	linkLettersInput,
+	linkManualInput,
 	linkRegisterInput,
 	linkTokenParams,
 	linkUserParams,
+	linkUserSearchQuery,
 	mailPrefInput,
 	myContactsInput,
-	myFieldsInput
+	myFieldsInput,
+	type LinkUserRef
 } from './schemas';
 
 const tags = ['Mitglieder'];
@@ -57,6 +61,29 @@ export const linkEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			const c = await ensureLinkCode(ctx, params.id, { regenerate: true });
 			return { expiresAt: c.expiresAt.toISOString() };
+		}
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/members/:id/links',
+		summary: 'Benutzerkonto per Hand mit dem Mitglied verknüpfen (ohne Brief/Code)',
+		tags,
+		permission: 'members.link.manage',
+		params: idParams,
+		body: linkManualInput,
+		handler: ({ ctx, params, body }) => linkUserManually(ctx, params.id, body)
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/link-users',
+		summary: 'Aktive Benutzerkonten zum Verknüpfen suchen (ab 2 Zeichen)',
+		tags,
+		permission: 'members.link.manage',
+		query: linkUserSearchQuery,
+		handler: async ({ ctx, query }): Promise<LinkUserRef[]> => {
+			if (query.search.length < 2) return [];
+			const users = await core.users.directory(ctx, { search: query.search, limit: 30 });
+			return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
 		}
 	}),
 	defineEndpoint({

@@ -597,6 +597,15 @@ const linkRelation = z
 export const linkTokenParams = z.object({ token: z.string().regex(/^[0-9a-f]{32}$/) });
 export const linkUserParams = z.object({ id, userId: z.string().min(1).max(100) });
 export const linkClaimInput = z.object({ code: linkCode, relation: linkRelation }).strict();
+/** Konto per Hand verknüpfen (Verwaltung, `members.link.manage`) */
+export const linkManualInput = z
+	.object({
+		userId: z.string().trim().min(1, 'Bitte ein Konto auswählen').max(100),
+		relation: linkRelation
+	})
+	.strict();
+/** Kontosuche für das manuelle Verknüpfen (ab 2 Zeichen) */
+export const linkUserSearchQuery = z.object({ search: z.string().trim().max(100).default('') });
 export const linkRegisterInput = z
 	.object({
 		code: linkCode,
@@ -659,6 +668,12 @@ export interface LinkedUser {
 	email: string | null;
 	relation: string | null;
 	linkedAt: string;
+}
+/** Treffer der Kontosuche (`GET /link-users`) */
+export interface LinkUserRef {
+	id: string;
+	name: string;
+	email: string;
 }
 export interface MemberLinks {
 	users: LinkedUser[];

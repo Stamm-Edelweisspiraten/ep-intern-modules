@@ -253,6 +253,42 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 	};
 }
 
+/**
+ * Konto per Hand mit einem Mitglied verknüpfen (Verwaltung, ohne Brief/Code). Nur aktive Konten;
+ * bereits verknüpft → 409. Rollen werden nicht verändert.
+ */
+export async function linkUserManually(
+	ctx: RequestContext,
+	memberId: string,
+	input: { userId: string; relation: string | null }
+): Promise<MemberLinks> {
+	// Core-Aufruf vor der Transaktion (PGlite hat nur eine Sitzung)
+	const [user] = await core.users.directory(ctx, { ids: [input.userId], limit: 1 });
+	if (!user) {
+		throw errors.validation(
+			[{ path: ['userId'], message: 'Konto nicht gefunden oder deaktiviert' }],
+			'Konto nicht gefunden oder deaktiviert'
+		);
+	}
+	await mdb().transaction(async (tx) => {
+		const m = await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
+		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
+		const inserted = await rows(
+			tx,
+			sql`INSERT INTO member_user_links (member_id, user_id, relation, created_by)
+				VALUES (${memberId}, ${user.id}, ${input.relation}, ${ctx.userId ?? ctx.actor.id})
+				ON CONFLICT (member_id, user_id) DO NOTHING
+				RETURNING user_id`
+		);
+		if (!inserted.length) throw errors.conflict('Dieses Konto ist bereits verknüpft');
+	});
+	await core.audit.logFromContext(ctx, 'members.link.created', {
+		target: memberId,
+		metadata: { memberId, userId: user.id, manual: true }
+	});
+	return listMemberLinks(ctx, memberId);
+}
+
 export async function unlinkUser(
 	ctx: RequestContext,
 	memberId: string,
