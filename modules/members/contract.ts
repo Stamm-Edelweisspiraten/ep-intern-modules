@@ -91,6 +91,8 @@ export interface MemberGroupRef {
 	/** Gruppenstunde: 1 = Mo … 7 = So, `HH:MM`, Treffpunkt (je `null`, wenn nicht hinterlegt) */
 	meetingWeekday: number | null;
 	meetingTime: string | null;
+	/** Ende der Gruppenstunde `HH:MM` oder `null` */
+	meetingEndTime: string | null;
 	meetingPlace: string | null;
 }
 

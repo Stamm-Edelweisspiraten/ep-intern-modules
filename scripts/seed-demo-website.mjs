@@ -205,6 +205,7 @@ for (const g of groups) {
 		meetingPlace: g.meetingPlace ?? null,
 		meetingWeekday: g.meetingWeekday ?? null,
 		meetingTime: g.meetingTime ?? null,
+		meetingEndTime: g.meetingEndTime ?? null,
 		color: g.color ?? null,
 		website: { onWebsite: false, slug: null, description: null, ageRange: null, contactEmail: null }
 	});
@@ -225,6 +226,7 @@ for (const t of GROUP_TEMPLATES) {
 		meetingPlace: 'Ev. Kirchengemeinde Bremen-Hastedt',
 		meetingWeekday: t.meetingWeekday,
 		meetingTime: t.meetingTime,
+		meetingEndTime: t.endTime ?? null,
 		color: t.color
 	});
 	if (r.status < 400) {
@@ -251,6 +253,8 @@ for (const t of GROUP_TEMPLATES) {
 		meetingPlace: group.meetingPlace ?? null,
 		meetingWeekday: t.meetingWeekday ?? group.meetingWeekday ?? null,
 		meetingTime: t.meetingTime ?? group.meetingTime ?? null,
+		// Ende nur zusammen mit dem Beginn aus der Vorlage (sonst 422 bei Ende ≤ Beginn)
+		meetingEndTime: t.meetingTime ? (t.endTime ?? null) : (group.meetingEndTime ?? null),
 		color: group.color ?? null,
 		website: {
 			onWebsite: true,

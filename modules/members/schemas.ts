@@ -298,28 +298,50 @@ const hexColor = z
 		return n;
 	});
 
-export const groupInput = z.object({
-	name: text(100),
-	type: z.enum(GROUP_TYPES, 'Bitte einen Typ wählen'),
-	leaderIds: z.array(id).min(1, 'Mindestens ein Gruppenleiter').max(20),
-	description: optionalText(2000, true),
-	meetingPlace: optionalText(200),
-	meetingWeekday: z
-		.number('Ungültiger Wochentag')
-		.int()
-		.min(1, 'Ungültiger Wochentag')
-		.max(7, 'Ungültiger Wochentag')
-		.nullish()
-		.transform((v) => v ?? null),
-	meetingTime: z
-		.string()
-		.regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format HH:MM')
-		.nullish()
-		.transform((v) => (v ? v : null)),
-	color: hexColor,
-	/** Website-Steckbrief; fehlt das Feld, bleiben die gespeicherten Werte unverändert */
-	website: z.lazy(() => groupWebsiteInput).optional()
-});
+/** Uhrzeit `HH:MM` (leer → `null`) */
+const meetingClock = z
+	.string()
+	.regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Format HH:MM')
+	.nullish()
+	.transform((v) => (v ? v : null));
+
+export const groupInput = z
+	.object({
+		name: text(100),
+		type: z.enum(GROUP_TYPES, 'Bitte einen Typ wählen'),
+		leaderIds: z.array(id).min(1, 'Mindestens ein Gruppenleiter').max(20),
+		description: optionalText(2000, true),
+		meetingPlace: optionalText(200),
+		meetingWeekday: z
+			.number('Ungültiger Wochentag')
+			.int()
+			.min(1, 'Ungültiger Wochentag')
+			.max(7, 'Ungültiger Wochentag')
+			.nullish()
+			.transform((v) => v ?? null),
+		meetingTime: meetingClock,
+		/** Ende der Gruppenstunde (`HH:MM`); nur mit Beginn und nach dem Beginn */
+		meetingEndTime: meetingClock,
+		color: hexColor,
+		/** Website-Steckbrief; fehlt das Feld, bleiben die gespeicherten Werte unverändert */
+		website: z.lazy(() => groupWebsiteInput).optional()
+	})
+	.superRefine((v, ctx) => {
+		if (!v.meetingEndTime) return;
+		if (!v.meetingTime) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['meetingEndTime'],
+				message: 'Bitte zuerst den Beginn der Gruppenstunde angeben'
+			});
+		} else if (v.meetingEndTime <= v.meetingTime) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['meetingEndTime'],
+				message: 'Das Ende muss nach dem Beginn liegen'
+			});
+		}
+	});
 export type GroupInput = z.infer<typeof groupInput>;
 export type GroupFormInput = z.input<typeof groupInput>;
 
@@ -381,7 +403,10 @@ export interface WebsiteGroup {
 	meetingPlace: string | null;
 	/** 1 = Montag … 7 = Sonntag */
 	meetingWeekday: number | null;
+	/** Beginn der Gruppenstunde `HH:MM` */
 	meetingTime: string | null;
+	/** Ende der Gruppenstunde `HH:MM` (nur zusammen mit `meetingTime`) */
+	meetingEndTime: string | null;
 	color: string | null;
 	contactEmail: string | null;
 	/** Leitende nur mit Vornamen, Reihenfolge nach Vorname */
@@ -532,6 +557,8 @@ export interface Group {
 	/** 1 = Montag … 7 = Sonntag */
 	meetingWeekday: number | null;
 	meetingTime: string | null;
+	/** Ende der Gruppenstunde `HH:MM` oder `null` */
+	meetingEndTime: string | null;
 	color: string | null;
 	/** Bild vorhanden? Abruf über GET /groups/:id/image */
 	hasImage: boolean;

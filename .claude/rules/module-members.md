@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.6.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.8.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -22,7 +22,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `documents.endpoints.ts` | Datenschutz-/Anmeldedokument je Mitglied (multipart) |
 | `group-image.endpoints.ts` | Gruppenbild (multipart) |
 | `pages/MembersPage.svelte`, `MemberForm.svelte` (Tabs, auch Ansicht), `GroupsPage.svelte` | UI |
-| `migrations/0001_init.sql` … `0006_membership.sql` | Schema |
+| `migrations/0001_init.sql` … `0010_group_meeting_end.sql` | Schema (0007 unbenutzt) |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),
@@ -153,11 +153,17 @@ Einwilligungen, Ein-/Austritt, Adresse, Dokumente.
 - Recht `members.website.read` (nur Website-Endpunkte, Scope für den API-Key der Website). `website.endpoints.ts` (zuerst registriert):
   `GET /website/groups` (nur `on_website` mit Slug, Meute vor Sippe, dann Name; 120/60 s), `GET /website/groups/:slug` (404 privat/unbekannt, 422 ungültig),
   `GET /website/groups/:slug/image` (roh, `public, max-age=86400`, `nosniff`; 404 ohne Bild/Storage/nicht auf Website; 600/60 s; Storage über Systemkontext).
-- `WebsiteGroup`: `id, slug, name, type, description` (Website-Text, sonst interne Beschreibung), `ageRange, meetingPlace, meetingWeekday, meetingTime, color,
+- `WebsiteGroup`: `id, slug, name, type, description` (Website-Text, sonst interne Beschreibung), `ageRange, meetingPlace, meetingWeekday, meetingTime, meetingEndTime, color,
   contactEmail, leaders: [{ firstName }]` (nur Vornamen, ohne Ausgetretene), `imagePath` (`…/image?v=<ms>` oder `null`). **Keine** Nachnamen, Mitglieder-Mails, Geburtsdaten.
 - UI: Gruppendialog mit Reitern **Allgemein / Website** (Checkbox, Adresse mit Vorschlag aus dem Namen über `slug.ts` `slugFromName`, Vorschau `/gruppen/<slug>`,
   Text, Alter, Kontakt-E-Mail), Badge „Website“ in der Liste. Gruppenbild wird roh ausgeliefert (nicht über `core.images` bereinigt).
 - Tests `tests/integration/members-website.test.ts`. Nutzerin: Stammeswebsite (`rules/website.md`).
+
+### Ende der Gruppenstunde (Migration 0010, v1.8.0, 2026-10-19)
+- `groups.meeting_end_time text` (`HH:MM`). DTO `Group.meetingEndTime`, `WebsiteGroup.meetingEndTime` (nur zusammen mit `meetingTime`, sonst `null`),
+  Dienst `MemberGroupRef.meetingEndTime` (`events` nutzt es noch nicht – „Gruppenstunde übernehmen“ setzt das Ende weiterhin nicht).
+- Eingabe `groupInput.meetingEndTime` optional; PUT ersetzt wie bei `meetingTime` (fehlt → `null`). Gruppendialog: Feld „bis“ neben „Uhrzeit“,
+  Liste „Freitag, 16:30–18:00“.
 
 Ohne S3 antworten Upload/Download mit `503 unavailable`. Storage-Pfad `<id>/<kind>-<uuid>-<bereinigter Name>`;
 bei DB-Fehler nach Upload wird die Datei wieder entfernt.
@@ -168,7 +174,8 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
   Ziffern normalisiert, E-Mail exakt) → 422.
 - Eintritt/Austritt optional (`JJJJ-MM-TT`, leer → `null`), Austritt ≥ Eintritt (422 `exitDate`); Zweitmitglied braucht
   ≥ 1 Ebene (422 `feeLevels`); Ebenen werden in fester Reihenfolge dedupliziert.
-- Gruppe: `meetingWeekday` 1–7 (optional), `meetingTime` `HH:MM`, `color` Hex (wird normalisiert), `leaderIds` 1–20.
+- Gruppe: `meetingWeekday` 1–7 (optional), `meetingTime` `HH:MM`, `meetingEndTime` `HH:MM` (optional; ohne Beginn bzw. Ende ≤ Beginn → 422
+  Pfad `meetingEndTime`), `color` Hex (wird normalisiert), `leaderIds` 1–20.
 
 ## UI
 - `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberForm` als Ansicht (`readonly`); Checkbox- und Aktionszelle stoppen den Klick.

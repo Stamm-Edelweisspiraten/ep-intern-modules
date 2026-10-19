@@ -48,11 +48,11 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 	const groups = rowsOf(
 		await tx.execute(
 			id
-				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, color,
+				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
 						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
 						contact_email, created_at, updated_at
 						FROM groups WHERE id = ${id} ORDER BY name`
-				: sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, color,
+				: sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
 						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
 						contact_email, created_at, updated_at
 						FROM groups ORDER BY name`
@@ -96,6 +96,7 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		meetingPlace: g.meeting_place == null ? null : String(g.meeting_place),
 		meetingWeekday: g.meeting_weekday == null ? null : Number(g.meeting_weekday),
 		meetingTime: g.meeting_time == null ? null : String(g.meeting_time),
+		meetingEndTime: g.meeting_end_time == null ? null : String(g.meeting_end_time),
 		color: g.color == null ? null : String(g.color),
 		hasImage: Boolean(g.has_image),
 		imageVersion: g.has_image ? iso(g.updated_at) : null,
@@ -188,15 +189,17 @@ async function save(id: string | null, input: GroupInput): Promise<Group> {
 					sql`UPDATE groups SET name = ${input.name}, type = ${input.type},
 						description = ${input.description}, meeting_place = ${input.meetingPlace},
 						meeting_weekday = ${input.meetingWeekday}, meeting_time = ${input.meetingTime},
+						meeting_end_time = ${input.meetingEndTime},
 							color = ${input.color}, updated_at = now()
 						WHERE id = ${groupId}`
 				);
 			} else {
 				await tx.execute(
 					sql`INSERT INTO groups (id, name, type, description, meeting_place,
-							meeting_weekday, meeting_time, color)
+							meeting_weekday, meeting_time, meeting_end_time, color)
 						VALUES (${groupId}, ${input.name}, ${input.type}, ${input.description},
-							${input.meetingPlace}, ${input.meetingWeekday}, ${input.meetingTime}, ${input.color})`
+							${input.meetingPlace}, ${input.meetingWeekday}, ${input.meetingTime},
+							${input.meetingEndTime}, ${input.color})`
 				);
 			}
 			if (input.website) {

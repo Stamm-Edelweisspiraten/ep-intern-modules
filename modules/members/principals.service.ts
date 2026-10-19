@@ -33,7 +33,7 @@ async function listGroups(): Promise<MemberGroupRef[]> {
 	const found = await mdb().transaction((tx) =>
 		rows(
 			tx,
-			sql`SELECT id, name, color, meeting_weekday, meeting_time, meeting_place,
+			sql`SELECT id, name, color, meeting_weekday, meeting_time, meeting_end_time, meeting_place,
 					image_path IS NOT NULL AS has_image, updated_at
 				FROM groups ORDER BY name, id`
 		)
@@ -45,6 +45,7 @@ async function listGroups(): Promise<MemberGroupRef[]> {
 		image: groupImageUrl(r),
 		meetingWeekday: weekdayOf(r.meeting_weekday),
 		meetingTime: timeOf(r.meeting_time),
+		meetingEndTime: timeOf(r.meeting_end_time),
 		meetingPlace: textOf(r.meeting_place)
 	}));
 }

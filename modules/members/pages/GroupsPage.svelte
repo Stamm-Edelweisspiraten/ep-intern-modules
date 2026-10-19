@@ -127,6 +127,7 @@
 	let description = $state('');
 	let meetingPlace = $state('');
 	let meetingTime = $state('');
+	let meetingEndTime = $state('');
 	let meetingWeekday = $state<string | null>(null);
 	let color = $state<string | null>(null);
 	let fieldErrors = $state<Record<string, string>>({});
@@ -176,8 +177,10 @@
 	}
 	function meetingText(g: Group) {
 		const day = g.meetingWeekday ? WEEKDAY_LABELS[g.meetingWeekday] : null;
-		if (day && g.meetingTime) return `${day}, ${g.meetingTime}`;
-		return day ?? g.meetingTime ?? '–';
+		const time =
+			g.meetingTime && g.meetingEndTime ? `${g.meetingTime}–${g.meetingEndTime}` : g.meetingTime;
+		if (day && time) return `${day}, ${time}`;
+		return day ?? time ?? '–';
 	}
 
 	function setPreview(url: string | null) {
@@ -230,6 +233,7 @@
 		description = '';
 		meetingPlace = '';
 		meetingTime = '';
+		meetingEndTime = '';
 		meetingWeekday = null;
 		color = null;
 		setWebsite(null);
@@ -257,6 +261,7 @@
 		description = g.description ?? '';
 		meetingPlace = g.meetingPlace ?? '';
 		meetingTime = g.meetingTime ?? '';
+		meetingEndTime = g.meetingEndTime ?? '';
 		meetingWeekday = g.meetingWeekday ? String(g.meetingWeekday) : null;
 		color = g.color;
 		setWebsite(g);
@@ -280,6 +285,7 @@
 		meetingPlace: 'g-place',
 		meetingWeekday: 'g-weekday',
 		meetingTime: 'g-time',
+		meetingEndTime: 'g-time-end',
 		color: 'g-color',
 		'website.onWebsite': 'g-web-on',
 		'website.slug': 'g-web-slug',
@@ -334,6 +340,7 @@
 			meetingPlace: meetingPlace || null,
 			meetingWeekday: meetingWeekday ? Number(meetingWeekday) : null,
 			meetingTime: meetingTime || null,
+			meetingEndTime: meetingEndTime || null,
 			color,
 			website: {
 				onWebsite,
@@ -660,7 +667,7 @@
 						/>
 					</FormField>
 
-					<div class="grid gap-4 sm:grid-cols-2">
+					<div class="grid gap-4 sm:grid-cols-3">
 						<FormField label="Wochentag" id="g-weekday" error={fieldErrors.meetingWeekday}>
 							<SelectField
 								id="g-weekday"
@@ -678,6 +685,15 @@
 								bind:value={meetingTime}
 								aria-invalid={!!fieldErrors.meetingTime}
 								aria-describedby={fieldErrors.meetingTime ? 'g-time-error' : undefined}
+							/>
+						</FormField>
+						<FormField label="bis" id="g-time-end" error={fieldErrors.meetingEndTime}>
+							<Input
+								id="g-time-end"
+								type="time"
+								bind:value={meetingEndTime}
+								aria-invalid={!!fieldErrors.meetingEndTime}
+								aria-describedby={fieldErrors.meetingEndTime ? 'g-time-end-error' : undefined}
 							/>
 						</FormField>
 					</div>

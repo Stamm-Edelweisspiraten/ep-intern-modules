@@ -35,7 +35,7 @@ function rowsOf(result: unknown): Row[] {
 const textOrNull = (v: unknown): string | null => (v == null || v === '' ? null : String(v));
 
 const GROUP_SELECT = sql`SELECT id, name, type, description, website_description, age_range,
-	meeting_place, meeting_weekday, meeting_time, color, contact_email, slug,
+	meeting_place, meeting_weekday, meeting_time, meeting_end_time, color, contact_email, slug,
 	(image_path IS NOT NULL) AS has_image, updated_at
 	FROM groups`;
 
@@ -76,6 +76,8 @@ function toWebsiteGroup(g: Row, leaders: string[]): WebsiteGroup {
 		meetingPlace: textOrNull(g.meeting_place),
 		meetingWeekday: g.meeting_weekday == null ? null : Number(g.meeting_weekday),
 		meetingTime: textOrNull(g.meeting_time),
+		// Ende nur zusammen mit dem Beginn ausliefern
+		meetingEndTime: g.meeting_time == null ? null : textOrNull(g.meeting_end_time),
 		color: textOrNull(g.color),
 		contactEmail: textOrNull(g.contact_email),
 		leaders: leaders.map((firstName) => ({ firstName })),
