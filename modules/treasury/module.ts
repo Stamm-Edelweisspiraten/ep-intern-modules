@@ -46,6 +46,28 @@ export default defineModule({
 			'Konten und Buchungen, offene Beiträge aus Aktionen, Rechnungen, Zahlungserinnerungen und Kassenberichte.',
 		version: '1.0.0',
 		dependencies: ['members', 'actions'],
+		/** Benachrichtigungen an das Amt „Kasse“ (`office-notify.ts`), nur wenn `offices` aktiv ist */
+		optionalDependencies: ['offices'],
+		offices: [
+			{
+				key: 'kasse',
+				name: 'Kasse',
+				description: 'Führt die Kasse des Stamms: Überweisungen, Rechnungen und Abrechnungen.',
+				notifications: [
+					{
+						key: 'payable-created',
+						label: 'Neue Überweisung steht an',
+						description:
+							'Eine neue Auszahlung (Auslage, Stamm-Ausgabe, Rückzahlung, Guthaben, Eingangsrechnung) wartet auf Überweisung.'
+					},
+					{
+						key: 'accounting-closed',
+						label: 'Abrechnung abgeschlossen',
+						description: 'Eine Aktions-Abrechnung oder Zwischenabrechnung wurde abgeschlossen.'
+					}
+				]
+			}
+		],
 		permissions: [
 			'treasury.cash.view',
 			'treasury.transaction.edit',
@@ -64,6 +86,29 @@ export default defineModule({
 			'treasury.storage.write',
 			'treasury.storage.delete'
 		],
+		permissionDescriptions: {
+			'treasury.cash.view':
+				'Kasse ansehen: Konten, Buchungen, Rechnungen und Belege; Grundrecht für das Modul',
+			'treasury.transaction.edit':
+				'Buchungen und Umbuchungen erfassen, Zahlungen zuordnen, Kontoauszüge importieren',
+			'treasury.transaction.delete': 'Buchungen löschen',
+			'treasury.account.manage': 'Konten und Kategorien verwalten',
+			'treasury.invoice.edit': 'Rechnungen und Zahler bearbeiten, Ermäßigungen und Stornos',
+			'treasury.invoice.delete': 'Manuelle Rechnungen ohne Zahlungseingang löschen',
+			'treasury.invoice.send': 'Rechnungen und Zahlungserinnerungen per E-Mail versenden',
+			'treasury.report.view': 'Berichte und abgeschlossene Abrechnungen ansehen und exportieren',
+			'treasury.settings.manage':
+				'Kassen-Einstellungen verwalten (u. a. Bankverbindung, Mailtexte)',
+			'treasury.bank.view':
+				'IBAN von Zahlern und Auszahlungen im Klartext sehen, Überweisungsliste mit IBAN',
+			'treasury.payable.edit':
+				'Eingangsrechnungen und Auszahlungen erfassen, zuordnen und stornieren',
+			'treasury.annual-fee.view': 'Jahresbeitrags-Läufe und Vorschau ansehen',
+			'treasury.annual-fee.manage': 'Jahresbeitrags-Läufe anlegen, ändern und versenden',
+			'treasury.storage.read': 'Belege der Kasse ansehen und herunterladen',
+			'treasury.storage.write': 'Belege zur Kasse hochladen',
+			'treasury.storage.delete': 'Belege der Kasse löschen'
+		},
 		navigation: [
 			{
 				label: 'Kasse',

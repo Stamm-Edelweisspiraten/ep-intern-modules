@@ -16,6 +16,7 @@ import {
 	today
 } from './db';
 import { refreshSentDocuments } from './documents';
+import { notifyKasse, payableNotification } from './office-notify';
 import { syncPayables } from './payables';
 import { planSync, type ExistingSyncLine } from './logic';
 import { SETTING_KEYS } from './schemas';
@@ -119,7 +120,9 @@ async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
 
 	// Auszahlungen (Auslagen, Rückzahlungen, Guthaben) nachziehen
 	try {
-		await syncPayables(members);
+		const payables = await syncPayables(members);
+		// Amt „Kasse“: je neu angelegter Auszahlung ein Ereignis (Fehler werden in `notifyKasse` geloggt)
+		await notifyKasse(ctx, payables.createdItems.map(payableNotification));
 	} catch (e) {
 		console.error('[treasury] Abgleich der Auszahlungen fehlgeschlagen:', e);
 	}

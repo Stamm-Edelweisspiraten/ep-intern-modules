@@ -1,7 +1,11 @@
 /** Gemeinsame Datenbank-Hilfen der Abrechnung (Buchungen, Abschlussstatus). */
 import { sql } from 'drizzle-orm';
 import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
-import type { ActionContributions, TreasuryService } from '$lib/modules/treasury/contract';
+import type {
+	AccountingClosedEvent,
+	ActionContributions,
+	TreasuryService
+} from '$lib/modules/treasury/contract';
 import { rowsOf } from './access';
 import { payeeTotals, summarize, toSummaryEntry } from './accounting';
 import { computeAutoIncome } from './auto-income';
@@ -503,5 +507,21 @@ export async function loadTreasuryContributions(
 	} catch (e) {
 		console.error('[actions] Kasse nicht erreichbar:', e);
 		return null;
+	}
+}
+
+/**
+ * Meldet der Kasse (optional) einen Abrechnungsabschluss bzw. eine neue Zwischenabrechnung, damit
+ * das Amt „Kasse“ benachrichtigt wird. NACH der Transaktion aufrufen; wirft nie.
+ */
+export async function notifyTreasuryAccountingClosed(
+	ctx: RequestContext,
+	info: AccountingClosedEvent
+): Promise<void> {
+	try {
+		const svc = await core.modules.useOptional<TreasuryService>('treasury', 'actions');
+		await svc?.accountingClosed(ctx, info);
+	} catch (e) {
+		console.error('[actions] Benachrichtigung der Kasse fehlgeschlagen:', e);
 	}
 }

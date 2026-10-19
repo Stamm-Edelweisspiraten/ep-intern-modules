@@ -27,6 +27,14 @@ export default defineModule({
 			'events.event.edit-all',
 			'events.website.read'
 		],
+		permissionDescriptions: {
+			'events.event.view': 'Termine ansehen (eigene und freigegebene); Grundrecht für das Modul',
+			'events.event.create': 'Termine und Serien anlegen',
+			'events.event.view-all': 'Alle Termine ansehen, auch ohne Freigabe',
+			'events.event.edit-all': 'Alle Termine bearbeiten und löschen',
+			'events.website.read':
+				'Termine für die Stammeswebsite abrufen (nur API-Key-Scope, kein Zugriff auf interne Funktionen)'
+		},
 		navigation: [
 			{
 				label: 'Termine',

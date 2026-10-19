@@ -22,6 +22,7 @@ import {
 	today
 } from './db';
 import { formatIban, maskIban } from './iban';
+import { notifyKasse, payableNotification, type CreatedPayableInfo } from './office-notify';
 import { loadSummaries } from './invoices.endpoints';
 import {
 	centsToCsv,
@@ -60,9 +61,13 @@ const REFUND_CATEGORY = 'cat-rueckzahlung';
 // --- Abgleich ------------------------------------------------------------------
 
 /** Erzeugt/aktualisiert automatische Auszahlungen. Dienste vor der Transaktion, Änderungen in einer. */
-export async function syncPayables(
-	members: MemberContact[]
-): Promise<{ created: number; updated: number; cancelled: number }> {
+export async function syncPayables(members: MemberContact[]): Promise<{
+	created: number;
+	updated: number;
+	cancelled: number;
+	/** Neu angelegte Auszahlungen (für die Benachrichtigung des Amts „Kasse“, ohne Bankdaten) */
+	createdItems: CreatedPayableInfo[];
+}> {
 	const svc = await actionsService();
 	const reimbursements = await svc.listReimbursements();
 	const refunds = await svc.listRefundItems();
@@ -249,7 +254,14 @@ export async function syncPayables(
 		return {
 			created: plan.create.length,
 			updated: plan.update.length,
-			cancelled: plan.cancel.length
+			cancelled: plan.cancel.length,
+			createdItems: plan.create.map((d) => ({
+				source: d.source,
+				recipientName: d.recipientName,
+				amountCents: d.amountCents,
+				description: d.description,
+				actionName: d.actionId ? (actionNames.get(d.actionId) ?? null) : null
+			}))
 		};
 	});
 }
@@ -453,11 +465,13 @@ async function lockPayable(tx: Tx, id: string) {
 	return p;
 }
 
-async function requireActionRef(actionId: string | null) {
-	if (!actionId) return;
+/** Prüft die Aktion (422) und liefert ihren Namen (`null` ohne Aktion). */
+async function requireActionRef(actionId: string | null): Promise<string | null> {
+	if (!actionId) return null;
 	const found = await (await actionsService()).listActionRefs({ ids: [actionId] });
-	if (!found.length)
+	if (!found[0])
 		throw errors.validation([{ path: ['actionId'], message: 'Aktion nicht gefunden' }]);
+	return found[0].name;
 }
 
 export const payableEndpoints = [
@@ -499,7 +513,7 @@ export const payableEndpoints = [
 		body: payableInput,
 		handler: async ({ ctx, body }) => {
 			const input = body as PayableInput;
-			await requireActionRef(input.actionId);
+			const actionName = await requireActionRef(input.actionId);
 			const id = crypto.randomUUID();
 			const bank = storeIban(input.iban);
 			await mdb().transaction((tx) =>
@@ -515,6 +529,15 @@ export const payableEndpoints = [
 				target: id,
 				metadata: { amountCents: input.amountCents }
 			});
+			await notifyKasse(ctx, [
+				payableNotification({
+					source: 'manual',
+					recipientName: input.recipientName,
+					amountCents: input.amountCents,
+					description: input.description,
+					actionName
+				})
+			]);
 			return onePayable(id);
 		}
 	},

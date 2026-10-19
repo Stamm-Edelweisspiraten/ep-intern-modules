@@ -257,3 +257,14 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTr
 - Altdaten mit ZA-Schlüssel `reimb:<aktion>:<person>:<interimId>`: unbezahlte storniert der Abgleich, bezahlte bleiben (Rückkanal No-op).
 - Tab „Abrechnungen“: Aktionen mit ZA als „Zwischenabgerechnet (N)“, PDF ansehen/herunterladen je ZA
   (`GET /closed-accountings/:id/interims/:interimId/pdf`). Tests: `tests/integration/treasury-interim.test.ts`.
+
+## Amt „Kasse“ und Benachrichtigungen (2026-10-19, Modul `offices` optional)
+- Manifest: `optionalDependencies` + `offices`; Vorlage `offices: [{ key: 'kasse', name: 'Kasse', notifications: [`payable-created` „Neue Überweisung
+  steht an“, `accounting-closed` „Abrechnung abgeschlossen“ (inkl. Zwischenabrechnung)] }]`. Das Amt legt `offices` einmal an (danach normales Amt).
+- `office-notify.ts`: `OFFICE_KEY = 'kasse'`, `payableNotification` (Art, Empfänger*in, Betrag, Zweck, Aktion – **keine IBAN**; Link
+  `/modules/treasury?tab=outgoing&view=payables`), `accountingClosedNotification` (final → `/modules/treasury/accountings/<actionId>`, ZA → Tab
+  Abrechnungen), `notifyKasse(ctx | null, items)` – ohne aktives `offices` nichts, wirft nie, `null` = Systemkontext `treasury-sync`.
+- Auslöser **nach** der Transaktion: neu angelegte Auszahlungen aus dem Abgleich (`syncPayables` → `runSync`) und `POST /payables` (je Vorgang **ein**
+  Aufruf, gebündelt); `TreasuryService.accountingClosed(ctx, { actionId, actionName, kind: 'final'|'interim', number? })` (`contract.ts`), aufgerufen
+  von `actions` nach Abschluss bzw. nach Anlegen einer Zwischenabrechnung.
+- Empfänger: Inhaber*innen des Amts an ihre Konto-Adresse, Modus je Person im Profil (Sofort/Täglich/Aus), siehe `module-offices.md`.

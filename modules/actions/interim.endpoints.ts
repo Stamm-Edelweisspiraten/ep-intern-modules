@@ -13,6 +13,7 @@ import {
 	buildInterimSnapshot,
 	loadInterims,
 	loadTreasuryContributions,
+	notifyTreasuryAccountingClosed,
 	resolveInterimUsers
 } from './accounting-core';
 import { buildAccountingReport } from './payouts.endpoints';
@@ -135,9 +136,14 @@ export const interimEndpoints = [
 					sql`INSERT INTO accounting_interim_entries (interim_id, entry_id)
 						SELECT ${interimId}, id FROM accounting_entries WHERE action_id = ${id}`
 				);
-				return { ...(await findInterim(tx, id, interimId, canManage(ctx, access))), missing };
+				const [a] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${id}`);
+				return {
+					...(await findInterim(tx, id, interimId, canManage(ctx, access))),
+					missing,
+					actionName: String(a?.name ?? 'Aktion')
+				};
 			});
-			const { missing, ...result } = interim;
+			const { missing, actionName, ...result } = interim;
 			await core.audit.logFromContext(ctx, 'actions.accounting.interim_created', {
 				target: id,
 				metadata: {
@@ -150,6 +156,12 @@ export const interimEndpoints = [
 					reimbursementCents: result.reimbursementCents,
 					missingReceipts: missing
 				}
+			});
+			await notifyTreasuryAccountingClosed(ctx, {
+				actionId: id,
+				actionName,
+				kind: 'interim',
+				number: result.number
 			});
 			await resolveInterimUsers(ctx, [result]);
 			return result;

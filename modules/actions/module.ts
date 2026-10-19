@@ -50,6 +50,20 @@ export default defineModule({
 			'actions.storage.write',
 			'actions.storage.delete'
 		],
+		permissionDescriptions: {
+			'actions.action.view': 'Aktionen ansehen (eigene und freigegebene); Grundrecht für das Modul',
+			'actions.action.create': 'Aktionen anlegen und importieren (Anleger*in wird Eigentümer*in)',
+			'actions.action.view-all': 'Alle Aktionen ansehen, auch ohne Freigabe',
+			'actions.action.edit-all':
+				'Alle Aktionen bearbeiten, teilen und abgeschlossene Abrechnungen wieder öffnen',
+			'actions.action.delete':
+				'Aktionen löschen (nur als Eigentümer*in oder mit „alle bearbeiten“)',
+			'actions.payout.view':
+				'Bankdaten in Abrechnungen: IBAN im Klartext, Empfänger pflegen, Auszahlungen markieren, Auszahlungsliste',
+			'actions.storage.read': 'Belege und Dateien von Aktionen ansehen und herunterladen',
+			'actions.storage.write': 'Belege und Dateien zu Aktionen hochladen',
+			'actions.storage.delete': 'Belege und Dateien von Aktionen löschen'
+		},
 		navigation: [
 			{
 				label: 'Aktionen',

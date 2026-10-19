@@ -2,6 +2,8 @@
  * Vertrag der Dienste, die die Kasse anderen Modulen anbietet (`ModuleDefinition.provides`).
  * `actions` nutzt ihn als optionale Abhängigkeit: `core.modules.useOptional<TreasuryService>('treasury', 'actions')`.
  */
+import type { RequestContext } from '$lib/sdk/types';
+
 export interface ActionContributions {
 	/** Rechnungen (nicht storniert) mit Posten dieser Aktion */
 	invoiceCount: number;
@@ -44,6 +46,20 @@ export interface TreasuryService {
 	): Promise<RegistrationInvoice | null>;
 	/** Bankdaten aus den Kassen-Einstellungen (leere Felder = nicht gepflegt) */
 	bankData(): Promise<{ holder: string; iban: string; bic: string; name: string }>;
+	/**
+	 * Meldet dem Amt „Kasse“ (Modul `offices`, optional) eine abgeschlossene Abrechnung bzw. eine neue
+	 * Zwischenabrechnung. Nach der Transaktion aufrufen; wirft nie (Fehler werden geloggt).
+	 */
+	accountingClosed(ctx: RequestContext, info: AccountingClosedEvent): Promise<void>;
+}
+
+export interface AccountingClosedEvent {
+	actionId: string;
+	actionName: string;
+	/** `final` = Abschluss der Abrechnung, `interim` = Zwischenabrechnung angelegt */
+	kind: 'final' | 'interim';
+	/** Nummer der Zwischenabrechnung */
+	number?: number;
 }
 
 export interface RegistrationInvoice {

@@ -25,6 +25,15 @@ export default defineModule({
 			'galleries.gallery.edit-all',
 			'galleries.website.read'
 		],
+		permissionDescriptions: {
+			'galleries.gallery.view':
+				'Galerien ansehen (eigene, freigegebene und öffentliche); Grundrecht für das Modul',
+			'galleries.gallery.create': 'Galerien anlegen und Bilder hochladen',
+			'galleries.gallery.view-all': 'Alle Galerien ansehen, auch ohne Freigabe',
+			'galleries.gallery.edit-all': 'Alle Galerien bearbeiten und löschen',
+			'galleries.website.read':
+				'Öffentliche Galerien und Bilder für die Stammeswebsite abrufen (nur API-Key-Scope)'
+		},
 		navigation: [
 			{
 				label: 'Galerien',

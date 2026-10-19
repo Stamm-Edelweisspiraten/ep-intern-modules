@@ -46,6 +46,25 @@ export default defineModule({
 			'members.storage.write',
 			'members.storage.delete'
 		],
+		permissionDescriptions: {
+			'members.own.view': 'Eigene verknüpfte Mitglieder im Profil ansehen',
+			'members.own.edit':
+				'Eigene verknüpfte Mitglieder bearbeiten: Kontakte, Zusatzfelder, Benachrichtigungen',
+			'members.member.view': 'Mitglieder ansehen, inkl. Dokumente herunterladen',
+			'members.member.edit': 'Mitglieder anlegen und bearbeiten, Dokumente verwalten',
+			'members.member.delete': 'Mitglieder löschen',
+			'members.group.view': 'Gruppen ansehen',
+			'members.group.edit': 'Gruppen anlegen und bearbeiten, inkl. Leitung und Bild',
+			'members.group.delete': 'Gruppen löschen',
+			'members.field.manage': 'Zusatzfelder für Mitglieder festlegen (z. B. Ernährung, Allergien)',
+			'members.link.view': 'Verknüpfte Benutzerkonten und Status der Verknüpfungscodes ansehen',
+			'members.link.manage': 'Verknüpfungscodes und -briefe erzeugen, Verknüpfungen lösen',
+			'members.data.export':
+				'Datenblätter und Teilnehmendenlisten als PDF erzeugen (enthält Kontakt- und Gesundheitsdaten)',
+			'members.storage.read': 'Dateien des Mitgliedermoduls lesen (Dokumente, Gruppenbilder)',
+			'members.storage.write': 'Dateien des Mitgliedermoduls hochladen',
+			'members.storage.delete': 'Dateien des Mitgliedermoduls löschen'
+		},
 		navigation: [
 			{
 				label: 'Mitglieder',

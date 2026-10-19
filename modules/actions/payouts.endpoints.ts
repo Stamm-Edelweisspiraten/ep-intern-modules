@@ -9,7 +9,8 @@ import {
 	loadTreasuryContributions,
 	loadEntries,
 	loadInterimSnapshot,
-	loadRefundSnapshot
+	loadRefundSnapshot,
+	notifyTreasuryAccountingClosed
 } from './accounting-core';
 import {
 	buildReportBlocks,
@@ -569,11 +570,17 @@ export const payoutEndpoints: ApiEndpoint[] = [
 						ON CONFLICT (action_id) DO UPDATE SET closed_at = now(), closed_by = ${ctx.userId}
 						RETURNING closed_at`
 				);
-				return { closedAt: iso(r!.closed_at), missing };
+				const [a] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${id}`);
+				return { closedAt: iso(r!.closed_at), missing, name: String(a?.name ?? 'Aktion') };
 			});
 			await core.audit.logFromContext(ctx, 'actions.accounting.closed', {
 				target: id,
 				metadata: { actionId: id, missingReceipts: res.missing }
+			});
+			await notifyTreasuryAccountingClosed(ctx, {
+				actionId: id,
+				actionName: res.name,
+				kind: 'final'
 			});
 			return { closedAt: res.closedAt };
 		}

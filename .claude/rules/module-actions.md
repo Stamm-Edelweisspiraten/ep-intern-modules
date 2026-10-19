@@ -308,3 +308,8 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
   `PATCH /actions/:id/participants` `{ ids (≤ 500), subsidyEligible?, role? }` → `{ updated }`, fremde ID → 404 ohne Änderung, Audit `actions.participant.bulk_updated`.
 - **Kalkulation**: feste Leiste unten (Beitrag, Team, Gesamtkosten, Zuschuss), Klick scrollt zur Zusammenfassung (`#calc-summary`).
 
+## Benachrichtigung an das Amt „Kasse“ (2026-10-19)
+- Nach dem **Abschluss** der Abrechnung und nach dem **Anlegen einer Zwischenabrechnung** ruft `actions` (nach der Transaktion) über das bestehende
+  `useOptional<TreasuryService>('treasury')` `accountingClosed(ctx, { actionId, actionName, kind: 'final' | 'interim', number? })` auf. Die Kasse leitet
+  das als Ereignis `accounting-closed` an die Inhaber*innen des Amts „Kasse“ weiter (Modul `offices`, optional). Ohne `treasury`/`offices` passiert
+  nichts; Fehler werden geloggt, der Abschluss scheitert nie daran. Details: `module-treasury.md`, `module-offices.md`.

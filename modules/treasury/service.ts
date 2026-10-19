@@ -1,9 +1,16 @@
 import { sql } from 'drizzle-orm';
-import type { ActionContributions, ParticipantPayment, TreasuryService } from './contract';
+import type { RequestContext } from '$lib/sdk/server';
+import type {
+	AccountingClosedEvent,
+	ActionContributions,
+	ParticipantPayment,
+	TreasuryService
+} from './contract';
 import { actionsService, mdb, num, rows, today } from './db';
 import { registrationDocument } from './documents';
 import { lineOpen, sourceRef } from './logic';
 import { loadBankData } from './notify';
+import { accountingClosedNotification, notifyKasse } from './office-notify';
 import { syncActions } from './sync';
 
 export const treasuryService: TreasuryService = {
@@ -104,5 +111,9 @@ export const treasuryService: TreasuryService = {
 
 	bankData() {
 		return loadBankData();
+	},
+
+	accountingClosed(ctx: RequestContext, info: AccountingClosedEvent): Promise<void> {
+		return notifyKasse(ctx, [accountingClosedNotification(info)]);
 	}
 };
