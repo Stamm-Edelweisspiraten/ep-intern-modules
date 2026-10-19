@@ -10,7 +10,7 @@
 //     wöchentliche Serien, Termine mit Gruppe und für den ganzen Stamm, eine vergangene Fahrt,
 //  4. stellt eine vorhandene Galerie öffentlich und verknüpft sie mit der vergangenen Fahrt,
 //  5. widerruft einen vorhandenen Key „Stammeswebsite (Demo)“, legt ihn mit den vier
-//     Website-Scopes neu an und schreibt `website/.env`.
+//     Website-Scopes neu an und schreibt `website/.env` (WEBSITE_API_URL, WEBSITE_API_KEY, ORIGIN).
 //
 //   node scripts/seed-demo-website.mjs
 //   DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-website.mjs
@@ -444,9 +444,8 @@ if (!apiKey) {
 }
 
 const values = {
-	INTERN_API_URL: BASE,
-	INTERN_API_KEY: apiKey,
-	PUBLIC_SITE_URL: SITE_URL,
+	WEBSITE_API_URL: BASE,
+	WEBSITE_API_KEY: apiKey,
 	ORIGIN: SITE_URL
 };
 // vorhandene Zeilen behalten, nur diese Schlüssel ersetzen bzw. ergänzen
