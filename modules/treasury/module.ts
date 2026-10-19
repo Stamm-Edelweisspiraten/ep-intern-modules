@@ -14,6 +14,7 @@ import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
 import m0004 from './migrations/0004_club_expenses.sql?raw';
 import m0005 from './migrations/0005_annual_fees.sql?raw';
 import m0006 from './migrations/0006_annual_fee_items.sql?raw';
+import m0007 from './migrations/0007_orders.sql?raw';
 import { runReminderJob } from './notify';
 import { closedAccountingEndpoints } from './closed-accountings';
 import { payableEndpoints, payableReceiptEndpoints } from './payables';
@@ -258,7 +259,8 @@ export default defineModule({
 		{ name: '0003_payer_from_bookings', sql: m0003 },
 		{ name: '0004_club_expenses', sql: m0004 },
 		{ name: '0005_annual_fees', sql: m0005 },
-		{ name: '0006_annual_fee_items', sql: m0006 }
+		{ name: '0006_annual_fee_items', sql: m0006 },
+		{ name: '0007_orders', sql: m0007 }
 	],
 	jobs: [
 		{

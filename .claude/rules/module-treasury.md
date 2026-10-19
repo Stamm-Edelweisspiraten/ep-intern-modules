@@ -268,3 +268,10 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTr
   Aufruf, gebündelt); `TreasuryService.accountingClosed(ctx, { actionId, actionName, kind: 'final'|'interim', number? })` (`contract.ts`), aufgerufen
   von `actions` nach Abschluss bzw. nach Anlegen einer Zwischenabrechnung.
 - Empfänger: Inhaber*innen des Amts an ihre Konto-Adresse, Modus je Person im Profil (Sofort/Täglich/Aus), siehe `module-offices.md`.
+
+## Bestellungen aus `orders` (2026-10-19, Migration 0007)
+- Push statt Abgleich: `TreasuryService.upsertOrderInvoice|upsertOrderPayable|cancelOrderPayable|invoiceStatus|payableStatus` (`external.ts`, Vertrag in
+  `contract.ts`), aufgerufen von `orders` außerhalb von Transaktionen, **ohne** Kassen-Rechteprüfung. `invoices.source = 'order'` + `source_key` (UNIQUE,
+  `order:<id>`), Posten `order:<id>:<item>` mit `member_id`; `invoice_documents.reason = 'order'`; `payables.source = 'order'` (`order-supplier:<id>`).
+- Schutz: `syncPayables` lädt nur `source NOT IN ('manual','order')`; Bestell-Rechnungen wie Aktions-Rechnungen (Posten gesperrt, Löschen 409), Filter-Chip
+  „Bestellung“. Von Hand stornierte Bestell-Rechnungen werden durch neue Posten nicht reaktiviert. Details: `module-orders.md`. Test `treasury-orders.test.ts`.

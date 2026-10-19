@@ -80,6 +80,7 @@
 	const sources = [
 		{ value: 'action', label: 'Aus Aktionen' },
 		{ value: 'annual', label: INVOICE_SOURCE_LABELS.annual },
+		{ value: 'order', label: INVOICE_SOURCE_LABELS.order },
 		{ value: 'manual', label: INVOICE_SOURCE_LABELS.manual }
 	];
 	// Auswahl für Sammel-Erinnerungen (nur offene Rechnungen, Recht `treasury.invoice.send`)

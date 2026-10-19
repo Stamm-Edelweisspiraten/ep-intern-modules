@@ -21,12 +21,13 @@ export const CATEGORY_KIND_LABELS: Record<CategoryKind, string> = {
 	both: 'Beides'
 };
 
-export const INVOICE_SOURCES = ['manual', 'action', 'annual'] as const;
+export const INVOICE_SOURCES = ['manual', 'action', 'annual', 'order'] as const;
 export type InvoiceSource = (typeof INVOICE_SOURCES)[number];
 export const INVOICE_SOURCE_LABELS: Record<InvoiceSource, string> = {
 	manual: 'Manuell',
 	action: 'Aktion',
-	annual: 'Jahresbeitrag'
+	annual: 'Jahresbeitrag',
+	order: 'Bestellung'
 };
 
 export const INVOICE_STATUSES = ['open', 'partial', 'paid', 'cancelled'] as const;
@@ -505,7 +506,8 @@ export const DOCUMENT_REASONS = [
 	'changed',
 	'cancelled',
 	'manual',
-	'annual'
+	'annual',
+	'order'
 ] as const;
 export type DocumentReason = (typeof DOCUMENT_REASONS)[number];
 export const DOCUMENT_REASON_LABELS: Record<DocumentReason, string> = {
@@ -513,7 +515,8 @@ export const DOCUMENT_REASON_LABELS: Record<DocumentReason, string> = {
 	changed: 'Geänderte Rechnung',
 	cancelled: 'Stornierung',
 	manual: 'Manuell versendet',
-	annual: 'Jahresbeitrag'
+	annual: 'Jahresbeitrag',
+	order: 'Bestellung'
 };
 
 export interface InvoiceDocument {
@@ -666,14 +669,22 @@ export interface Overview {
 
 // --- Ausstehende Überweisungen -------------------------------------------------
 
-export const PAYABLE_SOURCES = ['manual', 'reimbursement', 'refund', 'credit', 'expense'] as const;
+export const PAYABLE_SOURCES = [
+	'manual',
+	'reimbursement',
+	'refund',
+	'credit',
+	'expense',
+	'order'
+] as const;
 export type PayableSource = (typeof PAYABLE_SOURCES)[number];
 export const PAYABLE_SOURCE_LABELS: Record<PayableSource, string> = {
 	manual: 'Eingangsrechnung',
 	reimbursement: 'Auslagenerstattung',
 	refund: 'Rückzahlung Überschuss',
 	credit: 'Guthaben',
-	expense: 'Ausgabe aus Abrechnung'
+	expense: 'Ausgabe aus Abrechnung',
+	order: 'Bestellung (Lieferant)'
 };
 
 export const payableInput = z.object({

@@ -101,7 +101,7 @@ export async function syncPayables(members: MemberContact[]): Promise<{
 			sql`SELECT p.id, p.source_ref, p.amount_cents, p.description, p.recipient_name, p.payer_id, p.iban_last4,
 				p.cancelled_at, p.auto_cancelled,
 				coalesce((SELECT sum(pp.amount_cents) FROM payable_payments pp WHERE pp.payable_id = p.id), 0) AS paid
-			FROM payables p WHERE p.source <> 'manual'`
+			FROM payables p WHERE p.source NOT IN ('manual', 'order')`
 		);
 		const paidByRef = new Map(existingRows.map((r) => [String(r.source_ref), num(r.paid)]));
 		// Herkunftskonto: IBAN der (letzten) Zahlung, die einem Beitrag bzw. einer Rechnung zugeordnet ist

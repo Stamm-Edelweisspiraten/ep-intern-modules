@@ -572,7 +572,7 @@ export const invoiceEndpoints = [
 				const cur = await lockInvoice(tx, id);
 				if (cur.source !== 'manual') {
 					throw errors.conflict(
-						'Rechnungen aus Aktionen oder Jahresbeiträgen werden storniert, nicht gelöscht'
+						'Rechnungen aus Aktionen, Jahresbeiträgen oder Bestellungen werden storniert, nicht gelöscht'
 					);
 				}
 				if ((await paidOf(tx, id)) > 0) {

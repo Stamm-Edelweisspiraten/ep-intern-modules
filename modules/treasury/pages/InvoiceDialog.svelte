@@ -60,8 +60,10 @@
 	let error = $state('');
 	let errors = $state<Record<string, string>>({});
 
-	/** Aus Aktion oder Jahresbeitrag: nur Empfänger/Frist/Notiz änderbar, Posten fest */
-	const fixedLines = $derived(invoice?.source === 'action' || invoice?.source === 'annual');
+	/** Aus Aktion, Jahresbeitrag oder Bestellung: nur Empfänger/Frist/Notiz änderbar, Posten fest */
+	const fixedLines = $derived(
+		invoice?.source === 'action' || invoice?.source === 'annual' || invoice?.source === 'order'
+	);
 	const newLine = (): DraftLine => ({
 		key: crypto.randomUUID(),
 		description: '',
@@ -168,7 +170,9 @@
 					? 'Diese Rechnung stammt aus einer Aktion. Beträge ändern sich über den Beitrag der Aktion oder eine Ermäßigung je Posten.'
 					: invoice?.source === 'annual'
 						? 'Diese Rechnung stammt aus dem Jahresbeitrag. Beträge ändern sich nur über eine Ermäßigung je Posten.'
-						: 'Für Mitgliedsbeiträge, Material, Zuschüsse o. Ä. Pflichtfelder sind mit * markiert.'}
+						: invoice?.source === 'order'
+							? 'Diese Rechnung stammt aus einer Bestellung. Posten ändern sich über die Bestellung oder eine Ermäßigung je Posten.'
+							: 'Für Mitgliedsbeiträge, Material, Zuschüsse o. Ä. Pflichtfelder sind mit * markiert.'}
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>

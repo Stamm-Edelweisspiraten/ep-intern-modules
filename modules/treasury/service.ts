@@ -8,6 +8,13 @@ import type {
 } from './contract';
 import { actionsService, mdb, num, rows, today } from './db';
 import { registrationDocument } from './documents';
+import {
+	cancelOrderPayable,
+	invoiceStatus,
+	payableStatus,
+	upsertOrderInvoice,
+	upsertOrderPayable
+} from './external';
 import { lineOpen, sourceRef } from './logic';
 import { loadBankData } from './notify';
 import { accountingClosedNotification, notifyKasse } from './office-notify';
@@ -115,5 +122,12 @@ export const treasuryService: TreasuryService = {
 
 	accountingClosed(ctx: RequestContext, info: AccountingClosedEvent): Promise<void> {
 		return notifyKasse(ctx, [accountingClosedNotification(info)]);
-	}
+	},
+
+	// Bestellungen (Modul `orders`), Implementierung in `external.ts`
+	upsertOrderInvoice,
+	upsertOrderPayable,
+	cancelOrderPayable,
+	invoiceStatus,
+	payableStatus
 };
