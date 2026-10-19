@@ -14,6 +14,8 @@ an die Kasse. Schema `mod_orders`, Version 1.0.0, **hängt von `members` ab**, o
 Rechnung **sofort bei Bestellung** (kein Freigabeschritt) · Teillieferung **in beide Richtungen** (Wareneingang vom Lieferanten und Ausgabe
 an Mitglieder; Rest bleibt offen bzw. wird nachbestellt) · Benutzer bestellen nur für **verknüpfte Mitglieder**, Kämmerer*in (`manage`)
 für **jedes** Mitglied.
+**2026-10-19:** Der Warenkorb (Tab „Bestellen“) bietet **nur** die verknüpften Mitglieder (Dropdown, keine Suche); für andere Mitglieder bestellt
+die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“** (`OrderCreateDialog`: Mitglied suchen, Positionen, Notiz → `POST /orders`).
 
 ## Dateien (`src/lib/modules/orders/`)
 | Datei | Inhalt |
@@ -30,7 +32,7 @@ für **jedes** Mitglied.
 | `treasury-link.ts` | `pushInvoice`, `pushPayable`, `syncTreasury` (Job) |
 | `notify.ts` | Amt `kaemmerer`: `order-created` (nach Bestellung), `stock-deficit` (Tagesjob, nur bei geändertem Stand – `digest_state`) |
 | `reset.ts` | Bereich `all` (alle Tabellen + Bilder, `rebuild`), `resetUsers` |
-| `pages/` | `OrdersPage` (Tabs `?tab=` bestellen · meine · bestellungen · lager · einkauf · artikel je nach Recht), `CatalogTab`/`ArticleCard`/`ArticleDetailDialog`/`CartPanel` (Warenkorb in `sessionStorage`, mobil `MobileActionBar` + Sheet), `MyOrdersTab`, `ArticlesTab`/`ArticleDialog`/`VariantEditor`/`ImageManager`, `OrdersAdminTab`/`HandoutDialog`/`CancelItemsDialog`, `StockTab`/`StockCorrectionDialog`, `SupplierOrdersTab`/`SupplierOrderDialog`/`ReceiveDialog`/`SupplierInvoiceDialog`, Badges `OrderStatusBadge`/`PaymentBadge`/`SupplierStatusBadge`, `helpers.ts`, `admin-helpers.ts` |
+| `pages/` | `OrdersPage` (Tabs `?tab=` bestellen · meine · bestellungen · lager · einkauf · artikel je nach Recht), `CatalogTab`/`ArticleCard`/`ArticleDetailDialog`/`CartPanel` (Warenkorb in `sessionStorage`, mobil `MobileActionBar` + Sheet), `MyOrdersTab`, `ArticlesTab`/`ArticleDialog`/`VariantEditor`/`ImageManager`, `OrdersAdminTab`/`OrderCreateDialog`/`HandoutDialog`/`CancelItemsDialog`, `StockTab`/`StockCorrectionDialog`, `SupplierOrdersTab`/`SupplierOrderDialog`/`ReceiveDialog`/`SupplierInvoiceDialog`, Badges `OrderStatusBadge`/`PaymentBadge`/`SupplierStatusBadge`, `helpers.ts`, `admin-helpers.ts` |
 | `migrations/0001_init.sql`, `0002_digest_state.sql` | Schema; Merker der Fehlmengen-Meldung |
 
 ## Datenmodell
@@ -82,7 +84,7 @@ Audit `orders.article.*`, `orders.order.created|cancelled|handed-out`, `orders.s
 
 ## Tests und Demo
 Unit `tests/unit/orders-stock.test.ts`; Integration `tests/integration/orders-articles.test.ts` (Fake-Storage), `orders.test.ts`, `orders-treasury.test.ts`,
-`treasury-orders.test.ts`; E2E `tests/e2e/orders.spec.ts` (Artikel anlegen, Bestellen per Warenkorb + Ausgabe, Einkauf mit Teillieferung).
+`treasury-orders.test.ts`; E2E `tests/e2e/orders.spec.ts` (Artikel anlegen, „Bestellung anlegen“ für ein Mitglied + Ausgabe, Einkauf mit Teillieferung).
 Demo: `node scripts/seed-demo-orders.mjs` (nach `seed-demo-modules.mjs`, Bilder brauchen MinIO).
 
 ## Offen

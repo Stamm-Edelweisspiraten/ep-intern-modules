@@ -80,7 +80,7 @@
 	</Tabs.Root>
 
 	{#if activeTab === 'bestellen'}
-		<CatalogTab onordered={() => setTab('meine')} />
+		<CatalogTab onordered={() => setTab('meine')} onmanage={() => setTab('bestellungen')} />
 	{:else if activeTab === 'meine'}
 		<MyOrdersTab />
 	{:else if activeTab === 'bestellungen'}

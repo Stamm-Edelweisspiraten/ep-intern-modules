@@ -3,13 +3,10 @@
 	import { toast } from 'svelte-sonner';
 	import ImageOff from '@lucide/svelte/icons/image-off';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import Search from '@lucide/svelte/icons/search';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import X from '@lucide/svelte/icons/x';
 	import { apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -39,33 +36,30 @@
 		canCreate,
 		canManage,
 		oncartchange,
-		onordered
+		onordered,
+		onmanage
 	}: {
 		cart?: CartItem[];
 		memberId?: string | null;
 		note?: string;
 		/** Für verknüpfte Mitglieder bestellen */
 		canCreate: boolean;
-		/** Für jedes Mitglied bestellen (Suche über alle) */
+		/** Kämmerer*in: Hinweis auf „Bestellung anlegen“ im Tab Bestellungen */
 		canManage: boolean;
 		/** Warenkorb geändert (zum Speichern) */
 		oncartchange: (cart: CartItem[]) => void;
 		onordered: (created: OrderCreated) => void;
+		/** Zum Tab „Bestellungen“ wechseln (für andere Mitglieder bestellen) */
+		onmanage?: () => void;
 	} = $props();
 
-	const canOrder = $derived(canCreate || canManage);
+	const canOrder = $derived(canCreate);
 
 	let myMembers = $state<MemberOption[]>([]);
-	/** Über die Suche gewählte Mitglieder (nur Verwaltung) */
-	let extraMembers = $state<MemberOption[]>([]);
 	let membersLoading = $state(true);
 	let membersError = $state('');
 
-	const memberOptions = $derived(
-		[...myMembers, ...extraMembers.filter((e) => !myMembers.some((m) => m.id === e.id))].map(
-			(m) => ({ value: m.id, label: m.name })
-		)
-	);
+	const memberOptions = $derived(myMembers.map((m) => ({ value: m.id, label: m.name })));
 	const memberName = $derived(memberOptions.find((o) => o.value === memberId)?.label ?? '');
 
 	async function loadMembers() {
@@ -86,47 +80,6 @@
 		if (canOrder) void loadMembers();
 		else membersLoading = false;
 	});
-
-	// --- Suche über alle Mitglieder (Verwaltung) -----------------------------------
-	let search = $state('');
-	let results = $state<MemberOption[]>([]);
-	let searching = $state(false);
-	let searchError = $state('');
-	let searchTimer: ReturnType<typeof setTimeout> | undefined;
-	let searchSeq = 0;
-
-	function onsearch() {
-		clearTimeout(searchTimer);
-		const q = search.trim();
-		searchError = '';
-		if (q.length < 2) {
-			results = [];
-			searching = false;
-			return;
-		}
-		searching = true;
-		searchTimer = setTimeout(async () => {
-			const seq = ++searchSeq;
-			try {
-				const list = await apiFetch<MemberOption[]>(
-					`${BASE}/members?search=${encodeURIComponent(q)}`
-				);
-				if (seq === searchSeq) results = list;
-			} catch (e) {
-				if (seq === searchSeq) searchError = errorText(e, 'Suche fehlgeschlagen');
-			} finally {
-				if (seq === searchSeq) searching = false;
-			}
-		}, 250);
-	}
-
-	function choose(m: MemberOption) {
-		if (!memberOptions.some((o) => o.value === m.id)) extraMembers = [...extraMembers, m];
-		memberId = m.id;
-		search = '';
-		results = [];
-		memberError = '';
-	}
 
 	// --- Positionen ---------------------------------------------------------------
 	const total = $derived(cartTotal(cart));
@@ -191,6 +144,17 @@
 		}
 	}
 </script>
+
+{#snippet manageHint()}
+	<p class="text-xs text-muted-foreground">
+		Für andere Mitglieder bestellst du im Tab
+		{#if onmanage}<button
+				type="button"
+				class="font-medium text-foreground underline underline-offset-2"
+				onclick={onmanage}>Bestellungen</button
+			>{:else}„Bestellungen“{/if} über „Bestellung anlegen“.
+	</p>
+{/snippet}
 
 <section class="space-y-4" aria-labelledby="cart-title">
 	<h2 id="cart-title" class="flex items-center gap-2 font-semibold">
@@ -259,9 +223,13 @@
 	{/if}
 
 	{#if !canOrder}
-		<p class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-			Du darfst den Katalog ansehen, aber nicht bestellen.
-		</p>
+		{#if canManage}
+			{@render manageHint()}
+		{:else}
+			<p class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+				Du darfst den Katalog ansehen, aber nicht bestellen.
+			</p>
+		{/if}
 	{:else}
 		<div class="space-y-2">
 			<Label for="cart-member">Für Mitglied *</Label>
@@ -276,7 +244,7 @@
 						Erneut versuchen
 					</button>
 				</p>
-			{:else if !memberOptions.length && !canManage}
+			{:else if !memberOptions.length}
 				<p class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
 					Mit deinem Konto ist kein Mitglied verknüpft. Bitte wende dich an die Stammesführung,
 					damit sie dir einen Verknüpfungsbrief schickt – danach kannst du hier bestellen.
@@ -293,70 +261,11 @@
 					onchange={() => (memberError = '')}
 				/>
 			{/if}
-			{#if canManage}
-				<div class="space-y-1.5">
-					<div class="relative">
-						<Search
-							class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-							aria-hidden="true"
-						/>
-						<Input
-							id={memberOptions.length ? 'cart-member-search' : 'cart-member'}
-							class="pl-8"
-							placeholder="Anderes Mitglied suchen …"
-							aria-label="Mitglied suchen"
-							autocomplete="off"
-							bind:value={search}
-							oninput={onsearch}
-						/>
-						{#if search}
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								class="absolute top-1/2 right-1 -translate-y-1/2"
-								aria-label="Suche leeren"
-								onclick={() => {
-									search = '';
-									onsearch();
-								}}
-							>
-								<X />
-							</Button>
-						{/if}
-					</div>
-					{#if search.trim().length >= 2}
-						<div class="rounded-md border" aria-live="polite">
-							{#if searching}
-								<p class="p-2 text-xs text-muted-foreground">Sucht …</p>
-							{:else if searchError}
-								<p class="p-2 text-xs text-destructive">{searchError}</p>
-							{:else if !results.length}
-								<p class="p-2 text-xs text-muted-foreground">Kein Mitglied gefunden.</p>
-							{:else}
-								<ul class="max-h-48 overflow-y-auto py-1">
-									{#each results as m (m.id)}
-										<li>
-											<button
-												type="button"
-												class="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-												onclick={() => choose(m)}
-											>
-												{m.name}
-											</button>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-						</div>
-					{:else}
-						<p class="text-xs text-muted-foreground">
-							Als Kämmerer*in kannst du für jedes Mitglied bestellen (ab 2 Zeichen suchen).
-						</p>
-					{/if}
-				</div>
-			{/if}
 			{#if memberError}
 				<p class="text-xs text-destructive" role="alert">{memberError}</p>
+			{/if}
+			{#if canManage}
+				{@render manageHint()}
 			{/if}
 		</div>
 

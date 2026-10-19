@@ -5,6 +5,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import PackageCheck from '@lucide/svelte/icons/package-check';
+	import Plus from '@lucide/svelte/icons/plus';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import X from '@lucide/svelte/icons/x';
 	import { apiFetch, can } from '$lib/sdk/client';
@@ -27,6 +28,7 @@
 	} from './admin-helpers';
 	import CancelItemsDialog from './CancelItemsDialog.svelte';
 	import HandoutDialog from './HandoutDialog.svelte';
+	import OrderCreateDialog from './OrderCreateDialog.svelte';
 	import OrderStatusBadge from './OrderStatusBadge.svelte';
 	import PaymentBadge from './PaymentBadge.svelte';
 
@@ -55,6 +57,7 @@
 	let handoutOpen = $state(false);
 	let cancelOrder = $state<Order | null>(null);
 	let cancelOpen = $state(false);
+	let createOpen = $state(false);
 
 	const query = $derived.by(() => {
 		const p = new URLSearchParams({
@@ -236,6 +239,11 @@
 				bind:value={search}
 				oninput={() => (offset = 0)}
 			/>
+			{#if canManage}
+				<Button size="sm" class="sm:ml-auto" onclick={() => (createOpen = true)}>
+					<Plus /> Bestellung anlegen
+				</Button>
+			{/if}
 		{/snippet}
 		{#snippet head()}
 			<Table.Row>
@@ -416,3 +424,4 @@
 
 <HandoutDialog bind:open={handoutOpen} order={handoutOrder} onsaved={reload} />
 <CancelItemsDialog bind:open={cancelOpen} order={cancelOrder} onsaved={reload} />
+<OrderCreateDialog bind:open={createOpen} onsaved={reload} />

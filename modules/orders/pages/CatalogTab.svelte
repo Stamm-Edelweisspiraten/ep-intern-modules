@@ -28,7 +28,14 @@
 		type CartItem
 	} from './helpers';
 
-	let { onordered }: { onordered?: (created: OrderCreated) => void } = $props();
+	let {
+		onordered,
+		onmanage
+	}: {
+		onordered?: (created: OrderCreated) => void;
+		/** Zum Tab „Bestellungen“ (Bestellung für andere Mitglieder anlegen) */
+		onmanage?: () => void;
+	} = $props();
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canCreate = $derived(can(permissions, PERMISSIONS.create));
@@ -127,6 +134,7 @@
 		{canManage}
 		oncartchange={(c) => saveCart(c)}
 		onordered={ordered}
+		onmanage={canManage ? onmanage : undefined}
 	/>
 {/snippet}
 
@@ -220,7 +228,7 @@
 		<ArticleDetailDialog
 			bind:open={detailOpen}
 			article={selected}
-			canOrder={canCreate || canManage}
+			canOrder={canCreate}
 			onadd={add}
 		/>
 	{/key}
