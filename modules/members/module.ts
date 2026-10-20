@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { membersSearch } from './search';
 import { resetAreas, resetUsers } from './reset';
 import { addressEndpoints } from './address.endpoints';
 import { fieldEndpoints } from './fields.endpoints';
@@ -127,6 +128,7 @@ export default defineModule({
 		{ name: '0010_group_meeting_end', sql: m0010 },
 		{ name: '0011_stage_jungpfadfinder', sql: m0011 }
 	],
+	search: membersSearch,
 	resetAreas,
 	resetUsers,
 	endpoints: [

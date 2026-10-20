@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -90,6 +91,7 @@
 		if (section === 'income') url.searchParams.set('view', incomeView);
 		else if (section === 'outgoing') url.searchParams.set('view', outgoingView);
 		else url.searchParams.delete('view');
+		url.searchParams.delete('payer');
 		replaceState(url, {});
 	}
 
@@ -118,6 +120,12 @@
 		familyTarget = ref;
 		familyOpen = true;
 	}
+	// `?payer=<id>` (z. B. aus der globalen Suche) öffnet das Familienkonto direkt
+	const payerParam = $derived(page.url.searchParams.get('payer'));
+	$effect(() => {
+		const id = payerParam;
+		if (id) untrack(() => openFamily({ payerId: id }));
+	});
 
 	let accounts = $state<Account[]>([]);
 	let categories = $state<Category[]>([]);

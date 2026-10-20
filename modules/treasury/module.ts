@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
 import { resetAreas, resetUsers } from './reset';
+import { treasurySearch } from './search';
 import { treasuryBackup } from './backup';
 import { accountEndpoints } from './accounts.endpoints';
 import { annualFeeEndpoints } from './annual-fee.endpoints';
@@ -298,6 +299,7 @@ export default defineModule({
 	resetAreas,
 	backup: treasuryBackup,
 	resetUsers,
+	search: treasurySearch,
 	endpoints: [
 		...myEndpoints,
 		...accountEndpoints,

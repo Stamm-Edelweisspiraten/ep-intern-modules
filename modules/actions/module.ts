@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
 import { myEndpoints } from './my.endpoints';
 import { calculationEndpoints } from './calculation.endpoints';
@@ -100,6 +101,7 @@ export default defineModule({
 			default: '{{aktion}} + Name'
 		}
 	],
+	search: actionsSearch,
 	resetAreas,
 	resetUsers,
 	migrations: [

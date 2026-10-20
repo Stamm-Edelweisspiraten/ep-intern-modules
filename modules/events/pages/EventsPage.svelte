@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
@@ -194,6 +195,22 @@
 		dialogDate = undefined;
 		dialogOpen = true;
 	}
+
+	// Deep-Link (globale Suche): `?event=<id>[&occurrence=JJJJ-MM-TT]` öffnet die Ansicht und
+	// entfernt die Parameter wieder (Monat bleibt)
+	$effect(() => {
+		const id = params.get('event');
+		if (!id) return;
+		const occ = params.get('occurrence');
+		untrack(() => {
+			dialogId = id;
+			dialogOccurrence = occ && /^\d{4}-\d{2}-\d{2}$/.test(occ) ? occ : null;
+			dialogMode = 'view';
+			dialogDate = undefined;
+			dialogOpen = true;
+			setParams({ event: null, occurrence: null }, false);
+		});
+	});
 
 	function openViewByKey(key: string) {
 		const e = items.find((x) => itemKey(x) === key);
