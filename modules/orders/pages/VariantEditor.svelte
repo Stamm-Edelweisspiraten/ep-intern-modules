@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { Button } from '$lib/components/ui/button';
@@ -48,6 +51,53 @@
 			const el = document.getElementById(`variant-label-${rows.length - 1}`);
 			el?.focus();
 		});
+	}
+
+	// --- Reihenfolge: Ziehen am Griff oder Pfeile (Reihenfolge = Anzeige im Katalog) ---
+	/** Zeile, deren Griff gerade gedrückt ist – nur sie ist ziehbar (Eingabefelder bleiben markierbar) */
+	let armedKey = $state<string | null>(null);
+	let dragIndex = $state<number | null>(null);
+	let liveMessage = $state('');
+
+	function move(from: number, to: number, focusDir?: 'up' | 'down') {
+		if (to < 0 || to >= rows.length || from === to) return;
+		const next = [...rows];
+		const [item] = next.splice(from, 1);
+		next.splice(to, 0, item!);
+		rows = next;
+		liveMessage = `Größe ${item!.label || to + 1} jetzt an Position ${to + 1} von ${rows.length}`;
+		if (focusDir) {
+			queueMicrotask(() => {
+				const btn = document.getElementById(
+					`variant-${focusDir}-${to}`
+				) as HTMLButtonElement | null;
+				// Am Rand ist der Knopf gesperrt → den anderen nehmen
+				const other = document.getElementById(`variant-${focusDir === 'up' ? 'down' : 'up'}-${to}`);
+				(btn && !btn.disabled ? btn : other)?.focus();
+			});
+		}
+	}
+
+	function onDragStart(e: DragEvent, i: number) {
+		dragIndex = i;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', String(i));
+		}
+	}
+
+	function onDragOver(e: DragEvent, i: number) {
+		if (dragIndex === null) return;
+		e.preventDefault();
+		if (i !== dragIndex) {
+			move(dragIndex, i);
+			dragIndex = i;
+		}
+	}
+
+	function onDragEnd() {
+		dragIndex = null;
+		armedKey = null;
 	}
 
 	function removeRow(i: number) {
@@ -138,9 +188,10 @@
 		<fieldset class="space-y-3">
 			<legend class="sr-only">Größen</legend>
 			<div
-				class="hidden gap-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[6rem_7rem_minmax(0,1fr)_8.5rem_2.25rem]"
+				class="hidden gap-2 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.25rem_6rem_7rem_minmax(0,1fr)_8.5rem_6.75rem]"
 				aria-hidden="true"
 			>
+				<span></span>
 				<span>Größe *</span>
 				<span>Preis *</span>
 				<span>Nachbestelllink</span>
@@ -149,8 +200,28 @@
 			</div>
 			{#each rows as row, i (row.key)}
 				<div
-					class="grid gap-2 rounded-md border p-3 sm:grid-cols-[6rem_7rem_minmax(0,1fr)_8.5rem_2.25rem] sm:items-start sm:border-0 sm:p-0"
+					role="group"
+					aria-label={`Größe ${row.label || i + 1}`}
+					draggable={armedKey === row.key}
+					ondragstart={(e) => onDragStart(e, i)}
+					ondragover={(e) => onDragOver(e, i)}
+					ondrop={(e) => e.preventDefault()}
+					ondragend={onDragEnd}
+					data-variant-row={i}
+					class={[
+						'grid gap-2 rounded-md border bg-background p-3 transition-shadow sm:grid-cols-[1.25rem_6rem_7rem_minmax(0,1fr)_8.5rem_6.75rem] sm:items-start sm:border-0 sm:p-0',
+						dragIndex === i && 'opacity-60 shadow-md ring-2 ring-ring'
+					]}
 				>
+					<div
+						class="hidden h-9 cursor-grab items-center justify-center text-muted-foreground sm:flex"
+						title="Ziehen zum Verschieben"
+						aria-hidden="true"
+						onpointerdown={() => !disabled && (armedKey = row.key)}
+						onpointerup={() => (armedKey = null)}
+					>
+						<GripVertical class="size-4" />
+					</div>
 					<div class="space-y-1">
 						<Label for={`variant-label-${i}`} class="text-xs sm:sr-only">Größe *</Label>
 						<Input
@@ -207,6 +278,28 @@
 					</div>
 					<div class="flex justify-end">
 						<Button
+							id={`variant-up-${i}`}
+							variant="ghost"
+							size="icon"
+							aria-label={`Größe ${row.label || i + 1} nach oben`}
+							title="Nach oben"
+							disabled={disabled || i === 0}
+							onclick={() => move(i, i - 1, 'up')}
+						>
+							<ArrowUp />
+						</Button>
+						<Button
+							id={`variant-down-${i}`}
+							variant="ghost"
+							size="icon"
+							aria-label={`Größe ${row.label || i + 1} nach unten`}
+							title="Nach unten"
+							disabled={disabled || i === rows.length - 1}
+							onclick={() => move(i, i + 1, 'down')}
+						>
+							<ArrowDown />
+						</Button>
+						<Button
 							variant="ghost"
 							size="icon"
 							aria-label={`Größe ${row.label || i + 1} entfernen`}
@@ -219,6 +312,7 @@
 				</div>
 			{/each}
 		</fieldset>
+		<p class="sr-only" aria-live="polite">{liveMessage}</p>
 
 		<Button
 			variant="outline"
@@ -229,8 +323,9 @@
 			<Plus /> Größe hinzufügen
 		</Button>
 		<p class="text-xs text-muted-foreground">
-			Ohne eigenen Nachbestelllink gilt der Link des Artikels. Entfernte Größen, die schon bestellt
-			wurden, bleiben archiviert erhalten.
+			Die Reihenfolge (Ziehen am Griff oder Pfeile) gilt auch im Katalog und im Lager. Ohne eigenen
+			Nachbestelllink gilt der Link des Artikels. Entfernte Größen, die schon bestellt wurden,
+			bleiben archiviert erhalten.
 		</p>
 	{/if}
 
