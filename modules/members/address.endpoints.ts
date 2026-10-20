@@ -8,12 +8,15 @@ export const addressEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/address/suggest',
-		summary: 'Adressvorschläge (Straße, Hausnummer, PLZ, Ort) zu einem Suchtext',
+		summary:
+			'Adressvorschläge (Straße, Hausnummer, PLZ, Ort): Mitglieder-Anschriften, Straßenverzeichnis (OpenPLZ), ersatzweise Photon',
 		tags,
 		permission: 'members.member.edit',
 		query: addressSuggestQuery,
-		rateLimit: { limit: 90, windowSec: 60 },
-		handler: ({ query }) => suggestAddresses(query.q)
+		// Die Oberfläche fragt beim Tippen (höchstens alle 250 ms, Hausnummern ohne Anfrage)
+		rateLimit: { limit: 180, windowSec: 60 },
+		handler: ({ query }) =>
+			suggestAddresses(query.q, { postalCode: query.postalCode, country: query.country })
 	}),
 	defineEndpoint({
 		method: 'GET',

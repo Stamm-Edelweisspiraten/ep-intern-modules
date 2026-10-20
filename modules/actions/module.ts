@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
+import { myEndpoints } from './my.endpoints';
 import { calculationEndpoints } from './calculation.endpoints';
 import { accountingEndpoints } from './accounting.endpoints';
 import { formEndpoints } from './form.endpoints';
@@ -35,12 +37,15 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
+		/** Mitglieder sehen ihre Anmeldungen (und die ihrer verknüpften Mitglieder) */
+		defaultRoleGrants: { Mitglied: ['actions.own.view'] },
 		permissions: [
 			'actions.action.view',
+			'actions.own.view',
 			'actions.action.create',
 			'actions.action.view-all',
 			'actions.action.edit-all',
@@ -52,6 +57,8 @@ export default defineModule({
 		],
 		permissionDescriptions: {
 			'actions.action.view': 'Aktionen ansehen (eigene und freigegebene); Grundrecht für das Modul',
+			'actions.own.view':
+				'Eigene Anmeldungen und die der verknüpften Mitglieder sehen, z. B. auf dem Dashboard',
 			'actions.action.create': 'Aktionen anlegen und importieren (Anleger*in wird Eigentümer*in)',
 			'actions.action.view-all': 'Alle Aktionen ansehen, auch ohne Freigabe',
 			'actions.action.edit-all':
@@ -94,6 +101,7 @@ export default defineModule({
 			default: '{{aktion}} + Name'
 		}
 	],
+	search: actionsSearch,
 	resetAreas,
 	resetUsers,
 	migrations: [
@@ -116,6 +124,7 @@ export default defineModule({
 		{ name: '0017_expense_batches', sql: m0017 }
 	],
 	endpoints: [
+		...myEndpoints,
 		...actionEndpoints,
 		...participantEndpoints,
 		...participantSheetEndpoints,

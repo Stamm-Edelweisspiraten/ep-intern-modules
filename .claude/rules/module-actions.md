@@ -313,3 +313,9 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
   `useOptional<TreasuryService>('treasury')` `accountingClosed(ctx, { actionId, actionName, kind: 'final' | 'interim', number? })` auf. Die Kasse leitet
   das als Ereignis `accounting-closed` an die Inhaber*innen des Amts „Kasse“ weiter (Modul `offices`, optional). Ohne `treasury`/`offices` passiert
   nichts; Fehler werden geloggt, der Abschluss scheitert nie daran. Details: `module-treasury.md`, `module-offices.md`.
+
+## Dashboard (2026-10-20)
+- `GET /my/registrations` (Recht `actions.own.view`, „Mitglied“): kommende Aktionen (nicht `is_past`), bei denen ich (`user_id`) oder ein verknüpftes
+  Mitglied (`member_id`) teilnimmt; nur eigene Namen, `feeCents` = Summe der eigenen Beiträge. `GET /accounting/open` (`actions.action.view`):
+  Aktionen mit Bearbeiten-Zugriff (`editableActionsFilter` in `access.ts`), Ende ≤ heute, Abrechnung offen, Zähler Belege/Auslagen.
+  Kacheln `actions:registrations`, `actions:open-accounting` (Link `?tab=accounting`; `ActionDetailPage` liest `?tab=` beim Laden). Test `actions-my.test.ts`.

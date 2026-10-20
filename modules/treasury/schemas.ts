@@ -1135,3 +1135,26 @@ export interface AnnualMailPreview {
 	text: string;
 	to: string[];
 }
+
+// --- Eigene Rechnungen (Dashboard, `GET /my/invoices`) ---------------------------
+
+/** Offene Rechnung eines verknüpften Mitglieds (nur eigene Daten) */
+export interface MyInvoice {
+	id: string;
+	number: string;
+	/** Namen der eigenen (verknüpften) Mitglieder auf der Rechnung */
+	members: string[];
+	totalCents: number;
+	openCents: number;
+	dueDate: string;
+	overdue: boolean;
+	/** Verwendungszweck wie in der Rechnungs-Mail */
+	purpose: string;
+}
+
+export interface MyInvoices {
+	invoices: MyInvoice[];
+	totals: { openCents: number; overdueCents: number };
+	/** Bankverbindung aus den Kassen-Einstellungen; `null`, wenn Inhaber oder IBAN fehlen */
+	bank: { holder: string; iban: string; bic: string } | null;
+}

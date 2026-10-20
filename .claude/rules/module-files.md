@@ -236,3 +236,8 @@ Demo: `node scripts/seed-demo-files.mjs` (braucht MinIO).
 - Typ-Allowlist der Core-Storage-Einstellungen ist als Standard in `storage.ts` dupliziert (Module dürfen `$lib/server/*` nicht importieren) – mitpflegen.
 - AVIF und ODF (`odt`/`ods`/`odp`) werden ohne Erweiterung der Allowlist durch Admins abgelehnt.
 - Ungeprüft: PDF-Einbettung im echten Browser/mobil, echtes S3 bei großen Dateien, öffentlicher Upload mit echtem S3.
+
+## Dashboard (2026-10-20)
+- `GET /recent?limit=1–20` (Std. 8, `files.file.view`, `recent.endpoints.ts`): eigene und freigegebene **Dateien** (keine Ordner, kein Papierkorb),
+  neueste zuerst; `parentId` nur, wenn der Ordner selbst sichtbar ist; `manage-all` sieht hier bewusst **keine** fremden Ablagen.
+  Kachel `files:recent`. Test `files-recent.test.ts`.

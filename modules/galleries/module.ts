@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { galleriesSearch } from './search';
 import { galleriesEndpoints } from './galleries.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { metaEndpoints } from './meta.endpoints';
@@ -47,6 +48,7 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_gallery_events', sql: m0002 }
 	],
+	search: galleriesSearch,
 	resetAreas,
 	resetUsers,
 	// Reihenfolge: erster Treffer gewinnt (spezifische Pfade zuerst)

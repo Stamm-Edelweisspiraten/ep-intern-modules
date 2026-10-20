@@ -7,6 +7,7 @@ import { supplierEndpoints } from './supplier.endpoints';
 import { runDeficitDigest } from './notify';
 import { syncTreasury } from './treasury-link';
 import { resetAreas, resetUsers } from './reset';
+import { ordersSearch } from './search';
 import {
 	MANAGER_ROLE_NAME,
 	NOTIFY_ORDER_CREATED,
@@ -106,6 +107,7 @@ export default defineModule({
 			run: runDeficitDigest
 		}
 	],
+	search: ordersSearch,
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade vor `:id`)
 	endpoints: [
 		...imagesEndpoints,

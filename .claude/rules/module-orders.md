@@ -47,6 +47,11 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 ## Regeln
 - **Preise sind Snapshots**: Preisänderungen am Artikel ändern bestehende Bestellungen/Rechnungen nicht.
 - **Fehlmenge** je Variante = max(0, offene Nachfrage + Mindestbestand − Bestand − unterwegs). „Bestellvorschlag übernehmen“ legt daraus eine Lieferantenbestellung an.
+- **Lager-Tab** (2026-10-20): eine Zeile je Artikel; Artikel mit Größen zeigen Summen + Größen-Chips (`S: 3`) und lassen sich aufklappen
+  (bei Suche/„Nur Fehlmengen“ automatisch offen, nur passende Größen). 20 Artikel je Seite, clientseitig (`pages/stock-groups.ts`
+  `groupStockRows`/`paginate`, Unit `tests/unit/orders-stock-groups.test.ts`, E2E `tests/e2e/orders-stock.spec.ts`). `GET /stock` unverändert.
+- **Größen-Reihenfolge** (2026-10-20): im Artikel-Dialog (Tab „Größen & Preise“, `VariantEditor`) per Griff ziehen (Desktop) oder Pfeile;
+  die Listenreihenfolge wird beim Speichern zu `article_variants.position` (Katalog, Lager, Bestellung). IDs bleiben erhalten.
 - **Ausgabe** nur aus dem Lager (Menge ≤ offen und ≤ Bestand, sonst 422/409 „Nur N auf Lager“). **Storno**: eigene Bestellung (create) nur, solange nichts
   ausgegeben ist (409); `manage` storniert beliebige offene Mengen. Storno-Grund nur als `hasReason` im Audit.
 - **Lieferantenbestellung**: Positionen änderbar, solange nichts eingegangen ist (409); Wareneingang in Teilmengen erhöht den Bestand; „Rest stornieren“

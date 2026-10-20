@@ -3,11 +3,13 @@ import { defineModule } from '$lib/sdk/server';
 import { linksEndpoints } from './links.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { nodesEndpoints } from './nodes.endpoints';
+import { recentEndpoints } from './recent.endpoints';
 import { sharesEndpoints } from './shares.endpoints';
 import { trashEndpoints } from './trash.endpoints';
 import { uploadEndpoints } from './upload.endpoints';
 import { resetAreas, resetUsers } from './reset';
 import { filesBackup } from './backup';
+import { filesSearch } from './search';
 import { purgeExpired } from './trash.service';
 import {
 	DEFAULT_LINK_UPLOAD_MB,
@@ -85,10 +87,12 @@ export default defineModule({
 			run: (ctx) => purgeExpired(ctx)
 		}
 	],
+	search: filesSearch,
 	// Reihenfolge: erster Treffer gewinnt (öffentliche und feste Pfade vor `:id`)
 	endpoints: [
 		...linksEndpoints,
 		...metaEndpoints,
+		...recentEndpoints,
 		...trashEndpoints,
 		...sharesEndpoints,
 		...uploadEndpoints,

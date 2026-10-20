@@ -51,7 +51,10 @@
 	let loading = $state(true);
 	let notFound = $state(false);
 	let loadError = $state('');
-	let tab = $state('overview');
+	/** Start-Tab aus `?tab=` (z. B. Dashboard-Link `?tab=accounting`) */
+	const TAB_IDS = ['overview', 'calculation', 'registration', 'participants', 'accounting'];
+	const initialTab = page.url.searchParams.get('tab') ?? '';
+	let tab = $state(TAB_IDS.includes(initialTab) ? initialTab : 'overview');
 
 	let participants = $state<Participant[]>([]);
 	let partLoading = $state(true);

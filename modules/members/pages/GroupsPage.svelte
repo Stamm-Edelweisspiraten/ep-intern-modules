@@ -6,7 +6,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Button } from '$lib/components/ui/button';
@@ -223,6 +223,24 @@
 
 	$effect(() => {
 		void load();
+	});
+
+	// Deep-Link (globale Suche): `?open=<id>` hebt die Gruppe hervor, mit Bearbeitungsrecht öffnet der Dialog
+	let highlightId = $state('');
+	let openedId = '';
+	$effect(() => {
+		const id = page.url.searchParams.get('open') ?? '';
+		if (!id || loading || id === openedId) return;
+		const g = groups.find((x) => x.id === id);
+		if (!g) return;
+		openedId = id;
+		untrack(() => {
+			highlightId = id;
+			if (canEdit) openEdit(g);
+			void tick().then(() =>
+				document.getElementById(`group-${id}`)?.scrollIntoView({ block: 'center' })
+			);
+		});
 	});
 
 	function openCreate() {
@@ -494,7 +512,11 @@
 			</Table.Row>
 		{/snippet}
 		{#each groups as g (g.id)}
-			<Table.Row data-state={selected.includes(g.id) ? 'selected' : undefined}>
+			<Table.Row
+				id={`group-${g.id}`}
+				class={highlightId === g.id ? 'bg-muted' : undefined}
+				data-state={selected.includes(g.id) ? 'selected' : undefined}
+			>
 				{#if canExport}
 					<Table.Cell>
 						<Checkbox

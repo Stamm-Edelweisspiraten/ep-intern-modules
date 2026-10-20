@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { membersSearch } from './search';
 import { resetAreas, resetUsers } from './reset';
 import { addressEndpoints } from './address.endpoints';
 import { fieldEndpoints } from './fields.endpoints';
@@ -29,7 +30,7 @@ export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.9.0',
+		version: '1.10.0',
 		dependencies: [],
 		/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
 		defaultRoleGrants: { [LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'] },
@@ -107,10 +108,18 @@ export default defineModule({
 	} as unknown as Record<string, unknown>,
 	settings: [
 		{
-			key: 'members.address.photonUrl',
-			label: 'Adress-Autovervollständigung (Photon-URL)',
+			key: 'members.address.openPlzUrl',
+			label: 'Adress-Autovervollständigung (OpenPLZ-URL)',
 			description:
-				'Basis-URL eines Photon-Dienstes (OpenStreetMap). Beim Tippen einer Adresse wird der Suchtext serverseitig dorthin gesendet. Leer = Autovervollständigung aus (nur PLZ → Ort offline).',
+				'Basis-URL der OpenPLZ API (amtliches Straßenverzeichnis Deutschland, schnell). Beim Tippen wird der Straßenname serverseitig dorthin gesendet. Leer = aus.',
+			schema: z.union([z.literal(''), z.string().url().max(300)]),
+			default: 'https://openplzapi.org'
+		},
+		{
+			key: 'members.address.photonUrl',
+			label: 'Adress-Autovervollständigung (Photon-URL, Ersatz)',
+			description:
+				'Basis-URL eines Photon-Dienstes (OpenStreetMap). Wird nur gefragt, wenn das Straßenverzeichnis nichts findet oder das Land nicht Deutschland ist (öffentlicher Dienst ist langsam). Leer = aus.',
 			schema: z.union([z.literal(''), z.string().url().max(300)]),
 			default: 'https://photon.komoot.io'
 		}
@@ -127,6 +136,7 @@ export default defineModule({
 		{ name: '0010_group_meeting_end', sql: m0010 },
 		{ name: '0011_stage_jungpfadfinder', sql: m0011 }
 	],
+	search: membersSearch,
 	resetAreas,
 	resetUsers,
 	endpoints: [

@@ -666,8 +666,9 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
  */
 export async function searchNodes(
 	ctx: RequestContext,
-	input: { q: string }
+	input: { q: string; limit?: number }
 ): Promise<SearchResult> {
+	const max = Math.min(Math.max(1, input.limit ?? MAX_SEARCH_RESULTS), MAX_SEARCH_RESULTS);
 	const keys = await keysFor(ctx);
 	const q = input.q.trim().toLowerCase();
 	const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -679,11 +680,11 @@ export async function searchNodes(
 					WHERE ${visibleNodesFilter(ctx, keys)} AND n.deleted_at IS NULL
 						AND lower(n.name) LIKE ${pattern} ESCAPE '\\'
 					ORDER BY CASE WHEN n.kind = 'folder' THEN 0 ELSE 1 END, lower(n.name), n.id
-					LIMIT ${MAX_SEARCH_RESULTS + 1}`
+					LIMIT ${max + 1}`
 			)
 		).map(nodeRowOf);
-		const truncated = rows.length > MAX_SEARCH_RESULTS;
-		const hits = rows.slice(0, MAX_SEARCH_RESULTS);
+		const truncated = rows.length > max;
+		const hits = rows.slice(0, max);
 		hits.sort(compareNodes);
 
 		// Vorfahren je Treffer; ohne Eigentümerschaft nur ab dem ersten zugänglichen Vorfahren

@@ -435,3 +435,29 @@ export interface BulkResult {
 export interface PublicUploadResult {
 	uploaded: { name: string; sizeBytes: number }[];
 }
+
+// --- Zuletzt geändert (Dashboard, `GET /recent`) ----------------------------------
+
+export const RECENT_DEFAULT_LIMIT = 8;
+export const RECENT_MAX_LIMIT = 20;
+
+export const recentQuery = z.object({
+	limit: z.coerce.number().int().min(1).max(RECENT_MAX_LIMIT).default(RECENT_DEFAULT_LIMIT)
+});
+
+export type RecentQuery = z.infer<typeof recentQuery>;
+
+/** Zuletzt geänderte Datei, die der Aufrufer besitzt oder per Freigabe sehen darf */
+export interface RecentFile {
+	id: string;
+	name: string;
+	/** Inhaltstyp (`application/pdf` …) */
+	mime: string | null;
+	size: number;
+	/** ISO-Zeitstempel */
+	updatedAt: string;
+	/** Elternordner, wenn der Aufrufer ihn öffnen darf (sonst `null` = Wurzel „Dateien“) */
+	parentId: string | null;
+	own: boolean;
+	hasThumb: boolean;
+}

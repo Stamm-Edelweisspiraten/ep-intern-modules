@@ -465,6 +465,8 @@ export interface AddressSuggestion {
 	postalCode: string;
 	city: string;
 	country: string;
+	/** Herkunft: vorhandene Mitglieder-Anschrift, Straßenverzeichnis (OpenPLZ) oder Photon */
+	source?: 'members' | 'directory' | 'photon';
 }
 export interface AddressSuggestions {
 	items: AddressSuggestion[];
@@ -472,7 +474,21 @@ export interface AddressSuggestions {
 	unavailable: boolean;
 }
 export const addressSuggestQuery = z.object({
-	q: z.string().trim().min(3, 'Mindestens 3 Zeichen').max(120)
+	q: z.string().trim().min(3, 'Mindestens 3 Zeichen').max(120),
+	/** Bereits eingegebene PLZ: Treffer aus dieser Region zuerst */
+	postalCode: z
+		.string()
+		.trim()
+		.max(10)
+		.optional()
+		.transform((v) => v || undefined),
+	/** Gewähltes Land (`DE` → Straßenverzeichnis, sonst Photon) */
+	country: z
+		.string()
+		.trim()
+		.regex(/^[A-Za-z]{2}$/)
+		.optional()
+		.transform((v) => v?.toUpperCase())
 });
 export const addressPlacesQuery = z.object({
 	postalCode: z

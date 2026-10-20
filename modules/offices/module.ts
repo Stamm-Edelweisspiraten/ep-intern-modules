@@ -6,6 +6,7 @@ import { officesService, sendDigest } from './notify.service';
 import { officeEndpoints } from './offices.endpoints';
 import { profileEndpoints } from './profile.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { officesSearch } from './search';
 import { applyTemplates } from './templates.service';
 import { websiteEndpoints } from './website.endpoints';
 import { HOLDER_ROLE_NAME } from './schemas';
@@ -69,6 +70,7 @@ export default defineModule({
 			}
 		}
 	],
+	search: officesSearch,
 	// Feste Pfade (`/offices/order`, `/me`, `/website/…`) vor den Parameter-Pfaden
 	endpoints: [
 		...websiteEndpoints,

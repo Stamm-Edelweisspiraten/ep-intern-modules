@@ -280,6 +280,20 @@
 		loadGroups();
 		formOpen = true;
 	}
+	// Deep-Link (globale Suche): `?open=<id>` öffnet die gesperrte Ansicht und entfernt den Parameter
+	const openId = $derived(page.url.searchParams.get('open') ?? '');
+	$effect(() => {
+		const id = openId;
+		if (!id) return;
+		apiFetch<Member>(`/modules/members/members/${encodeURIComponent(id)}`)
+			.then((m) => openView(m))
+			.catch(() => toast.error('Mitglied nicht gefunden'))
+			.finally(() => {
+				const url = new URL(page.url);
+				url.searchParams.delete('open');
+				void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+			});
+	});
 	function rowKey(e: KeyboardEvent, m: Member) {
 		if (e.target !== e.currentTarget) return;
 		if (e.key === 'Enter' || e.key === ' ') {

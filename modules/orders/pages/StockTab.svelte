@@ -1,6 +1,11 @@
 <script lang="ts">
-	// Lager: Bestand je Artikel/Größe, Fehlmengen, Nachbestellen, Korrektur, Lagerbewegungen.
+	// Lager: Bestand je Artikel (Größen zusammengefasst, aufklappbar), Fehlmengen, Nachbestellen,
+	// Korrektur, Lagerbewegungen; seitenweise.
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { page } from '$app/state';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import History from '@lucide/svelte/icons/history';
@@ -34,6 +39,7 @@
 		urlHost
 	} from './admin-helpers';
 	import StockCorrectionDialog from './StockCorrectionDialog.svelte';
+	import { groupStockRows, paginate } from './stock-groups';
 	import SupplierOrderDialog from './SupplierOrderDialog.svelte';
 
 	let {
@@ -74,15 +80,25 @@
 		}
 	}
 
+	const PAGE_SIZE = 20;
+	let pageNo = $state(1);
+	const expanded = new SvelteSet<string>();
+
 	const deficitCount = $derived((rows ?? []).filter((r) => r.deficit > 0).length);
-	const visible = $derived.by(() => {
-		const q = search.trim().toLowerCase();
-		return (rows ?? []).filter(
-			(r) =>
-				(!onlyDeficit || r.deficit > 0) &&
-				(!q || `${r.articleTitle} ${r.variantLabel}`.toLowerCase().includes(q))
-		);
-	});
+	const groups = $derived(groupStockRows(rows ?? [], { search, onlyDeficit }));
+	const paged = $derived(paginate(groups, pageNo, PAGE_SIZE));
+	/** Bei Suche oder Fehlmengen-Filter die passenden Größen gleich zeigen */
+	const autoExpand = $derived(onlyDeficit || !!search.trim());
+
+	function setFilter(deficit: boolean) {
+		onlyDeficit = deficit;
+		pageNo = 1;
+	}
+
+	function toggle(articleId: string) {
+		if (expanded.has(articleId)) expanded.delete(articleId);
+		else expanded.add(articleId);
+	}
 
 	async function startSuggestion() {
 		suggestionBusy = true;
@@ -156,7 +172,7 @@
 		caption="Lagerbestand je Artikel und Größe"
 		{loading}
 		{error}
-		empty={!!rows && !visible.length}
+		empty={!!rows && !groups.length}
 		emptyTitle={rows?.length ? 'Keine Treffer' : 'Noch keine Artikel'}
 		emptyDescription={onlyDeficit && !search
 			? 'Es gibt keine Fehlmengen – alles ist ausreichend auf Lager oder bestellt.'
@@ -170,7 +186,7 @@
 					size="sm"
 					variant={onlyDeficit ? 'outline' : 'default'}
 					aria-pressed={!onlyDeficit}
-					onclick={() => (onlyDeficit = false)}
+					onclick={() => setFilter(false)}
 				>
 					Alle
 				</Button>
@@ -178,7 +194,7 @@
 					size="sm"
 					variant={onlyDeficit ? 'default' : 'outline'}
 					aria-pressed={onlyDeficit}
-					onclick={() => (onlyDeficit = true)}
+					onclick={() => setFilter(true)}
 				>
 					Nur Fehlmengen
 					{#if deficitCount > 0}<span class="tabular-nums opacity-70">{deficitCount}</span>{/if}
@@ -189,6 +205,7 @@
 				placeholder="Artikel suchen …"
 				aria-label="Lager durchsuchen"
 				bind:value={search}
+				oninput={() => (pageNo = 1)}
 			/>
 			<div class="ml-auto flex flex-wrap gap-2">
 				<Button size="sm" variant="outline" onclick={() => showMoves(null)}>
@@ -219,79 +236,203 @@
 				<Table.Head><span class="sr-only">Aktionen</span></Table.Head>
 			</Table.Row>
 		{/snippet}
-		{#each visible as r (r.variantId)}
-			{@const url = safeUrl(r.reorderUrl)}
-			<Table.Row class={r.deficit > 0 ? 'bg-destructive/5' : ''}>
-				<Table.Cell class="max-w-72">
-					<div class="truncate font-medium">{r.articleTitle}</div>
-					<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-						{#if r.variantLabel}<span>Größe {r.variantLabel}</span>{/if}
-						{#if !r.articleActive}<Badge variant="outline">nicht im Katalog</Badge>{/if}
-					</div>
-				</Table.Cell>
-				<Table.Cell
-					class={[
-						'text-right font-medium tabular-nums',
-						r.stock < r.minStock ? 'text-amber-700 dark:text-amber-400' : ''
-					].join(' ')}
+		{#each paged.items as g (g.articleId)}
+			{#if !g.hasSizes}
+				{@const r = g.variants[0]!}
+				{@render variantRow(r, false)}
+			{:else}
+				{@const open = autoExpand || expanded.has(g.articleId)}
+				{@const url = safeUrl(g.reorderUrl)}
+				<Table.Row
+					class={['cursor-pointer', g.deficit > 0 ? 'bg-destructive/5' : ''].join(' ')}
+					onclick={() => toggle(g.articleId)}
 				>
-					{r.stock}
-				</Table.Cell>
-				<Table.Cell class="text-right tabular-nums text-muted-foreground">{r.minStock}</Table.Cell>
-				<Table.Cell class="text-right tabular-nums">{r.demand}</Table.Cell>
-				<Table.Cell class="text-right tabular-nums">{r.inTransit}</Table.Cell>
-				<Table.Cell class="text-right">
-					{#if r.deficit > 0}
-						<Badge variant="destructive" class="tabular-nums"
-							>{r.deficit} {r.deficit === 1 ? 'fehlt' : 'fehlen'}</Badge
-						>
-					{:else}
-						<span class="text-muted-foreground">–</span>
-					{/if}
-				</Table.Cell>
-				<Table.Cell>
-					{#if url}
-						<a
-							href={url}
-							target="_blank"
-							rel="noopener noreferrer"
-							class="inline-flex min-h-9 items-center gap-1 text-sm underline-offset-4 hover:underline"
-						>
-							<ExternalLink class="size-4" aria-hidden="true" />
-							{urlHost(url)}
-							<span class="sr-only">(öffnet in neuem Tab)</span>
-						</a>
-					{:else}
-						<span class="text-muted-foreground">–</span>
-					{/if}
-				</Table.Cell>
-				<Table.Cell class="text-right whitespace-nowrap">
-					<Button
-						size="icon"
-						variant="ghost"
-						aria-label={`Lagerbewegungen: ${itemName(r.articleTitle, r.variantLabel)}`}
-						title="Lagerbewegungen"
-						onclick={() => showMoves(r)}
+					<Table.Cell class="max-w-80">
+						<div class="flex items-start gap-1.5">
+							<Button
+								size="icon"
+								variant="ghost"
+								class="-my-1 -ml-2 size-7 shrink-0"
+								aria-expanded={open}
+								aria-label={`${open ? 'Größen ausblenden' : 'Größen zeigen'}: ${g.articleTitle}`}
+								disabled={autoExpand}
+								onclick={(e) => {
+									e.stopPropagation();
+									toggle(g.articleId);
+								}}
+							>
+								<ChevronDown
+									class={['size-4 transition-transform', open ? '' : '-rotate-90'].join(' ')}
+								/>
+							</Button>
+							<div class="min-w-0">
+								<div class="truncate font-medium">{g.articleTitle}</div>
+								<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+									<span>{g.variantCount} {g.variantCount === 1 ? 'Größe' : 'Größen'}</span>
+									{#if g.lowCount > 0}
+										<span class="text-amber-700 dark:text-amber-400">
+											· {g.lowCount} unter Mindestbestand
+										</span>
+									{/if}
+									{#if !g.articleActive}<Badge variant="outline">nicht im Katalog</Badge>{/if}
+								</div>
+								{#if !open}
+									<div class="mt-1 flex flex-wrap gap-1" aria-hidden="true">
+										{#each g.variants as v (v.variantId)}
+											<span
+												class={[
+													'rounded border px-1.5 py-0.5 text-xs tabular-nums',
+													v.deficit > 0
+														? 'border-destructive/40 text-destructive'
+														: v.stock < v.minStock
+															? 'border-amber-500/40 text-amber-700 dark:text-amber-400'
+															: 'text-muted-foreground'
+												].join(' ')}
+											>
+												{v.variantLabel || '–'}: {v.stock}
+											</span>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+					</Table.Cell>
+					<Table.Cell class="text-right font-medium tabular-nums">{g.stock}</Table.Cell>
+					<Table.Cell class="text-right tabular-nums text-muted-foreground">{g.minStock}</Table.Cell
 					>
-						<History />
-					</Button>
-					{#if canStock}
-						<Button size="sm" variant="outline" onclick={() => startCorrection(r)}>
-							<Pencil /> Korrigieren
-						</Button>
-					{/if}
-				</Table.Cell>
-			</Table.Row>
+					<Table.Cell class="text-right tabular-nums">{g.demand}</Table.Cell>
+					<Table.Cell class="text-right tabular-nums">{g.inTransit}</Table.Cell>
+					<Table.Cell class="text-right">{@render deficitBadge(g.deficit)}</Table.Cell>
+					<Table.Cell>{@render reorderLink(url)}</Table.Cell>
+					<Table.Cell class="text-right whitespace-nowrap">
+						<span class="text-xs text-muted-foreground">Summe</span>
+					</Table.Cell>
+				</Table.Row>
+				{#if open}
+					{#each g.variants as r (r.variantId)}
+						{@render variantRow(r, true)}
+					{/each}
+				{/if}
+			{/if}
 		{/each}
 		{#snippet footer()}
 			{#if rows && rows.length}
-				<p class="text-sm text-muted-foreground">
-					Fehlmenge = offen bestellt + Mindestbestand − Bestand − unterwegs.
-				</p>
+				<div class="space-y-3">
+					{#if paged.pages > 1}
+						<div class="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+							<span aria-live="polite" class="tabular-nums">
+								{paged.from}–{paged.to} von {groups.length} Artikeln
+							</span>
+							<div class="flex items-center gap-2">
+								<span class="hidden tabular-nums sm:inline">
+									Seite {paged.page} von {paged.pages}
+								</span>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={paged.page <= 1}
+									onclick={() => (pageNo = paged.page - 1)}
+								>
+									<ChevronLeft /> Zurück
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={paged.page >= paged.pages}
+									onclick={() => (pageNo = paged.page + 1)}
+								>
+									Weiter <ChevronRight />
+								</Button>
+							</div>
+						</div>
+					{/if}
+					<p class="text-sm text-muted-foreground">
+						Fehlmenge = offen bestellt + Mindestbestand − Bestand − unterwegs. Bei Artikeln mit
+						Größen stehen in der ersten Zeile die Summen; aufklappen zeigt die einzelnen Größen.
+					</p>
+				</div>
 			{/if}
 		{/snippet}
 	</DataTable>
 </div>
+
+{#snippet deficitBadge(deficit: number)}
+	{#if deficit > 0}
+		<Badge variant="destructive" class="tabular-nums"
+			>{deficit} {deficit === 1 ? 'fehlt' : 'fehlen'}</Badge
+		>
+	{:else}
+		<span class="text-muted-foreground">–</span>
+	{/if}
+{/snippet}
+
+{#snippet reorderLink(url: string | null)}
+	{#if url}
+		<a
+			href={url}
+			target="_blank"
+			rel="noopener noreferrer"
+			class="inline-flex min-h-9 items-center gap-1 text-sm underline-offset-4 hover:underline"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<ExternalLink class="size-4" aria-hidden="true" />
+			{urlHost(url)}
+			<span class="sr-only">(öffnet in neuem Tab)</span>
+		</a>
+	{:else}
+		<span class="text-muted-foreground">–</span>
+	{/if}
+{/snippet}
+
+<!-- Eine Größe bzw. ein Artikel ohne Größen; `nested` = eingerückt unter der Summenzeile -->
+{#snippet variantRow(r: StockRow, nested: boolean)}
+	<Table.Row
+		class={[r.deficit > 0 ? 'bg-destructive/5' : '', nested ? 'bg-muted/30 text-sm' : ''].join(' ')}
+	>
+		<Table.Cell class={nested ? 'max-w-80 pl-10' : 'max-w-80'}>
+			{#if nested}
+				<div class="font-medium">
+					<span class="sr-only">{r.articleTitle}, </span>Größe {r.variantLabel || '–'}
+				</div>
+			{:else}
+				<div class="truncate font-medium">{r.articleTitle}</div>
+				<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+					{#if r.variantLabel}<span>Größe {r.variantLabel}</span>{/if}
+					{#if !r.articleActive}<Badge variant="outline">nicht im Katalog</Badge>{/if}
+				</div>
+			{/if}
+		</Table.Cell>
+		<Table.Cell
+			class={[
+				'text-right font-medium tabular-nums',
+				r.stock < r.minStock ? 'text-amber-700 dark:text-amber-400' : ''
+			].join(' ')}
+		>
+			{r.stock}
+		</Table.Cell>
+		<Table.Cell class="text-right tabular-nums text-muted-foreground">{r.minStock}</Table.Cell>
+		<Table.Cell class="text-right tabular-nums">{r.demand}</Table.Cell>
+		<Table.Cell class="text-right tabular-nums">{r.inTransit}</Table.Cell>
+		<Table.Cell class="text-right">{@render deficitBadge(r.deficit)}</Table.Cell>
+		<Table.Cell>{@render reorderLink(safeUrl(r.reorderUrl))}</Table.Cell>
+		<Table.Cell class="text-right whitespace-nowrap">
+			<Button
+				size="icon"
+				variant="ghost"
+				aria-label={`Lagerbewegungen: ${itemName(r.articleTitle, r.variantLabel)}`}
+				title="Lagerbewegungen"
+				onclick={() => showMoves(r)}
+			>
+				<History />
+			</Button>
+			{#if canStock}
+				<Button size="sm" variant="outline" onclick={() => startCorrection(r)}>
+					<Pencil /> Korrigieren
+				</Button>
+			{/if}
+		</Table.Cell>
+	</Table.Row>
+{/snippet}
 
 <StockCorrectionDialog bind:open={correctionOpen} row={correctionRow} onsaved={load} />
 <SupplierOrderDialog bind:open={supplierOpen} initial={suggestion} onsaved={supplierSaved} />

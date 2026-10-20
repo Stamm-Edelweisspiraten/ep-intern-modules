@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { eventsSearch } from './search';
 import { eventEndpoints } from './events.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { websiteEndpoints } from './website.endpoints';
@@ -59,6 +60,7 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_recurrence', sql: m0002 }
 	],
+	search: eventsSearch,
 	resetAreas,
 	resetUsers,
 	/** Dienst für andere Module (`EventRefsService`, siehe `contract.ts`) */

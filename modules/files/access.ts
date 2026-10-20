@@ -176,7 +176,7 @@ export async function accessForMany(
 }
 
 /** Rekursive Vorfahrenkette ab `startExpr` (inkl.) als Unterabfrage mit passender Freigabe */
-function sharedOnChainSql(startExpr: SQL, keys: readonly string[]): SQL {
+export function sharedOnChainSql(startExpr: SQL, keys: readonly string[]): SQL {
 	return sql`EXISTS (
 		WITH RECURSIVE up AS (
 			SELECT a.id, a.parent_id, 0 AS depth FROM nodes a WHERE a.id = ${startExpr}
