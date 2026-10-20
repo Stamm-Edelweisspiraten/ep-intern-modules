@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.8.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.9.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -22,11 +22,11 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `documents.endpoints.ts` | Datenschutz-/Anmeldedokument je Mitglied (multipart) |
 | `group-image.endpoints.ts` | Gruppenbild (multipart) |
 | `pages/MembersPage.svelte`, `MemberForm.svelte` (Tabs, auch Ansicht), `GroupsPage.svelte` | UI |
-| `migrations/0001_init.sql` … `0010_group_meeting_end.sql` | Schema (0007 unbenutzt) |
+| `migrations/0001_init.sql` … `0011_stage_jungpfadfinder.sql` | Schema (0007 unbenutzt) |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),
-  `members` (`birth_date date`, `stage` CHECK 7 Stände: neuling-woelfling, woelfling, neuling-jungpfadfinder, knappe,
+  `members` (`birth_date date`, `stage` CHECK, seit **0011** 8 Stände: neuling-woelfling, woelfling, neuling-jungpfadfinder, jungpfadfinder, knappe,
   pfadfinder, spaeher, kreuzpfadfinder; `consent_social_media|website|print`; `privacy_consent_path/name`,
   `registration_path/name`), `member_phones`/`member_emails` (`member_id` FK CASCADE, `value`, `position`),
   `member_groups` (PK member+group, beide CASCADE), `group_leaders` (PK group+member, **member FK RESTRICT**).

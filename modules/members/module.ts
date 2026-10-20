@@ -23,12 +23,13 @@ import m0006 from './migrations/0006_membership.sql?raw';
 import m0008 from './migrations/0008_member_mail_prefs.sql?raw';
 import m0009 from './migrations/0009_group_website.sql?raw';
 import m0010 from './migrations/0010_group_meeting_end.sql?raw';
+import m0011 from './migrations/0011_stage_jungpfadfinder.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.8.0',
+		version: '1.9.0',
 		dependencies: [],
 		/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
 		defaultRoleGrants: { [LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'] },
@@ -123,7 +124,8 @@ export default defineModule({
 		{ name: '0006_membership', sql: m0006 },
 		{ name: '0008_member_mail_prefs', sql: m0008 },
 		{ name: '0009_group_website', sql: m0009 },
-		{ name: '0010_group_meeting_end', sql: m0010 }
+		{ name: '0010_group_meeting_end', sql: m0010 },
+		{ name: '0011_stage_jungpfadfinder', sql: m0011 }
 	],
 	resetAreas,
 	resetUsers,
