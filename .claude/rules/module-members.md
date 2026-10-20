@@ -102,9 +102,16 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
 
 ### Anschrift und Autovervollständigung (`address.service.ts`, `address.endpoints.ts`, `pages/AddressFields.svelte`, `pages/countries.ts`)
 - Pflichtfelder `street` (≤ 200), `postalCode` (DE: genau 5 Ziffern, sonst ≤ 10 Zeichen), `city` (≤ 100); `country` Standard `DE`.
-- `GET /address/suggest?q=` (member.edit, ≥ 3 Zeichen, 90/min): serverseitig **Photon** (OpenStreetMap) gemäß Modul-Einstellung
-  `members.address.photonUrl` (Standard `https://photon.komoot.io`, leer = aus). Antwort `{ items[≤ 6], unavailable }`; Fehler/Timeout (3 s)
-  → `unavailable: true`, nie ein Fehlerstatus. **Datenschutz:** Der Suchtext (Straße/Ort, keine Namen) geht dabei an den Dienst.
+- `GET /address/suggest?q=&postalCode=&country=` (member.edit, ≥ 3 Zeichen, 180/min), seit 2026-10-20 schnell (vorher Photon allein, 3–5 s):
+  1. **Mitglieder-Anschriften** (`street ILIKE q%`, häufigste zuerst, immer frisch, Quelle `members`);
+  2. **OpenPLZ** (`members.address.openPlzUrl`, Standard `https://openplzapi.org`, amtliches Straßenverzeichnis DE, „enthält“-Suche): Straßenname ohne
+     Hausnummer (`splitHouseNumber`, „straße/stra/straß“ → „str“ per `directoryName` in `address-utils.ts`), Region zuerst (eingegebene PLZ bzw.
+     häufigster PLZ-Bereich der Mitglieder, 10 min gemerkt), dann bundesweit; Hausnummer wird angehängt (Quelle `directory`);
+  3. **Photon** (`members.address.photonUrl`, Bounding-Box DE) nur bei Land ≠ DE, ohne Verzeichnistreffer oder wenn OpenPLZ > 0,8 s braucht (Timeout 6 s).
+  Server-Zwischenspeicher 10 min je Straßenname/Region (vollständige kürzere Ergebnisse werden für längere Eingaben nur gefiltert), gleiche laufende
+  Anfragen zusammengelegt. Antwort `{ items[≤ 8] (mit `source`), unavailable }`; nie ein Fehlerstatus. Oberfläche: fragt schon beim Tippen (höchstens eine
+  Anfrage, ≥ 250 ms Abstand), Hausnummer ohne neue Anfrage (`withHouseNumber`), veraltete Treffer ausgefiltert (`matchesStreetName`), Ladeanzeige,
+  „bei Mitgliedern“-Hinweis. **Datenschutz:** Der Straßentext (keine Namen) geht an OpenPLZ bzw. Photon. Bekannt: OpenPLZ kennt nicht jede Straße.
 - `GET /address/places?postalCode=` (member.edit): Orte zur deutschen PLZ aus `data/plz-de.json` (GeoNames, CC BY 4.0, siehe `data/NOTICE.md`), offline.
 - Brief-Adressfeld (`recipientLines`): ab 18 Jahren (`isAdult`) der Name selbst, sonst „Eltern von …“; dazu Straße, „PLZ Ort“, bei Land ≠ DE der Ländername (Großbuchstaben).
   Brieftext für Volljährige in „Ihre Mitgliedschaft“-Form, ohne Elternhinweis.
