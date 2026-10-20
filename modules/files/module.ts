@@ -7,6 +7,7 @@ import { sharesEndpoints } from './shares.endpoints';
 import { trashEndpoints } from './trash.endpoints';
 import { uploadEndpoints } from './upload.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { filesBackup } from './backup';
 import { purgeExpired } from './trash.service';
 import {
 	DEFAULT_LINK_UPLOAD_MB,
@@ -74,6 +75,7 @@ export default defineModule({
 		{ name: '0003_single_view_upload_links', sql: m0003 }
 	],
 	resetAreas,
+	backup: filesBackup,
 	resetUsers,
 	jobs: [
 		{
