@@ -1,5 +1,10 @@
+<script lang="ts" module>
+	/** „Weitere Buchung erfassen“: Wahl gilt, solange die Seite offen ist */
+	let rememberedKeepOpen = false;
+</script>
+
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -74,10 +79,21 @@
 	let fieldErrors = $state<Record<string, string>>({});
 	let payeeOpen = $state(false);
 	let extraPayees = $state<{ id: string; name: string }[]>([]);
+	/** „Weitere Buchung erfassen“ (nur beim Anlegen): Dialog bleibt nach dem Speichern offen */
+	let keepOpen = $state(rememberedKeepOpen);
+	let savedCount = $state(0);
+	/** baut das Dateifeld nach jeder gespeicherten Buchung neu auf (leert die native Auswahl) */
+	let fileKey = $state(0);
+	const canKeepOpen = $derived(!entry);
 
+	// Nur beim Öffnen bzw. Wechsel der Buchung zurücksetzen – nicht beim Neuladen der Daten (untrack)
 	$effect(() => {
 		if (!open) return;
 		const e = entry;
+		untrack(() => resetAll(e));
+	});
+
+	function resetAll(e: AccountingEntry | null) {
 		type = e?.type ?? 'expense';
 		category = e?.category ?? null;
 		description = e?.description ?? '';
@@ -98,7 +114,25 @@
 		fieldErrors = {};
 		busy = false;
 		extraPayees = [];
-	});
+		savedCount = 0;
+	}
+
+	/** Für die nächste Buchung leeren; Typ, Kategorie, Datum, „Bezahlt von“/Person und Haken bleiben stehen */
+	async function resetForNext() {
+		description = '';
+		amountCents = 0;
+		file = null;
+		removeReceipt = false;
+		recipientName = '';
+		iban = '';
+		bic = '';
+		purpose = '';
+		error = '';
+		fieldErrors = {};
+		fileKey++;
+		await tick();
+		document.getElementById('acc-description')?.focus();
+	}
 
 	const typeOptions = ENTRY_TYPES.map((t) => ({ value: t as string, label: ENTRY_TYPE_LABELS[t] }));
 	const paidByOptions = PAID_BY.map((p) => ({ value: p as string, label: PAID_BY_LABELS[p] }));
@@ -233,8 +267,14 @@
 			}
 			toast.success(entry ? 'Buchung gespeichert' : 'Buchung hinzugefügt');
 			if (receiptFailed) toast.error(`Beleg nicht gespeichert: ${receiptFailed}`);
-			open = false;
-			await onsaved();
+			if (!entry && keepOpen) {
+				savedCount++;
+				await onsaved();
+				await resetForNext();
+			} else {
+				open = false;
+				await onsaved();
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				error = err.message;
@@ -509,25 +549,47 @@
 
 			<div class="grid gap-1.5">
 				<span class="text-sm font-medium">Beleg</span>
-				<FileField
-					id="acc-receipt"
-					bind:file
-					accept={RECEIPT_CONTENT_TYPES.join(',')}
-					maxBytes={MAX_RECEIPT_BYTES}
-					existingName={entry?.receipt && !removeReceipt ? entry.receipt.name : null}
-					existingHref={receiptHref}
-					canRemove
-					onremove={() => (removeReceipt = true)}
-					disabled={busy}
-				/>
+				{#key fileKey}
+					<FileField
+						id="acc-receipt"
+						bind:file
+						accept={RECEIPT_CONTENT_TYPES.join(',')}
+						maxBytes={MAX_RECEIPT_BYTES}
+						existingName={entry?.receipt && !removeReceipt ? entry.receipt.name : null}
+						existingHref={receiptHref}
+						canRemove
+						onremove={() => (removeReceipt = true)}
+						disabled={busy}
+					/>
+				{/key}
 				<p class="text-xs text-muted-foreground">PDF oder Bild, maximal 10 MB.</p>
 			</div>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy || locked}>{busy ? 'Speichere …' : 'Speichern'}</Button
-				>
+			<Dialog.Footer class="items-center gap-3 sm:justify-between">
+				{#if canKeepOpen}
+					<div class="flex items-center gap-2">
+						<Checkbox
+							id="acc-keep-open"
+							checked={keepOpen}
+							onCheckedChange={(v) => {
+								keepOpen = v === true;
+								rememberedKeepOpen = keepOpen;
+							}}
+						/>
+						<Label for="acc-keep-open" class="font-normal">Weitere Buchung erfassen</Label>
+					</div>
+				{:else}
+					<span></span>
+				{/if}
+				<div class="flex items-center gap-2">
+					<Button type="button" variant="outline" onclick={() => (open = false)}>
+						{canKeepOpen && keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
+					</Button>
+					<Button type="submit" disabled={busy || locked}>
+						{busy ? 'Speichere …' : canKeepOpen && keepOpen ? 'Speichern & weiter' : 'Speichern'}
+					</Button>
+				</div>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

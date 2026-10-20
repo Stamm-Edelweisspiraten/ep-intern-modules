@@ -13,6 +13,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -118,6 +119,16 @@
 	let busy = $state(false);
 	let error = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
+	/**
+	 * „Weiteres Mitglied anlegen“: Dialog bleibt nach dem Speichern offen (nur beim Anlegen).
+	 * Standard aus; die Wahl bleibt erhalten, solange die Seite offen ist (kein Zurücksetzen beim Öffnen).
+	 */
+	let keepOpen = $state(false);
+	/** Anzahl der in dieser Dialogsitzung angelegten Mitglieder („Fertig“ statt „Abbrechen“) */
+	let savedCount = $state(0);
+	/** Neu aufbauen der Datei-Felder nach jedem gespeicherten Mitglied */
+	let formKey = $state(0);
+	const creating = $derived(!member && !readonly);
 
 	const visibleCustomFields = $derived(customFields.filter((f) => !f.hidden));
 
@@ -155,7 +166,40 @@
 		error = '';
 		fieldErrors = {};
 		busy = false;
+		savedCount = 0;
 	});
+
+	/**
+	 * Für das nächste Mitglied leeren. Land, Gruppen und Eintrittsdatum bleiben stehen;
+	 * alles andere (auch Nachname/Anschrift, Einwilligungen, Dateien) wird geleert.
+	 */
+	async function resetForNext() {
+		firstName = '';
+		lastName = '';
+		scoutName = '';
+		birthDate = '';
+		custom = Object.fromEntries(customFields.map((f) => [f.key, null as FormValues[string]]));
+		street = '';
+		postalCode = '';
+		city = '';
+		phones = [];
+		emails = [];
+		stage = '';
+		exitDate = '';
+		secondaryMember = false;
+		feeLevels = [...FEE_LEVELS];
+		consentSocialMedia = false;
+		consentWebsite = false;
+		consentPrint = false;
+		files = { privacy: null, registration: null };
+		docNames = { privacy: null, registration: null };
+		error = '';
+		fieldErrors = {};
+		formKey++;
+		tab = 'person';
+		await tick();
+		document.getElementById('m-first')?.focus();
+	}
 
 	// Schutz gegen überholte Antworten, wenn das Formular schnell für ein anderes Mitglied neu öffnet
 	let customLoad = 0;
@@ -406,7 +450,13 @@
 					}
 				}
 			}
-			open = false;
+			const next = !member && keepOpen;
+			if (next) {
+				savedCount++;
+				await resetForNext();
+			} else {
+				open = false;
+			}
 			await onsaved();
 		} catch (err) {
 			if (err instanceof ApiClientError) {
@@ -737,17 +787,19 @@
 									{@const name = docNames[d.kind]}
 									<div class="space-y-2">
 										<label for={`m-doc-${d.kind}`} class="text-sm font-medium">{d.label}</label>
-										<FileField
-											id={`m-doc-${d.kind}`}
-											bind:file={files[d.kind]}
-											{accept}
-											maxBytes={MAX_DOCUMENT_BYTES}
-											existingName={member ? name : null}
-											existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
-											canUpload={canUpload && !viewing}
-											canRemove={canRemoveDoc && !viewing}
-											onremove={() => removeDoc(d.kind)}
-										/>
+										{#key formKey}
+											<FileField
+												id={`m-doc-${d.kind}`}
+												bind:file={files[d.kind]}
+												{accept}
+												maxBytes={MAX_DOCUMENT_BYTES}
+												existingName={member ? name : null}
+												existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
+												canUpload={canUpload && !viewing}
+												canRemove={canRemoveDoc && !viewing}
+												onremove={() => removeDoc(d.kind)}
+											/>
+										{/key}
 										{#if canUpload && !viewing}
 											<p class="text-xs text-muted-foreground">
 												{name ? 'Eine neue Datei ersetzt die vorhandene. ' : ''}PDF oder Bild, max. {maxMb}
@@ -765,7 +817,7 @@
 			</Tabs.Root>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer class={creating ? 'items-center gap-3 sm:justify-between' : undefined}>
 				{#if viewing && member}
 					{#if canLinkView && onlinks}
 						<Button
@@ -781,6 +833,23 @@
 					{#if canEdit}
 						<Button type="button" onclick={startEdit}><Pencil /> Bearbeiten</Button>
 					{/if}
+				{:else if creating}
+					<div class="flex items-center gap-2">
+						<Checkbox
+							id="m-keep-open"
+							checked={keepOpen}
+							onCheckedChange={(v) => (keepOpen = v === true)}
+						/>
+						<Label for="m-keep-open" class="font-normal">Weiteres Mitglied anlegen</Label>
+					</div>
+					<div class="flex items-center gap-2">
+						<Button type="button" variant="outline" onclick={() => (open = false)}>
+							{keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
+						</Button>
+						<Button type="submit" disabled={busy}>
+							{busy ? 'Speichert …' : keepOpen ? 'Speichern & weiter' : 'Speichern'}
+						</Button>
+					</div>
 				{:else}
 					<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 					<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
