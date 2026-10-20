@@ -1,12 +1,12 @@
 /**
- * Objektbezogene Zugriffspruefung fuer Aktionen. Alle Endpoints des Moduls gehen hier durch.
+ * Objektbezogene Zugriffsprüfung für Aktionen. Alle Endpoints des Moduls gehen hier durch.
  *
- * Regeln (die Basisberechtigung `actions.action.view` prueft bereits der Router):
+ * Regeln (die Basisberechtigung `actions.action.view` prüft bereits der Router):
  *   - System-Kontext, `actions.action.edit-all`  -> bearbeiten + teilen
- *   - Eigentuemer (`owner_id`)                     -> bearbeiten + teilen
+ *   - Eigentümer (`owner_id`)                     -> bearbeiten + teilen
  *   - Freigabe `edit`                              -> bearbeiten
  *   - Freigabe `read`, `actions.action.view-all`   -> lesen
- *   - sonst kein Zugriff (Aufrufer erhaelt 404, damit die Existenz nicht verraten wird)
+ *   - sonst kein Zugriff (Aufrufer erhält 404, damit die Existenz nicht verraten wird)
  */
 import { sql } from 'drizzle-orm';
 import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
@@ -57,7 +57,7 @@ export async function resolveAccess(
 
 /**
  * Wie `resolveAccess`, wirft aber `notFound` ohne Zugriff und `forbidden`, wenn mehr als der
- * vorhandene Zugriff verlangt wird (`edit` bzw. Freigaben aendern).
+ * vorhandene Zugriff verlangt wird (`edit` bzw. Freigaben ändern).
  */
 export async function requireAccess(
 	tx: Tx,
@@ -76,7 +76,7 @@ export async function requireAccess(
 	return access;
 }
 
-/** SQL-Bedingung fuer Listen: alles sehen oder nur eigene + freigegebene Aktionen. */
+/** SQL-Bedingung für Listen: alles sehen oder nur eigene + freigegebene Aktionen. */
 export function visibleActionsFilter(ctx: RequestContext) {
 	if (
 		ctx.actor.type === 'system' ||

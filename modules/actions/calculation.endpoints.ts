@@ -49,7 +49,7 @@ interface LoadedCalculation {
 	appliedById: string | null;
 }
 
-/** Benutzernamen werden NACH der Modul-Transaktion aufgeloest (siehe actions.endpoints.ts). */
+/** Benutzernamen werden NACH der Modul-Transaktion aufgelöst (siehe actions.endpoints.ts). */
 async function finalize(ctx: RequestContext, loaded: LoadedCalculation): Promise<CalculationDto> {
 	const { dto, appliedById } = loaded;
 	if (dto.applied && appliedById) {
@@ -243,7 +243,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/actions/:id/calculation/suggestions',
-		summary: 'Kalkulationsvorschlaege aus der Teilnehmerliste',
+		summary: 'Kalkulationsvorschläge aus der Teilnehmerliste',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -272,7 +272,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/calculation/apply',
-		summary: 'Empfohlenen Beitrag in die Aktion uebernehmen',
+		summary: 'Empfohlenen Beitrag in die Aktion übernehmen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -311,7 +311,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/actions/:id/calculation/apply',
-		summary: 'Uebernommenen Beitrag zuruecknehmen',
+		summary: 'Übernommenen Beitrag zurücknehmen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,

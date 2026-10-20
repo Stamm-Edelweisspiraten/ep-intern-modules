@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
+	import FileDown from '@lucide/svelte/icons/file-down';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import X from '@lucide/svelte/icons/x';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { tick } from 'svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -13,6 +16,7 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import {
 		ConfirmDialog,
@@ -20,13 +24,19 @@
 		EntityAvatar,
 		FileField,
 		FormField,
-		PageHeader
+		MobileActionBar,
+		PageHeader,
+		PdfExportDialog
 	} from '$lib/components/layout';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
+	import { downloadPdf } from './download';
+	import { slugFromName } from '../slug';
 	import {
 		GROUP_IMAGE_CONTENT_TYPES,
 		GROUP_TYPES,
 		GROUP_TYPE_LABELS,
 		MAX_GROUP_IMAGE_BYTES,
+		MAX_GROUP_SLUG,
 		WEEKDAYS,
 		WEEKDAY_LABELS,
 		groupInput,
@@ -40,8 +50,69 @@
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canEdit = $derived(can(permissions, 'members.group.edit'));
 	const canDelete = $derived(can(permissions, 'members.group.delete'));
+	const canExport = $derived(
+		can(permissions, 'members.data.export') && can(permissions, 'members.member.view')
+	);
 
 	let groups = $state<Group[]>([]);
+
+	// --- Mitgliedsdaten-PDF (Seite je Gruppe) ---------------------------------------
+	let selected = $state<string[]>([]);
+	let sheetsBusy = $state(false);
+	const allSelected = $derived(groups.length > 0 && groups.every((g) => selected.includes(g.id)));
+	const someSelected = $derived(!allSelected && groups.some((g) => selected.includes(g.id)));
+	const SHEETS_MAX_GROUPS = 20;
+
+	function toggle(id: string, on: boolean) {
+		if (on && selected.length >= SHEETS_MAX_GROUPS && !selected.includes(id)) {
+			toast.error(`Höchstens ${SHEETS_MAX_GROUPS} Gruppen auf einmal`);
+			return;
+		}
+		selected = on ? [...new Set([...selected, id])] : selected.filter((i) => i !== id);
+	}
+	function toggleAll(on: boolean) {
+		selected = on ? groups.map((g) => g.id).slice(0, SHEETS_MAX_GROUPS) : [];
+	}
+	let sheetsOpen = $state(false);
+	let sheetCatalog = $state<ListCatalog | null>(null);
+	/** Ziel des Dialogs: gewählte Gruppen bzw. eine einzelne Zeile */
+	let sheetTarget = $state<{ ids: string[]; fileName: string }>({
+		ids: [],
+		fileName: 'Gruppen.pdf'
+	});
+	const sheetCount = $derived(
+		groups.filter((g) => sheetTarget.ids.includes(g.id)).reduce((s, g) => s + g.memberCount, 0)
+	);
+
+	/** Öffnet den Spalten-Dialog; der Katalog (inkl. Zusatzfelder) kommt vom Server */
+	async function openSheets(ids: string[], fileName: string) {
+		sheetTarget = { ids, fileName };
+		if (!sheetCatalog) {
+			try {
+				sheetCatalog = await apiFetch<ListCatalog>('/modules/members/members/sheet-columns');
+			} catch (e) {
+				toast.error(e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden');
+				return;
+			}
+		}
+		sheetsOpen = true;
+	}
+	async function groupSheets(selection: ListSelection) {
+		sheetsBusy = true;
+		try {
+			await downloadPdf(
+				'/api/v1/modules/members/groups/sheets.pdf',
+				{ method: 'POST', body: JSON.stringify({ groupIds: sheetTarget.ids, selection }) },
+				sheetTarget.fileName
+			);
+			toast.success('Mitgliederliste erzeugt');
+			sheetsOpen = false;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			sheetsBusy = false;
+		}
+	}
 	let members = $state<MemberRef[]>([]);
 	let loading = $state(true);
 	let loadError = $state('');
@@ -56,12 +127,32 @@
 	let description = $state('');
 	let meetingPlace = $state('');
 	let meetingTime = $state('');
+	let meetingEndTime = $state('');
 	let meetingWeekday = $state<string | null>(null);
 	let color = $state<string | null>(null);
 	let fieldErrors = $state<Record<string, string>>({});
 	let imageFile = $state<File | null>(null);
 	let imagePreview = $state<string | null>(null);
 	let removeImage = $state(false);
+
+	// --- Website-Steckbrief -----------------------------------------------------------
+	type DialogTab = 'general' | 'website';
+	let dialogTab = $state<DialogTab>('general');
+	let onWebsite = $state(false);
+	let slug = $state('');
+	/** true, sobald die Adresse von Hand geändert wurde (dann folgt sie nicht mehr dem Namen) */
+	let slugTouched = $state(false);
+	let websiteText = $state('');
+	let ageRange = $state('');
+	let contactEmail = $state('');
+	const nameSlug = $derived(slugFromName(name));
+	const slugPreview = $derived(slug.trim().toLowerCase() || nameSlug || 'adresse');
+	const websiteHasError = $derived(Object.keys(fieldErrors).some((k) => k.startsWith('website.')));
+	const generalHasError = $derived(Object.keys(fieldErrors).some((k) => !k.startsWith('website.')));
+
+	function onNameInput() {
+		if (!slugTouched) slug = slugFromName(name);
+	}
 
 	const imageAccept = GROUP_IMAGE_CONTENT_TYPES.join(',');
 	const maxImageMb = MAX_GROUP_IMAGE_BYTES / 1024 / 1024;
@@ -86,8 +177,10 @@
 	}
 	function meetingText(g: Group) {
 		const day = g.meetingWeekday ? WEEKDAY_LABELS[g.meetingWeekday] : null;
-		if (day && g.meetingTime) return `${day}, ${g.meetingTime}`;
-		return day ?? g.meetingTime ?? '–';
+		const time =
+			g.meetingTime && g.meetingEndTime ? `${g.meetingTime}–${g.meetingEndTime}` : g.meetingTime;
+		if (day && time) return `${day}, ${time}`;
+		return day ?? time ?? '–';
 	}
 
 	function setPreview(url: string | null) {
@@ -114,7 +207,7 @@
 			let offset = 0;
 			for (;;) {
 				const res = await apiFetch<MemberList>(
-					`/modules/members/members?limit=200&offset=${offset}`
+					`/modules/members/members?status=all&limit=200&offset=${offset}`
 				);
 				all.push(...res.items);
 				offset += res.items.length;
@@ -140,12 +233,24 @@
 		description = '';
 		meetingPlace = '';
 		meetingTime = '';
+		meetingEndTime = '';
 		meetingWeekday = null;
 		color = null;
+		setWebsite(null);
 		resetImage();
 		fieldErrors = {};
 		formError = '';
 		formOpen = true;
+	}
+
+	function setWebsite(g: Group | null) {
+		dialogTab = 'general';
+		onWebsite = g?.website.onWebsite ?? false;
+		slug = g?.website.slug ?? (g ? slugFromName(g.name) : '');
+		slugTouched = Boolean(g?.website.slug);
+		websiteText = g?.website.description ?? '';
+		ageRange = g?.website.ageRange ?? '';
+		contactEmail = g?.website.contactEmail ?? '';
 	}
 
 	function openEdit(g: Group) {
@@ -156,8 +261,10 @@
 		description = g.description ?? '';
 		meetingPlace = g.meetingPlace ?? '';
 		meetingTime = g.meetingTime ?? '';
+		meetingEndTime = g.meetingEndTime ?? '';
 		meetingWeekday = g.meetingWeekday ? String(g.meetingWeekday) : null;
 		color = g.color;
+		setWebsite(g);
 		resetImage();
 		fieldErrors = {};
 		formError = '';
@@ -178,10 +285,24 @@
 		meetingPlace: 'g-place',
 		meetingWeekday: 'g-weekday',
 		meetingTime: 'g-time',
-		color: 'g-color'
+		meetingEndTime: 'g-time-end',
+		color: 'g-color',
+		'website.onWebsite': 'g-web-on',
+		'website.slug': 'g-web-slug',
+		'website.description': 'g-web-text',
+		'website.ageRange': 'g-web-age',
+		'website.contactEmail': 'g-web-mail'
 	};
 
+	/** Fehlerschlüssel: Website-Felder als `website.<feld>`, sonst das erste Pfadsegment */
+	function errorKey(path: readonly PropertyKey[] | undefined): string {
+		const first = String(path?.[0] ?? '');
+		return first === 'website' && path?.[1] != null ? `website.${String(path[1])}` : first;
+	}
+
 	async function focusFirstError() {
+		if (generalHasError) dialogTab = 'general';
+		else if (websiteHasError) dialogTab = 'website';
 		await tick();
 		for (const k of Object.keys(fieldIds)) {
 			if (!fieldErrors[k]) continue;
@@ -200,7 +321,7 @@
 			?.issues;
 		if (Array.isArray(issues)) {
 			for (const i of issues) {
-				const key = String(i.path?.[0] ?? '');
+				const key = errorKey(i.path);
 				if (key && i.message && !out[key]) out[key] = i.message;
 			}
 		}
@@ -219,13 +340,21 @@
 			meetingPlace: meetingPlace || null,
 			meetingWeekday: meetingWeekday ? Number(meetingWeekday) : null,
 			meetingTime: meetingTime || null,
-			color
+			meetingEndTime: meetingEndTime || null,
+			color,
+			website: {
+				onWebsite,
+				slug: slug.trim() || null,
+				description: websiteText.trim() || null,
+				ageRange: ageRange.trim() || null,
+				contactEmail: contactEmail.trim() || null
+			}
 		};
 		const parsed = groupInput.safeParse(input);
 		const errs: Record<string, string> = {};
 		if (!parsed.success) {
 			for (const i of parsed.error.issues) {
-				const key = String(i.path[0] ?? '');
+				const key = errorKey(i.path);
 				if (key && !errs[key]) errs[key] = i.message;
 			}
 		}
@@ -273,6 +402,10 @@
 			if (err instanceof ApiClientError) {
 				formError = err.message;
 				applyDetails(err.details);
+				// Doppelte Website-Adresse (409) am Feld zeigen
+				if (err.status === 409 && /Website-Adresse/.test(err.message)) {
+					fieldErrors = { ...fieldErrors, 'website.slug': err.message };
+				}
 				void focusFirstError();
 			} else {
 				formError = 'Speichern fehlgeschlagen.';
@@ -302,81 +435,142 @@
 	{/snippet}
 </PageHeader>
 
-<DataTable
-	caption="Gruppen"
-	{loading}
-	error={loadError}
-	empty={groups.length === 0}
-	emptyTitle="Noch keine Gruppen"
-	emptyDescription="Lege die erste Sippe oder Meute an."
->
-	{#snippet toolbar()}
-		{#if !loading && !loadError && members.length === 0}
-			<p class="w-full rounded-md border bg-muted/40 p-3 text-sm" role="status">
-				Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
-			</p>
-		{/if}
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			<Table.Head>Name</Table.Head>
-			<Table.Head>Typ</Table.Head>
-			<Table.Head>Leiter</Table.Head>
-			<Table.Head class="text-right">Mitglieder</Table.Head>
-			<Table.Head>Treffpunkt</Table.Head>
-			<Table.Head>Treffen</Table.Head>
-			{#if canEdit || canDelete}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
-		</Table.Row>
-	{/snippet}
-	{#each groups as g (g.id)}
-		<Table.Row>
-			<Table.Cell class="font-medium">
-				<div class="flex items-center gap-3">
-					<EntityAvatar name={g.name} src={g.hasImage ? imageUrl(g) : null} color={g.color} />
-					<span>{g.name}</span>
-				</div>
-			</Table.Cell>
-			<Table.Cell>
-				<Badge variant={g.type === 'sippe' ? 'default' : 'secondary'}>
-					{GROUP_TYPE_LABELS[g.type]}
-				</Badge>
-			</Table.Cell>
-			<Table.Cell>{g.leaders.map(personName).join(', ') || '–'}</Table.Cell>
-			<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
-			<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
-			<Table.Cell>{meetingText(g)}</Table.Cell>
-			{#if canEdit || canDelete}
-				<Table.Cell class="text-right">
-					<div class="flex justify-end gap-1">
-						{#if canEdit}
-							<Button
-								size="icon"
-								variant="ghost"
-								aria-label="Gruppe {g.name} bearbeiten"
-								onclick={() => openEdit(g)}
+<div class={selected.length ? 'pb-20 sm:pb-0' : ''}>
+	<DataTable
+		caption="Gruppen"
+		mobile="cards"
+		{loading}
+		error={loadError}
+		empty={groups.length === 0}
+		emptyTitle="Noch keine Gruppen"
+		emptyDescription="Lege die erste Sippe oder Meute an."
+	>
+		{#snippet toolbar()}
+			{#if !loading && !loadError && members.length === 0}
+				<p class="w-full rounded-md border bg-muted/40 p-3 text-sm" role="status">
+					Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+				</p>
+			{/if}
+			<MobileActionBar
+				show={canExport && selected.length > 0}
+				label="Sammelaktionen"
+				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
+			>
+				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={sheetsBusy}
+					onclick={() => openSheets(selected, 'Gruppen.pdf')}
+				>
+					<FileDown />
+					{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederlisten (PDF)'}
+				</Button>
+				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
+				</Button>
+			</MobileActionBar>
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				{#if canExport}
+					<Table.Head class="w-10">
+						<Checkbox
+							aria-label="Alle Gruppen auswählen"
+							checked={allSelected}
+							indeterminate={someSelected}
+							onCheckedChange={(v) => toggleAll(v === true)}
+						/>
+					</Table.Head>
+				{/if}
+				<Table.Head>Name</Table.Head>
+				<Table.Head>Typ</Table.Head>
+				<Table.Head>Leiter</Table.Head>
+				<Table.Head class="text-right">Mitglieder</Table.Head>
+				<Table.Head>Treffpunkt</Table.Head>
+				<Table.Head>Treffen</Table.Head>
+				{#if canEdit || canDelete || canExport}<Table.Head class="text-right">Aktionen</Table.Head
+					>{/if}
+			</Table.Row>
+		{/snippet}
+		{#each groups as g (g.id)}
+			<Table.Row data-state={selected.includes(g.id) ? 'selected' : undefined}>
+				{#if canExport}
+					<Table.Cell>
+						<Checkbox
+							aria-label={`Gruppe ${g.name} auswählen`}
+							checked={selected.includes(g.id)}
+							onCheckedChange={(v) => toggle(g.id, v === true)}
+						/>
+					</Table.Cell>
+				{/if}
+				<Table.Cell class="font-medium">
+					<div class="flex items-center gap-3">
+						<EntityAvatar name={g.name} src={g.hasImage ? imageUrl(g) : null} color={g.color} />
+						<span>{g.name}</span>
+						{#if g.website.onWebsite && g.website.slug}
+							<Badge
+								variant="outline"
+								class="font-normal text-muted-foreground"
+								title={`Steckbrief auf der Website: /gruppen/${g.website.slug}`}>Website</Badge
 							>
-								<Pencil class="size-4" />
-							</Button>
-						{/if}
-						{#if canDelete}
-							<Button
-								size="icon"
-								variant="ghost"
-								aria-label="Gruppe {g.name} löschen"
-								onclick={() => {
-									toDelete = g;
-									deleteOpen = true;
-								}}
-							>
-								<Trash2 class="size-4" />
-							</Button>
 						{/if}
 					</div>
 				</Table.Cell>
-			{/if}
-		</Table.Row>
-	{/each}
-</DataTable>
+				<Table.Cell>
+					<Badge variant={g.type === 'sippe' ? 'default' : 'secondary'}>
+						{GROUP_TYPE_LABELS[g.type]}
+					</Badge>
+				</Table.Cell>
+				<Table.Cell>{g.leaders.map(personName).join(', ') || '–'}</Table.Cell>
+				<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
+				<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
+				<Table.Cell>{meetingText(g)}</Table.Cell>
+				{#if canEdit || canDelete || canExport}
+					<Table.Cell class="text-right">
+						<div class="flex justify-end gap-1">
+							{#if canExport}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Mitgliederliste der Gruppe {g.name} als PDF"
+									title="Mitgliederliste (PDF)"
+									disabled={sheetsBusy}
+									onclick={() => openSheets([g.id], `Gruppe-${g.name}.pdf`)}
+								>
+									<FileDown class="size-4" />
+								</Button>
+							{/if}
+							{#if canEdit}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Gruppe {g.name} bearbeiten"
+									onclick={() => openEdit(g)}
+								>
+									<Pencil class="size-4" />
+								</Button>
+							{/if}
+							{#if canDelete}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="Gruppe {g.name} löschen"
+									onclick={() => {
+										toDelete = g;
+										deleteOpen = true;
+									}}
+								>
+									<Trash2 class="size-4" />
+								</Button>
+							{/if}
+						</div>
+					</Table.Cell>
+				{/if}
+			</Table.Row>
+		{/each}
+	</DataTable>
+</div>
 
 <Dialog.Root bind:open={formOpen}>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -385,135 +579,264 @@
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
-			<FormField label="Name *" id="g-name" error={fieldErrors.name}>
-				<Input
-					id="g-name"
-					required
-					maxlength={100}
-					bind:value={name}
-					aria-invalid={!!fieldErrors.name}
-					aria-describedby={fieldErrors.name ? 'g-name-error' : undefined}
-				/>
-			</FormField>
+			<Tabs.Root bind:value={dialogTab} class="gap-4">
+				<Tabs.List variant="line" class="w-full justify-start">
+					<Tabs.Trigger value="general" class="flex-none">
+						Allgemein
+						{#if generalHasError}
+							<span class="size-1.5 rounded-full bg-destructive" aria-hidden="true"></span>
+							<span class="sr-only">(enthält Fehler)</span>
+						{/if}
+					</Tabs.Trigger>
+					<Tabs.Trigger value="website" class="flex-none">
+						Website
+						{#if websiteHasError}
+							<span class="size-1.5 rounded-full bg-destructive" aria-hidden="true"></span>
+							<span class="sr-only">(enthält Fehler)</span>
+						{:else if onWebsite}
+							<span class="size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
+							<span class="sr-only">(aktiv)</span>
+						{/if}
+					</Tabs.Trigger>
+				</Tabs.List>
+				<Tabs.Content value="general" class="space-y-4">
+					<FormField label="Name *" id="g-name" error={fieldErrors.name}>
+						<Input
+							id="g-name"
+							required
+							maxlength={100}
+							bind:value={name}
+							oninput={onNameInput}
+							aria-invalid={!!fieldErrors.name}
+							aria-describedby={fieldErrors.name ? 'g-name-error' : undefined}
+						/>
+					</FormField>
 
-			<FormField label="Typ *" id="g-type" error={fieldErrors.type}>
-				<SelectField
-					id="g-type"
-					label="Typ"
-					options={typeOptions}
-					bind:value={type}
-					placeholder="Typ wählen"
-					invalid={!!fieldErrors.type}
-				/>
-			</FormField>
+					<FormField label="Typ *" id="g-type" error={fieldErrors.type}>
+						<SelectField
+							id="g-type"
+							label="Typ"
+							options={typeOptions}
+							bind:value={type}
+							placeholder="Typ wählen"
+							invalid={!!fieldErrors.type}
+						/>
+					</FormField>
 
-			<div class="space-y-1.5">
-				{#if members.length === 0}
-					<p class="text-sm font-medium">Gruppenleiter *</p>
+					<div class="space-y-1.5">
+						{#if members.length === 0}
+							<p class="text-sm font-medium">Gruppenleiter *</p>
+							<p class="text-sm text-muted-foreground">
+								Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+							</p>
+						{:else}
+							<MultiSelect
+								id="g-leaders"
+								label="Gruppenleiter *"
+								options={leaderOptions}
+								bind:value={leaderIds}
+								placeholder="Leiter auswählen"
+								searchPlaceholder="Mitglieder durchsuchen …"
+								emptyText="Keine Treffer."
+								invalid={!!fieldErrors.leaderIds}
+							/>
+						{/if}
+						{#if fieldErrors.leaderIds}
+							<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderIds}</p>
+						{/if}
+					</div>
+
+					<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
+						<Textarea
+							id="g-desc"
+							rows={3}
+							maxlength={2000}
+							bind:value={description}
+							aria-invalid={!!fieldErrors.description}
+							aria-describedby={fieldErrors.description ? 'g-desc-error' : undefined}
+						/>
+					</FormField>
+
+					<FormField label="Treffpunkt" id="g-place" error={fieldErrors.meetingPlace}>
+						<Input
+							id="g-place"
+							maxlength={200}
+							bind:value={meetingPlace}
+							aria-invalid={!!fieldErrors.meetingPlace}
+							aria-describedby={fieldErrors.meetingPlace ? 'g-place-error' : undefined}
+						/>
+					</FormField>
+
+					<div class="grid gap-4 sm:grid-cols-3">
+						<FormField label="Wochentag" id="g-weekday" error={fieldErrors.meetingWeekday}>
+							<SelectField
+								id="g-weekday"
+								label="Wochentag"
+								options={weekdayOptions}
+								bind:value={meetingWeekday}
+								emptyLabel="Kein Wochentag"
+								invalid={!!fieldErrors.meetingWeekday}
+							/>
+						</FormField>
+						<FormField label="Uhrzeit" id="g-time" error={fieldErrors.meetingTime}>
+							<Input
+								id="g-time"
+								type="time"
+								bind:value={meetingTime}
+								aria-invalid={!!fieldErrors.meetingTime}
+								aria-describedby={fieldErrors.meetingTime ? 'g-time-error' : undefined}
+							/>
+						</FormField>
+						<FormField label="bis" id="g-time-end" error={fieldErrors.meetingEndTime}>
+							<Input
+								id="g-time-end"
+								type="time"
+								bind:value={meetingEndTime}
+								aria-invalid={!!fieldErrors.meetingEndTime}
+								aria-describedby={fieldErrors.meetingEndTime ? 'g-time-end-error' : undefined}
+							/>
+						</FormField>
+					</div>
+
+					<div class="space-y-1.5">
+						<ColorPicker
+							id="g-color"
+							label="Gruppenfarbe"
+							bind:value={color}
+							allowClear
+							invalid={!!fieldErrors.color}
+						/>
+						{#if fieldErrors.color}
+							<p role="alert" class="text-xs text-destructive">{fieldErrors.color}</p>
+						{/if}
+					</div>
+
+					<div class="space-y-2">
+						<label for="g-image" class="text-sm font-medium">Gruppenbild</label>
+						{#if shownImage}
+							<img
+								src={shownImage}
+								alt="Vorschau des Gruppenbilds"
+								class="size-16 rounded-full border-2 object-cover"
+								style:border-color={color ?? 'transparent'}
+							/>
+						{/if}
+						<FileField
+							id="g-image"
+							bind:file={imageFile}
+							accept={imageAccept}
+							maxBytes={MAX_GROUP_IMAGE_BYTES}
+							existingName={editing?.hasImage && !removeImage && !imageFile
+								? 'Aktuelles Gruppenbild'
+								: null}
+							existingHref={editing?.hasImage ? imageUrl(editing) : null}
+							canRemove
+							onremove={() => (removeImage = true)}
+						/>
+						<p class="text-xs text-muted-foreground">
+							JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
+								? ''
+								: '; wird nach dem Anlegen hochgeladen'}.
+						</p>
+					</div>
+				</Tabs.Content>
+
+				<Tabs.Content value="website" class="space-y-4">
 					<p class="text-sm text-muted-foreground">
-						Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
+						Steckbrief für die Stammeswebsite. Gezeigt werden Name, Typ, Text, Alter, Treffen,
+						Farbe, Gruppenbild, Kontakt-E-Mail und die Vornamen der Leitenden.
 					</p>
-				{:else}
-					<MultiSelect
-						id="g-leaders"
-						label="Gruppenleiter *"
-						options={leaderOptions}
-						bind:value={leaderIds}
-						placeholder="Leiter auswählen"
-						searchPlaceholder="Mitglieder durchsuchen …"
-						emptyText="Keine Treffer."
-						invalid={!!fieldErrors.leaderIds}
-					/>
-				{/if}
-				{#if fieldErrors.leaderIds}
-					<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderIds}</p>
-				{/if}
-			</div>
+					<div class="flex items-center gap-2">
+						<Checkbox id="g-web-on" bind:checked={onWebsite} />
+						<label for="g-web-on" class="text-sm font-medium">Auf der Website zeigen</label>
+					</div>
 
-			<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
-				<Textarea
-					id="g-desc"
-					rows={3}
-					maxlength={2000}
-					bind:value={description}
-					aria-invalid={!!fieldErrors.description}
-					aria-describedby={fieldErrors.description ? 'g-desc-error' : undefined}
-				/>
-			</FormField>
+					<FormField
+						label={onWebsite ? 'Adresse *' : 'Adresse'}
+						id="g-web-slug"
+						error={fieldErrors['website.slug']}
+						hint={`Vorschau: /gruppen/${slugPreview} – nur Kleinbuchstaben, Ziffern und Bindestriche.`}
+					>
+						<Input
+							id="g-web-slug"
+							maxlength={MAX_GROUP_SLUG}
+							autocomplete="off"
+							spellcheck={false}
+							bind:value={slug}
+							oninput={() => (slugTouched = true)}
+							placeholder={nameSlug || 'z. B. woelflinge'}
+							aria-invalid={!!fieldErrors['website.slug']}
+							aria-describedby={fieldErrors['website.slug']
+								? 'g-web-slug-error'
+								: 'g-web-slug-hint'}
+						/>
+					</FormField>
+					{#if nameSlug && slug.trim() !== nameSlug}
+						<Button
+							type="button"
+							variant="link"
+							size="sm"
+							class="-mt-2 h-auto px-0"
+							onclick={() => {
+								slug = nameSlug;
+								slugTouched = false;
+							}}
+						>
+							Vorschlag übernehmen: {nameSlug}
+						</Button>
+					{/if}
 
-			<FormField label="Treffpunkt" id="g-place" error={fieldErrors.meetingPlace}>
-				<Input
-					id="g-place"
-					maxlength={200}
-					bind:value={meetingPlace}
-					aria-invalid={!!fieldErrors.meetingPlace}
-					aria-describedby={fieldErrors.meetingPlace ? 'g-place-error' : undefined}
-				/>
-			</FormField>
+					<FormField
+						label="Text für die Website"
+						id="g-web-text"
+						error={fieldErrors['website.description']}
+						hint="Leer = die interne Beschreibung wird gezeigt."
+					>
+						<Textarea
+							id="g-web-text"
+							rows={5}
+							maxlength={5000}
+							bind:value={websiteText}
+							placeholder={description || undefined}
+							aria-invalid={!!fieldErrors['website.description']}
+							aria-describedby={fieldErrors['website.description']
+								? 'g-web-text-error'
+								: 'g-web-text-hint'}
+						/>
+					</FormField>
 
-			<div class="grid gap-4 sm:grid-cols-2">
-				<FormField label="Wochentag" id="g-weekday" error={fieldErrors.meetingWeekday}>
-					<SelectField
-						id="g-weekday"
-						label="Wochentag"
-						options={weekdayOptions}
-						bind:value={meetingWeekday}
-						emptyLabel="Kein Wochentag"
-						invalid={!!fieldErrors.meetingWeekday}
-					/>
-				</FormField>
-				<FormField label="Uhrzeit" id="g-time" error={fieldErrors.meetingTime}>
-					<Input
-						id="g-time"
-						type="time"
-						bind:value={meetingTime}
-						aria-invalid={!!fieldErrors.meetingTime}
-						aria-describedby={fieldErrors.meetingTime ? 'g-time-error' : undefined}
-					/>
-				</FormField>
-			</div>
-
-			<div class="space-y-1.5">
-				<ColorPicker
-					id="g-color"
-					label="Gruppenfarbe"
-					bind:value={color}
-					allowClear
-					invalid={!!fieldErrors.color}
-				/>
-				{#if fieldErrors.color}
-					<p role="alert" class="text-xs text-destructive">{fieldErrors.color}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-2">
-				<label for="g-image" class="text-sm font-medium">Gruppenbild</label>
-				{#if shownImage}
-					<img
-						src={shownImage}
-						alt="Vorschau des Gruppenbilds"
-						class="size-16 rounded-full border-2 object-cover"
-						style:border-color={color ?? 'transparent'}
-					/>
-				{/if}
-				<FileField
-					id="g-image"
-					bind:file={imageFile}
-					accept={imageAccept}
-					maxBytes={MAX_GROUP_IMAGE_BYTES}
-					existingName={editing?.hasImage && !removeImage && !imageFile
-						? 'Aktuelles Gruppenbild'
-						: null}
-					existingHref={editing?.hasImage ? imageUrl(editing) : null}
-					canRemove
-					onremove={() => (removeImage = true)}
-				/>
-				<p class="text-xs text-muted-foreground">
-					JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
-						? ''
-						: '; wird nach dem Anlegen hochgeladen'}.
-				</p>
-			</div>
+					<div class="grid gap-4 sm:grid-cols-2">
+						<FormField label="Alter" id="g-web-age" error={fieldErrors['website.ageRange']}>
+							<Input
+								id="g-web-age"
+								maxlength={50}
+								bind:value={ageRange}
+								placeholder="z. B. 7 bis 10 Jahre"
+								aria-invalid={!!fieldErrors['website.ageRange']}
+								aria-describedby={fieldErrors['website.ageRange'] ? 'g-web-age-error' : undefined}
+							/>
+						</FormField>
+						<FormField
+							label="Kontakt-E-Mail"
+							id="g-web-mail"
+							error={fieldErrors['website.contactEmail']}
+						>
+							<Input
+								id="g-web-mail"
+								type="email"
+								maxlength={200}
+								autocomplete="off"
+								bind:value={contactEmail}
+								placeholder="z. B. woelflinge@stamm.de"
+								aria-invalid={!!fieldErrors['website.contactEmail']}
+								aria-describedby={fieldErrors['website.contactEmail']
+									? 'g-web-mail-error'
+									: undefined}
+							/>
+						</FormField>
+					</div>
+				</Tabs.Content>
+			</Tabs.Root>
 
 			{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
 			<Dialog.Footer>
@@ -534,3 +857,15 @@
 	destructive
 	onconfirm={confirmDelete}
 />
+
+{#if sheetCatalog}
+	<PdfExportDialog
+		bind:open={sheetsOpen}
+		title="Mitgliederliste der Gruppe(n)"
+		catalog={sheetCatalog}
+		count={sheetCount}
+		storageKey="pdf-list:groups"
+		busy={sheetsBusy}
+		onexport={groupSheets}
+	/>
+{/if}

@@ -7,7 +7,6 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { Badge } from '$lib/components/ui/badge';
@@ -15,32 +14,30 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		ConfirmDialog,
-		DataTable,
 		EmptyState,
 		PageHeader,
+		PdfExportDialog,
 		ShareMenu,
 		type ShareCandidate
 	} from '$lib/components/layout';
 	import {
-		DIET_LABELS,
-		PARTICIPANT_ROLE_LABELS,
 		SHARE_LEVELS,
 		SHARE_LEVEL_LABELS,
-		ageAt,
 		type ActionShares,
 		type ActionSummary,
 		type Participant,
 		type ShareLevel
 	} from '../schemas';
+	import { downloadPdf } from '$lib/components/layout/download';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { fmtPeriod } from './format';
 	import { formatEuro } from '$lib/components/layout/money';
 	import ActionForm from './ActionForm.svelte';
 	import ParticipantForm from './ParticipantForm.svelte';
-	import SubsidyCell from './SubsidyCell.svelte';
+	import ParticipantsTab from './ParticipantsTab.svelte';
 	import AccountingTab from './AccountingTab.svelte';
 	import CalculationTab from './CalculationTab.svelte';
 	import RegistrationTab from './RegistrationTab.svelte';
@@ -78,6 +75,60 @@
 			(action.access.isOwner || action.access.level === 'edit')
 	);
 	const base = $derived(`/modules/actions/actions/${id}`);
+	/** Kasse aktiv: Teilnehmende tragen einen Zahlstand (auch `null` = keine Rechnung) */
+	const showPayments = $derived(
+		participants.some((p) => !!p.payment) ||
+			(!action?.isPast && participants.some((p) => p.payment !== undefined))
+	);
+	const canOpenInvoices = $derived(can(permissions, 'treasury.cash.view'));
+	const canExportSheets = $derived(can(permissions, 'members.data.export'));
+	let sheetsBusy = $state(false);
+	let sheetsOpen = $state(false);
+	let sheetCatalog = $state<ListCatalog | null>(null);
+
+	/** Öffnet den Spalten-Dialog; der Katalog (Mitglieds- + Aktionsspalten) kommt vom Server */
+	async function openSheets() {
+		if (!sheetCatalog) {
+			try {
+				sheetCatalog = await apiFetch<ListCatalog>(`${base}/participants/pdf-columns`);
+			} catch (e) {
+				toast.error(e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden');
+				return;
+			}
+		}
+		sheetsOpen = true;
+	}
+	async function participantSheets(selection: ListSelection) {
+		sheetsBusy = true;
+		try {
+			await downloadPdf(
+				`/api/v1${base}/participants.pdf`,
+				{ method: 'POST', body: JSON.stringify({ selection }) },
+				'Teilnehmende.pdf'
+			);
+			sheetsOpen = false;
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'PDF konnte nicht erzeugt werden');
+		} finally {
+			sheetsBusy = false;
+		}
+	}
+	const paymentSummary = $derived.by(() => {
+		if (!showPayments && action?.isPast) {
+			return 'Liegt in der Vergangenheit – keine Rechnungen in der Kasse.';
+		}
+		if (!showPayments) return undefined;
+		const withInvoice = participants.filter((p) => p.payment);
+		if (!withInvoice.length) return 'Noch keine Beitragsrechnungen in der Kasse.';
+		const paid = withInvoice.filter(
+			(p) => p.payment!.status === 'paid' || p.payment!.status === 'waived'
+		).length;
+		const open = withInvoice.reduce((s, p) => s + p.payment!.openCents, 0);
+		const overdue = withInvoice.filter((p) => p.payment!.overdue).length;
+		return `Beiträge: ${paid} von ${withInvoice.length} bezahlt${
+			open > 0 ? ` · ${formatEuro(open)} offen` : ''
+		}${overdue > 0 ? ` · ${overdue} überfällig` : ''}`;
+	});
 
 	function errMsg(e: unknown, fallback: string) {
 		return e instanceof ApiClientError ? e.message : fallback;
@@ -199,14 +250,6 @@
 		await loadShares();
 	}
 
-	function fmtAge(p: Participant): string {
-		if (!p.birthDate || !action) return '–';
-		const a = ageAt(p.birthDate, action.startsOn);
-		return a === null || a < 0 ? '–' : String(a);
-	}
-	function truncate(s: string, n = 60) {
-		return s.length > n ? `${s.slice(0, n - 1)}…` : s;
-	}
 	function levelLabel(l: ShareLevel) {
 		return SHARE_LEVEL_LABELS[l];
 	}
@@ -247,6 +290,7 @@
 		description={`${fmtPeriod(action)}${action.location ? ` · ${action.location}` : ''}`}
 	>
 		{#snippet actions()}
+			{#if action?.isPast}<Badge variant="outline">Vergangen</Badge>{/if}
 			{#if shares}
 				<ShareMenu
 					shares={shares.shares}
@@ -381,90 +425,29 @@
 		</Tabs.Content>
 
 		<Tabs.Content value="participants">
-			<DataTable
-				caption="Teilnehmende"
-				title="Teilnehmende"
+			<ParticipantsTab
+				{participants}
 				loading={partLoading}
 				error={partError}
-				empty={!participants.length}
-				emptyTitle="Noch keine Teilnehmenden"
-				emptyDescription="Füge Teilnehmende manuell hinzu."
-			>
-				{#snippet toolbar()}
-					<Button variant="outline" href={`/api/v1${base}/participants.csv`} download>
-						<Download /> CSV exportieren
-					</Button>
-					{#if canEdit}
-						<Button onclick={openAddParticipant}><UserPlus /> Teilnehmende*n hinzufügen</Button>
-					{/if}
-				{/snippet}
-				{#snippet head()}
-					<Table.Row>
-						<Table.Head>Name</Table.Head>
-						<Table.Head>Gruppe</Table.Head>
-						<Table.Head>E-Mail</Table.Head>
-						<Table.Head>Alter</Table.Head>
-						<Table.Head>Rolle</Table.Head>
-						<Table.Head>Ernährung</Table.Head>
-						<Table.Head>Allergien / Hinweise</Table.Head>
-						<Table.Head>Zuschuss</Table.Head>
-						<Table.Head>Quelle</Table.Head>
-						{#if canEdit}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
-					</Table.Row>
-				{/snippet}
-				{#each participants as p (p.id)}
-					{@const hint = [p.allergies, p.notes].filter(Boolean).join(' · ')}
-					<Table.Row>
-						<Table.Cell class="font-medium">{p.name}</Table.Cell>
-						<Table.Cell>{p.groupLabel ?? '–'}</Table.Cell>
-						<Table.Cell class="max-w-48 truncate text-xs" title={p.contactEmail ?? undefined}>
-							{p.contactEmail ?? '–'}
-						</Table.Cell>
-						<Table.Cell>{fmtAge(p)}</Table.Cell>
-						<Table.Cell>
-							{PARTICIPANT_ROLE_LABELS[p.role]}{p.role === 'team' && p.juleica ? ' (Juleica)' : ''}
-						</Table.Cell>
-						<Table.Cell>{p.diet ? DIET_LABELS[p.diet] : '–'}</Table.Cell>
-						<Table.Cell class="max-w-64" title={hint || undefined}>
-							{hint ? truncate(hint) : '–'}
-						</Table.Cell>
-						<Table.Cell>
-							<SubsidyCell
-								participant={p}
-								actionId={id}
-								{canEdit}
-								onchanged={refreshAfterParticipant}
-							/>
-						</Table.Cell>
-						<Table.Cell>
-							<Badge variant="outline">{p.source === 'link' ? 'Anmeldelink' : 'Manuell'}</Badge>
-						</Table.Cell>
-						{#if canEdit}
-							<Table.Cell class="text-right">
-								<div class="flex justify-end gap-2">
-									<Button
-										size="icon"
-										variant="outline"
-										aria-label={`${p.name} bearbeiten`}
-										onclick={() => openEditParticipant(p)}><Pencil /></Button
-									>
-									<Button
-										size="icon"
-										variant="destructive"
-										aria-label={`${p.name} entfernen`}
-										onclick={() => openDeleteParticipant(p)}><Trash2 /></Button
-									>
-								</div>
-							</Table.Cell>
-						{/if}
-					</Table.Row>
-				{/each}
-			</DataTable>
+				{base}
+				startsOn={action.startsOn}
+				{canEdit}
+				{showPayments}
+				description={paymentSummary}
+				{canOpenInvoices}
+				{canExportSheets}
+				{sheetsBusy}
+				onadd={openAddParticipant}
+				onedit={openEditParticipant}
+				ondelete={openDeleteParticipant}
+				onsheets={openSheets}
+				onchanged={refreshAfterParticipant}
+			/>
 		</Tabs.Content>
 
 		<Tabs.Content value="accounting">
 			{#if tab === 'accounting'}
-				<AccountingTab actionId={action.id} {canEdit} />
+				<AccountingTab actionId={action.id} {canEdit} isPast={action.isPast} />
 			{/if}
 		</Tabs.Content>
 
@@ -472,6 +455,7 @@
 			{#if tab === 'registration'}
 				<RegistrationTab
 					actionId={action.id}
+					isPast={action.isPast}
 					{canEdit}
 					onchanged={loadAction}
 					onopencalculation={() => (tab = 'calculation')}
@@ -525,4 +509,15 @@
 		destructive
 		onconfirm={confirmDeleteParticipant}
 	/>
+	{#if sheetCatalog}
+		<PdfExportDialog
+			bind:open={sheetsOpen}
+			title="Teilnehmerliste (PDF)"
+			catalog={sheetCatalog}
+			count={participants.length}
+			storageKey="pdf-list:action"
+			busy={sheetsBusy}
+			onexport={participantSheets}
+		/>
+	{/if}
 {/if}

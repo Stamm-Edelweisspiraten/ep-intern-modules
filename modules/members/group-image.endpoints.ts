@@ -52,14 +52,14 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 		path: '/groups/:id/image',
 		summary: 'Gruppenbild hochladen (multipart, Feld "file")',
 		description:
-			'Ersetzt ein vorhandenes Bild. Erlaubt: JPEG, PNG, WebP bis 2 MB. Rueckgabe: { name }.',
+			'Ersetzt ein vorhandenes Bild. Erlaubt: JPEG, PNG, WebP bis 2 MB. Rückgabe: { name }.',
 		tags: ['Modul: members'],
 		permission: 'members.group.edit',
 		params: idParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
 			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungueltige Formulardaten');
+				throw errors.badRequest('Ungültige Formulardaten');
 			});
 			const file = form.get('file');
 			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
@@ -69,7 +69,7 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 			}
 			if (file.size === 0) throw errors.badRequest('Datei ist leer');
 			if (file.size > MAX_GROUP_IMAGE_BYTES) {
-				throw errors.tooLarge('Bild ueberschreitet das Limit von 2 MB');
+				throw errors.tooLarge('Bild überschreitet das Limit von 2 MB');
 			}
 
 			const old = await mdb().transaction((tx) => readRef(tx, id));
@@ -126,7 +126,7 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/groups/:id/image',
-		summary: 'Gruppenbild loeschen',
+		summary: 'Gruppenbild löschen',
 		tags: ['Modul: members'],
 		permission: 'members.group.edit',
 		params: idParams,

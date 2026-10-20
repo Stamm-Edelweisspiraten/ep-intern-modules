@@ -2,13 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
 import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
-import type { FormDefinition } from '$lib/forms/types';
+import type { FormDefinition, FormValues } from '$lib/forms/types';
+import type { LinkedMemberData, MembersService } from '$lib/modules/members/contract';
+import type { TreasuryService } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import {
 	STATUS_CONFLICT_MESSAGES,
 	buildConfirmationMail,
 	buildDefaultFormDefinition,
 	computeFormStatus,
+	identityValues,
+	memberUpdates,
+	prefillValues,
+	withoutIdentityFields,
 	isPlausibleBirthDate,
 	mapStandardAnswers,
 	mergeStandardFields,
@@ -36,6 +42,7 @@ import {
 	type FormConfigInput,
 	type ParticipantRole,
 	type PublicForm,
+	type PublicMemberOption,
 	type PublicSubmitInput,
 	type PublicSubmitResult
 } from './schemas';
@@ -66,6 +73,7 @@ interface FormRow {
 	intro: string | null;
 	disclaimerTemplate: string;
 	privacyUrl: string | null;
+	requireLogin: boolean;
 	definition: FormDefinition;
 }
 
@@ -128,6 +136,7 @@ function toFormRow(r: Record<string, unknown>): FormRow {
 		intro: str(r.intro),
 		disclaimerTemplate: String(r.disclaimer_template ?? ''),
 		privacyUrl: str(r.privacy_url),
+		requireLogin: Boolean(r.require_login),
 		definition: parseDefinition(r.definition)
 	};
 }
@@ -152,14 +161,22 @@ async function loadById(tx: Tx, id: string): Promise<Loaded> {
 	return { form: row ? toFormRow(row) : null, action, ...(await counts(tx, id)) };
 }
 
+/** Kontodaten für Anmeldetexte: bei aktiver Kasse aus deren Einstellungen, sonst aus `actions.bank.*` */
 async function readSettings() {
 	const s = await core.settings.getMany(SETTING_KEYS);
 	const s1 = (k: string) => (typeof s[k] === 'string' ? (s[k] as string) : '');
+	let treasuryBank: Awaited<ReturnType<TreasuryService['bankData']>> | null;
+	try {
+		const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+		treasuryBank = treasury ? await treasury.bankData() : null;
+	} catch {
+		treasuryBank = null;
+	}
 	return {
-		kontoinhaber: s1('actions.bank.holder'),
-		iban: s1('actions.bank.iban'),
-		bic: s1('actions.bank.bic'),
-		bank: s1('actions.bank.name'),
+		kontoinhaber: treasuryBank ? treasuryBank.holder : s1('actions.bank.holder'),
+		iban: treasuryBank ? treasuryBank.iban : s1('actions.bank.iban'),
+		bic: treasuryBank ? treasuryBank.bic : s1('actions.bank.bic'),
+		bank: treasuryBank ? treasuryBank.name : s1('actions.bank.name'),
 		purposeTemplate: s1('actions.payment.purposeTemplate')
 	};
 }
@@ -195,6 +212,7 @@ function toConfig(l: Loaded, bank: BankSettings): FormConfig {
 		intro: f?.intro ?? null,
 		disclaimerTemplate: template,
 		privacyUrl: f?.privacyUrl ?? null,
+		requireLogin: f?.requireLogin ?? false,
 		definition: f?.definition ?? buildDefaultFormDefinition(),
 		status: computeFormStatus(base, l.participantCount),
 		submissions: l.submissions,
@@ -217,7 +235,7 @@ async function configFor(
 	return toConfig(loaded, await readSettings());
 }
 
-// --- Oeffentlich ------------------------------------------------------------
+// --- Öffentlich ------------------------------------------------------------
 
 const NOT_AVAILABLE = 'Anmeldung nicht verfügbar';
 
@@ -232,7 +250,12 @@ async function loadByToken(
 	return { id, form: toFormRow(row), action, ...(await counts(tx, id)) };
 }
 
-function toPublicForm(l: Loaded & { form: FormRow }, bank: BankSettings): PublicForm {
+function toPublicForm(
+	l: Loaded & { form: FormRow },
+	bank: BankSettings,
+	viewer: PublicForm['viewer'] = null,
+	members: PublicMemberOption[] = []
+): PublicForm {
 	const disclaimer = disclaimerFor(
 		l.action,
 		l.form.disclaimerTemplate || DEFAULT_DISCLAIMER_TEMPLATE,
@@ -252,8 +275,52 @@ function toPublicForm(l: Loaded & { form: FormRow }, bank: BankSettings): Public
 			disclaimer
 		}),
 		disclaimer,
-		privacyUrl: l.form.privacyUrl
+		privacyUrl: l.form.privacyUrl,
+		requireLogin: l.form.requireLogin,
+		viewer,
+		members
 	};
+}
+
+const MEMBERS_MODULE = 'members';
+/** Dienste des Moduls `members` (harte Abhängigkeit); Aufruf immer AUSSERHALB von Transaktionen */
+const membersService = () => core.modules.use<MembersService>(MEMBERS_MODULE, MODULE_ID);
+
+const MEMBER_REQUIRED = 'Bitte wähle das Mitglied, das angemeldet werden soll.';
+const LOGIN_REQUIRED = 'Bitte melde dich an, um dich anzumelden.';
+
+async function accountEmail(ctx: RequestContext): Promise<string | null> {
+	if (!ctx.userId) return null;
+	const [u] = await core.users.directory(ctx, { ids: [ctx.userId], limit: 1 });
+	return u?.email ?? null;
+}
+
+/** Mit dem Konto verknüpfte Mitglieder inkl. Vorbelegung (leer ohne Session). */
+async function memberOptions(
+	ctx: RequestContext,
+	actionId: string,
+	def: FormDefinition
+): Promise<PublicMemberOption[]> {
+	if (!ctx.userId) return [];
+	const linked = await (await membersService()).listLinkedMembers(ctx);
+	if (!linked.length) return [];
+	const registered = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT member_id FROM action_participants WHERE action_id = ${actionId}
+				AND member_id IN (${sql.join(
+					linked.map((m) => sql`${m.id}`),
+					sql`, `
+				)})`
+		)
+	);
+	const done = new Set(registered.map((r) => String(r.member_id)));
+	return linked.map((m) => ({
+		id: m.id,
+		name: `${m.firstName} ${m.lastName}`,
+		registered: done.has(m.id),
+		prefill: prefillValues(def, m.custom)
+	}));
 }
 
 const DUPLICATE = 'Für diese Person liegt bereits eine Anmeldung vor.';
@@ -292,13 +359,28 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 	const status = computeFormStatus(form, loaded.participantCount);
 	if (status !== 'open') throw errors.conflict(STATUS_CONFLICT_MESSAGES[status]);
 
+	// Anmeldung mit Mitglied: Konto und Verknüpfung prüfen (Core-/Modul-Dienste vor der Transaktion)
+	let member: LinkedMemberData | null = null;
+	let accountMail: string | null = null;
+	if (input.memberId) {
+		if (!ctx.userId) throw errors.unauthenticated(LOGIN_REQUIRED);
+		member = await (await membersService()).getLinkedMember(ctx, input.memberId);
+		accountMail = await accountEmail(ctx);
+	} else if (form.requireLogin) {
+		if (!ctx.userId) throw errors.unauthenticated(LOGIN_REQUIRED);
+		throw errors.validation({ memberId: MEMBER_REQUIRED }, MEMBER_REQUIRED);
+	}
+
 	const def: FormDefinition = {
 		...form.definition,
 		fields: form.definition.fields.filter((f) => !f.hidden)
 	};
-	const validated = validateFormValues(def, input.values);
+	// Mit Mitglied kommen Stammdaten vom Server (Client-Werte dafür werden nicht gelesen)
+	const validated = validateFormValues(member ? withoutIdentityFields(def) : def, input.values);
 	if (!validated.ok) throw errors.validation(validated.errors);
-	const values = validated.values;
+	const values: FormValues = member
+		? { ...validated.values, ...identityValues(member, accountMail) }
+		: validated.values;
 
 	const m = mapStandardAnswers(def, values);
 	const errs: Record<string, string> = {};
@@ -319,7 +401,7 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 
 	try {
 		await mdb().transaction(async (tx) => {
-			// Serialisiert gleichzeitige Anmeldungen derselben Aktion (Plaetze + Duplikate)
+			// Serialisiert gleichzeitige Anmeldungen derselben Aktion (Plätze + Duplikate)
 			await tx.execute(sql`SELECT id FROM actions WHERE id = ${loaded.id} FOR UPDATE`);
 			const { participantCount } = await counts(tx, loaded.id);
 			if (form.maxParticipants != null && participantCount >= form.maxParticipants) {
@@ -339,11 +421,12 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 			await tx.execute(
 				sql`INSERT INTO action_participants (id, action_id, name, group_label, birth_date,
 						bremen_resident, role, juleica, diet, allergies, notes, answers, source,
-						consent_accepted_at, contact_email, dedupe_key)
+						consent_accepted_at, contact_email, dedupe_key, member_id, user_id)
 					VALUES (${participantId}, ${loaded.id}, ${m.name}, ${m.groupLabel}, ${m.birthDate},
-						${m.bremenResident}, 'participant', false, ${m.diet}, ${m.allergies}, ${m.notes},
+						${m.bremenResident}, 'participant', ${member?.custom.juleica === true}, ${m.diet}, ${m.allergies}, ${m.notes},
 						${JSON.stringify(m.answers)}::jsonb, 'link',
-						${consent ? new Date().toISOString() : null}, ${m.email}, ${dedupeKey})`
+						${consent ? new Date().toISOString() : null}, ${m.email}, ${dedupeKey},
+						${member?.id ?? null}, ${member ? ctx.userId : null})`
 			);
 		});
 	} catch (e) {
@@ -351,18 +434,53 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 		throw e;
 	}
 
-	// Core-Services erst nach der Transaktion
+	// Core-/Modul-Dienste erst nach der Transaktion
+	let memberUpdated: boolean | undefined;
+	if (member) {
+		try {
+			const svc = await membersService();
+			const active = new Set((await svc.listFieldDefinitions()).map((d) => d.key));
+			const updates = Object.fromEntries(
+				Object.entries(memberUpdates(def, values)).filter(([k]) => active.has(k))
+			);
+			const changed = Object.keys(updates).length
+				? await svc.updateMemberFields(ctx, member.id, updates)
+				: [];
+			memberUpdated = changed.length > 0;
+		} catch {
+			memberUpdated = false;
+		}
+	}
 	let emailSent = false;
 	if (m.email) {
+		// Kasse aktiv: Rechnung als PDF an die Bestätigung hängen (Fehler verhindern die Mail nicht)
+		let invoice: Awaited<ReturnType<TreasuryService['invoiceForRegistration']>> = null;
+		try {
+			const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+			invoice = treasury ? await treasury.invoiceForRegistration(loaded.id, participantId) : null;
+		} catch (e) {
+			console.error('[actions] Rechnung zur Anmeldung nicht erstellt:', e);
+		}
 		try {
 			const mail = buildConfirmationMail({
 				actionName: action.name,
 				name: m.name,
 				groupLabel: m.groupLabel,
 				birthDate: m.birthDate,
-				disclaimer
+				disclaimer,
+				invoice
 			});
-			await core.mail.send({ to: m.email, ...mail });
+			await core.mail.send({
+				to: m.email,
+				...mail,
+				...(invoice
+					? {
+							attachments: [
+								{ filename: invoice.filename, contentType: invoice.contentType, data: invoice.data }
+							]
+						}
+					: {})
+			});
 			emailSent = true;
 		} catch {
 			emailSent = false;
@@ -375,12 +493,12 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 			target: participantId,
 			ip: ctx.ip,
 			requestId: ctx.requestId,
-			metadata: { actionId: loaded.id, participantId, emailSent }
+			metadata: { actionId: loaded.id, participantId, emailSent, memberLinked: !!member }
 		});
 	} catch {
-		/* Audit-Fehler duerfen die Anmeldung nicht verwerfen */
+		/* Audit-Fehler dürfen die Anmeldung nicht verwerfen */
 	}
-	const result: PublicSubmitResult = { name: m.name, emailSent, disclaimer };
+	const result: PublicSubmitResult = { name: m.name, emailSent, disclaimer, memberUpdated };
 	return result;
 }
 
@@ -429,21 +547,26 @@ export const formEndpoints: ApiEndpoint[] = [
 				await tx.execute(
 					sql`INSERT INTO action_forms (action_id, token, enabled, opens_at, closes_at,
 							max_participants, definition, intro, disclaimer_template, privacy_url,
-							updated_by, updated_at)
+							require_login, updated_by, updated_at)
 						VALUES (${id}, ${newToken()}, ${input.enabled}, ${input.opensAt}, ${input.closesAt},
 							${input.maxParticipants}, ${JSON.stringify(definition)}::jsonb, ${input.intro},
-							${input.disclaimerTemplate}, ${input.privacyUrl}, ${ctx.userId}, now())
+							${input.disclaimerTemplate}, ${input.privacyUrl}, ${input.requireLogin}, ${ctx.userId}, now())
 						ON CONFLICT (action_id) DO UPDATE SET enabled = EXCLUDED.enabled,
 							opens_at = EXCLUDED.opens_at, closes_at = EXCLUDED.closes_at,
 							max_participants = EXCLUDED.max_participants, definition = EXCLUDED.definition,
 							intro = EXCLUDED.intro, disclaimer_template = EXCLUDED.disclaimer_template,
-							privacy_url = EXCLUDED.privacy_url, updated_by = EXCLUDED.updated_by,
+							privacy_url = EXCLUDED.privacy_url, require_login = EXCLUDED.require_login, updated_by = EXCLUDED.updated_by,
 							updated_at = now()`
 				);
 			});
 			await core.audit.logFromContext(ctx, 'actions.form.updated', {
 				target: id,
-				metadata: { actionId: id, enabled: input.enabled, fields: definition.fields.length }
+				metadata: {
+					actionId: id,
+					enabled: input.enabled,
+					requireLogin: input.requireLogin,
+					fields: definition.fields.length
+				}
 			});
 			return config;
 		}
@@ -451,7 +574,7 @@ export const formEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/actions/:id/form/rotate-token',
-		summary: 'Anmeldelink erneuern (alter Link wird ungueltig)',
+		summary: 'Anmeldelink erneuern (alter Link wird ungültig)',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -470,6 +593,20 @@ export const formEndpoints: ApiEndpoint[] = [
 				metadata: { actionId: id }
 			});
 			return config;
+		}
+	} as ApiEndpoint,
+	{
+		method: 'GET',
+		path: '/actions/:id/form/member-fields',
+		summary: 'Zusatzfelder der Mitglieder (zum Einbinden in das Anmeldeformular)',
+		tags: TAGS,
+		permission: 'actions.action.view',
+		params: idParams,
+		handler: async ({ ctx, params }) => {
+			await mdb().transaction((tx) =>
+				requireAccess(tx, ctx, (params as { id: string }).id, 'edit')
+			);
+			return { fields: await (await membersService()).listFieldDefinitions() };
 		}
 	} as ApiEndpoint,
 	{
@@ -527,23 +664,25 @@ export const formEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/public/forms/:token',
-		summary: 'Oeffentliches Anmeldeformular lesen',
+		summary: 'Öffentliches Anmeldeformular lesen',
 		tags: TAGS,
 		permission: null,
 		public: true,
 		rateLimit: { limit: 60, windowSec: 60 },
 		params: publicTokenParams,
-		handler: async ({ params }) => {
+		handler: async ({ ctx, params }) => {
 			const { token } = params as { token: string };
 			const loaded = await mdb().transaction((tx) => loadByToken(tx, token));
 			if (!loaded) throw errors.notFound(NOT_AVAILABLE);
-			return toPublicForm(loaded, await readSettings());
+			const viewer = ctx.userId ? { name: ctx.actor.name } : null;
+			const members = await memberOptions(ctx, loaded.id, loaded.form.definition);
+			return toPublicForm(loaded, await readSettings(), viewer, members);
 		}
 	} as ApiEndpoint,
 	{
 		method: 'POST',
 		path: '/public/forms/:token/submit',
-		summary: 'Anmeldung ueber den oeffentlichen Link absenden',
+		summary: 'Anmeldung über den öffentlichen Link absenden',
 		tags: TAGS,
 		permission: null,
 		public: true,

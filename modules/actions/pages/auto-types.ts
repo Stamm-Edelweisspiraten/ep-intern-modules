@@ -16,6 +16,12 @@ export interface AutoIncome {
 		teamCount: number;
 		feeCents: number;
 		teamFeeCents: number;
+		/** `treasury`: tatsächlich eingegangene Zahlungen aus der Kasse (Ist statt Soll) */
+		source?: 'calculated' | 'treasury';
+		/** nur bei `treasury`: Soll, offen, Anzahl Rechnungen */
+		dueCents?: number;
+		openCents?: number;
+		invoiceCount?: number;
 	} | null;
 	subsidy: { cents: number; eligibleCount: number } | null;
 	overridden: ('contributions' | 'subsidy')[];

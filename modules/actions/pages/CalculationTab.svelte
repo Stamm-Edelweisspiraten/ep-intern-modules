@@ -176,7 +176,7 @@
 		} finally {
 			saving = false;
 		}
-		// Waehrend des Speicherns geaenderte Eingaben direkt nachziehen.
+		// Während des Speicherns geänderte Eingaben direkt nachziehen.
 		if (saveState === 'saved' && snapshot() !== lastSaved && !keepalive) void flush();
 	}
 
@@ -207,7 +207,7 @@
 		void flush(true);
 	});
 
-	// --- Beitrag uebernehmen ---------------------------------------------------
+	// --- Beitrag übernehmen ---------------------------------------------------
 	async function applyFee() {
 		if (!canEdit || feeBusy || !result) return;
 		if (!validation?.success) {
@@ -252,7 +252,7 @@
 
 	const dirty = $derived(!!settings && snapshot() !== lastSaved);
 
-	// --- Vorschlaege --------------------------------------------------------
+	// --- Vorschläge --------------------------------------------------------
 	async function loadSuggestions(): Promise<CalculationSuggestions | null> {
 		suggestionsLoading = true;
 		suggestionsError = '';
@@ -289,9 +289,21 @@
 	const nightsDiffer = $derived(
 		!!settings && nightsHint !== null && nightsHint !== settings.nights
 	);
+
+	// --- Live-Leiste unten (Werte aus `result`, nicht neu gerechnet) -------------
+	const barNoPayers = $derived(!result || result.payingParticipants <= 0);
+	const barTeamPays = $derived(!!settings && settings.team > 0 && settings.teamPercent > 0);
+
+	function showSummary() {
+		const el = document.getElementById('calc-summary');
+		if (!el) return;
+		const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+		el.focus({ preventScroll: true });
+	}
 </script>
 
-<div class="flex flex-col gap-4 pb-36 lg:pb-0">
+<div class="flex flex-col gap-4 pb-2">
 	{#if loading && !settings}
 		<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]" aria-busy="true">
 			<div class="flex flex-col gap-4">
@@ -560,6 +572,43 @@
 				{disabled}
 			/>
 		</div>
+
+		<!-- Live-Werte: unten fixiert (mobil und Desktop), Klick springt zur Zusammenfassung -->
+		<button
+			type="button"
+			class="safe-bottom bg-background/95 supports-[backdrop-filter]:bg-background/80 hover:bg-muted/60 focus-visible:ring-ring sticky bottom-0 z-20 -mx-1 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-t-lg border border-b-0 px-4 pt-2 text-left shadow-[0_-4px_12px_-6px_rgb(0_0_0/0.15)] backdrop-blur transition-colors focus-visible:ring-2 focus-visible:outline-none"
+			aria-label="Zur Zusammenfassung der Kalkulation springen"
+			onclick={showSummary}
+		>
+			<span class="flex flex-col">
+				<span class="text-muted-foreground text-xs">Beitrag je Teilnehmende*r</span>
+				<span class="text-lg font-semibold tabular-nums">
+					{barNoPayers ? '–' : formatEuro(result.recommendedPerPersonCents)}
+				</span>
+			</span>
+			{#if barTeamPays}
+				<span class="flex flex-col">
+					<span class="text-muted-foreground text-xs">Team</span>
+					<span class="text-sm font-medium tabular-nums">
+						{barNoPayers ? '–' : formatEuro(result.recommendedTeamPerPersonCents)}
+					</span>
+				</span>
+			{/if}
+			<span class="flex flex-col">
+				<span class="text-muted-foreground text-xs">Gesamtkosten</span>
+				<span class="text-sm font-medium tabular-nums">{formatEuro(result.totalCents)}</span>
+			</span>
+			{#if settings.includeSubsidy}
+				<span class="flex flex-col">
+					<span class="text-muted-foreground text-xs">Zuschuss</span>
+					<span class="text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
+						− {formatEuro(result.subsidyCents)}
+					</span>
+				</span>
+			{/if}
+			<span class="text-muted-foreground ml-auto hidden text-xs sm:inline">Zur Zusammenfassung</span
+			>
+		</button>
 	{/if}
 </div>
 

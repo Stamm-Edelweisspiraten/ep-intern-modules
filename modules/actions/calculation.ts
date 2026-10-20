@@ -116,7 +116,7 @@ function parseUtc(iso: string): number | null {
 	return new Date(t).toISOString().slice(0, 10) === iso ? t : null;
 }
 
-/** Anzahl Naechte zwischen Start- und Enddatum (JJJJ-MM-TT); `null` ohne gueltiges Enddatum. */
+/** Anzahl Nächte zwischen Start- und Enddatum (JJJJ-MM-TT); `null` ohne gültiges Enddatum. */
 export function nightsBetween(startsOn: string, endsOn: string | null): number | null {
 	if (!endsOn) return null;
 	const s = parseUtc(startsOn);

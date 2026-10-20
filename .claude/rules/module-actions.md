@@ -6,8 +6,8 @@ paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*
 
 Freizeiten/Veranstaltungen: Stammdaten, Freigabe, Teilnehmende, Kalkulation (+ Zuschuss), öffentlicher Anmeldelink,
 Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Überschusses. Schema `mod_actions`,
-Version 1.0.0. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
-Kein Bezug zum Modul `members`: Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext).
+Version 1.1.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
+Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
 ## Dateien (`src/lib/modules/actions/`)
 | Datei | Inhalt |
@@ -42,6 +42,12 @@ Kein Bezug zum Modul `members`: Teilnehmende sind eigene Datensätze (Name, `gro
   `entry_id`, `surplus_cents`, `per_head_cents`, `paying_count`, `remainder_cents`, `booked_at/by`).
 - **0007** `action_refund_booking.mode` `auto|manual` (Default `auto`).
 - **0009** `action_participants.subsidy_eligible boolean` (NULL = automatisch).
+- **0011** Stamm-Ausgaben: `accounting_entries.recipient_name`, `recipient_iban_enc` (verschlüsselt), `recipient_iban_last4`,
+  `recipient_bic`, `purpose`, `club_paid_at` (NULL = offen), `club_paid_via` `manual|treasury`. Altdaten → bezahlt (`manual`).
+- **0012** `actions.is_past boolean NOT NULL DEFAULT false` („liegt bereits in der Vergangenheit“, nachträgliche Abrechnung).
+  API: `isPast` in `ActionSummary` (Liste + Detail) und `ReceivableSource`; POST-Default `false`, PUT ohne Feld = unverändert
+  (`actionUpdateInput`); Audit created/updated mit `isPast`; Archiv `action.isPast` optional (fehlt = false).
+- **0013** `accounting_entries.reimbursed_upfront boolean NOT NULL DEFAULT false` (beim Erfassen bereits erstattet; schützt vor Doppelzahlung bei Rücknahme einer Kassen-Zahlung).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
 ## Rechte
@@ -63,7 +69,7 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 |---|---|---|
 | `/actions`, `/actions/:id` | GET/POST(create)/PUT/DELETE | Name ≤ 150, Ende ≥ Start; Detail inkl. `fee`, `participantCount` |
 | `/actions/:id/shares[/:userId]`, `/users` | GET/PUT/DELETE, GET | Freigabe `read|edit`, nicht an Eigentümer*in; `/users` = Verzeichnissuche |
-| `/actions/:id/participants[/:pid]` | GET/POST/PUT/DELETE | `participants.csv` unter `/actions/:id/participants.csv` (Formel-Schutz) |
+| `/actions/:id/participants[/:pid]` | GET/POST/PUT/DELETE | `participants.csv` unter `/actions/:id/participants.csv` (Formel-Schutz); `participants.pdf` = Teilnehmendenliste (A4 quer, eine Zeile je Person, wählbare Spalten: `GET` = Voreinstellung „Fahrt“, `POST { selection }`; `GET /actions/:id/participants/pdf-columns` = Katalog; braucht zusätzlich `members.data.export`, Audit `actions.participants.sheet_generated` mit `count`, `columns`) |
 | `/actions/:id/calculation` | GET/PUT | PUT ersetzt alle Posten (≤ 100), Checkliste nur bekannte Schlüssel |
 | `/actions/:id/calculation/suggestions` | GET | Zählt Teilnehmende/Team/Bremen-Kinder/-Jugend aus der Liste, `incomplete[]`, Nächte aus Datum |
 | `/actions/:id/calculation/apply` | POST/DELETE | schreibt `recommendedPerPerson`/`…Team` nach `fee_cents`/`team_fee_cents`; 400 ungespeichert, 422 bei 0 Teilnehmenden |
@@ -121,6 +127,30 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
   (n × x € + m × y €)“ bzw. „Zuschuss laut Kalkulation (n berechtigte Personen)“ in den Einnahme-Gruppen; Anlagenverzeichnis unverändert.
 - Fallstrick: Automatik hat kein Datum/keinen Beleg und ist nicht als Buchung vorhanden (nicht editier-/löschbar).
 
+## Kasse (optionale Abhängigkeit `treasury`)
+- `manifest.optionalDependencies: ['treasury']`; `actions` stellt `actionsService` bereit (`contract.ts`: `listReceivableSources`,
+  `listActionRefs` – ohne Objektrechte, der Aufrufer prüft).
+- **Zahlstand in der Teilnehmerliste**: `GET /actions/:id/participants` hängt bei aktiver Kasse `payment` an
+  (`TreasuryService.participantPayments`, nach der Transaktion; `null` = keine Rechnung, Feld fehlt = Kasse aus).
+  UI: Spalte „Beitrag“ (`PaymentCell`: Bezahlt / Teilweise / Offen / Überfällig / Erlassen, Link zur Rechnung mit
+  `treasury.cash.view`) und Zusammenfassung „Beiträge: x von y bezahlt · … offen“.
+- Weitere Vertragsfunktionen für die Kasse: `listClubExpenses`, `getClubExpenseIban`, `markClubExpensePaid`,
+  `getClosedAccounting` (Detail abgeschlossener Abrechnungen, nutzt `loadState` aus `accounting.endpoints.ts`).
+- `loadTreasuryContributions(actionId)` (VOR der Transaktion) → an `loadAutoIncome(…, treasury)` / `loadRefund(…, treasury)`:
+  Führt die Kasse Rechnungen zur Aktion, zählen bei Teilnehmerbeiträgen die **eingegangenen Zahlungen**
+  (`contributions.source = 'treasury'`, dazu `dueCents`, `openCents`, `invoiceCount`); sonst wie bisher n × Beitrag.
+
+## Anmeldung mit Mitglied (Migration 0010, `dependencies: ['members']`)
+- `actions` hängt hart von `members` ab (Aktivieren nur mit aktivem `members`, `members` nicht deaktivierbar). Zugriff auf Mitgliedsdaten **nur** über `core.modules.use<MembersService>('members','actions')`
+  (`form.endpoints.ts` `membersService()`), außerhalb von Modul-Transaktionen.
+- `action_forms.require_login` („Anmeldung erzwingen“, Schalter in `FormSettings`), `action_participants.member_id`/`user_id` + UNIQUE `(action_id, member_id)`.
+- Formularfeld-Bindung `memberKey` (Formular-Bibliothek): Standardfelder Ernährung→`ernaehrung`, Allergien→`allergien` (`MEMBER_KEY_BY_STANDARD`); weitere per „Mitgliedsfeld hinzufügen“ (Schlüssel `mf_<key>`, `GET /actions/:id/form/member-fields`).
+- Öffentlich: `GET /public/forms/:token` liefert `requireLogin`, `viewer`, `members[]` (nur mit Session; `id`, `name`, `registered`, `prefill`). `POST …/submit` nimmt optional `memberId`:
+  `requireLogin` ohne Konto → 401, ohne `memberId` → 422, `memberId` ohne Konto 401, nicht verknüpft → 404, doppelt → 409.
+  Mit Mitglied setzt der **Server** Name, Gruppen (Namen), Geburtsdatum, Bremen (`isBremenCity`), E-Mail (Mitglied, sonst Konto) und `juleica` (Zusatzfeld); Stammdatenfelder (`IDENTITY_KEYS`) werden nicht
+  abgefragt (Client-Werte dafür → 422). Nach dem Speichern werden `memberKey`-Werte **ans Mitglied zurückgeschrieben** (`memberUpdated`; Fehler bricht die Anmeldung nicht ab).
+- UI `PublicRegistration`: Login-Karte mit `redirectTo`, Mitgliedsauswahl (bei Erzwingen Pflicht, sonst „Andere Person“), Stammdatenfelder ausgeblendet, Gesundheitsfelder vorausgefüllt.
+
 ## Anmeldeformular
 - Bibliothek `src/lib/forms/` (Typen, Feldtyp-Registry, `validateFormValues`); Komponenten `src/lib/components/forms/`.
 - Standardfelder gesperrt (`locked`), Schlüssel `STANDARD_FORM_KEYS` (name, group, birthDate, bremenResident, diet,
@@ -130,6 +160,25 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Disclaimer aus Vorlage mit Platzhaltern (`renderDisclaimer`, Beitrag, Kontodaten aus Settings); Datenschutz = externer Link + Pflicht-Checkbox.
 - Bestätigungs-Mail über `core.mail.send` nach der Transaktion (Fehler ≠ Fehlschlag); Audit mit Akteur `system`/`public-form`.
 - Öffentliche Seite `/p/actions/anmeldung/<token>`; Link kopieren/erneuern im Tab „Anmeldung“.
+
+## Ausgaben „bezahlt vom Stamm“ (Migration 0011, 2026-10-16)
+- Ausgabe + `paidBy='club'`: `clubPaid` (API-Default **true** = bezahlt; die UI startet mit **offen**). Offen ⇒ Pflicht
+  Empfänger, IBAN (`isValidIban`), Verwendungszweck (≤ 140); BIC optional. PUT ohne `iban` behält die gespeicherte IBAN.
+- Offene Stamm-Ausgaben werden **sofort** Auszahlung in der Kasse (`expense:<aktion>:<buchung>`); bezahlt die Kasse vollständig,
+  setzt `markClubExpensePaid` `club_paid_via='treasury'` (auch bei abgeschlossener Abrechnung) – dann PUT/DELETE 409.
+  Zahlung in der Kasse gelöscht → wieder offen. „Bereits bezahlt“ nachträglich → Kassen-Auszahlung wird automatisch storniert.
+- IBAN-Klartext: `GET …/entries/:eid/iban` (`payout.view`, auditiert). DTO: `recipient {name, ibanMasked, bic}`, `purpose`,
+  `clubPaidAt`, `clubPaidVia`; `summary.openClubPayments {count, cents}` (Hinweis im Abschluss-Dialog, blockiert nicht).
+- PDF: „Stamm (offen)“. Export/Import: `entries[].transfer` (`recipientName`, `iban` nur mit `payout.view`, `bic`,
+  `purpose`, `paidAt`); fehlt `transfer` (alte Archive) → bezahlt. Kategorie `refund` ist nie eine Stamm-Ausgabe in diesem Sinn.
+- **Auslage „bereits erstattet“** (Migration 0013 `reimbursed_upfront`): `entryInput.reimbursed` (Default false), nur Ausgabe + `paidBy='person'` (sonst 422, Pfad `reimbursed`);
+  POST setzt `reimbursed_at = now()` **und** `reimbursed_upfront = true` (offen 0 ⇒ keine Auszahlung in Kasse/payouts.csv). **PUT mit `reimbursed:true` auf offener Auslage → 422**
+  („Die Erstattung kann nur beim Anlegen gesetzt werden“, Pfad `reimbursed`); `false`/fehlend wirkungslos; geschlossene Abrechnung → 409 (`assertOpen` zuerst).
+  PUT/DELETE auf erstattete Einträge 409. `markReimbursed(…, true)` (Kasse zahlt) setzt nur nicht erstattete; `markReimbursed(…, false)` (Kassen-Zahlung gelöscht)
+  setzt **nur** `reimbursed_upfront = false`-Einträge zurück (vorab erstattete bleiben erstattet, sonst Doppelzahlung). `DELETE …/payees/:pid/reimburse` ist die
+  ausdrückliche Rücknahme der ganzen Person (`reimbursed_at = NULL` + `reimbursed_upfront = false`, danach editierbar). Archiv: `entries[].reimbursedUpfront` optional (fehlt = false,
+  nur mit `reimbursedAt`). Audit `entry_created.reimbursed` (Boolean). UI: erstattete Auslage im Dialog komplett gesperrt, Zeilenmenü „Ansehen“ ohne „Löschen“.
+- **Auslagen** (bezahlt von Person) gibt `listReimbursements` nur aus **abgeschlossenen** Abrechnungen an die Kasse.
 
 ## Abrechnung (`accounting.ts`)
 - Kategorien: Ausgaben = `CALC_CATEGORIES`; Einnahmen `contributions` (Teilnehmerbeiträge), `subsidy`, `misc`; `refund`
@@ -197,7 +246,7 @@ Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlu
 
 ## Tests
 Integration: `actions.test.ts` (Zugriffsmatrix), `actions-calculation`, `actions-form` (+`public-endpoints.test.ts`),
-`actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`.
+`actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`, `actions-past` (isPast, vorab erstattete Auslagen), `actions-past-fixes` (Rücknahme durch die Kasse, PUT-422, Archiv).
 Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-report`, `refund`, `iban`, `actions-form-support`, `forms-*`,
 `pdf-attachments`, `pdf-letterhead`. Helfer: `tests/helpers/fake-storage.ts`, `setPdfRendererForTests`.
 
@@ -206,4 +255,61 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - Rückzahlung: ganze Euro abrunden, > 5 € je Person, Hinweis nur im PDF, Zahlung = Markieren.
 - Core-Services (`storage`, `crypto`, `audit`, `pdf`, `mail`) **außerhalb** der Modul-Transaktion (PGlite hängt sonst).
 - IBAN/Namen nie in Audit-`metadata`; `payouts.csv` Format vorläufig (ggf. SEPA-XML).
-- Offen: Zahlungseingänge je Teilnehmende*r (eigenes Modul), Auszahlungsformat, `docs/` um `actions` ergänzen.
+- Zahlungseingänge je Teilnehmende*r: Modul `treasury` (siehe `rules/module-treasury.md`). Offen: Auszahlungsformat, `docs/` um `actions` ergänzen.
+
+## Teilnehmendenliste als PDF (`participants-sheet.endpoints.ts`)
+- Katalog = Mitglieder-Katalog (`members/sheet-columns.ts`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
+  Felddefinitionen über `core.modules.use('members')` (`listFieldDefinitions`), **nie** in der Modul-Transaktion.
+- Zeile: ohne Mitglied aus `action_participants` (Gruppe = `group_label`, Alter, E-Mail, `diet` → Ernährung, `allergies` → Allergien); mit `member_id` aus `listMemberSheets` (Notfall-Telefon, Zusatzfelder), Ernährung/Allergien/E-Mail aus beiden zusammengeführt.
+  `fee` = `fee_cents` bzw. `team_fee_cents` (Team), `notes` = Hinweise + Antworten des Anmeldeformulars (ohne `mf_*` bei Mitglied). Abschnitte „Teilnehmende“ und „Team“ (neue Seite).
+- Reihenfolge der Prüfung: Zugriff (`requireAccess read`, fremde Aktion 404) → `members.data.export` (403). POST-Body `{ selection? }` strikt (`listSelectionInput` aus `members/schemas.ts`), leere/zu lange Auswahl 422.
+
+## Zwischenabrechnungen (Migrationen 0014/0016, Snapshot-Modell seit 2026-10-18)
+- Nutzerentscheidung: Jede ZA ist ein **eingefrorenes Abbild des gesamten Abrechnungsstands** zum Erstellungszeitpunkt;
+  ZAs und Endabrechnung sind **unabhängig** voneinander (kein Aufbauen, keine Aufteilung der Buchungen). **Keine Sperre** durch ZA
+  (gesperrt bleibt nur Ausgezahltes). `accounting_entries.interim_id` (0014) ist seit 0016 ungenutzt (immer NULL).
+- Daten (0016): `accounting_interims.snapshot jsonb` (`InterimSnapshot`: `takenAt`, `entries`, `summary`, `plan`, `autoIncome`, `payees` ohne Bankdaten,
+  `receiptEntryIds`), `accounting_interim_entries` (in der ZA enthaltene Buchungen = Freigabe zur Auszahlung). Altdaten: ZA N = Buchungen aus ZA 1..N,
+  ohne Snapshot → Fallback live aus den zugeordneten Buchungen (`loadInterimSnapshot` in accounting-core.ts).
+- `POST …/accounting/interims` (`{acceptMissingReceipts, note}`): offene Abrechnung, ≥ 1 Buchung, Belegprüfung über alle Ausgaben (409); Snapshot wie
+  `GET …/accounting` (Kasse-Beiträge vor der Transaktion). `DELETE …/interims/:interimId[?force=true]`: jede ZA, nur Eigentümer*in/`edit-all` (403);
+  Warnung `paid` (erstattete Auslagen nur in dieser ZA, Abrechnung offen) → ohne `force` 409; Erstattetes bleibt erstattet. Nummern lückenhaft (max+1).
+- PDF `GET …/interims/:interimId/report.pdf`: gleicher Aufbau wie der Endbericht, aus dem Snapshot („Zwischenabrechnung Nr. N – Stand TT.MM.JJJJ“,
+  „Ergebnis/Saldo zum Stichtag“, keine Rückzahlung), Bankdaten live nach Rechten, Belege der Snapshot-Buchungen soweit noch vorhanden.
+  Endbericht ohne ZA-Vermerke. Download-Dateiname `Zwischenabrechnung-<Aktion>-ZA<N>.pdf` (`pages/download.ts`).
+- Kasse: Auslage freigegeben = Abrechnung abgeschlossen ODER in einer ZA enthalten; `listReimbursements` = eine Zeile je (Aktion, Person),
+  `interimId: null`. `markReimbursed`/`listReimbursementReceipts`: ohne Argument = alle Auslagen der Person, `null` = nur freigegebene,
+  Alt-ZA-Schlüssel → No-op. `listInterims`/`interimReportPdf` aus dem Snapshot. Audit `actions.accounting.interim_created|interim_reverted`.
+- UI: Button „Zwischenabrechnung“ (Dialog fasst den Gesamtstand zusammen, „Festhalten“), `InterimsCard` (Nr., Stichtag, Buchungen, Einnahmen,
+  Ausgaben, Saldo, PDF/Ansehen, Zurücknehmen). Export/Import übernimmt **keine** ZA.
+
+## Kosten-Link (Migration 0015, 2026-10-18)
+- Ein Link je Aktion (`expense_links`, Token 64 hex), Einreichungen `expense_submissions` (`pending|accepted|rejected`, IBAN verschlüsselt).
+  Intern: `GET/PUT /actions/:id/expense-link` (`{enabled}`), `POST …/expense-link/rotate`, `GET /actions/:id/expense-submissions?status=`,
+  `…/:submissionId/receipt` (+`actions.storage.read`), `POST …/:submissionId/accept` (`expenseAcceptInput`: Korrekturen, optional `payeeId`;
+  sonst Empfänger mit gleichem Namen + IBAN-Ende wiederverwenden bzw. neu „Aus Kosten-Link“; Buchung paid_by person mit demselben Beleg-Pfad;
+  IBAN der Einreichung danach gelöscht; abgeschlossen → 409), `POST …/reject` (`{reason, notify}`; Beleg + IBAN sofort gelöscht, auch bei Abschluss).
+- Öffentlich: `GET /public/expense-links/:token` (60/60 s), `POST …/:token/submit` (5/600 s, **multipart** ≤ 12 MB, Feld `file`, Textfelder
+  `publicExpenseSubmitInput`, Honeypot `website`, Magic-Bytes, Upload per `systemContext('expense-link')`, ohne S3 503, max. 50 offene je Aktion → 409).
+  Unbekannt/deaktiviert/abgeschlossen/Modul aus → einheitlich 404. Seite `/p/actions/auslagen/<token>` (`PublicExpense.svelte`).
+- UI im Tab Abrechnung: `ExpenseLinkSection` (Link kopieren/erneuern/aus, eingereichte Auslagen, Prüfdialog `ExpenseSubmissionDialog`).
+- Audit `actions.expense.submitted|accepted|rejected|link_updated|link_rotated` ohne Name/E-Mail/IBAN. Beleg-Upload in der Abrechnung prüft jetzt Magic-Bytes (422).
+
+## UX-Paket Aktionen (2026-10-18)
+- **Abrechnung**: Unterbereiche (Buchungen · Auslagen & Auszahlung · Kosten-Link · Zwischenabrechnungen · Rückzahlung) mit Zählern;
+  Hinweisbalken bei Einreichungen zu prüfen; mobile Buchungsliste als kompakte Karten (eigene Liste `sm:hidden`, Tabelle ab `sm`);
+  Abschluss über `CloseAccountingDialog` (Checkliste: Belege mit Pflicht-Haken „Trotzdem“, offene Überweisungen/Auslagen, Einreichungen, Überschuss).
+- **Kosten-Link mit mehreren Auslagen** (Migration 0017 `expense_submissions.batch_id`): `POST /public/expense-links/:token/submit` nimmt
+  `publicExpenseBatchInput` (gemeinsame Person/Konto, `items` als JSON, 1–5 Auslagen), je Auslage genau eine Datei `file` in Reihenfolge,
+  multipart ≤ 30 MB (`MAX_MULTIPART_BYTES` im Core jetzt 30 MB), Fehlerpfade `items.<i>.<feld>`/`items.<i>.file`; Antwort `{ batchId, count, emailSent }`.
+  Mail an die Person (Liste + Summe) und **an die Eigentümer*in** der Aktion (Name, Anzahl, Summe, Link; keine IBAN). Intern gruppiert je `batchId`, „Alle annehmen“.
+  Öffentliche Seite: Auslage-Karten, `ReceiptPicker` (Upload mit Vorschau), `DateInputDe` (TT.MM.JJJJ).
+- **Teilnehmende** (`pages/ParticipantsTab.svelte`): Filter-Chips (Rolle, Beitrag bezahlt/offen, Zuschuss, Angaben fehlen) + Mehrfachbearbeitung;
+  `PATCH /actions/:id/participants` `{ ids (≤ 500), subsidyEligible?, role? }` → `{ updated }`, fremde ID → 404 ohne Änderung, Audit `actions.participant.bulk_updated`.
+- **Kalkulation**: feste Leiste unten (Beitrag, Team, Gesamtkosten, Zuschuss), Klick scrollt zur Zusammenfassung (`#calc-summary`).
+
+## Benachrichtigung an das Amt „Kasse“ (2026-10-19)
+- Nach dem **Abschluss** der Abrechnung und nach dem **Anlegen einer Zwischenabrechnung** ruft `actions` (nach der Transaktion) über das bestehende
+  `useOptional<TreasuryService>('treasury')` `accountingClosed(ctx, { actionId, actionName, kind: 'final' | 'interim', number? })` auf. Die Kasse leitet
+  das als Ereignis `accounting-closed` an die Inhaber*innen des Amts „Kasse“ weiter (Modul `offices`, optional). Ohne `treasury`/`offices` passiert
+  nichts; Fehler werden geloggt, der Abschluss scheitert nie daran. Details: `module-treasury.md`, `module-offices.md`.

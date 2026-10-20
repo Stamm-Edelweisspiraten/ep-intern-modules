@@ -1,34 +1,91 @@
+import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { resetAreas, resetUsers } from './reset';
+import { addressEndpoints } from './address.endpoints';
+import { fieldEndpoints } from './fields.endpoints';
+import { membersService } from './fields.service';
 import { documentEndpoints } from './documents.endpoints';
 import { groupEndpoints } from './groups.endpoints';
 import { groupImageEndpoints } from './group-image.endpoints';
+import { linkEndpoints } from './link.endpoints';
+import { listMemberSheets } from './sheets.service';
+import { principalsService } from './principals.service';
+import { sheetEndpoints } from './sheets.endpoints';
 import { memberEndpoints } from './members.endpoints';
+import { websiteEndpoints } from './website.endpoints';
+import { LINK_DEFAULT_ROLE } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_members_v2.sql?raw';
+import m0003 from './migrations/0003_user_links.sql?raw';
+import m0004 from './migrations/0004_address_fields.sql?raw';
+import m0005 from './migrations/0005_member_fields.sql?raw';
+import m0006 from './migrations/0006_membership.sql?raw';
+import m0008 from './migrations/0008_member_mail_prefs.sql?raw';
+import m0009 from './migrations/0009_group_website.sql?raw';
+import m0010 from './migrations/0010_group_meeting_end.sql?raw';
+import m0011 from './migrations/0011_stage_jungpfadfinder.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.0.0',
+		version: '1.9.0',
 		dependencies: [],
+		/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
+		defaultRoleGrants: { [LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'] },
 		permissions: [
+			'members.own.view',
+			'members.own.edit',
 			'members.member.view',
 			'members.member.edit',
 			'members.member.delete',
 			'members.group.view',
 			'members.group.edit',
 			'members.group.delete',
+			'members.field.manage',
+			'members.link.view',
+			'members.link.manage',
+			'members.data.export',
+			'members.website.read',
 			'members.storage.read',
 			'members.storage.write',
 			'members.storage.delete'
 		],
+		permissionDescriptions: {
+			'members.own.view': 'Eigene verknüpfte Mitglieder im Profil ansehen',
+			'members.own.edit':
+				'Eigene verknüpfte Mitglieder bearbeiten: Kontakte, Zusatzfelder, Benachrichtigungen',
+			'members.member.view': 'Mitglieder ansehen, inkl. Dokumente herunterladen',
+			'members.member.edit': 'Mitglieder anlegen und bearbeiten, Dokumente verwalten',
+			'members.member.delete': 'Mitglieder löschen',
+			'members.group.view': 'Gruppen ansehen',
+			'members.group.edit': 'Gruppen anlegen und bearbeiten, inkl. Leitung und Bild',
+			'members.group.delete': 'Gruppen löschen',
+			'members.field.manage': 'Zusatzfelder für Mitglieder festlegen (z. B. Ernährung, Allergien)',
+			'members.link.view': 'Verknüpfte Benutzerkonten und Status der Verknüpfungscodes ansehen',
+			'members.link.manage': 'Verknüpfungscodes und -briefe erzeugen, Verknüpfungen lösen',
+			'members.data.export':
+				'Datenblätter und Teilnehmendenlisten als PDF erzeugen (enthält Kontakt- und Gesundheitsdaten)',
+			'members.website.read':
+				'Nur Website-Endpunkte: öffentliche Gruppen-Steckbriefe (Scope für den API-Key der Stammeswebsite)',
+			'members.storage.read': 'Dateien des Mitgliedermoduls lesen (Dokumente, Gruppenbilder)',
+			'members.storage.write': 'Dateien des Mitgliedermoduls hochladen',
+			'members.storage.delete': 'Dateien des Mitgliedermoduls löschen'
+		},
 		navigation: [
 			{
 				label: 'Mitglieder',
 				icon: 'users',
 				path: '/modules/members',
 				permission: 'members.member.view',
+				group: 'Stamm',
+				groupIcon: 'users'
+			},
+			{
+				label: 'Zusatzfelder',
+				icon: 'settings',
+				path: '/modules/members/fields',
+				permission: 'members.field.manage',
 				group: 'Stamm',
 				groupIcon: 'users'
 			},
@@ -42,9 +99,47 @@ export default defineModule({
 			}
 		]
 	},
+	/** Dienste für abhängige Module (Vertrag: `contract.ts`, Abruf: `core.modules.use`) */
+	provides: {
+		...membersService,
+		listMemberSheets,
+		...principalsService
+	} as unknown as Record<string, unknown>,
+	settings: [
+		{
+			key: 'members.address.photonUrl',
+			label: 'Adress-Autovervollständigung (Photon-URL)',
+			description:
+				'Basis-URL eines Photon-Dienstes (OpenStreetMap). Beim Tippen einer Adresse wird der Suchtext serverseitig dorthin gesendet. Leer = Autovervollständigung aus (nur PLZ → Ort offline).',
+			schema: z.union([z.literal(''), z.string().url().max(300)]),
+			default: 'https://photon.komoot.io'
+		}
+	],
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_members_v2', sql: m0002 }
+		{ name: '0002_members_v2', sql: m0002 },
+		{ name: '0003_user_links', sql: m0003 },
+		{ name: '0004_address_fields', sql: m0004 },
+		{ name: '0005_member_fields', sql: m0005 },
+		{ name: '0006_membership', sql: m0006 },
+		{ name: '0008_member_mail_prefs', sql: m0008 },
+		{ name: '0009_group_website', sql: m0009 },
+		{ name: '0010_group_meeting_end', sql: m0010 },
+		{ name: '0011_stage_jungpfadfinder', sql: m0011 }
 	],
-	endpoints: [...memberEndpoints, ...groupEndpoints, ...groupImageEndpoints, ...documentEndpoints]
+	resetAreas,
+	resetUsers,
+	endpoints: [
+		// Website-Endpunkte (Scope `members.website.read`) zuerst: feste Pfade vor `:id`-Pfaden
+		...websiteEndpoints,
+		// Vor `memberEndpoints`: `GET /members/sheet-columns` darf nicht von `/members/:id` abgefangen werden
+		...sheetEndpoints,
+		...memberEndpoints,
+		...addressEndpoints,
+		...fieldEndpoints,
+		...linkEndpoints,
+		...groupEndpoints,
+		...groupImageEndpoints,
+		...documentEndpoints
+	]
 });

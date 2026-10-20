@@ -1,9 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, isCoreError, type RequestContext, type Tx } from '$lib/sdk/server';
+import { mergeCustom, validateCustomValues } from './fields.service';
 import {
 	MODULE_ID,
+	type BulkInput,
+	type BulkResult,
 	type ContactEntry,
 	type GroupRef,
+	FEE_LEVELS,
+	type FeeLevel,
 	type Member,
 	type MemberInput,
 	type MemberList,
@@ -29,11 +34,31 @@ const contact = (r: Row): ContactEntry => ({
 });
 
 const MEMBER_COLUMNS = sql`m.id, m.first_name, m.last_name, m.scout_name,
-	to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date, m.address, m.stage,
+	to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date, m.street, m.postal_code, m.city, m.country, m.stage,
 	m.consent_social_media, m.consent_website, m.consent_print,
-	m.privacy_consent_name, m.registration_name, m.created_at, m.updated_at`;
+	m.privacy_consent_name, m.registration_name, m.created_at, m.updated_at,
+		(SELECT count(*)::int FROM member_user_links l WHERE l.member_id = m.id) AS link_count, m.custom,
+	to_char(m.entry_date, 'YYYY-MM-DD') AS entry_date, to_char(m.exit_date, 'YYYY-MM-DD') AS exit_date,
+	m.secondary_member, array_to_string(m.fee_levels, ',') AS fee_levels`;
 
-/** Baut Member-DTOs fuer die geladenen Zeilen (Telefone, E-Mails, Gruppen in Reihenfolge). */
+/** `text[]` als kommagetrennter String (treiberunabhängig) → Ebenen in fester Reihenfolge */
+export function parseFeeLevels(v: unknown): FeeLevel[] {
+	const list = String(v ?? '').split(',');
+	return FEE_LEVELS.filter((f) => list.includes(f));
+}
+
+/** Nicht-Zweitmitglieder zahlen immer alle Ebenen bei uns */
+function storedFeeLevels(input: MemberInput): FeeLevel[] {
+	return input.secondaryMember ? input.feeLevels : [...FEE_LEVELS];
+}
+
+const feeLevelsSql = (levels: FeeLevel[]) =>
+	sql`ARRAY[${sql.join(
+		levels.map((l) => sql`${l}`),
+		sql`, `
+	)}]::text[]`;
+
+/** Baut Member-DTOs für die geladenen Zeilen (Telefone, E-Mails, Gruppen in Reihenfolge). */
 async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 	if (!list.length) return [];
 	const ids = sql.join(
@@ -61,7 +86,10 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 			lastName: r.last_name as string,
 			scoutName: (r.scout_name as string | null) ?? null,
 			birthDate: r.birth_date as string,
-			address: r.address as string,
+			street: (r.street as string | null) ?? '',
+			postalCode: (r.postal_code as string | null) ?? '',
+			city: (r.city as string | null) ?? '',
+			country: (r.country as string | null) ?? 'DE',
 			phones: phones.filter((p) => p.member_id === id).map(contact),
 			emails: emails.filter((p) => p.member_id === id).map(contact),
 			stage: r.stage as Stage,
@@ -73,19 +101,41 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 			consentPrint: Boolean(r.consent_print),
 			privacyConsent: r.privacy_consent_name ? { name: r.privacy_consent_name as string } : null,
 			registration: r.registration_name ? { name: r.registration_name as string } : null,
+			entryDate: (r.entry_date as string | null) ?? null,
+			exitDate: (r.exit_date as string | null) ?? null,
+			secondaryMember: Boolean(r.secondary_member),
+			feeLevels: r.secondary_member ? parseFeeLevels(r.fee_levels) : [...FEE_LEVELS],
+			linkCount: Number(r.link_count ?? 0),
+			custom: (typeof r.custom === 'string'
+				? JSON.parse(r.custom)
+				: (r.custom ?? {})) as Member['custom'],
 			createdAt: iso(r.created_at),
 			updatedAt: iso(r.updated_at)
 		};
 	});
 }
 
-/** Laedt ein Member-DTO innerhalb einer Modul-Transaktion; null, wenn nicht vorhanden. */
+/** Lädt ein Member-DTO innerhalb einer Modul-Transaktion; null, wenn nicht vorhanden. */
 export async function loadMember(tx: Tx, id: string): Promise<Member | null> {
 	const found = await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id = ${id}`);
 	return (await hydrate(tx, found))[0] ?? null;
 }
 
-/** Laedt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
+/** Lädt Member-DTOs zu IDs (Reihenfolge wie `ids`, unbekannte entfallen). */
+export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]> {
+	if (!ids.length) return [];
+	const list = sql.join(
+		ids.map((i) => sql`${i}`),
+		sql`, `
+	);
+	const found = await hydrate(
+		tx,
+		await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id IN (${list})`)
+	);
+	return ids.map((i) => found.find((m) => m.id === i)).filter((m): m is Member => !!m);
+}
+
+/** Lädt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
 export async function getMember(id: string): Promise<Member> {
 	const m = await core.database.forModule(MODULE_ID).transaction((tx) => loadMember(tx, id));
 	if (!m) throw errors.notFound('Mitglied nicht gefunden');
@@ -96,6 +146,7 @@ export async function listMembers(query: {
 	search?: string;
 	stage?: Stage;
 	groupId?: string;
+	status?: 'active' | 'left' | 'all';
 	limit: number;
 	offset: number;
 }): Promise<MemberList> {
@@ -112,6 +163,9 @@ export async function listMembers(query: {
 			conds.push(
 				sql`EXISTS (SELECT 1 FROM member_groups mg WHERE mg.member_id = m.id AND mg.group_id = ${query.groupId})`
 			);
+		const status = query.status ?? 'active';
+		if (status === 'active') conds.push(sql`(m.exit_date IS NULL OR m.exit_date > CURRENT_DATE)`);
+		else if (status === 'left') conds.push(sql`m.exit_date <= CURRENT_DATE`);
 		const where = sql.join(conds, sql` AND `);
 		const total = await rows(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
 		const found = await rows(
@@ -125,13 +179,6 @@ export async function listMembers(query: {
 
 async function checkGroups(tx: Tx, groupIds: string[]): Promise<string[]> {
 	const unique = [...new Set(groupIds)];
-	const count = Number((await rows(tx, sql`SELECT count(*)::int AS n FROM groups`))[0]?.n ?? 0);
-	if (count > 0 && unique.length === 0) {
-		throw errors.validation(
-			{ groupIds: 'Mindestens eine Gruppe ist erforderlich' },
-			'Mindestens eine Gruppe ist erforderlich'
-		);
-	}
 	if (unique.length) {
 		const ids = sql.join(
 			unique.map((g) => sql`${g}`),
@@ -168,11 +215,13 @@ export async function createMember(ctx: RequestContext, input: MemberInput): Pro
 	const id = crypto.randomUUID();
 	const member = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
 		const groupIds = await checkGroups(tx, input.groupIds);
+		const custom = mergeCustom({}, await validateCustomValues(tx, input.custom));
 		await tx.execute(
-			sql`INSERT INTO members (id, first_name, last_name, scout_name, birth_date, address, stage,
-				consent_social_media, consent_website, consent_print)
+			sql`INSERT INTO members (id, first_name, last_name, scout_name, birth_date, street, postal_code, city, country, stage,
+				consent_social_media, consent_website, consent_print, custom, entry_date, exit_date, secondary_member, fee_levels)
 				VALUES (${id}, ${input.firstName}, ${input.lastName}, ${input.scoutName}, ${input.birthDate}::date,
-				${input.address}, ${input.stage}, ${input.consentSocialMedia}, ${input.consentWebsite}, ${input.consentPrint})`
+				${input.street}, ${input.postalCode}, ${input.city}, ${input.country}, ${input.stage}, ${input.consentSocialMedia}, ${input.consentWebsite}, ${input.consentPrint}, ${JSON.stringify(custom)}::jsonb,
+				${input.entryDate}::date, ${input.exitDate}::date, ${input.secondaryMember}, ${feeLevelsSql(storedFeeLevels(input))})`
 		);
 		await writeRelations(tx, id, input, groupIds);
 		return (await loadMember(tx, id))!;
@@ -190,14 +239,22 @@ export async function updateMember(
 	input: MemberInput
 ): Promise<Member> {
 	const member = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-		const exists = await rows(tx, sql`SELECT id FROM members WHERE id = ${id} FOR UPDATE`);
+		const exists = await rows(tx, sql`SELECT id, custom FROM members WHERE id = ${id} FOR UPDATE`);
 		if (!exists.length) throw errors.notFound('Mitglied nicht gefunden');
 		const groupIds = await checkGroups(tx, input.groupIds);
+		const stored = exists[0]!.custom;
+		const custom = mergeCustom(
+			(typeof stored === 'string' ? JSON.parse(stored) : (stored ?? {})) as Member['custom'],
+			await validateCustomValues(tx, input.custom)
+		);
 		await tx.execute(
 			sql`UPDATE members SET first_name = ${input.firstName}, last_name = ${input.lastName},
-				scout_name = ${input.scoutName}, birth_date = ${input.birthDate}::date, address = ${input.address},
+				scout_name = ${input.scoutName}, birth_date = ${input.birthDate}::date, street = ${input.street}, postal_code = ${input.postalCode}, city = ${input.city},
+					country = ${input.country}, address = NULL, custom = ${JSON.stringify(custom)}::jsonb,
 				stage = ${input.stage}, consent_social_media = ${input.consentSocialMedia},
 				consent_website = ${input.consentWebsite}, consent_print = ${input.consentPrint},
+				entry_date = ${input.entryDate}::date, exit_date = ${input.exitDate}::date,
+				secondary_member = ${input.secondaryMember}, fee_levels = ${feeLevelsSql(storedFeeLevels(input))},
 				updated_at = now() WHERE id = ${id}`
 		);
 		await writeRelations(tx, id, input, groupIds);
@@ -208,6 +265,136 @@ export async function updateMember(
 		metadata: { name: `${member.firstName} ${member.lastName}` }
 	});
 	return member;
+}
+
+/**
+ * Sammelaktion auf markierten Mitgliedern. Nicht vorhandene IDs → 404 (nichts wird geändert);
+ * Mitglieder, bei denen die Regeln verletzt würden (letzte Gruppe, einziger Leiter), werden
+ * übersprungen und mit Grund gemeldet. Audit ohne Namen (nur Aktion und Zähler).
+ */
+export async function bulkUpdateMembers(
+	ctx: RequestContext,
+	input: BulkInput
+): Promise<BulkResult> {
+	if (input.action === 'delete') return bulkDelete(ctx, input.ids);
+
+	const result = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		const idList = sql.join(
+			input.ids.map((i) => sql`${i}`),
+			sql`, `
+		);
+		const found = await rows(
+			tx,
+			sql`SELECT id, first_name, last_name FROM members WHERE id IN (${idList}) ORDER BY id FOR UPDATE`
+		);
+		if (found.length !== input.ids.length) throw errors.notFound('Mitglied nicht gefunden');
+		const skipped: BulkResult['skipped'] = [];
+		let affected = 0;
+
+		if (input.action === 'add-groups' || input.action === 'remove-groups') {
+			const groupIds = [...new Set(input.groupIds)];
+			const gList = sql.join(
+				groupIds.map((g) => sql`${g}`),
+				sql`, `
+			);
+			const known = await rows(tx, sql`SELECT id FROM groups WHERE id IN (${gList})`);
+			if (known.length !== groupIds.length) {
+				throw errors.validation({ groupIds: 'Unbekannte Gruppe' }, 'Unbekannte Gruppe');
+			}
+			for (const memberId of input.ids) {
+				if (input.action === 'add-groups') {
+					const before = Number(
+						(
+							await rows(
+								tx,
+								sql`SELECT count(*)::int AS n FROM member_groups WHERE member_id = ${memberId}`
+							)
+						)[0]?.n ?? 0
+					);
+					for (const g of groupIds) {
+						await tx.execute(
+							sql`INSERT INTO member_groups (member_id, group_id) VALUES (${memberId}, ${g}) ON CONFLICT DO NOTHING`
+						);
+					}
+					const after = Number(
+						(
+							await rows(
+								tx,
+								sql`SELECT count(*)::int AS n FROM member_groups WHERE member_id = ${memberId}`
+							)
+						)[0]?.n ?? 0
+					);
+					if (after !== before) affected++;
+					continue;
+				}
+				// Entfernen (Gruppen sind optional, auch die letzte darf entfallen)
+				const current = (
+					await rows(tx, sql`SELECT group_id FROM member_groups WHERE member_id = ${memberId}`)
+				).map((r) => r.group_id as string);
+				const toRemove = current.filter((g) => groupIds.includes(g));
+				if (!toRemove.length) continue;
+				const rList = sql.join(
+					toRemove.map((g) => sql`${g}`),
+					sql`, `
+				);
+				await tx.execute(
+					sql`DELETE FROM member_groups WHERE member_id = ${memberId} AND group_id IN (${rList})`
+				);
+				affected++;
+			}
+			await tx.execute(sql`UPDATE members SET updated_at = now() WHERE id IN (${idList})`);
+		} else if (input.action === 'set-stage') {
+			await tx.execute(
+				sql`UPDATE members SET stage = ${input.stage}, updated_at = now() WHERE id IN (${idList})`
+			);
+			affected = input.ids.length;
+		} else {
+			const c = input.consent;
+			const sets = [
+				c.consentSocialMedia !== undefined
+					? sql`consent_social_media = ${c.consentSocialMedia}`
+					: null,
+				c.consentWebsite !== undefined ? sql`consent_website = ${c.consentWebsite}` : null,
+				c.consentPrint !== undefined ? sql`consent_print = ${c.consentPrint}` : null,
+				sql`updated_at = now()`
+			].filter((s): s is ReturnType<typeof sql> => s !== null);
+			await tx.execute(sql`UPDATE members SET ${sql.join(sets, sql`, `)} WHERE id IN (${idList})`);
+			affected = input.ids.length;
+		}
+		return { affected, skipped };
+	});
+	await core.audit.logFromContext(ctx, 'members.member.bulk_updated', {
+		metadata: {
+			action: input.action,
+			requested: input.ids.length,
+			affected: result.affected,
+			skipped: result.skipped.length
+		}
+	});
+	return result;
+}
+
+async function bulkDelete(ctx: RequestContext, ids: string[]): Promise<BulkResult> {
+	const skipped: BulkResult['skipped'] = [];
+	let affected = 0;
+	for (const id of ids) {
+		const existing = await core.database
+			.forModule(MODULE_ID)
+			.transaction((tx) => loadMember(tx, id));
+		if (!existing) throw errors.notFound('Mitglied nicht gefunden');
+		try {
+			await deleteMember(ctx, id);
+			affected++;
+		} catch (e) {
+			if (isCoreError(e) && e.status === 409) {
+				skipped.push({ id, name: `${existing.firstName} ${existing.lastName}`, reason: e.message });
+			} else throw e;
+		}
+	}
+	await core.audit.logFromContext(ctx, 'members.member.bulk_updated', {
+		metadata: { action: 'delete', requested: ids.length, affected, skipped: skipped.length }
+	});
+	return { affected, skipped };
 }
 
 export async function deleteMember(ctx: RequestContext, id: string): Promise<void> {
@@ -227,7 +414,7 @@ export async function deleteMember(ctx: RequestContext, id: string): Promise<voi
 		);
 		if (sole.length) {
 			throw errors.conflict(
-				`Mitglied ist einziger Leiter der Gruppe ${sole.map((s) => s.name).join(', ')} und kann nicht geloescht werden`
+				`Mitglied ist einziger Leiter der Gruppe ${sole.map((s) => s.name).join(', ')} und kann nicht gelöscht werden`
 			);
 		}
 		await tx.execute(sql`DELETE FROM group_leaders WHERE member_id = ${id}`);

@@ -2,13 +2,13 @@
  * Export-/Import-Archiv einer Aktion (reine Logik, keine Server-Imports).
  *
  * Aufbau des ZIP:
- *   manifest.json   Format, Version, Zaehler, Hinweise
+ *   manifest.json   Format, Version, Zähler, Hinweise
  *   action.json     alle Daten der Aktion (siehe `archiveDocumentSchema`)
  *   receipts/<exportId>-<name>   Belegdateien (nur wenn exportiert)
  *
  * Sicherheit beim Lesen: nur drei erlaubte Pfadformen, keine absoluten/`..`-Pfade, keine Duplikate,
- * hoechstens 2000 Eintraege, hoechstens 300 MB entpackt (ueber die Header-Angaben VOR dem
- * Entpacken geprueft), Belege <= 10 MB. Archivnamen werden nie als Dateisystem-/Storage-Pfad benutzt.
+ * höchstens 2000 Einträge, höchstens 300 MB entpackt (über die Header-Angaben VOR dem
+ * Entpacken geprüft), Belege <= 10 MB. Archivnamen werden nie als Dateisystem-/Storage-Pfad benutzt.
  */
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import { z } from 'zod';
@@ -58,7 +58,7 @@ export class ArchiveError extends Error {
 
 // --- Namen und Pfade --------------------------------------------------------
 
-/** Dateiname fuer Storage-Pfade/Archiv: nur `[A-Za-z0-9._-]`, hoechstens 100 Zeichen. */
+/** Dateiname für Storage-Pfade/Archiv: nur `[A-Za-z0-9._-]`, höchstens 100 Zeichen. */
 export function sanitizeName(name: string): string {
 	const cleaned = name
 		.normalize('NFKD')
@@ -93,24 +93,24 @@ export function archiveFilename(actionName: string, today: string): string {
 const RECEIPT_FILE_RE = /^receipts\/[A-Za-z0-9._-]{1,200}$/;
 
 /**
- * Prueft einen Archiv-Eintragsnamen. Erlaubt: `manifest.json`, `action.json`, `receipts/`
+ * Prüft einen Archiv-Eintragsnamen. Erlaubt: `manifest.json`, `action.json`, `receipts/`
  * (Verzeichniseintrag) und `receipts/<name>`. Alles andere wirft einen `ArchiveError`.
  */
 export function assertSafeArchivePath(name: string): void {
 	// eslint-disable-next-line no-control-regex
 	if (!name || name.length > 255 || /[\u0000-\u001f\u007f\\:]/.test(name)) {
-		throw new ArchiveError('Archiv enthaelt einen ungueltigen Dateinamen');
+		throw new ArchiveError('Archiv enthält einen ungültigen Dateinamen');
 	}
-	if (name.startsWith('/')) throw new ArchiveError('Archiv enthaelt einen absoluten Pfad');
+	if (name.startsWith('/')) throw new ArchiveError('Archiv enthält einen absoluten Pfad');
 	const segments = name.endsWith('/') ? name.slice(0, -1).split('/') : name.split('/');
 	for (const seg of segments) {
 		if (!seg || seg === '.' || seg === '..') {
-			throw new ArchiveError('Archiv enthaelt einen unzulaessigen Pfad');
+			throw new ArchiveError('Archiv enthält einen unzulässigen Pfad');
 		}
 	}
 	if (name === 'manifest.json' || name === 'action.json' || name === 'receipts/') return;
 	if (RECEIPT_FILE_RE.test(name)) return;
-	throw new ArchiveError('Archiv enthaelt eine unerwartete Datei');
+	throw new ArchiveError('Archiv enthält eine unerwartete Datei');
 }
 
 // --- Inhaltstyp per Magic Bytes ----------------------------------------------
@@ -155,6 +155,8 @@ const actionSchema = z.strictObject({
 	startsTime: actionInput.shape.startsTime,
 	endsOn: actionInput.shape.endsOn,
 	endsTime: actionInput.shape.endsTime,
+	/** Fehlt bei älteren Archiven (= false) */
+	isPast: z.boolean().optional(),
 	feeCents: cents(0, MAX_AMOUNT_CENTS).nullable(),
 	teamFeeCents: cents(0, MAX_AMOUNT_CENTS).nullable()
 });
@@ -251,7 +253,23 @@ const entrySchema = z
 				contentType: z.enum(RECEIPT_CONTENT_TYPES)
 			})
 			.nullable(),
-		reimbursedAt: isoStamp.nullable()
+		reimbursedAt: isoStamp.nullable(),
+		/** Beim Erfassen bereits erstattet (fehlt = false); nur zusammen mit `reimbursedAt`. */
+		reimbursedUpfront: z.boolean().optional(),
+		/**
+		 * Nur Ausgaben des Stammes: Empfänger der Überweisung und Zahlstatus. Fehlt das Feld (ältere
+		 * Archive), gilt die Ausgabe als bezahlt. `iban` nur mit `actions.payout.view` beim Export.
+		 */
+		transfer: z
+			.strictObject({
+				recipientName: entryInput.shape.recipientName,
+				iban: z.string().max(50).nullable().optional(),
+				bic: entryInput.shape.bic,
+				purpose: entryInput.shape.purpose,
+				paidAt: isoStamp.nullable()
+			})
+			.nullable()
+			.optional()
 	})
 	.superRefine((e, ctx) => {
 		const bad = (path: string, message: string) =>
@@ -275,6 +293,12 @@ const entrySchema = z
 		}
 		if (e.receipt && e.type !== 'expense') bad('receipt', 'Belege gibt es nur bei Ausgaben');
 		if (e.reimbursedAt && e.paidBy !== 'person') bad('reimbursedAt', 'Nur bei Auslagen');
+		if (e.reimbursedUpfront && !e.reimbursedAt) {
+			bad('reimbursedUpfront', 'Nur bei erstatteten Auslagen');
+		}
+		if (e.transfer && (e.type !== 'expense' || e.paidBy !== 'club')) {
+			bad('transfer', 'Nur bei Ausgaben des Stammes');
+		}
 	});
 
 const refundSchema = z.strictObject({
@@ -348,9 +372,9 @@ export function buildArchive(input: {
 
 /** Entpackt das Archiv unter Einhaltung aller Grenzen; wirft `ArchiveError`. */
 export function unpackArchive(data: Uint8Array): Map<string, Uint8Array> {
-	if (data.byteLength > MAX_ARCHIVE_BYTES) throw new ArchiveError('Archiv ist zu gross');
+	if (data.byteLength > MAX_ARCHIVE_BYTES) throw new ArchiveError('Archiv ist zu groß');
 	if (data.byteLength < 22 || data[0] !== 0x50 || data[1] !== 0x4b) {
-		throw new ArchiveError('Datei ist kein gueltiges ZIP-Archiv');
+		throw new ArchiveError('Datei ist kein gültiges ZIP-Archiv');
 	}
 	const seen = new Set<string>();
 	let count = 0;
@@ -361,32 +385,32 @@ export function unpackArchive(data: Uint8Array): Map<string, Uint8Array> {
 			filter(file) {
 				count += 1;
 				if (count > MAX_ARCHIVE_ENTRIES) {
-					throw new ArchiveError(`Archiv enthaelt mehr als ${MAX_ARCHIVE_ENTRIES} Eintraege`);
+					throw new ArchiveError(`Archiv enthält mehr als ${MAX_ARCHIVE_ENTRIES} Einträge`);
 				}
 				assertSafeArchivePath(file.name);
 				if (file.name.endsWith('/')) return false;
-				if (seen.has(file.name)) throw new ArchiveError('Archiv enthaelt doppelte Eintraege');
+				if (seen.has(file.name)) throw new ArchiveError('Archiv enthält doppelte Einträge');
 				seen.add(file.name);
 				const limit = file.name.startsWith('receipts/') ? MAX_RECEIPT_BYTES : MAX_JSON_BYTES;
 				if (file.originalSize > limit) {
-					throw new ArchiveError('Archiv enthaelt eine zu grosse Datei');
+					throw new ArchiveError('Archiv enthält eine zu große Datei');
 				}
 				total += file.originalSize;
 				if (total > MAX_UNPACKED_BYTES) {
-					throw new ArchiveError('Archiv ist entpackt zu gross (hoechstens 300 MB)');
+					throw new ArchiveError('Archiv ist entpackt zu groß (höchstens 300 MB)');
 				}
 				return true;
 			}
 		});
 	} catch (e) {
 		if (e instanceof ArchiveError) throw e;
-		throw new ArchiveError('Archiv ist beschaedigt und kann nicht gelesen werden');
+		throw new ArchiveError('Archiv ist beschädigt und kann nicht gelesen werden');
 	}
 	const files = new Map<string, Uint8Array>();
 	let actual = 0;
 	for (const [name, bytes] of Object.entries(out)) {
 		actual += bytes.byteLength;
-		if (actual > MAX_UNPACKED_BYTES) throw new ArchiveError('Archiv ist entpackt zu gross');
+		if (actual > MAX_UNPACKED_BYTES) throw new ArchiveError('Archiv ist entpackt zu groß');
 		files.set(name, bytes);
 	}
 	return files;
@@ -397,7 +421,7 @@ function parseJson(bytes: Uint8Array | undefined, what: string): unknown {
 	try {
 		return JSON.parse(strFromU8(bytes));
 	} catch {
-		throw new ArchiveError(`${what} ist kein gueltiges JSON`);
+		throw new ArchiveError(`${what} ist kein gültiges JSON`);
 	}
 }
 
@@ -426,16 +450,16 @@ export function parseArchive(data: Uint8Array): ParsedArchive {
 		throw new ArchiveError('Archiv ist kein Aktions-Export dieses Systems');
 	}
 	if ((rawManifest as { formatVersion?: unknown }).formatVersion !== ARCHIVE_VERSION) {
-		throw new ArchiveError('Archivversion wird nicht unterstuetzt');
+		throw new ArchiveError('Archivversion wird nicht unterstützt');
 	}
 	const manifest = archiveManifestSchema.safeParse(rawManifest);
 	if (!manifest.success) {
-		throw new ArchiveError(`manifest.json ist ungueltig (${issueText(manifest.error)})`);
+		throw new ArchiveError(`manifest.json ist ungültig (${issueText(manifest.error)})`);
 	}
 	const rawDoc = parseJson(files.get('action.json'), 'action.json');
 	const doc = archiveDocumentSchema.safeParse(rawDoc);
 	if (!doc.success) {
-		throw new ArchiveError(`action.json ist ungueltig (${issueText(doc.error)})`);
+		throw new ArchiveError(`action.json ist ungültig (${issueText(doc.error)})`);
 	}
 	validateReferences(doc.data);
 	for (const e of doc.data.entries) {
@@ -452,7 +476,7 @@ function unique(ids: string[], what: string): Set<string> {
 	return set;
 }
 
-/** Querpruefungen, die ein einzelnes Schema nicht kann. */
+/** Querprüfungen, die ein einzelnes Schema nicht kann. */
 export function validateReferences(doc: ArchiveDocument): void {
 	const a = actionInput.safeParse({
 		name: doc.action.name,
@@ -463,7 +487,7 @@ export function validateReferences(doc: ArchiveDocument): void {
 		endsOn: doc.action.endsOn,
 		endsTime: doc.action.endsTime
 	});
-	if (!a.success) throw new ArchiveError(`Aktion ist ungueltig (${issueText(a.error)})`);
+	if (!a.success) throw new ArchiveError(`Aktion ist ungültig (${issueText(a.error)})`);
 
 	const participants = unique(
 		doc.participants.map((p) => p.id),
@@ -471,7 +495,7 @@ export function validateReferences(doc: ArchiveDocument): void {
 	);
 	const payees = unique(
 		doc.payees.map((p) => p.id),
-		'Empfaenger'
+		'Empfänger'
 	);
 	unique(
 		doc.entries.map((e) => e.id),
@@ -480,7 +504,7 @@ export function validateReferences(doc: ArchiveDocument): void {
 	const receiptFiles = new Set<string>();
 	for (const e of doc.entries) {
 		if (e.payeeRef && !payees.has(e.payeeRef)) {
-			throw new ArchiveError('Eine Buchung verweist auf einen unbekannten Empfaenger');
+			throw new ArchiveError('Eine Buchung verweist auf einen unbekannten Empfänger');
 		}
 		if (e.receipt) {
 			if (receiptFiles.has(e.receipt.file)) {
@@ -490,17 +514,17 @@ export function validateReferences(doc: ArchiveDocument): void {
 		}
 	}
 	const refundEntries = doc.entries.filter((e) => e.category === REFUND_CATEGORY);
-	if (refundEntries.length > 1) throw new ArchiveError('Mehr als eine Rueckzahlungs-Buchung');
+	if (refundEntries.length > 1) throw new ArchiveError('Mehr als eine Rückzahlungs-Buchung');
 	if (doc.refund) {
 		if (refundEntries[0]?.id !== doc.refund.entryRef) {
-			throw new ArchiveError('Rueckzahlung verweist auf keine passende Buchung');
+			throw new ArchiveError('Rückzahlung verweist auf keine passende Buchung');
 		}
 		for (const item of doc.refund.items) {
 			if (item.participantRef && !participants.has(item.participantRef)) {
-				throw new ArchiveError('Rueckzahlung verweist auf unbekannte Teilnehmende');
+				throw new ArchiveError('Rückzahlung verweist auf unbekannte Teilnehmende');
 			}
 		}
 	} else if (refundEntries.length) {
-		throw new ArchiveError('Rueckzahlungs-Buchung ohne Rueckzahlungsdaten');
+		throw new ArchiveError('Rückzahlungs-Buchung ohne Rückzahlungsdaten');
 	}
 }

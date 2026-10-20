@@ -6,6 +6,7 @@ import {
 	type Group,
 	type GroupInput,
 	type GroupType,
+	type GroupWebsite,
 	type MemberRef
 } from './schemas';
 
@@ -22,14 +23,19 @@ function rowsOf(result: unknown): Row[] {
 
 const iso = (v: unknown): string => new Date(v as string | Date).toISOString();
 
-function isUniqueViolation(e: unknown): boolean {
-	let cur = e as { code?: string; cause?: unknown } | undefined;
+/** Liefert bei einer Unique-Verletzung (23505) Constraint-Name/Meldung, sonst `null`. */
+function uniqueViolation(e: unknown): string | null {
+	let cur = e as
+		{ code?: string; constraint?: string; message?: string; cause?: unknown } | undefined;
 	for (let i = 0; cur && i < 4; i++) {
-		if (cur.code === '23505') return true;
+		if (cur.code === '23505') return `${cur.constraint ?? ''} ${cur.message ?? ''}`;
 		cur = cur.cause as typeof cur;
 	}
-	return false;
+	return null;
 }
+
+const SLUG_TAKEN = 'Diese Website-Adresse wird bereits von einer anderen Gruppe verwendet';
+const NAME_TAKEN = 'Eine Gruppe mit diesem Namen existiert bereits';
 
 const inList = (values: string[]) =>
 	sql.join(
@@ -37,16 +43,18 @@ const inList = (values: string[]) =>
 		sql`, `
 	);
 
-/** Laedt Gruppen (optional eine einzelne) inkl. Leiter und Mitgliederzahl, sortiert nach Name. */
+/** Lädt Gruppen (optional eine einzelne) inkl. Leiter und Mitgliederzahl, sortiert nach Name. */
 async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 	const groups = rowsOf(
 		await tx.execute(
 			id
-				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, color,
-						(image_path IS NOT NULL) AS has_image, created_at, updated_at
+				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
+						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
+						contact_email, created_at, updated_at
 						FROM groups WHERE id = ${id} ORDER BY name`
-				: sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, color,
-						(image_path IS NOT NULL) AS has_image, created_at, updated_at
+				: sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
+						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
+						contact_email, created_at, updated_at
 						FROM groups ORDER BY name`
 		)
 	);
@@ -88,14 +96,28 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		meetingPlace: g.meeting_place == null ? null : String(g.meeting_place),
 		meetingWeekday: g.meeting_weekday == null ? null : Number(g.meeting_weekday),
 		meetingTime: g.meeting_time == null ? null : String(g.meeting_time),
+		meetingEndTime: g.meeting_end_time == null ? null : String(g.meeting_end_time),
 		color: g.color == null ? null : String(g.color),
 		hasImage: Boolean(g.has_image),
 		imageVersion: g.has_image ? iso(g.updated_at) : null,
 		leaders: leadersBy.get(String(g.id)) ?? [],
 		memberCount: countBy.get(String(g.id)) ?? 0,
+		website: websiteOf(g),
 		createdAt: iso(g.created_at),
 		updatedAt: iso(g.updated_at)
 	}));
+}
+
+const textOrNull = (v: unknown): string | null => (v == null ? null : String(v));
+
+function websiteOf(g: Row): GroupWebsite {
+	return {
+		onWebsite: g.on_website === true || g.on_website === 't',
+		slug: textOrNull(g.slug),
+		description: textOrNull(g.website_description),
+		ageRange: textOrNull(g.age_range),
+		contactEmail: textOrNull(g.contact_email)
+	};
 }
 
 async function requireGroup(tx: Tx, id: string): Promise<Group> {
@@ -121,7 +143,29 @@ async function assertNameFree(tx: Tx, name: string, exceptId?: string): Promise<
 			sql`SELECT id FROM groups WHERE lower(name) = lower(${name}) AND id <> ${exceptId ?? ''}`
 		)
 	);
-	if (rows.length) throw errors.conflict('Eine Gruppe mit diesem Namen existiert bereits');
+	if (rows.length) throw errors.conflict(NAME_TAKEN);
+}
+
+async function assertSlugFree(tx: Tx, slug: string | null, exceptId: string): Promise<void> {
+	if (!slug) return;
+	const rows = rowsOf(
+		await tx.execute(sql`SELECT id FROM groups WHERE slug = ${slug} AND id <> ${exceptId}`)
+	);
+	if (rows.length) throw errors.conflict(SLUG_TAKEN);
+}
+
+/** Schreibt die Website-Felder (nur aufgerufen, wenn `website` übergeben wurde). */
+async function writeWebsite(
+	tx: Tx,
+	groupId: string,
+	w: NonNullable<GroupInput['website']>
+): Promise<void> {
+	await tx.execute(
+		sql`UPDATE groups SET on_website = ${w.onWebsite}, slug = ${w.slug},
+			website_description = ${w.description}, age_range = ${w.ageRange},
+			contact_email = ${w.contactEmail}
+			WHERE id = ${groupId}`
+	);
 }
 
 async function replaceLeaders(tx: Tx, groupId: string, leaderIds: string[]): Promise<void> {
@@ -145,26 +189,40 @@ async function save(id: string | null, input: GroupInput): Promise<Group> {
 					sql`UPDATE groups SET name = ${input.name}, type = ${input.type},
 						description = ${input.description}, meeting_place = ${input.meetingPlace},
 						meeting_weekday = ${input.meetingWeekday}, meeting_time = ${input.meetingTime},
+						meeting_end_time = ${input.meetingEndTime},
 							color = ${input.color}, updated_at = now()
 						WHERE id = ${groupId}`
 				);
 			} else {
 				await tx.execute(
 					sql`INSERT INTO groups (id, name, type, description, meeting_place,
-							meeting_weekday, meeting_time, color)
+							meeting_weekday, meeting_time, meeting_end_time, color)
 						VALUES (${groupId}, ${input.name}, ${input.type}, ${input.description},
-							${input.meetingPlace}, ${input.meetingWeekday}, ${input.meetingTime}, ${input.color})`
+							${input.meetingPlace}, ${input.meetingWeekday}, ${input.meetingTime},
+							${input.meetingEndTime}, ${input.color})`
 				);
+			}
+			if (input.website) {
+				await assertSlugFree(tx, input.website.slug, groupId);
+				await writeWebsite(tx, groupId, input.website);
 			}
 			await replaceLeaders(tx, groupId, leaderIds);
 			return requireGroup(tx, groupId);
 		});
 	} catch (e) {
-		if (isUniqueViolation(e)) {
-			throw errors.conflict('Eine Gruppe mit diesem Namen existiert bereits');
+		const violation = uniqueViolation(e);
+		if (violation !== null) {
+			throw errors.conflict(violation.includes('slug') ? SLUG_TAKEN : NAME_TAKEN);
 		}
 		throw e;
 	}
+}
+
+/** Audit-Metadaten ohne personenbezogene Details (keine Kontakt-Mail, kein Text). */
+function auditMeta(group: Group, input: GroupInput): Record<string, unknown> {
+	return input.website
+		? { name: group.name, onWebsite: group.website.onWebsite, slug: group.website.slug }
+		: { name: group.name };
 }
 
 export const groupEndpoints: ApiEndpoint[] = [
@@ -197,7 +255,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 			const group = await save(null, body as GroupInput);
 			await core.audit.logFromContext(ctx, 'members.group.created', {
 				target: group.id,
-				metadata: { name: group.name }
+				metadata: auditMeta(group, body as GroupInput)
 			});
 			return group;
 		}
@@ -205,7 +263,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 	{
 		method: 'PUT',
 		path: '/groups/:id',
-		summary: 'Gruppe aendern',
+		summary: 'Gruppe ändern',
 		tags: ['Modul: members'],
 		permission: 'members.group.edit',
 		params: idParams,
@@ -214,7 +272,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 			const group = await save((params as { id: string }).id, body as GroupInput);
 			await core.audit.logFromContext(ctx, 'members.group.updated', {
 				target: group.id,
-				metadata: { name: group.name }
+				metadata: auditMeta(group, body as GroupInput)
 			});
 			return group;
 		}
@@ -222,8 +280,8 @@ export const groupEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/groups/:id',
-		summary: 'Gruppe loeschen',
-		description: 'Nicht moeglich, solange der Gruppe Mitglieder zugeordnet sind.',
+		summary: 'Gruppe löschen',
+		description: 'Nicht möglich, solange der Gruppe Mitglieder zugeordnet sind.',
 		tags: ['Modul: members'],
 		permission: 'members.group.delete',
 		params: idParams,
@@ -234,7 +292,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 				const ref = rowsOf(await tx.execute(sql`SELECT image_path FROM groups WHERE id = ${id}`));
 				const imagePath = ref[0]?.image_path == null ? null : String(ref[0].image_path);
 				if (group.memberCount > 0) {
-					throw errors.conflict('Gruppe hat noch Mitglieder und kann nicht geloescht werden');
+					throw errors.conflict('Gruppe hat noch Mitglieder und kann nicht gelöscht werden');
 				}
 				await tx.execute(sql`DELETE FROM groups WHERE id = ${id}`);
 				return { name: group.name, imagePath };

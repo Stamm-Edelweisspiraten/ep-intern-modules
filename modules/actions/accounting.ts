@@ -20,7 +20,7 @@ import type {
 } from './schemas';
 
 /**
- * Reine Abrechnungslogik (Server und UI). Alle Betraege Integer-Cent, nie NaN.
+ * Reine Abrechnungslogik (Server und UI). Alle Beträge Integer-Cent, nie NaN.
  */
 
 /** Defensiv: nur endliche Zahlen, auf Integer gerundet; sonst 0. */
@@ -30,6 +30,20 @@ function cents(value: unknown): number {
 
 function optCents(value: number | null | undefined): number | null {
 	return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : null;
+}
+
+/** Buchung (DTO) → Eintrag für `summarize`/`payeeTotals`. */
+export function toSummaryEntry(e: AccountingEntry): SummaryEntry {
+	return {
+		type: e.type,
+		category: e.category,
+		amountCents: e.amountCents,
+		paidBy: e.paidBy,
+		payeeId: e.payee?.id ?? null,
+		hasReceipt: e.receipt !== null,
+		reimbursed: e.reimbursedAt !== null,
+		clubOpen: e.type === 'expense' && e.paidBy === 'club' && e.clubPaidAt === null
+	};
 }
 
 /** Summen, Saldo, Soll/Ist je Kategorie, fehlende Belege, offene Auslagen. */
@@ -42,6 +56,7 @@ export function summarize(
 	let expenseCents = 0;
 	let missingReceipts = 0;
 	let openReimbursementCents = 0;
+	const openClubPayments = { count: 0, cents: 0 };
 	const actual = new Map<string, number>();
 
 	for (const e of entries ?? []) {
@@ -53,10 +68,14 @@ export function summarize(
 			expenseCents += amount;
 			if (!e.hasReceipt && e.category !== 'refund') missingReceipts += 1;
 			if (e.paidBy === 'person' && !e.reimbursed) openReimbursementCents += amount;
+			if (e.paidBy === 'club' && e.clubOpen && e.category !== 'refund') {
+				openClubPayments.count += 1;
+				openClubPayments.cents += amount;
+			}
 		}
 	}
 
-	// Automatische Einnahmen zaehlen, solange keine manuelle Buchung der Kategorie existiert.
+	// Automatische Einnahmen zählen, solange keine manuelle Buchung der Kategorie existiert.
 	const auto = appliedAutoIncome(autoIncome);
 	if (auto.contributionsCents > 0 || auto.subsidyCents > 0) {
 		incomeCents += auto.contributionsCents + auto.subsidyCents;
@@ -99,7 +118,8 @@ export function summarize(
 		plannedExpenseCents,
 		byCategory,
 		missingReceipts,
-		openReimbursementCents
+		openReimbursementCents,
+		openClubPayments
 	};
 }
 
@@ -109,7 +129,7 @@ export interface PayeeTotals {
 	openEntries: number;
 }
 
-/** Auslagen je Empfaenger (nur `paidBy = person`); Schluessel = payeeId. */
+/** Auslagen je Empfänger (nur `paidBy = person`); Schlüssel = payeeId. */
 export function payeeTotals(entries: SummaryEntry[]): Map<string, PayeeTotals> {
 	const map = new Map<string, PayeeTotals>();
 	for (const e of entries ?? []) {
@@ -169,12 +189,20 @@ function germanDate(iso: string | null | undefined): string {
 	return m ? `${m[3]}.${m[2]}.${m[1]}` : (iso ?? '');
 }
 
+/** Stichtag (ISO-Zeitstempel) als TT.MM.JJJJ in Europe/Berlin; reines Datum unverändert. */
+function stichtag(iso: string): string {
+	if (!iso.includes('T')) return germanDate(iso);
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return germanDate(iso);
+	return germanDate(new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(d));
+}
+
 const categoryLabel = (c: string): string =>
 	(ACCOUNTING_CATEGORY_LABELS as Record<string, string>)[c] ?? c;
 
 /**
  * Fortlaufende Belegnummern der Ausgaben: nach Kategorie-Reihenfolge, Datum, Erfassungszeit, id.
- * Einnahmen erhalten keine Nummer. Schluessel = Buchungs-id, Wert = 1..n.
+ * Einnahmen erhalten keine Nummer. Schlüssel = Buchungs-id, Wert = 1..n.
  */
 export function numberExpenses(
 	entries: Pick<AccountingEntry, 'id' | 'type' | 'category' | 'entryDate' | 'createdAt'>[]
@@ -198,7 +226,11 @@ export function numberExpenses(
 	return map;
 }
 
-/** Inhaltsbloecke des PDF-Berichts (Gitter-Tabellen, Beleg-Nummern, Abschlussseite). */
+/** Hinweis im Bericht einer Zwischenabrechnung (Stichtag als TT.MM.JJJJ). */
+export const interimNotice = (date: string): string =>
+	`Vorläufiger Stand zum ${date} – spätere Buchungen sind nicht enthalten.`;
+
+/** Inhaltsblöcke des PDF-Berichts (Gitter-Tabellen, Beleg-Nummern, Abschlussseite). */
 export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 	const s = input.summary;
 	const entries = input.entries ?? [];
@@ -208,8 +240,14 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 		list.reduce((acc, e) => acc + cents(e.amountCents), 0);
 	const refundBookedCents = sum(entries.filter((e) => e.category === 'refund'));
 	const expenseExRefund = Math.max(0, cents(s.expenseCents) - refundBookedCents);
-	const payerOf = (e: AccountingEntry): string =>
-		e.paidBy === 'person' && e.payee ? e.payee.name : PAID_BY_LABELS[e.paidBy];
+	const payerOf = (e: AccountingEntry): string => {
+		if (e.paidBy === 'person' && e.payee) return e.payee.name;
+		// Offene Stamm-Ausgabe: Überweisung durch die Kasse steht noch aus
+		if (e.type === 'expense' && e.category !== 'refund' && e.clubPaidAt === null) {
+			return `${PAID_BY_LABELS.club} (offen)`;
+		}
+		return PAID_BY_LABELS[e.paidBy];
+	};
 
 	const period = input.endsOn
 		? `${germanDate(input.startsOn)} – ${germanDate(input.endsOn)}`
@@ -217,11 +255,19 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 	const periodLine = input.location
 		? `Zeitraum: ${period}, Ort: ${input.location}`
 		: `Zeitraum: ${period}`;
-	blocks.push({
-		type: 'paragraph',
-		text: `${periodLine}\n${input.closedAt ? `Stand: ${germanDate(input.closedAt)}` : 'Status: offen'}`
-	});
-
+	const interim = input.interim ?? null;
+	if (interim) {
+		blocks.push({
+			type: 'paragraph',
+			text: `${periodLine}\nZwischenabrechnung Nr. ${interim.number} – Stand ${stichtag(interim.takenAt)}`
+		});
+		blocks.push({ type: 'paragraph', text: interimNotice(stichtag(interim.takenAt)) });
+	} else {
+		blocks.push({
+			type: 'paragraph',
+			text: `${periodLine}\n${input.closedAt ? `Stand: ${germanDate(input.closedAt)}` : 'Status: offen'}`
+		});
+	}
 	// --- Einnahmen
 	blocks.push({ type: 'heading', level: 2, text: 'Einnahmen' });
 	const incomes = entries.filter((e) => e.type === 'income');
@@ -325,15 +371,22 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 	});
 
 	// --- Abschlussseite
-	blocks.push({ type: 'heading', level: 2, text: 'Abschluss' });
+	blocks.push({
+		type: 'heading',
+		level: 2,
+		text: interim ? 'Ergebnis zum Stichtag' : 'Abschluss'
+	});
 
-	// Ueberschuss VOR einer Rueckzahlungsbuchung
+	// Überschuss VOR einer Rückzahlungsbuchung
 	const result = cents(s.incomeCents) - expenseExRefund;
 	const resultLabel = result > 0 ? 'Überschuss' : result < 0 ? 'Fehlbetrag' : 'Ausgeglichen';
 	blocks.push({
 		type: 'table',
 		variant: 'grid',
-		caption: { left: 'Ergebnis der Abrechnung', right: money(result) },
+		caption: {
+			left: interim ? 'Ergebnis zum Stichtag' : 'Ergebnis der Abrechnung',
+			right: money(result)
+		},
 		noHeader: true,
 		columns: ['Position', 'Betrag'],
 		align: ['left', 'right'],
@@ -402,11 +455,11 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 				money(cents(p.openCents) + cents(p.reimbursedCents)),
 				status(p)
 			]),
-			totalRow: ['Summe', '', money(payeesTotal), '']
+			totalRow: [{ text: 'Summe', colspan: 2 }, money(payeesTotal), '']
 		});
 	}
 
-	const refund = input.refund ?? null;
+	const refund = interim ? null : (input.refund ?? null);
 	if (refund) {
 		blocks.push({
 			type: 'table',
@@ -444,7 +497,10 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 		align: ['left', 'right'],
 		widths: [9, 2],
 		rows: instructions,
-		totalRow: ['Verbleibt in der Stammkasse', money(s.balanceCents)]
+		totalRow: [
+			interim ? 'Saldo zum Stichtag' : 'Verbleibt in der Stammkasse',
+			money(s.balanceCents)
+		]
 	});
 
 	if (s.missingReceipts > 0) {

@@ -2,17 +2,21 @@
 	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import Camera from '@lucide/svelte/icons/camera';
+	import Inbox from '@lucide/svelte/icons/inbox';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { ConfirmDialog } from '$lib/components/layout';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		MAX_RECEIPT_BYTES,
 		RECEIPT_CONTENT_TYPES,
 		type AccountingEntry,
-		type AccountingState
+		type AccountingState,
+		type ExpenseLinkConfig
 	} from '../schemas';
 	import { fmtDate } from './format';
 	import type { AutoIncome } from './auto-types';
@@ -21,8 +25,16 @@
 	import RefundCard from './RefundCard.svelte';
 	import AccountingEntryDialog from './AccountingEntryDialog.svelte';
 	import PayoutsSection from './PayoutsSection.svelte';
+	import InterimDialog from './InterimDialog.svelte';
+	import InterimsCard from './InterimsCard.svelte';
+	import ExpenseLinkSection from './ExpenseLinkSection.svelte';
+	import CloseAccountingDialog from './CloseAccountingDialog.svelte';
 
-	let { actionId, canEdit }: { actionId: string; canEdit: boolean } = $props();
+	let {
+		actionId,
+		canEdit,
+		isPast = false
+	}: { actionId: string; canEdit: boolean; isPast?: boolean } = $props();
 
 	const base = $derived(`/modules/actions/actions/${actionId}/accounting`);
 
@@ -37,13 +49,22 @@
 	let deleteOpen = $state(false);
 	let deleteEntry = $state<AccountingEntry | null>(null);
 	let closeOpen = $state(false);
-	let forceOpen = $state(false);
 	let reopenOpen = $state(false);
+	let interimOpen = $state(false);
 	let busy = $state(false);
+
+	/** Unterbereich des Tabs (immer nur einer sichtbar) */
+	type Section = 'entries' | 'payouts' | 'submissions' | 'interims' | 'refund';
+	let section = $state<Section>('entries');
+	/** Offene Einreichungen über den Kosten-Link (Zähler an der Umschaltleiste) */
+	let pendingSubmissions = $state(0);
 
 	const closed = $derived(!!acc?.closed);
 	const editable = $derived(canEdit && !closed);
 	const canViewPayouts = $derived(acc?.canViewPayouts ?? false);
+	const interims = $derived(acc?.interims ?? []);
+	const entryCount = $derived(acc?.entries.length ?? 0);
+	const nextInterimNumber = $derived(interims.reduce((max, i) => Math.max(max, i.number), 0) + 1);
 	const summary = $derived(acc?.summary);
 	const autoIncome = $derived(
 		(acc as { autoIncome?: AutoIncome | null } | null)?.autoIncome ?? null
@@ -60,10 +81,22 @@
 		return e instanceof ApiClientError ? e.message : fallback;
 	}
 
+	async function loadPending() {
+		try {
+			const link = await apiFetch<ExpenseLinkConfig>(
+				`/modules/actions/actions/${actionId}/expense-link`
+			);
+			pendingSubmissions = link.pendingCount;
+		} catch {
+			pendingSubmissions = 0;
+		}
+	}
+
 	async function load() {
 		try {
 			acc = await apiFetch<AccountingState>(base);
 			error = '';
+			void loadPending();
 		} catch (e) {
 			error = errMsg(e, 'Abrechnung konnte nicht geladen werden');
 		} finally {
@@ -118,32 +151,6 @@
 		} catch (e) {
 			toast.error(errMsg(e, 'Beleg konnte nicht gespeichert werden'));
 		}
-	}
-
-	async function close(acceptMissingReceipts: boolean) {
-		busy = true;
-		try {
-			await apiFetch(`${base}/close`, {
-				method: 'POST',
-				body: JSON.stringify({ acceptMissingReceipts })
-			});
-			toast.success('Abrechnung abgeschlossen');
-			await load();
-		} catch (e) {
-			if (e instanceof ApiClientError && e.status === 409 && !acceptMissingReceipts) {
-				toast.error(e.message);
-				forceOpen = true;
-			} else {
-				toast.error(errMsg(e, 'Abschließen fehlgeschlagen'));
-			}
-		} finally {
-			busy = false;
-		}
-	}
-
-	function startClose() {
-		if ((summary?.missingReceipts ?? 0) > 0) forceOpen = true;
-		else void close(false);
 	}
 
 	async function reopen() {
@@ -223,6 +230,11 @@
 					>
 						<FileText /> PDF-Bericht
 					</Button>
+					{#if editable && entryCount > 0}
+						<Button variant="outline" disabled={busy} onclick={() => (interimOpen = true)}>
+							<Camera /> Zwischenabrechnung
+						</Button>
+					{/if}
 					{#if canEdit}
 						<Button disabled={busy} onclick={() => (closeOpen = true)}>
 							<Check /> Abrechnung abschließen
@@ -232,36 +244,141 @@
 			</div>
 		{/if}
 
-		<AccountingSummaryCards {summary} onshowmissing={() => (filter = 'missing')} />
-
-		<EntriesTable
-			entries={acc.entries}
-			{autoIncome}
-			bind:filter
-			{base}
-			{editable}
-			onadd={openAdd}
-			onedit={openEdit}
-			ondelete={(e) => {
-				deleteEntry = e;
-				deleteOpen = true;
+		<AccountingSummaryCards
+			{summary}
+			onshowmissing={() => {
+				filter = 'missing';
+				section = 'entries';
 			}}
-			onupload={uploadReceipt}
 		/>
 
-		<RefundCard {actionId} {editable} {reloadKey} onchanged={load} />
-
-		{#if canViewPayouts}
-			<PayoutsSection {actionId} payees={acc.payees} {canViewPayouts} {editable} onchanged={load} />
+		{#if editable && pendingSubmissions > 0}
+			<div
+				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+				role="status"
+			>
+				<span class="flex items-center gap-2">
+					<Inbox class="size-4 shrink-0" aria-hidden="true" />
+					{pendingSubmissions === 1
+						? '1 eingereichte Auslage wartet auf Prüfung'
+						: `${pendingSubmissions} eingereichte Auslagen warten auf Prüfung`}
+				</span>
+				<Button variant="ghost" size="sm" onclick={() => (section = 'submissions')}>Prüfen</Button>
+			</div>
 		{/if}
+
+		<Tabs.Root bind:value={section}>
+			<Tabs.List
+				class="h-auto max-w-full flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto"
+				aria-label="Bereiche der Abrechnung"
+			>
+				<Tabs.Trigger value="entries">
+					Buchungen
+					{#if entryCount > 0}
+						<Badge variant="secondary" class="ml-1">{entryCount}</Badge>
+					{/if}
+				</Tabs.Trigger>
+				{#if canViewPayouts}
+					<Tabs.Trigger value="payouts">
+						Auslagen & Auszahlung
+						{#if summary.openReimbursementCents > 0}
+							<Badge
+								variant="outline"
+								class="ml-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+							>
+								{formatEuro(summary.openReimbursementCents)}
+							</Badge>
+						{/if}
+					</Tabs.Trigger>
+				{/if}
+				<Tabs.Trigger value="submissions">
+					Kosten-Link
+					{#if pendingSubmissions > 0}
+						<Badge class="ml-1">{pendingSubmissions}</Badge>
+					{/if}
+				</Tabs.Trigger>
+				<Tabs.Trigger value="interims">
+					Zwischenabrechnungen
+					{#if interims.length > 0}
+						<Badge variant="secondary" class="ml-1">{interims.length}</Badge>
+					{/if}
+				</Tabs.Trigger>
+				<Tabs.Trigger value="refund">Rückzahlung</Tabs.Trigger>
+			</Tabs.List>
+
+			<Tabs.Content value="entries" class="pt-4">
+				<EntriesTable
+					entries={acc.entries}
+					{autoIncome}
+					bind:filter
+					{base}
+					{editable}
+					onadd={openAdd}
+					onedit={openEdit}
+					ondelete={(e) => {
+						deleteEntry = e;
+						deleteOpen = true;
+					}}
+					onupload={uploadReceipt}
+				/>
+			</Tabs.Content>
+
+			{#if canViewPayouts}
+				<Tabs.Content value="payouts" class="pt-4">
+					<PayoutsSection
+						{actionId}
+						payees={acc.payees}
+						{canViewPayouts}
+						{editable}
+						viaTreasury={!!acc.payoutsViaTreasury}
+						onchanged={load}
+					/>
+				</Tabs.Content>
+			{/if}
+
+			<Tabs.Content value="submissions" class="pt-4">
+				<ExpenseLinkSection {actionId} {editable} {closed} onchanged={load} />
+			</Tabs.Content>
+
+			<Tabs.Content value="interims" class="pt-4">
+				{#if interims.length > 0}
+					<InterimsCard {actionId} {interims} onchanged={load} />
+				{:else}
+					<EmptyState
+						title="Noch keine Zwischenabrechnung"
+						description="Eine Zwischenabrechnung hält den aktuellen Stand der Abrechnung fest – zum Beispiel, um Auslagen schon vor dem Abschluss auszuzahlen."
+					>
+						{#if editable && entryCount > 0}
+							<Button variant="outline" onclick={() => (interimOpen = true)}>
+								<Camera /> Zwischenabrechnung erstellen
+							</Button>
+						{/if}
+					</EmptyState>
+				{/if}
+			</Tabs.Content>
+
+			<Tabs.Content value="refund" class="pt-4">
+				<RefundCard {actionId} {editable} {reloadKey} onchanged={load} />
+			</Tabs.Content>
+		</Tabs.Root>
 	</div>
 
 	<AccountingEntryDialog
 		bind:open={entryOpen}
 		{actionId}
 		entry={editEntry}
+		{isPast}
 		payees={payeeChoices}
 		{canViewPayouts}
+		viaTreasury={!!acc?.payoutsViaTreasury}
+		onsaved={load}
+	/>
+	<InterimDialog
+		bind:open={interimOpen}
+		{actionId}
+		entries={acc.entries}
+		nextNumber={nextInterimNumber}
+		viaTreasury={!!acc.payoutsViaTreasury}
 		onsaved={load}
 	/>
 	<ConfirmDialog
@@ -274,24 +391,14 @@
 		destructive
 		onconfirm={confirmDelete}
 	/>
-	<ConfirmDialog
+	<CloseAccountingDialog
 		bind:open={closeOpen}
-		title="Abrechnung abschließen?"
-		description={`Danach können Buchungen nicht mehr geändert werden. Saldo: ${formatEuro(summary.balanceCents)}.${
-			summary.missingReceipts > 0
-				? ` Achtung: ${summary.missingReceipts} Ausgaben haben keinen Beleg.`
-				: ''
-		}`}
-		confirmLabel="Abschließen"
-		onconfirm={startClose}
-	/>
-	<ConfirmDialog
-		bind:open={forceOpen}
-		title="Trotz fehlender Belege abschließen?"
-		description={`${summary.missingReceipts} Ausgaben haben keinen Beleg. Ohne Belege ist die Abrechnung unvollständig, z. B. gegenüber Zuschussgebern.`}
-		confirmLabel="Trotzdem abschließen"
-		destructive
-		onconfirm={() => close(true)}
+		{base}
+		{summary}
+		viaTreasury={!!acc.payoutsViaTreasury}
+		{pendingSubmissions}
+		onclosed={load}
+		onreview={() => (section = 'submissions')}
 	/>
 	<ConfirmDialog
 		bind:open={reopenOpen}

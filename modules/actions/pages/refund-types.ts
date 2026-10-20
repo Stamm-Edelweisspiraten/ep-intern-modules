@@ -1,4 +1,4 @@
-/** Lokale Typen fuer die Rueckzahlung des Ueberschusses (API: .../accounting/refund). */
+/** Lokale Typen für die Rückzahlung des Überschusses (API: .../accounting/refund). */
 export interface RefundItem {
 	participantId: string;
 	name: string;
@@ -40,6 +40,6 @@ export interface RefundState {
 	teamFeeCents: number;
 }
 
-/** Kategorie der Rueckzahlungs-Buchung (string-tolerant, falls schemas.ts sie noch nicht kennt). */
+/** Kategorie der Rückzahlungs-Buchung (string-tolerant, falls schemas.ts sie noch nicht kennt). */
 export const REFUND_CATEGORY = 'refund';
 export const REFUND_CATEGORY_LABEL = 'Rückzahlung an Teilnehmende';

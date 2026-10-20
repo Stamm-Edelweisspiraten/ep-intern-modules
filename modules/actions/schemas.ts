@@ -1,4 +1,4 @@
-/** API-Vertrag des Moduls "actions": Zod-Schemas fuer Server und UI sowie die DTO-Typen. */
+/** API-Vertrag des Moduls "actions": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
 import { isValidIban, normalizeIban } from './iban';
 import { formDefinitionSchema } from '$lib/forms/schema';
@@ -40,7 +40,7 @@ export function isRealDate(iso: string): boolean {
 	return d.toISOString().slice(0, 10) === iso;
 }
 
-/** Alter in vollen Jahren zum Stichtag; `null` bei ungueltigem Datum. */
+/** Alter in vollen Jahren zum Stichtag; `null` bei ungültigem Datum. */
 export function ageAt(birthIso: string, onIso: string): number | null {
 	const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthIso);
 	const o = /^(\d{4})-(\d{2})-(\d{2})$/.exec(onIso);
@@ -94,45 +94,62 @@ const time = z
 	.transform((v) => (v ? v : null));
 const optionalDate = date.nullish().transform((v) => (v ? v : null));
 
+const actionFields = {
+	name: text(150),
+	description: optionalText(5000, true),
+	location: optionalText(200),
+	startsOn: date,
+	startsTime: time,
+	endsOn: optionalDate,
+	endsTime: time
+};
+
+const checkActionDates = (
+	a: {
+		startsOn: string;
+		endsOn: string | null;
+		startsTime: string | null;
+		endsTime: string | null;
+	},
+	ctx: z.RefinementCtx
+) => {
+	if (a.endsOn && a.endsOn < a.startsOn) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsOn'],
+			message: 'Das Enddatum liegt vor dem Startdatum'
+		});
+	}
+	if (a.endsTime && !a.endsOn) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsTime'],
+			message: 'Für eine Uhrzeit wird ein Enddatum benötigt'
+		});
+	}
+	if (
+		a.endsOn &&
+		a.endsOn === a.startsOn &&
+		a.startsTime &&
+		a.endsTime &&
+		a.endsTime < a.startsTime
+	) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['endsTime'],
+			message: 'Das Ende liegt vor dem Beginn'
+		});
+	}
+};
+
+/** POST: `isPast` (Aktion liegt bereits in der Vergangenheit), Standard `false`. */
 export const actionInput = z
-	.object({
-		name: text(150),
-		description: optionalText(5000, true),
-		location: optionalText(200),
-		startsOn: date,
-		startsTime: time,
-		endsOn: optionalDate,
-		endsTime: time
-	})
-	.superRefine((a, ctx) => {
-		if (a.endsOn && a.endsOn < a.startsOn) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsOn'],
-				message: 'Das Enddatum liegt vor dem Startdatum'
-			});
-		}
-		if (a.endsTime && !a.endsOn) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsTime'],
-				message: 'Für eine Uhrzeit wird ein Enddatum benötigt'
-			});
-		}
-		if (
-			a.endsOn &&
-			a.endsOn === a.startsOn &&
-			a.startsTime &&
-			a.endsTime &&
-			a.endsTime < a.startsTime
-		) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['endsTime'],
-				message: 'Das Ende liegt vor dem Beginn'
-			});
-		}
-	});
+	.object({ ...actionFields, isPast: z.boolean().default(false) })
+	.superRefine(checkActionDates);
+/** PUT: fehlt `isPast`, bleibt der gespeicherte Wert unverändert. */
+export const actionUpdateInput = z
+	.object({ ...actionFields, isPast: z.boolean().optional() })
+	.superRefine(checkActionDates);
 export type ActionInput = z.infer<typeof actionInput>;
 export type ActionFormInput = z.input<typeof actionInput>;
 
@@ -165,7 +182,7 @@ export const participantInput = z.object({
 		.transform((v) => v ?? null),
 	role: z.enum(PARTICIPANT_ROLES).default('participant'),
 	juleica: z.boolean().default(false),
-	/** Ausdrueckliche Zuschussberechtigung; `null` = automatisch, fehlt = unveraendert */
+	/** Ausdrückliche Zuschussberechtigung; `null` = automatisch, fehlt = unverändert */
 	subsidyEligible: z.boolean().nullable().optional(),
 	diet: z
 		.enum(DIETS)
@@ -208,7 +225,9 @@ export interface ActionSummary {
 		canShare: boolean;
 	};
 	participantCount: number;
-	/** Uebernommener Beitrag aus der Kalkulation oder `null` */
+	/** Aktion liegt bereits in der Vergangenheit (nachträgliche Abrechnung) */
+	isPast: boolean;
+	/** Übernommener Beitrag aus der Kalkulation oder `null` */
 	fee: AppliedFee | null;
 	createdAt: string;
 	updatedAt: string;
@@ -222,7 +241,7 @@ export interface ActionList {
 export interface ActionShares {
 	owner: UserRef;
 	shares: ShareEntry[];
-	/** Darf der aktuelle Benutzer Freigaben aendern? */
+	/** Darf der aktuelle Benutzer Freigaben ändern? */
 	canManage: boolean;
 }
 
@@ -237,7 +256,7 @@ export interface Participant {
 	bremenResident: boolean | null;
 	role: ParticipantRole;
 	juleica: boolean;
-	/** Ausdrueckliche Zuschussberechtigung; `null` = automatisch (Alter + Wohnort) */
+	/** Ausdrückliche Zuschussberechtigung; `null` = automatisch (Alter + Wohnort) */
 	subsidyEligible: boolean | null;
 	/** Ergebnis nach Regel (Override, Alter zum Aktionsstart, Wohnort) */
 	subsidyEffective: boolean;
@@ -247,6 +266,11 @@ export interface Participant {
 	source: 'manual' | 'link';
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * Zahlstand des Beitrags laut Kasse. Fehlt das Feld, ist die Kasse nicht aktiv; `null` = keine
+	 * Rechnung (z. B. kein Beitrag übernommen).
+	 */
+	payment?: import('$lib/modules/treasury/contract').ParticipantPayment | null;
 }
 
 // === Phase 2: Kalkulation ===================================================
@@ -281,13 +305,13 @@ export const CALC_BASIS_LABELS: Record<CalcBasis, string> = {
 	per_person_night: 'pro Person und Nacht'
 };
 
-/** Anzeigegruppen der Posten in der Oberflaeche (Reihenfolge = Anzeige). */
+/** Anzeigegruppen der Posten in der Oberfläche (Reihenfolge = Anzeige). */
 export const CALC_GROUPS: {
 	id: string;
 	label: string;
 	hint: string;
 	categories: CalcCategory[];
-	/** Basis, die neue Posten dieser Gruppe standardmaessig erhalten */
+	/** Basis, die neue Posten dieser Gruppe standardmäßig erhalten */
 	defaultBasis: CalcBasis;
 }[] = [
 	{
@@ -341,7 +365,7 @@ export const FREIZEIT_TYPE_LABELS: Record<FreizeitType, string> = {
 	youth: 'Jugendfreizeit'
 };
 
-/** Foerder-Checkliste (nur Hinweis, fliesst nicht in die Rechnung ein). */
+/** Förder-Checkliste (nur Hinweis, fließt nicht in die Rechnung ein). */
 export const CHECKLIST_ITEMS = [
 	{
 		key: 'training_hhh',
@@ -387,7 +411,7 @@ export const calculationInput = z.object({
 		.max(100, 'Team-Anteil: 0 bis 100 %')
 		.transform((v) => Math.round(v * 100) / 100),
 	nights: nonNegativeInt(60, 'Nächte: 0 bis 60'),
-	/** Prozent der Zwischensumme, 0 – 100, hoechstens 2 Nachkommastellen */
+	/** Prozent der Zwischensumme, 0 – 100, höchstens 2 Nachkommastellen */
 	bufferPercent: z
 		.number('Puffer: 0 bis 100 %')
 		.min(0, 'Puffer: 0 bis 100 %')
@@ -401,14 +425,14 @@ export const calculationInput = z.object({
 	bremenYouth: nonNegativeInt(1000, '0 bis 1000'),
 	teamWithJuleica: nonNegativeInt(1000, '0 bis 1000'),
 	teamWithoutJuleica: nonNegativeInt(1000, '0 bis 1000'),
-	/** Teamer*innen 12–27 Jahre aus Bremen/Bremerhaven; zaehlen beim Zuschuss wie Teilnehmende */
+	/** Teamer*innen 12–27 Jahre aus Bremen/Bremerhaven; zählen beim Zuschuss wie Teilnehmende */
 	teamYouth: nonNegativeInt(1000, '0 bis 1000'),
 	checklist: z.record(z.string().max(40), z.boolean()).default({}),
 	items: z.array(calcItemInput).max(MAX_CALC_ITEMS, `Höchstens ${MAX_CALC_ITEMS} Posten`)
 });
 export type CalculationInput = z.infer<typeof calculationInput>;
 
-/** Standardposten fuer eine neue Kalkulation (IDs vergibt der Aufrufer). */
+/** Standardposten für eine neue Kalkulation (IDs vergibt der Aufrufer). */
 export const DEFAULT_CALC_ITEMS: Omit<CalcItem, 'id'>[] = [
 	{ category: 'food', label: 'Essen', basis: 'per_person_night', amountCents: 0 },
 	{ category: 'lodging', label: 'Unterkunft', basis: 'per_person_night', amountCents: 0 },
@@ -440,21 +464,21 @@ export const DEFAULT_CALCULATION: Omit<CalculationInput, 'items'> = {
 
 // --- Ergebnisse der Berechnung ----------------------------------------------
 
-/** Eingabe fuer `computeSubsidy` (src/lib/modules/actions/subsidy.ts). */
+/** Eingabe für `computeSubsidy` (src/lib/modules/actions/subsidy.ts). */
 export interface SubsidyInput {
 	nights: number;
 	lodgingType: LodgingType;
 	konfi: boolean;
 	freizeitType: FreizeitType;
-	/** Teilnehmende aus Bremen/Bremerhaven, 0–11 Jahre (Teamer <= 27 zaehlen mit) */
+	/** Teilnehmende aus Bremen/Bremerhaven, 0–11 Jahre (Teamer <= 27 zählen mit) */
 	children: number;
-	/** Teilnehmende aus Bremen/Bremerhaven, 12–27 Jahre (Teamer <= 27 zaehlen mit) */
+	/** Teilnehmende aus Bremen/Bremerhaven, 12–27 Jahre (Teamer <= 27 zählen mit) */
 	youth: number;
 	teamWithJuleica: number;
 	teamWithoutJuleica: number;
 	/**
-	 * Teamer*innen 12–27 Jahre aus Bremen/Bremerhaven: zaehlen wie Teilnehmende und werden bei
-	 * `youth` (Zuschuss und 1:7-Grenze) mitgezaehlt.
+	 * Teamer*innen 12–27 Jahre aus Bremen/Bremerhaven: zählen wie Teilnehmende und werden bei
+	 * `youth` (Zuschuss und 1:7-Grenze) mitgezählt.
 	 */
 	teamYouth: number;
 }
@@ -469,14 +493,14 @@ export interface SubsidyLine {
 }
 
 export interface SubsidyResult {
-	/** Beruecksichtigte Naechte (max. 14) */
+	/** Berücksichtigte Nächte (max. 14) */
 	cappedNights: number;
 	lines: SubsidyLine[];
-	/** Zuschuss fuer die Gemeinde; fliesst in die Kalkulation */
+	/** Zuschuss für die Gemeinde; fließt in die Kalkulation */
 	subsidyCents: number;
-	/** Taschengeld fuer ehrenamtliche Leitende (getrennt, senkt den Beitrag nicht) */
+	/** Taschengeld für ehrenamtliche Leitende (getrennt, senkt den Beitrag nicht) */
 	allowance: {
-		/** Hoechstzahl zuschussfaehiger Ehrenamtlicher (1 je 5 Kinder / 7 Jugendliche) */
+		/** Höchstzahl zuschussfähiger Ehrenamtlicher (1 je 5 Kinder / 7 Jugendliche) */
 		limit: number;
 		withJuleica: number;
 		withoutJuleica: number;
@@ -497,7 +521,7 @@ export interface CalcLine {
 	totalCents: number;
 }
 
-/** Eingabe fuer `calculate` (src/lib/modules/actions/calculation.ts). */
+/** Eingabe für `calculate` (src/lib/modules/actions/calculation.ts). */
 export interface CalculateInput {
 	participants: number;
 	team: number;
@@ -538,7 +562,7 @@ export interface CalculationResult {
 	byCategory: { category: CalcCategory; totalCents: number; share: number }[];
 }
 
-/** In die Aktion uebernommener Beitrag (wird u. a. fuer Anmeldung und Abrechnung genutzt). */
+/** In die Aktion übernommener Beitrag (wird u. a. für Anmeldung und Abrechnung genutzt). */
 export interface AppliedFee {
 	participantCents: number;
 	teamCents: number;
@@ -548,9 +572,9 @@ export interface AppliedFee {
 
 export interface CalculationDto {
 	settings: CalculationInput;
-	/** Uebernommener Beitrag der Aktion oder `null` */
+	/** Übernommener Beitrag der Aktion oder `null` */
 	applied: AppliedFee | null;
-	/** `true`, wenn die aktuelle Kalkulation einen anderen Beitrag ergibt als den uebernommenen */
+	/** `true`, wenn die aktuelle Kalkulation einen anderen Beitrag ergibt als den übernommenen */
 	outdated: boolean;
 	/** Wurde die Kalkulation schon gespeichert (sonst Standardwerte)? */
 	persisted: boolean;
@@ -563,16 +587,16 @@ export interface CalculationSuggestions {
 	/** Anzahl Personen mit Rolle Teilnehmer*in / Team */
 	participants: number;
 	team: number;
-	/** Aus Bremen/Bremerhaven, Alter zum Aktionsstart; Team <= 27 zaehlt mit */
+	/** Aus Bremen/Bremerhaven, Alter zum Aktionsstart; Team <= 27 zählt mit */
 	children: number;
 	youth: number;
 	teamWithJuleica: number;
 	teamWithoutJuleica: number;
-	/** Team (Rolle Team) 12–27 Jahre aus Bremen/Bremerhaven; `children`/`youth` zaehlen nur Teilnehmende */
+	/** Team (Rolle Team) 12–27 Jahre aus Bremen/Bremerhaven; `children`/`youth` zählen nur Teilnehmende */
 	teamYouth: number;
-	/** Vorgeschlagene Naechte aus den Aktionsdaten (null, wenn kein Enddatum) */
+	/** Vorgeschlagene Nächte aus den Aktionsdaten (null, wenn kein Enddatum) */
 	nights: number | null;
-	/** Datensaetze, die nicht vollstaendig in die Zaehlung eingehen koennen */
+	/** Datensätze, die nicht vollständig in die Zählung eingehen können */
 	incomplete: { id: string; name: string; missing: ('birthDate' | 'bremenResident')[] }[];
 }
 
@@ -651,6 +675,8 @@ export const formConfigInput = z
 		intro: optionalText(2000, true),
 		disclaimerTemplate: z.string().max(5000, 'Höchstens 5000 Zeichen'),
 		privacyUrl: httpUrl,
+		/** Anmeldung nur mit Login und verknüpftem Mitglied */
+		requireLogin: z.boolean().default(false),
 		definition: formDefinitionSchema
 	})
 	.superRefine((c, ctx) => {
@@ -680,6 +706,8 @@ export interface FormConfig {
 	intro: string | null;
 	disclaimerTemplate: string;
 	privacyUrl: string | null;
+	/** Login + Mitglied Pflicht (aus: optional, auch für Gäste anderer Stämme) */
+	requireLogin: boolean;
 	definition: FormDefinition;
 	/** Aktueller Status laut Konfiguration (Zeitraum/Plätze) */
 	status: FormStatus;
@@ -705,6 +733,22 @@ export interface PublicForm {
 	/** Gerenderter Disclaimer-Text (Platzhalter ersetzt) */
 	disclaimer: string;
 	privacyUrl: string | null;
+	/** Login + Mitglied Pflicht */
+	requireLogin: boolean;
+	/** Angemeldete Person (Session) oder `null` */
+	viewer: { name: string } | null;
+	/** Mit dem Konto verknüpfte Mitglieder (nur mit Session) inkl. Vorbelegung */
+	members: PublicMemberOption[];
+}
+
+export interface PublicMemberOption {
+	id: string;
+	/** Anzeigename, z. B. „Max Muster“ */
+	name: string;
+	/** Schon zu dieser Aktion angemeldet? */
+	registered: boolean;
+	/** Vorbelegte Werte je Formularfeld (`key`) aus den Zusatzfeldern des Mitglieds */
+	prefill: Record<string, string | number | boolean | string[] | null>;
 }
 
 export const publicSubmitInput = z
@@ -713,6 +757,8 @@ export const publicSubmitInput = z
 			z.string().max(40),
 			z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()])
 		),
+		/** Mit verknüpftem Mitglied anmelden (Konto Pflicht) */
+		memberId: z.uuid().optional(),
 		/** Honeypot: muss leer bleiben */
 		website: z.string().max(200).optional()
 	})
@@ -727,6 +773,8 @@ export interface PublicSubmitResult {
 	emailSent: boolean;
 	/** Gerenderter Disclaimer-Text zur Anzeige auf der Danke-Seite */
 	disclaimer: string;
+	/** Änderungen wurden im Mitgliedsprofil gespeichert (nur bei Anmeldung mit Mitglied) */
+	memberUpdated?: boolean;
 }
 
 // === Phase 4: Abrechnung ====================================================
@@ -739,7 +787,7 @@ export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
 };
 
 export const INCOME_CATEGORIES = ['contributions', 'subsidy', 'misc'] as const;
-/** Nur systemseitig gebucht (Rueckzahlungsfunktion); keine Kalkulationskategorie, keine manuelle Buchung */
+/** Nur systemseitig gebucht (Rückzahlungsfunktion); keine Kalkulationskategorie, keine manuelle Buchung */
 /**
  * Optionaler Body von POST .../accounting/refund; mit `names` = manueller Modus (Anzahl = Anzahl
  * der Namen). Namen getrimmt, 1-80 Zeichen, keine Steuerzeichen, 1-300 Namen, Duplikate erlaubt.
@@ -780,6 +828,7 @@ export const isIncomeCategory = (c: string): boolean =>
 export const PAID_BY = ['club', 'person'] as const;
 export type PaidBy = (typeof PAID_BY)[number];
 export const PAID_BY_LABELS: Record<PaidBy, string> = { club: 'Stamm', person: 'Person' };
+export type ClubPaidVia = 'manual' | 'treasury';
 
 export const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 export const RECEIPT_CONTENT_TYPES = [
@@ -788,6 +837,21 @@ export const RECEIPT_CONTENT_TYPES = [
 	'image/png',
 	'image/webp'
 ] as const;
+
+const bicSchema = z
+	.string()
+	.trim()
+	.toUpperCase()
+	.max(11)
+	.nullish()
+	.transform((v) => (v ? v : null))
+	.refine(
+		(v) => v === null || /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v),
+		'Ungültige BIC (8 oder 11 Zeichen)'
+	);
+
+/** Verwendungszweck einer SEPA-Überweisung (max. 140 Zeichen). */
+export const MAX_PURPOSE_LENGTH = 140;
 
 export const entryInput = z
 	.object({
@@ -801,7 +865,29 @@ export const entryInput = z
 			.max(MAX_AMOUNT_CENTS, 'Betrag zu groß'),
 		entryDate: date,
 		paidBy: z.enum(PAID_BY).default('club'),
-		payeeId: id.nullish().transform((v) => v ?? null)
+		payeeId: id.nullish().transform((v) => v ?? null),
+		/**
+		 * Nur Ausgaben „bezahlt vom Stamm“: `true` = bereits bezahlt, `false` = offen, die Kasse überweist
+		 * an den Empfänger. Fehlt das Feld, gilt die Ausgabe als bezahlt (Verhalten vor der Kasse).
+		 */
+		clubPaid: z.boolean().default(true),
+		/**
+		 * Nur Auslagen (Ausgabe, bezahlt von Person): `true` = bereits erstattet (`reimbursed_at` wird beim
+		 * Anlegen gesetzt). Beim Ändern wird das Feld ignoriert; die Erstattung ändert nur der Endpoint
+		 * `DELETE …/payees/:id/reimburse`.
+		 */
+		reimbursed: z.boolean().default(false),
+		recipientName: optionalText(100),
+		/** Fehlt beim Bearbeiten = gespeicherte IBAN bleibt */
+		iban: z
+			.string()
+			.trim()
+			.max(50, 'IBAN zu lang')
+			.nullish()
+			.transform((v) => (v ? normalizeIban(v) : null))
+			.refine((v) => v === null || isValidIban(v), 'Ungültige IBAN'),
+		bic: bicSchema,
+		purpose: optionalText(MAX_PURPOSE_LENGTH)
 	})
 	.superRefine((e, ctx) => {
 		const income = isIncomeCategory(e.category);
@@ -843,21 +929,35 @@ export const entryInput = z
 				message: 'Nur bei „Person“ angeben'
 			});
 		}
+		if (e.reimbursed && !(e.type === 'expense' && e.paidBy === 'person')) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['reimbursed'],
+				message: 'Nur Auslagen können bereits erstattet sein'
+			});
+		}
+		if (e.type === 'expense' && e.paidBy === 'club' && !e.clubPaid) {
+			if (!e.recipientName) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['recipientName'],
+					message: 'Bitte den Empfänger angeben'
+				});
+			}
+			if (!e.purpose) {
+				ctx.addIssue({
+					code: 'custom',
+					path: ['purpose'],
+					message: 'Bitte einen Verwendungszweck angeben'
+				});
+			}
+		}
 	});
+/** Offene Stamm-Ausgabe braucht Empfängerdaten für die Überweisung. */
+export const needsTransfer = (e: { type: string; paidBy: string; clubPaid: boolean }): boolean =>
+	e.type === 'expense' && e.paidBy === 'club' && !e.clubPaid;
 export type EntryInput = z.infer<typeof entryInput>;
 export type EntryFormInput = z.input<typeof entryInput>;
-
-const bicSchema = z
-	.string()
-	.trim()
-	.toUpperCase()
-	.max(11)
-	.nullish()
-	.transform((v) => (v ? v : null))
-	.refine(
-		(v) => v === null || /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v),
-		'Ungültige BIC (8 oder 11 Zeichen)'
-	);
 
 export const payeeInput = z.object({
 	name: text(100),
@@ -893,6 +993,14 @@ export interface AccountingEntry {
 	receipt: { name: string; contentType: string } | null;
 	/** Auslage wurde ausgezahlt (nur bei paidBy = person) */
 	reimbursedAt: string | null;
+	/** Nur Ausgaben des Stammes: Empfänger der Überweisung (IBAN maskiert) */
+	recipient: { name: string; ibanMasked: string | null; bic: string | null } | null;
+	purpose: string | null;
+	/** Stamm-Ausgabe bezahlt (`null` = offen); `via` = manuell markiert oder von der Kasse überwiesen */
+	clubPaidAt: string | null;
+	clubPaidVia: ClubPaidVia | null;
+	/** Zwischenabrechnung, in der die Buchung festgeschrieben ist (`null` = offen bzw. Schlussabrechnung) */
+	interim?: { id: string; number: number } | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -936,6 +1044,8 @@ export interface AccountingSummary {
 	missingReceipts: number;
 	/** Summe offener Auslagen aller Personen */
 	openReimbursementCents: number;
+	/** Noch nicht überwiesene Ausgaben des Stammes */
+	openClubPayments: { count: number; cents: number };
 }
 
 /** Automatische Einnahmen aus Teilnehmerliste und Kalkulation. */
@@ -946,9 +1056,15 @@ export interface AutoIncome {
 		teamCount: number;
 		feeCents: number;
 		teamFeeCents: number;
+		/** `treasury`: tatsächlich eingegangene Zahlungen aus der Kasse (Ist statt Soll) */
+		source?: 'calculated' | 'treasury';
+		/** nur bei `treasury`: Soll, offen, Anzahl Rechnungen */
+		dueCents?: number;
+		openCents?: number;
+		invoiceCount?: number;
 	} | null;
 	subsidy: { cents: number; eligibleCount: number } | null;
-	/** Kategorien, fuer die manuelle Buchungen die Automatik ersetzen */
+	/** Kategorien, für die manuelle Buchungen die Automatik ersetzen */
 	overridden: ('contributions' | 'subsidy')[];
 }
 
@@ -961,9 +1077,13 @@ export interface AccountingState {
 	/** `null` ohne `actions.payout.view` */
 	payees: AccountingPayee[] | null;
 	canViewPayouts: boolean;
+	/** Kasse aktiv: Auslagen werden dort ausgezahlt und hier automatisch markiert */
+	payoutsViaTreasury?: boolean;
+	/** Zwischenabrechnungen, aufsteigend nach Nummer */
+	interims: AccountingInterim[];
 }
 
-/** Eintrag fuer die reinen Funktionen in accounting.ts. */
+/** Eintrag für die reinen Funktionen in accounting.ts. */
 export interface SummaryEntry {
 	type: EntryType;
 	category: AccountingCategory;
@@ -972,6 +1092,8 @@ export interface SummaryEntry {
 	payeeId: string | null;
 	hasReceipt: boolean;
 	reimbursed: boolean;
+	/** Stamm-Ausgabe noch nicht bezahlt (fehlt = bezahlt) */
+	clubOpen?: boolean;
 }
 
 export interface PayoutRow {
@@ -992,7 +1114,7 @@ export interface ReportInput {
 	closedAt: string | null;
 	entries: AccountingEntry[];
 	summary: AccountingSummary;
-	/** Automatische Einnahmen (bereits in `summary` enthalten, sofern nicht ueberschrieben) */
+	/** Automatische Einnahmen (bereits in `summary` enthalten, sofern nicht überschrieben) */
 	autoIncome?: AutoIncome | null;
 	/**
 	 * Personen mit Auslagen. `iban` ist vom Endpoint bereits entschieden: Klartext (mit
@@ -1005,15 +1127,301 @@ export interface ReportInput {
 		iban: string | null;
 		bic: string | null;
 	}[];
-	/** Gebuchte Rueckzahlung an Teilnehmende (Snapshot) oder `null` */
+	/** Gebuchte Rückzahlung an Teilnehmende (Snapshot) oder `null` */
 	refund?: {
 		items: { name: string; amountCents: number }[];
 		totalCents: number;
 		remainderCents: number;
 		bookedAt: string;
 	} | null;
-	/** Anzahl Belege, die nicht angehaengt werden konnten (Abruf, Typ, Groesse) */
+	/** Anzahl Belege, die nicht angehängt werden konnten (Abruf, Typ, Größe) */
 	missingAttachments?: number;
-	/** Buchungen, deren Beleg angehaengt wurde; fehlt der Wert, gelten alle als angehaengt */
+	/** Buchungen, deren Beleg angehängt wurde; fehlt der Wert, gelten alle als angehängt */
 	attachedEntryIds?: string[];
+	/**
+	 * Bericht einer Zwischenabrechnung: eingefrorenes Abbild des gesamten Abrechnungsstands zum
+	 * Stichtag `takenAt` (ISO); keine Rückzahlung.
+	 */
+	interim?: { number: number; takenAt: string } | null;
 }
+
+// === Zwischenabrechnungen (Migration 0014) ====================================
+
+/** Body von POST …/accounting/interims */
+export const interimInput = z
+	.object({
+		acceptMissingReceipts: z.boolean().default(false),
+		note: optionalText(300)
+	})
+	.strict();
+export type InterimInput = z.infer<typeof interimInput>;
+export const interimParams = z.object({ id, interimId: id });
+/** Query von DELETE …/interims/:interimId: `force=true` bestätigt die Warnungen (`revertWarnings`). */
+export const interimRevertQuery = z.object({
+	force: z
+		.enum(['true', 'false', '1', '0'])
+		.optional()
+		.transform((v) => v === 'true' || v === '1')
+});
+export const INTERIM_REVERT_WARNINGS = ['closed', 'paid'] as const;
+/** `closed` = Abrechnung abgeschlossen; `paid` = Auslagen daraus bereits erstattet */
+export type InterimRevertWarning = (typeof INTERIM_REVERT_WARNINGS)[number];
+
+/** Zwischenabrechnung Nr. N: festgeschriebene Buchungen, Auslagen gehen sofort an die Kasse. */
+/**
+ * Eingefrorener Abrechnungsstand einer Zwischenabrechnung (Migration 0016, Spalte `snapshot`): alle Buchungen,
+ * Summen und Soll/Ist zum Stichtag. Bankdaten fehlen bewusst (beim Rendern live nach den Rechten).
+ */
+export interface InterimSnapshot {
+	/** ISO-Zeitstempel des Stichtags */
+	takenAt: string;
+	entries: AccountingEntry[];
+	summary: AccountingSummary;
+	plan: AccountingPlan | null;
+	autoIncome: AutoIncome;
+	payees: { id: string; name: string; openCents: number; reimbursedCents: number }[];
+	/** Buchungen mit Beleg zum Stichtag (Anhänge, sofern noch vorhanden) */
+	receiptEntryIds: string[];
+}
+
+export interface AccountingInterim {
+	id: string;
+	number: number;
+	note: string | null;
+	createdAt: string;
+	createdBy: UserRef | null;
+	entryCount: number;
+	incomeCents: number;
+	expenseCents: number;
+	/** Summe der Auslagen (bezahlt von Person) dieser Zwischenabrechnung */
+	reimbursementCents: number;
+	/** davon noch nicht ausgezahlt */
+	openReimbursementCents: number;
+	/** Recht zum Zurücknehmen (Eigentümer*in oder `actions.action.edit-all`), für jede Zwischenabrechnung */
+	canRevert: boolean;
+	/** Hinweise, die vor dem Zurücknehmen bestätigt werden müssen (DELETE mit `force=true`) */
+	revertWarnings: InterimRevertWarning[];
+	/** Bereits erstattete Auslagen dieser Zwischenabrechnung (ohne vorab erstattete) */
+	paidReimbursementCents: number;
+}
+
+// === Kosten-Link (Migration 0015) ===========================================
+
+export const EXPENSE_PUBLIC_PREFIX = '/p/actions/auslagen';
+export const EXPENSE_SUBMISSION_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+export type ExpenseSubmissionStatus = (typeof EXPENSE_SUBMISSION_STATUSES)[number];
+export const EXPENSE_SUBMISSION_STATUS_LABELS: Record<ExpenseSubmissionStatus, string> = {
+	pending: 'Zu prüfen',
+	accepted: 'Übernommen',
+	rejected: 'Abgelehnt'
+};
+
+/** Link-Konfiguration je Aktion (intern). `token` nur für Bearbeitende. */
+export interface ExpenseLinkConfig {
+	exists: boolean;
+	enabled: boolean;
+	/** Pfad der öffentlichen Seite, z. B. `/p/actions/auslagen/<token>`; `null` ohne Link */
+	publicPath: string | null;
+	/** Abrechnung abgeschlossen → Link nimmt nichts an */
+	accountingClosed: boolean;
+	pendingCount: number;
+}
+
+export const expenseLinkInput = z.object({ enabled: z.boolean() }).strict();
+
+/** Öffentliche Ansicht des Kosten-Links (keine internen Zahlen). */
+export interface PublicExpenseLink {
+	actionName: string;
+	startsOn: string;
+	endsOn: string | null;
+	/** Ausgabekategorien (`CALC_CATEGORIES`) mit Label */
+	categories: { value: CalcCategory; label: string }[];
+	/** Datenschutz-URL aus dem Anmeldeformular der Aktion, sonst `null` */
+	privacyUrl: string | null;
+	maxReceiptBytes: number;
+}
+
+/** Textfelder des öffentlichen multipart-POST (Datei im Feld `file`). Betrag als Cent-String. */
+export const publicExpenseSubmitInput = z
+	.object({
+		name: text(100),
+		email: z
+			.string()
+			.trim()
+			.max(200)
+			.nullish()
+			.transform((v) => (v ? v : null))
+			.refine((v) => v === null || z.email().safeParse(v).success, 'Ungültige E-Mail-Adresse'),
+		category: z.enum(CALC_CATEGORIES, 'Bitte eine Kategorie wählen'),
+		description: text(200),
+		amountCents: z.coerce
+			.number('Betrag fehlt')
+			.int()
+			.min(1, 'Betrag muss größer als 0 sein')
+			.max(MAX_AMOUNT_CENTS, 'Betrag zu hoch'),
+		expenseDate: date,
+		accountHolder: text(100),
+		iban: z
+			.string('IBAN fehlt')
+			.trim()
+			.min(1, 'IBAN fehlt')
+			.max(50, 'IBAN zu lang')
+			.refine(isValidIban, 'Ungültige IBAN')
+			.transform(normalizeIban),
+		bic: bicSchema,
+		note: optionalText(500, true),
+		/** Pflicht-Checkbox Datenschutz: multipart liefert 'true' */
+		privacy: z.literal('true', 'Bitte der Datenschutzerklärung zustimmen'),
+		/** Honeypot – muss leer sein */
+		website: z.string().max(200).optional()
+	})
+	.strict();
+export type PublicExpenseSubmitInput = z.infer<typeof publicExpenseSubmitInput>;
+
+/** Höchstzahl Auslagen je Einreichung über den Kosten-Link (je Auslage genau ein Beleg). */
+export const MAX_EXPENSE_BATCH_ITEMS = 5;
+/** Obergrenze des gesamten multipart-Requests einer Einreichung (alle Belege zusammen). */
+export const MAX_EXPENSE_BATCH_BYTES = 30 * 1024 * 1024;
+
+/** Eine Auslage innerhalb einer Einreichung. */
+export const publicExpenseItemInput = z
+	.object({
+		category: z.enum(CALC_CATEGORIES, 'Bitte eine Kategorie wählen'),
+		description: text(200),
+		amountCents: z
+			.number('Betrag fehlt')
+			.int()
+			.min(1, 'Betrag muss größer als 0 sein')
+			.max(MAX_AMOUNT_CENTS, 'Betrag zu hoch'),
+		expenseDate: date,
+		note: optionalText(500, true)
+	})
+	.strict();
+export type PublicExpenseItemInput = z.infer<typeof publicExpenseItemInput>;
+
+/**
+ * Textfelder des öffentlichen multipart-POST mit mehreren Auslagen: gemeinsame Angaben zur Person und zum Konto,
+ * `items` als JSON-String (1..MAX_EXPENSE_BATCH_ITEMS). Dateien: genau eine je Auslage, **in derselben Reihenfolge**
+ * wie `items` (Feldname `file`; der Router liefert sie als `files[i]`). Feldfehler der Auslagen mit Pfad `items.<i>.<feld>`.
+ */
+export const publicExpenseBatchInput = z
+	.object({
+		name: text(100),
+		email: z
+			.string()
+			.trim()
+			.max(200)
+			.nullish()
+			.transform((v) => (v ? v : null))
+			.refine((v) => v === null || z.email().safeParse(v).success, 'Ungültige E-Mail-Adresse'),
+		accountHolder: text(100),
+		iban: z
+			.string('IBAN fehlt')
+			.trim()
+			.min(1, 'IBAN fehlt')
+			.max(50, 'IBAN zu lang')
+			.refine(isValidIban, 'Ungültige IBAN')
+			.transform(normalizeIban),
+		bic: bicSchema,
+		items: z
+			.string('Auslagen fehlen')
+			.max(20_000)
+			.transform((v, ctx) => {
+				try {
+					return JSON.parse(v) as unknown;
+				} catch {
+					ctx.addIssue({ code: 'custom', message: 'Ungültige Auslagen' });
+					return z.NEVER;
+				}
+			})
+			.pipe(
+				z
+					.array(publicExpenseItemInput)
+					.min(1, 'Mindestens eine Auslage')
+					.max(MAX_EXPENSE_BATCH_ITEMS, `Höchstens ${MAX_EXPENSE_BATCH_ITEMS} Auslagen auf einmal`)
+			),
+		/** Pflicht-Checkbox Datenschutz: multipart liefert 'true' */
+		privacy: z.literal('true', 'Bitte der Datenschutzerklärung zustimmen'),
+		/** Honeypot – muss leer sein */
+		website: z.string().max(200).optional()
+	})
+	.strict();
+export type PublicExpenseBatchInput = z.infer<typeof publicExpenseBatchInput>;
+
+/** Antwort der Einreichung (keine internen Daten außer den neuen IDs). */
+export interface PublicExpenseBatchResult {
+	batchId: string;
+	count: number;
+	emailSent: boolean;
+}
+
+/** Eingereichte Auslage (intern). IBAN nur maskiert. */
+export interface ExpenseSubmission {
+	id: string;
+	status: ExpenseSubmissionStatus;
+	submitterName: string;
+	submitterEmail: string | null;
+	category: CalcCategory;
+	description: string;
+	amountCents: number;
+	/** JJJJ-MM-TT */
+	expenseDate: string;
+	accountHolder: string | null;
+	ibanMasked: string | null;
+	bic: string | null;
+	note: string | null;
+	receipt: { name: string; contentType: string } | null;
+	createdAt: string;
+	decidedAt: string | null;
+	decidedBy: UserRef | null;
+	entryId: string | null;
+	rejectReason: string | null;
+	/** Gemeinsame Einreichung mehrerer Auslagen (`null` bei Altdaten) */
+	batchId?: string | null;
+}
+
+export const expenseSubmissionParams = z.object({ id, submissionId: id });
+export const expenseSubmissionsQuery = z.object({
+	status: z.enum(EXPENSE_SUBMISSION_STATUSES).optional()
+});
+
+/** Annehmen: Betrag/Kategorie/Beschreibung/Datum können korrigiert werden; optional bestehender Empfänger. */
+export const expenseAcceptInput = z
+	.object({
+		category: z.enum(CALC_CATEGORIES).optional(),
+		description: text(200).optional(),
+		amountCents: z.number().int().min(1).max(MAX_AMOUNT_CENTS).optional(),
+		expenseDate: date.optional(),
+		/** vorhandene*n Empfänger*in nutzen statt neu anzulegen */
+		payeeId: id.nullish()
+	})
+	.strict();
+export type ExpenseAcceptInput = z.infer<typeof expenseAcceptInput>;
+
+export const expenseRejectInput = z
+	.object({ reason: optionalText(300), notify: z.boolean().default(false) })
+	.strict();
+
+// === Teilnehmende: Mehrfachbearbeitung ======================================
+
+export const PARTICIPANT_BULK_MAX_IDS = 500;
+
+/**
+ * `PATCH /actions/:id/participants`: mehrere Teilnehmende auf einmal ändern. Mindestens ein Feld;
+ * `subsidyEligible: null` = automatisch. Unbekannte/fremde IDs → 404, es wird nichts geändert.
+ */
+export const participantBulkInput = z
+	.object({
+		ids: z
+			.array(id)
+			.min(1, 'Mindestens eine Person auswählen')
+			.max(PARTICIPANT_BULK_MAX_IDS, `Höchstens ${PARTICIPANT_BULK_MAX_IDS} Personen`),
+		subsidyEligible: z.boolean().nullable().optional(),
+		role: z.enum(PARTICIPANT_ROLES).optional()
+	})
+	.strict()
+	.refine((v) => v.subsidyEligible !== undefined || v.role !== undefined, {
+		message: 'Keine Änderung angegeben',
+		path: ['subsidyEligible']
+	});
+export type ParticipantBulkInput = z.infer<typeof participantBulkInput>;

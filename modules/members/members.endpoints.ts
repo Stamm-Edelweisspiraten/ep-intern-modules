@@ -1,6 +1,7 @@
-import { defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
-import { idParams, memberInput, memberListQuery } from './schemas';
+import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { bulkInput, idParams, memberInput, memberListQuery } from './schemas';
 import {
+	bulkUpdateMembers,
 	createMember,
 	deleteMember,
 	getMember,
@@ -39,6 +40,19 @@ export const memberEndpoints: ApiEndpoint[] = [
 		handler: ({ ctx, body }) => createMember(ctx, body)
 	}),
 	defineEndpoint({
+		method: 'POST',
+		path: '/members/bulk',
+		summary: 'Sammelaktion auf mehreren Mitgliedern (Gruppen, Stand, Einwilligungen, Löschen)',
+		tags,
+		permission: 'members.member.edit',
+		body: bulkInput,
+		handler: async ({ ctx, body }) => {
+			// Löschen braucht zusätzlich das Löschrecht
+			if (body.action === 'delete') await core.permissions.require(ctx, 'members.member.delete');
+			return bulkUpdateMembers(ctx, body);
+		}
+	}),
+	defineEndpoint({
 		method: 'PUT',
 		path: '/members/:id',
 		summary: 'Mitglied bearbeiten',
@@ -51,7 +65,7 @@ export const memberEndpoints: ApiEndpoint[] = [
 	defineEndpoint({
 		method: 'DELETE',
 		path: '/members/:id',
-		summary: 'Mitglied loeschen',
+		summary: 'Mitglied löschen',
 		tags,
 		permission: 'members.member.delete',
 		params: idParams,

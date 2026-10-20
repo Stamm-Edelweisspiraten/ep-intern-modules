@@ -18,6 +18,7 @@
 		payees,
 		canViewPayouts,
 		editable,
+		viaTreasury = false,
 		onchanged
 	}: {
 		actionId: string;
@@ -25,6 +26,8 @@
 		canViewPayouts: boolean;
 		/** Bearbeiten erlaubt (Rechte und Abrechnung offen) */
 		editable: boolean;
+		/** Kasse aktiv: Auszahlung erfolgt dort (Hinweis) */
+		viaTreasury?: boolean;
 		onchanged: () => void | Promise<void>;
 	} = $props();
 
@@ -93,6 +96,13 @@
 		{/if}
 	</div>
 
+	{#if viaTreasury}
+		<p class="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground" role="note">
+			Offene Auslagen gehen mit einer Zwischenabrechnung oder dem Abschluss der Abrechnung an die
+			Kasse (unter „Auszahlungen“). Sobald die Kasse die Überweisung bucht, wird die Person hier als
+			ausgezahlt markiert.
+		</p>
+	{/if}
 	{#if !canViewPayouts || payees === null}
 		<p class="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
 			Bankdaten sehen nur Personen mit Kassen-Berechtigung.

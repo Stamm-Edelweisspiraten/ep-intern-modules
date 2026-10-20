@@ -70,6 +70,7 @@
 
 <DataTable
 	caption="Aktionen"
+	mobile="cards"
 	{loading}
 	error={loadError}
 	empty={!items.length}
@@ -94,7 +95,10 @@
 	{#each items as a (a.id)}
 		<Table.Row>
 			<Table.Cell class="font-medium">
-				<a href={`/modules/actions/${a.id}`} class="text-primary hover:underline">{a.name}</a>
+				<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+					<a href={`/modules/actions/${a.id}`} class="text-primary hover:underline">{a.name}</a>
+					{#if a.isPast}<Badge variant="outline" class="shrink-0">Vergangen</Badge>{/if}
+				</div>
 			</Table.Cell>
 			<Table.Cell class="whitespace-nowrap">{fmtPeriod(a)}</Table.Cell>
 			<Table.Cell>{a.location ?? '–'}</Table.Cell>

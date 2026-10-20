@@ -1,9 +1,16 @@
+<script lang="ts" module>
+	/** „Weitere Buchung erfassen“: Wahl gilt, solange die Seite offen ist */
+	let rememberedKeepOpen = false;
+</script>
+
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
@@ -14,6 +21,7 @@
 		ENTRY_TYPES,
 		ENTRY_TYPE_LABELS,
 		INCOME_CATEGORIES,
+		MAX_PURPOSE_LENGTH,
 		MAX_RECEIPT_BYTES,
 		PAID_BY,
 		PAID_BY_LABELS,
@@ -31,6 +39,8 @@
 		entry = null,
 		payees,
 		canViewPayouts,
+		viaTreasury = false,
+		isPast = false,
 		onsaved
 	}: {
 		open?: boolean;
@@ -39,6 +49,10 @@
 		/** Auswahl der Personen (aus Empfängern bzw. vorhandenen Buchungen) */
 		payees: { id: string; name: string }[];
 		canViewPayouts: boolean;
+		/** Kasse aktiv: offene Stamm-Ausgaben werden dort überwiesen */
+		viaTreasury?: boolean;
+		/** Vergangene Aktion: neue Buchungen starten als erstattet bzw. bezahlt */
+		isPast?: boolean;
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
@@ -52,6 +66,12 @@
 	let entryDate = $state(today());
 	let paidBy = $state<string | null>('club');
 	let payeeId = $state<string | null>(null);
+	let clubPaid = $state(false);
+	let reimbursed = $state(false);
+	let recipientName = $state('');
+	let iban = $state('');
+	let bic = $state('');
+	let purpose = $state('');
 	let file = $state<File | null>(null);
 	let removeReceipt = $state(false);
 	let busy = $state(false);
@@ -59,10 +79,21 @@
 	let fieldErrors = $state<Record<string, string>>({});
 	let payeeOpen = $state(false);
 	let extraPayees = $state<{ id: string; name: string }[]>([]);
+	/** „Weitere Buchung erfassen“ (nur beim Anlegen): Dialog bleibt nach dem Speichern offen */
+	let keepOpen = $state(rememberedKeepOpen);
+	let savedCount = $state(0);
+	/** baut das Dateifeld nach jeder gespeicherten Buchung neu auf (leert die native Auswahl) */
+	let fileKey = $state(0);
+	const canKeepOpen = $derived(!entry);
 
+	// Nur beim Öffnen bzw. Wechsel der Buchung zurücksetzen – nicht beim Neuladen der Daten (untrack)
 	$effect(() => {
 		if (!open) return;
 		const e = entry;
+		untrack(() => resetAll(e));
+	});
+
+	function resetAll(e: AccountingEntry | null) {
 		type = e?.type ?? 'expense';
 		category = e?.category ?? null;
 		description = e?.description ?? '';
@@ -70,13 +101,38 @@
 		entryDate = e?.entryDate ?? today();
 		paidBy = e?.paidBy ?? 'club';
 		payeeId = e?.payee?.id ?? null;
+		// Neue Stamm-Ausgaben sind offen, bis sie überwiesen sind (vergangene Aktion: bereits bezahlt)
+		clubPaid = e ? e.clubPaidAt !== null : isPast;
+		reimbursed = e ? e.reimbursedAt !== null : isPast;
+		recipientName = e?.recipient?.name ?? '';
+		iban = '';
+		bic = e?.recipient?.bic ?? '';
+		purpose = e?.purpose ?? '';
 		file = null;
 		removeReceipt = false;
 		error = '';
 		fieldErrors = {};
 		busy = false;
 		extraPayees = [];
-	});
+		savedCount = 0;
+	}
+
+	/** Für die nächste Buchung leeren; Typ, Kategorie, Datum, „Bezahlt von“/Person und Haken bleiben stehen */
+	async function resetForNext() {
+		description = '';
+		amountCents = 0;
+		file = null;
+		removeReceipt = false;
+		recipientName = '';
+		iban = '';
+		bic = '';
+		purpose = '';
+		error = '';
+		fieldErrors = {};
+		fileKey++;
+		await tick();
+		document.getElementById('acc-description')?.focus();
+	}
 
 	const typeOptions = ENTRY_TYPES.map((t) => ({ value: t as string, label: ENTRY_TYPE_LABELS[t] }));
 	const paidByOptions = PAID_BY.map((p) => ({ value: p as string, label: PAID_BY_LABELS[p] }));
@@ -95,6 +151,11 @@
 		}))
 	);
 	const isExpense = $derived(type === 'expense');
+	const isClubExpense = $derived(isExpense && paidBy === 'club');
+	/** Von der Kasse überwiesen oder bereits erstattet: nur Ansicht */
+	const locked = $derived(entry?.clubPaidVia === 'treasury' || !!entry?.reimbursedAt);
+	const isReimbursedEntry = $derived(!!entry?.reimbursedAt);
+	const savedIban = $derived(entry?.recipient?.ibanMasked ?? null);
 
 	function onTypeChange() {
 		if (category && !categoryOptions.some((o) => o.value === category)) category = null;
@@ -111,7 +172,11 @@
 		amountCents: 'acc-amount',
 		entryDate: 'acc-date',
 		paidBy: 'acc-paidby',
-		payeeId: 'acc-payee'
+		payeeId: 'acc-payee',
+		recipientName: 'acc-recipient',
+		iban: 'acc-iban',
+		bic: 'acc-bic',
+		purpose: 'acc-purpose'
 	};
 
 	async function focusFirstError() {
@@ -152,7 +217,13 @@
 			amountCents,
 			entryDate,
 			paidBy: isExpense ? (paidBy ?? 'club') : 'club',
-			payeeId: isExpense && paidBy === 'person' ? payeeId : null
+			payeeId: isExpense && paidBy === 'person' ? payeeId : null,
+			clubPaid: isClubExpense ? clubPaid : true,
+			reimbursed: isExpense && paidBy === 'person' ? reimbursed : false,
+			recipientName: isClubExpense ? recipientName : null,
+			iban: isClubExpense && iban.trim() ? iban : null,
+			bic: isClubExpense ? bic : null,
+			purpose: isClubExpense ? purpose : null
 		});
 		if (!parsed.success) {
 			const errs: Record<string, string> = {};
@@ -160,7 +231,16 @@
 				const key = String(i.path[0] ?? '');
 				if (key && !errs[key]) errs[key] = i.message;
 			}
+			if (!errs.iban && isClubExpense && !clubPaid && !iban.trim() && !savedIban) {
+				errs.iban = 'IBAN fehlt';
+			}
 			fieldErrors = errs;
+			error = 'Bitte die markierten Felder prüfen.';
+			void focusFirstError();
+			return;
+		}
+		if (isClubExpense && !clubPaid && !iban.trim() && !savedIban) {
+			fieldErrors = { iban: 'IBAN fehlt' };
 			error = 'Bitte die markierten Felder prüfen.';
 			void focusFirstError();
 			return;
@@ -187,8 +267,14 @@
 			}
 			toast.success(entry ? 'Buchung gespeichert' : 'Buchung hinzugefügt');
 			if (receiptFailed) toast.error(`Beleg nicht gespeichert: ${receiptFailed}`);
-			open = false;
-			await onsaved();
+			if (!entry && keepOpen) {
+				savedCount++;
+				await onsaved();
+				await resetForNext();
+			} else {
+				open = false;
+				await onsaved();
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				error = err.message;
@@ -216,7 +302,13 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
 		<Dialog.Header>
-			<Dialog.Title>{entry ? 'Buchung bearbeiten' : 'Buchung hinzufügen'}</Dialog.Title>
+			<Dialog.Title
+				>{entry
+					? locked
+						? 'Buchung ansehen'
+						: 'Buchung bearbeiten'
+					: 'Buchung hinzufügen'}</Dialog.Title
+			>
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
 		</Dialog.Header>
 
@@ -230,6 +322,7 @@
 						bind:value={type}
 						onchange={onTypeChange}
 						invalid={!!fieldErrors.type}
+						disabled={locked}
 					/>
 				</FormField>
 				<FormField label="Kategorie *" id="acc-category" error={fieldErrors.category}>
@@ -239,6 +332,7 @@
 						options={categoryOptions}
 						bind:value={category}
 						invalid={!!fieldErrors.category}
+						disabled={locked}
 					/>
 				</FormField>
 			</div>
@@ -256,6 +350,7 @@
 					bind:value={description}
 					required
 					maxlength={200}
+					disabled={locked}
 					aria-invalid={!!fieldErrors.description}
 					aria-describedby={fieldErrors.description ? 'acc-description-error' : undefined}
 				/>
@@ -267,6 +362,7 @@
 						label="Betrag"
 						bind:cents={amountCents}
 						invalid={!!fieldErrors.amountCents}
+						disabled={locked}
 					/>
 				</FormField>
 				<FormField label="Datum *" id="acc-date" error={fieldErrors.entryDate}>
@@ -274,6 +370,7 @@
 						id="acc-date"
 						type="date"
 						bind:value={entryDate}
+						disabled={locked}
 						aria-invalid={!!fieldErrors.entryDate}
 						aria-describedby={fieldErrors.entryDate ? 'acc-date-error' : undefined}
 					/>
@@ -288,6 +385,7 @@
 						options={paidByOptions}
 						bind:value={paidBy}
 						invalid={!!fieldErrors.paidBy}
+						disabled={locked}
 					/>
 				</FormField>
 				{#if paidBy === 'person'}
@@ -308,38 +406,190 @@
 									bind:value={payeeId}
 									placeholder="Person wählen …"
 									invalid={!!fieldErrors.payeeId}
+									disabled={locked}
 								/>
 							</div>
 							{#if canViewPayouts}
-								<Button type="button" variant="outline" onclick={() => (payeeOpen = true)}>
+								<Button
+									type="button"
+									variant="outline"
+									disabled={locked}
+									onclick={() => (payeeOpen = true)}
+								>
 									<UserPlus /> Neue Person
 								</Button>
 							{/if}
 						</div>
 					</FormField>
+					{#if !entry || isReimbursedEntry}
+						<div class="flex items-start gap-2">
+							<Checkbox
+								id="acc-reimbursed"
+								checked={reimbursed}
+								onCheckedChange={(v) => (reimbursed = v === true)}
+								disabled={locked}
+								class="mt-0.5"
+							/>
+							<div class="grid gap-0.5">
+								<Label for="acc-reimbursed">Person wurde bereits erstattet</Label>
+								<p class="text-xs text-muted-foreground">
+									Die Kasse legt dafür keine Überweisung an.
+								</p>
+							</div>
+						</div>
+					{/if}
+					{#if isReimbursedEntry}
+						<p
+							class="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+							role="note"
+						>
+							Diese Auslage ist bereits erstattet und deshalb gesperrt. Zum Ändern nimm die
+							Erstattung der Person unter „Auslagen &amp; Auszahlung“ zurück. Das betrifft alle
+							Auslagen dieser Person und braucht das Recht „Auszahlungen“.
+						</p>
+					{/if}
+				{/if}
+				{#if isClubExpense}
+					<div class="flex items-start gap-2">
+						<Checkbox
+							id="acc-club-paid"
+							checked={clubPaid}
+							onCheckedChange={(v) => (clubPaid = v === true)}
+							disabled={locked}
+							class="mt-0.5"
+						/>
+						<div class="grid gap-0.5">
+							<Label for="acc-club-paid">Bereits bezahlt</Label>
+							<p class="text-xs text-muted-foreground">
+								{viaTreasury
+									? 'Ohne Haken bleibt die Ausgabe offen und erscheint in der Kasse als Überweisung.'
+									: 'Ohne Haken bleibt die Ausgabe offen, bis sie als bezahlt markiert wird.'}
+							</p>
+						</div>
+					</div>
+					{#if locked}
+						<p
+							class="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+							role="note"
+						>
+							Von der Kasse überwiesen{entry?.clubPaidAt
+								? ` am ${new Date(entry.clubPaidAt).toLocaleDateString('de-DE')}`
+								: ''}. Änderungen sind erst möglich, wenn die Zahlung in der Kasse gelöscht wird.
+						</p>
+					{/if}
+					{#if !clubPaid || recipientName || savedIban}
+						<fieldset class="grid gap-4 rounded-md border p-3">
+							<legend class="px-1 text-sm font-medium">Überweisung an</legend>
+							<FormField
+								label={clubPaid ? 'Empfänger' : 'Empfänger *'}
+								id="acc-recipient"
+								error={fieldErrors.recipientName}
+							>
+								<Input
+									id="acc-recipient"
+									bind:value={recipientName}
+									maxlength={100}
+									disabled={locked}
+									placeholder="z. B. Jugendherberge Bremen"
+									aria-invalid={!!fieldErrors.recipientName}
+									aria-describedby={fieldErrors.recipientName ? 'acc-recipient-error' : undefined}
+								/>
+							</FormField>
+							<div class="grid gap-4 sm:grid-cols-[1fr_10rem]">
+								<FormField
+									label={clubPaid || savedIban ? 'IBAN' : 'IBAN *'}
+									id="acc-iban"
+									error={fieldErrors.iban}
+									hint={savedIban
+										? `Gespeichert: ${savedIban} – leer lassen = unverändert`
+										: undefined}
+								>
+									<Input
+										id="acc-iban"
+										bind:value={iban}
+										maxlength={50}
+										disabled={locked}
+										autocomplete="off"
+										placeholder={savedIban ? 'unverändert' : 'DE00 0000 0000 0000 0000 00'}
+										aria-invalid={!!fieldErrors.iban}
+										aria-describedby={fieldErrors.iban ? 'acc-iban-error' : undefined}
+									/>
+								</FormField>
+								<FormField label="BIC" id="acc-bic" error={fieldErrors.bic}>
+									<Input
+										id="acc-bic"
+										bind:value={bic}
+										maxlength={11}
+										disabled={locked}
+										autocomplete="off"
+										aria-invalid={!!fieldErrors.bic}
+										aria-describedby={fieldErrors.bic ? 'acc-bic-error' : undefined}
+									/>
+								</FormField>
+							</div>
+							<FormField
+								label={clubPaid ? 'Verwendungszweck' : 'Verwendungszweck *'}
+								id="acc-purpose"
+								error={fieldErrors.purpose}
+								hint="Steht so auf der Überweisung, z. B. Rechnungsnummer."
+							>
+								<Input
+									id="acc-purpose"
+									bind:value={purpose}
+									maxlength={MAX_PURPOSE_LENGTH}
+									disabled={locked}
+									aria-invalid={!!fieldErrors.purpose}
+									aria-describedby={fieldErrors.purpose ? 'acc-purpose-error' : undefined}
+								/>
+							</FormField>
+						</fieldset>
+					{/if}
 				{/if}
 			{/if}
 
 			<div class="grid gap-1.5">
 				<span class="text-sm font-medium">Beleg</span>
-				<FileField
-					id="acc-receipt"
-					bind:file
-					accept={RECEIPT_CONTENT_TYPES.join(',')}
-					maxBytes={MAX_RECEIPT_BYTES}
-					existingName={entry?.receipt && !removeReceipt ? entry.receipt.name : null}
-					existingHref={receiptHref}
-					canRemove
-					onremove={() => (removeReceipt = true)}
-					disabled={busy}
-				/>
+				{#key fileKey}
+					<FileField
+						id="acc-receipt"
+						bind:file
+						accept={RECEIPT_CONTENT_TYPES.join(',')}
+						maxBytes={MAX_RECEIPT_BYTES}
+						existingName={entry?.receipt && !removeReceipt ? entry.receipt.name : null}
+						existingHref={receiptHref}
+						canRemove
+						onremove={() => (removeReceipt = true)}
+						disabled={busy}
+					/>
+				{/key}
 				<p class="text-xs text-muted-foreground">PDF oder Bild, maximal 10 MB.</p>
 			</div>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichere …' : 'Speichern'}</Button>
+			<Dialog.Footer class="items-center gap-3 sm:justify-between">
+				{#if canKeepOpen}
+					<div class="flex items-center gap-2">
+						<Checkbox
+							id="acc-keep-open"
+							checked={keepOpen}
+							onCheckedChange={(v) => {
+								keepOpen = v === true;
+								rememberedKeepOpen = keepOpen;
+							}}
+						/>
+						<Label for="acc-keep-open" class="font-normal">Weitere Buchung erfassen</Label>
+					</div>
+				{:else}
+					<span></span>
+				{/if}
+				<div class="flex items-center gap-2">
+					<Button type="button" variant="outline" onclick={() => (open = false)}>
+						{canKeepOpen && keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
+					</Button>
+					<Button type="submit" disabled={busy || locked}>
+						{busy ? 'Speichere …' : canKeepOpen && keepOpen ? 'Speichern & weiter' : 'Speichern'}
+					</Button>
+				</div>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

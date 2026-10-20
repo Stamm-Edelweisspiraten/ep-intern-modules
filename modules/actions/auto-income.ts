@@ -2,7 +2,7 @@ import { computeSubsidy } from './subsidy';
 import { deriveSubsidyCounts, type EligibilityParticipant } from './subsidy-eligibility';
 import type { AutoIncome, EntryType, FreizeitType, LodgingType } from './schemas';
 
-/** Reine Berechnung der automatischen Einnahmen (Beitraege, Zuschuss) aus Teilnehmerliste und Kalkulation. */
+/** Reine Berechnung der automatischen Einnahmen (Beiträge, Zuschuss) aus Teilnehmerliste und Kalkulation. */
 
 export interface AutoIncomeInput {
 	feeCents: number | null;
@@ -19,8 +19,15 @@ export interface AutoIncomeInput {
 		startsOn: string;
 		participants: EligibilityParticipant[];
 	};
-	/** Manuelle Buchungen (nur Typ und Kategorie noetig) */
+	/** Manuelle Buchungen (nur Typ und Kategorie nötig) */
 	entries: { type: EntryType; category: string }[];
+	/** Zahlungseingänge aus der Kasse: ersetzen die berechneten Beiträge (Ist statt Soll) */
+	treasury?: {
+		invoiceCount: number;
+		dueCents: number;
+		paidCents: number;
+		openCents: number;
+	} | null;
 }
 
 const nat = (v: unknown): number =>
@@ -28,17 +35,27 @@ const nat = (v: unknown): number =>
 
 export function computeAutoIncome(input: AutoIncomeInput): AutoIncome {
 	let contributions: AutoIncome['contributions'] = null;
-	if (input.feeCents != null) {
+	const treasury = input.treasury && input.treasury.invoiceCount > 0 ? input.treasury : null;
+	if (input.feeCents != null || treasury) {
 		const feeCents = nat(input.feeCents);
 		const teamFeeCents = nat(input.teamFeeCents);
 		const payingCount = nat(input.payingCount);
 		const teamCount = nat(input.teamCount);
+		const calculated = payingCount * feeCents + teamCount * teamFeeCents;
 		contributions = {
-			cents: payingCount * feeCents + teamCount * teamFeeCents,
+			cents: treasury ? nat(treasury.paidCents) : calculated,
 			payingCount,
 			teamCount,
 			feeCents,
-			teamFeeCents
+			teamFeeCents,
+			source: treasury ? 'treasury' : 'calculated',
+			...(treasury
+				? {
+						dueCents: nat(treasury.dueCents),
+						openCents: nat(treasury.openCents),
+						invoiceCount: nat(treasury.invoiceCount)
+					}
+				: {})
 		};
 	}
 	let subsidy: AutoIncome['subsidy'] = null;
@@ -69,7 +86,7 @@ export function computeAutoIncome(input: AutoIncomeInput): AutoIncome {
 	return { contributions, subsidy, overridden };
 }
 
-/** Automatisch zaehlende Betraege (ohne ueberschriebene Kategorien). */
+/** Automatisch zählende Beträge (ohne überschriebene Kategorien). */
 export function appliedAutoIncome(auto: AutoIncome | null | undefined): {
 	contributionsCents: number;
 	subsidyCents: number;

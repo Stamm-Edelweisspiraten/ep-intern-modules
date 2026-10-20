@@ -1,14 +1,17 @@
 import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import type { ParticipantPayment, TreasuryService } from '$lib/modules/treasury/contract';
 import { requireAccess, rowsOf } from './access';
 import { effectiveSubsidyEligible } from './subsidy-eligibility';
 import {
 	MODULE_ID,
 	idParams,
+	participantBulkInput,
 	participantInput,
 	participantParams,
 	type Diet,
 	type Participant,
+	type ParticipantBulkInput,
 	type ParticipantInput,
 	type ParticipantRole
 } from './schemas';
@@ -20,6 +23,18 @@ const COLUMNS = sql`id, action_id, contact_email, name, group_label, to_char(bir
 	bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes, source, created_at, updated_at`;
 
 const iso = (v: unknown): string => new Date(String(v)).toISOString();
+
+/** Zahlstand aus der Kasse; `null`, wenn die Kasse nicht aktiv bzw. nicht erreichbar ist. */
+async function loadPayments(actionId: string): Promise<Map<string, ParticipantPayment> | null> {
+	const svc = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+	if (!svc) return null;
+	try {
+		return new Map((await svc.participantPayments(actionId)).map((p) => [p.participantId, p]));
+	} catch (e) {
+		console.error('[actions] Kasse nicht erreichbar:', e);
+		return null;
+	}
+}
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 
 function toParticipant(r: Record<string, unknown>, startsOn: string): Participant {
@@ -85,7 +100,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			return mdb().transaction(async (tx) => {
+			const list = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const rows = await rowsOf(
 					tx,
@@ -95,12 +110,16 @@ export const participantEndpoints: ApiEndpoint[] = [
 				const startsOn = await startsOnOf(tx, id);
 				return rows.map((r) => toParticipant(r, startsOn));
 			});
+			// Kasse erst nach der Transaktion (PGlite: keine verschachtelten Modul-Transaktionen)
+			const payments = await loadPayments(id);
+			if (!payments) return list;
+			return list.map((p) => ({ ...p, payment: payments.get(p.id) ?? null }));
 		}
 	} as ApiEndpoint,
 	{
 		method: 'POST',
 		path: '/actions/:id/participants',
-		summary: 'Teilnehmer*in hinzufuegen',
+		summary: 'Teilnehmer*in hinzufügen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
@@ -134,9 +153,68 @@ export const participantEndpoints: ApiEndpoint[] = [
 		}
 	} as ApiEndpoint,
 	{
+		method: 'PATCH',
+		path: '/actions/:id/participants',
+		summary: 'Mehrere Teilnehmende auf einmal ändern (Zuschuss, Rolle)',
+		description:
+			'Setzt für alle `ids` die angegebenen Felder (`subsidyEligible`: true/false/null = automatisch, ' +
+			'`role`). Alle IDs müssen zu dieser Aktion gehören, sonst 404 und es wird nichts geändert.',
+		tags: TAGS,
+		permission: 'actions.action.view',
+		params: idParams,
+		body: participantBulkInput,
+		handler: async ({ ctx, params, body }) => {
+			const id = (params as { id: string }).id;
+			const input = body as ParticipantBulkInput;
+			const ids = [...new Set(input.ids)];
+			const updated = await mdb().transaction(async (tx) => {
+				await requireAccess(tx, ctx, id, 'edit');
+				const idList = sql.join(
+					ids.map((v) => sql`${v}`),
+					sql`, `
+				);
+				const found = await rowsOf(
+					tx,
+					sql`SELECT id FROM action_participants WHERE action_id = ${id} AND id IN (${idList})
+						FOR UPDATE`
+				);
+				// Fremde oder unbekannte IDs: alles oder nichts (Existenz anderer Aktionen nicht verraten)
+				if (found.length !== ids.length) throw errors.notFound('Teilnehmer*in nicht gefunden');
+				const sets = [];
+				if (input.subsidyEligible !== undefined) {
+					sets.push(sql`subsidy_eligible = ${input.subsidyEligible}`);
+				}
+				if (input.role !== undefined) sets.push(sql`role = ${input.role}`);
+				sets.push(sql`updated_at = now()`);
+				await tx.execute(
+					sql`UPDATE action_participants SET ${sql.join(sets, sql`, `)}
+						WHERE action_id = ${id} AND id IN (${idList})`
+				);
+				return found.length;
+			});
+			const fields = [
+				...(input.subsidyEligible !== undefined ? ['subsidyEligible'] : []),
+				...(input.role !== undefined ? ['role'] : [])
+			];
+			await core.audit.logFromContext(ctx, 'actions.participant.bulk_updated', {
+				target: id,
+				metadata: {
+					actionId: id,
+					count: updated,
+					fields,
+					...(input.subsidyEligible !== undefined
+						? { subsidyEligible: input.subsidyEligible }
+						: {}),
+					...(input.role !== undefined ? { role: input.role } : {})
+				}
+			});
+			return { updated };
+		}
+	} as ApiEndpoint,
+	{
 		method: 'PUT',
 		path: '/actions/:id/participants/:participantId',
-		summary: 'Teilnehmer*in aendern',
+		summary: 'Teilnehmer*in ändern',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: participantParams,

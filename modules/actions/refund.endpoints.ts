@@ -2,7 +2,14 @@ import { sql } from 'drizzle-orm';
 import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
 import { requireAccess, rowsOf } from './access';
 import { appliedAutoIncome } from './auto-income';
-import { assertOpen, closedInfo, loadAutoIncome, loadRefundSnapshot } from './accounting-core';
+import type { ActionContributions } from '$lib/modules/treasury/contract';
+import {
+	assertOpen,
+	closedInfo,
+	loadAutoIncome,
+	loadRefundSnapshot,
+	loadTreasuryContributions
+} from './accounting-core';
 import {
 	MIN_REFUND_PER_HEAD_CENTS,
 	computeManualRefund,
@@ -51,12 +58,13 @@ interface RefundState {
 
 const euros = (cents: number): string => `${Math.floor(cents / 100)}`;
 
-/** Berechnung fuer GET/POST; `canEdit` fliesst nur in `canBook` ein. */
+/** Berechnung für GET/POST; `canEdit` fließt nur in `canBook` ein. */
 async function loadRefund(
 	tx: Tx,
 	actionId: string,
 	canEdit: boolean,
-	manual?: { count: number; names?: string[] }
+	manual?: { count: number; names?: string[] },
+	treasury: ActionContributions | null = null
 ): Promise<RefundState> {
 	const closed = await closedInfo(tx, actionId);
 	const [act] = await rowsOf(
@@ -83,7 +91,8 @@ async function loadRefund(
 			manualEntries.map((r) => ({
 				type: String(r.type) as 'income' | 'expense',
 				category: String(r.category)
-			}))
+			})),
+			treasury
 		)
 	);
 	const surplusCents =
@@ -180,30 +189,38 @@ export const refundEndpoints: ApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/actions/:id/accounting/refund',
-		summary: 'Rueckzahlung des Ueberschusses an Teilnehmende berechnen / Stand lesen',
+		summary: 'Rückzahlung des Überschusses an Teilnehmende berechnen / Stand lesen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
 		query: refundQuerySchema,
 		handler: async ({ ctx, params, query }) => {
 			const id = (params as { id: string }).id;
+			const treasury = await loadTreasuryContributions(id);
 			const count = (query as { count?: number } | undefined)?.count;
 			return mdb().transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
-				return loadRefund(tx, id, access.level === 'edit', count == null ? undefined : { count });
+				return loadRefund(
+					tx,
+					id,
+					access.level === 'edit',
+					count == null ? undefined : { count },
+					treasury
+				);
 			});
 		}
 	} as ApiEndpoint,
 	{
 		method: 'POST',
 		path: '/actions/:id/accounting/refund',
-		summary: 'Rueckzahlung an Teilnehmende buchen',
+		summary: 'Rückzahlung an Teilnehmende buchen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
 		body: refundBodySchema,
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
+			const treasury = await loadTreasuryContributions(id);
 			const names = (body as { names?: string[] } | undefined)?.names;
 			const by = ctx.userId ?? null;
 			const state = await mdb().transaction(async (tx) => {
@@ -214,19 +231,20 @@ export const refundEndpoints: ApiEndpoint[] = [
 					tx,
 					id,
 					true,
-					names ? { count: names.length, names } : undefined
+					names ? { count: names.length, names } : undefined,
+					treasury
 				);
-				if (cur.booked) throw errors.conflict('Die Rueckzahlung ist bereits gebucht.');
-				if (cur.surplusCents <= 0) throw errors.conflict('Es gibt keinen Ueberschuss.');
+				if (cur.booked) throw errors.conflict('Die Rückzahlung ist bereits gebucht.');
+				if (cur.surplusCents <= 0) throw errors.conflict('Es gibt keinen Überschuss.');
 				if (cur.feeCents == null) {
 					throw errors.conflict('Der Beitrag der Aktion ist nicht festgelegt.');
 				}
 				if (cur.mode === 'auto' && cur.items.length === 0) {
-					throw errors.conflict('Es gibt keine zahlenden Teilnehmenden mit Rueckzahlung.');
+					throw errors.conflict('Es gibt keine zahlenden Teilnehmenden mit Rückzahlung.');
 				}
 				if (!cur.thresholdOk) {
 					throw errors.conflict(
-						'Pro Person bleiben hoechstens 5 EUR - eine Rueckzahlung lohnt sich nicht.'
+						'Pro Person bleiben höchstens 5 EUR - eine Rückzahlung lohnt sich nicht.'
 					);
 				}
 				const same = new Set(cur.items.map((i) => i.amountCents)).size === 1;
@@ -258,7 +276,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 							${cur.mode === 'manual' ? cur.count : cur.items.length},
 							${cur.remainderCents}, now(), ${by}, ${cur.mode})`
 				);
-				return loadRefund(tx, id, true);
+				return loadRefund(tx, id, true, undefined, treasury);
 			});
 			await core.audit.logFromContext(ctx, 'actions.accounting.refund_booked', {
 				target: id,
@@ -275,23 +293,24 @@ export const refundEndpoints: ApiEndpoint[] = [
 	{
 		method: 'DELETE',
 		path: '/actions/:id/accounting/refund',
-		summary: 'Rueckzahlungsbuchung zuruecknehmen',
+		summary: 'Rückzahlungsbuchung zurücknehmen',
 		tags: TAGS,
 		permission: 'actions.action.view',
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
+			const treasury = await loadTreasuryContributions(id);
 			const result = await mdb().transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await lockAction(tx, id);
 				await assertOpen(tx, id);
 				const snap = await loadRefundSnapshot(tx, id);
-				if (!snap) throw errors.notFound('Es ist keine Rueckzahlung gebucht');
+				if (!snap) throw errors.notFound('Es ist keine Rückzahlung gebucht');
 				await tx.execute(sql`DELETE FROM accounting_entries WHERE id = ${snap.entryId}`);
 				await tx.execute(sql`DELETE FROM accounting_refunds WHERE action_id = ${id}`);
 				await tx.execute(sql`DELETE FROM action_refund_booking WHERE action_id = ${id}`);
 				return {
-					state: await loadRefund(tx, id, true),
+					state: await loadRefund(tx, id, true, undefined, treasury),
 					count: snap.payingCount,
 					total: snap.totalCents
 				};

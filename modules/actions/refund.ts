@@ -1,6 +1,6 @@
 /**
- * Reine Rueckzahlungslogik: Ueberschuss gleichmaessig je zahlender Person, auf ganze Euro
- * abgerundet; der Rest bleibt in der Stammkasse. Alle Betraege Integer-Cent, nie NaN/negativ.
+ * Reine Rückzahlungslogik: Überschuss gleichmäßig je zahlender Person, auf ganze Euro
+ * abgerundet; der Rest bleibt in der Stammkasse. Alle Beträge Integer-Cent, nie NaN/negativ.
  */
 
 export interface RefundPayer {
@@ -19,9 +19,9 @@ export interface RefundResult {
 	items: RefundItem[];
 	totalCents: number;
 	remainderCents: number;
-	/** Groesster Einzelbetrag oder 0 */
+	/** Größter Einzelbetrag oder 0 */
 	perHeadCents: number;
-	/** Anzahl der Personen mit Rueckzahlung > 0 */
+	/** Anzahl der Personen mit Rückzahlung > 0 */
 	payingCount: number;
 }
 
@@ -60,10 +60,10 @@ export function computeRefund(input: {
 	};
 }
 
-/** Mindestbetrag: je Person muessen MEHR als 5 EUR bleiben, sonst lohnt sich die Rueckzahlung nicht. */
+/** Mindestbetrag: je Person müssen MEHR als 5 EUR bleiben, sonst lohnt sich die Rückzahlung nicht. */
 export const MIN_REFUND_PER_HEAD_CENTS = 500;
 
-/** Schwelle erfuellt: Betrag je Person strikt groesser als 5 EUR. */
+/** Schwelle erfüllt: Betrag je Person strikt größer als 5 EUR. */
 export const refundThresholdOk = (perHeadCents: number): boolean =>
 	safe(perHeadCents) > MIN_REFUND_PER_HEAD_CENTS;
 
@@ -74,7 +74,7 @@ export interface ManualRefundResult {
 	remainderCents: number;
 }
 
-/** Manuelle Personenzahl: Ueberschuss / Anzahl, auf ganze Euro abgerundet. */
+/** Manuelle Personenzahl: Überschuss / Anzahl, auf ganze Euro abgerundet. */
 export function computeManualRefund(input: {
 	surplusCents: number;
 	count: number;

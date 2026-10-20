@@ -1,10 +1,10 @@
 /**
- * Export/Import einer Aktion als ZIP (siehe action-archive.ts fuer Format und Grenzen).
+ * Export/Import einer Aktion als ZIP (siehe action-archive.ts für Format und Grenzen).
  *
  *   GET  /actions/:id/export   Basisrecht view + Lesezugriff
  *   POST /actions/import       Basisrecht create; multipart `file`
  *
- * Core-Services (storage, crypto, audit) laufen immer ausserhalb der Modul-Transaktion.
+ * Core-Services (storage, crypto, audit) laufen immer außerhalb der Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -56,6 +56,14 @@ const crypt = () => core.crypto.forModule(MODULE_ID);
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
+const decryptOrNull = (enc: unknown): string | null => {
+	if (enc == null) return null;
+	try {
+		return crypt().decrypt(String(enc));
+	} catch {
+		return null;
+	}
+};
 const bool = (v: unknown): boolean | null => (v == null ? null : Boolean(v));
 
 function jsonOf(v: unknown): unknown {
@@ -100,7 +108,7 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 		tx,
 		sql`SELECT name, description, location, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
 				starts_time, to_char(ends_on, 'YYYY-MM-DD') AS ends_on, ends_time,
-				fee_cents, team_fee_cents
+				fee_cents, team_fee_cents, is_past
 			FROM actions WHERE id = ${id}`
 	);
 	if (!action) throw errors.notFound('Aktion nicht gefunden');
@@ -130,7 +138,8 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 			tx,
 			sql`SELECT id, type, category, description, amount_cents,
 					to_char(entry_date, 'YYYY-MM-DD') AS entry_date, paid_by, payee_id,
-					receipt_path, receipt_name, receipt_content_type, reimbursed_at
+					receipt_path, receipt_name, receipt_content_type, reimbursed_at, reimbursed_upfront,
+					recipient_name, recipient_iban_enc, recipient_bic, purpose, club_paid_at
 				FROM accounting_entries WHERE action_id = ${id} ORDER BY entry_date, created_at, id`
 		),
 		refund: await loadRefundSnapshot(tx, id),
@@ -156,12 +165,12 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 	const withBank = core.permissions.has(ctx, 'actions.payout.view');
 	const canReadFiles = core.permissions.has(ctx, 'actions.storage.read');
 
-	// Export-IDs nach Reihenfolge: stabil ueber Export -> Import -> Export
+	// Export-IDs nach Reihenfolge: stabil über Export -> Import -> Export
 	const pid = new Map(rows.participants.map((p, i) => [String(p.id), `p${i + 1}`]));
 	const yid = new Map(rows.payees.map((p, i) => [String(p.id), `y${i + 1}`]));
 	const eid = new Map(rows.entries.map((e, i) => [String(e.id), `e${i + 1}`]));
 
-	// Belege (Core-Storage, ausserhalb der Transaktion)
+	// Belege (Core-Storage, außerhalb der Transaktion)
 	const receipts = new Map<string, Uint8Array>();
 	const receiptOf = new Map<string, { file: string; name: string; contentType: string }>();
 	let missing = 0;
@@ -221,6 +230,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			startsTime: str(rows.action.starts_time),
 			endsOn: str(rows.action.ends_on),
 			endsTime: str(rows.action.ends_time),
+			isPast: rows.action.is_past === true || rows.action.is_past === 't',
 			feeCents: rows.action.fee_cents == null ? null : Number(rows.action.fee_cents),
 			teamFeeCents: rows.action.team_fee_cents == null ? null : Number(rows.action.team_fee_cents)
 		},
@@ -306,7 +316,18 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			paidBy: String(e.paid_by) as 'club' | 'person',
 			payeeRef: e.payee_id == null ? null : (yid.get(String(e.payee_id)) ?? null),
 			receipt: receiptOf.get(String(e.id)) as ArchiveDocument['entries'][number]['receipt'],
-			reimbursedAt: iso(e.reimbursed_at)
+			reimbursedAt: iso(e.reimbursed_at),
+			...(e.reimbursed_upfront === true ? { reimbursedUpfront: true } : {}),
+			transfer:
+				e.type === 'expense' && e.paid_by === 'club' && e.category !== 'refund'
+					? {
+							recipientName: str(e.recipient_name),
+							...(withBank ? { iban: decryptOrNull(e.recipient_iban_enc) } : {}),
+							bic: str(e.recipient_bic),
+							purpose: str(e.purpose),
+							paidAt: iso(e.club_paid_at)
+						}
+					: null
 		})),
 		refund: rows.refund
 			? {
@@ -326,7 +347,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			: null,
 		accounting: { closed: !!rows.closed, closedAt: rows.closed?.at ?? null }
 	};
-	// Eintraege ohne exportierten Beleg tragen `receipt: null`
+	// Einträge ohne exportierten Beleg tragen `receipt: null`
 	for (const e of document.entries) e.receipt = e.receipt ?? null;
 
 	const counts = {
@@ -390,11 +411,11 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 	const ownerId = ctx.userId;
 
 	const form = await request.formData().catch(() => {
-		throw errors.badRequest('Ungueltige Formulardaten');
+		throw errors.badRequest('Ungültige Formulardaten');
 	});
 	const file = form.get('file');
 	if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-	if (file.size > MAX_ARCHIVE_BYTES) throw errors.tooLarge('Archiv ueberschreitet 200 MB');
+	if (file.size > MAX_ARCHIVE_BYTES) throw errors.tooLarge('Archiv überschreitet 200 MB');
 	const declared = (file.type || '').split(';')[0]!.trim().toLowerCase();
 	if (declared && !ARCHIVE_ZIP_TYPES.includes(declared)) {
 		validationError('Datei ist kein ZIP-Archiv');
@@ -410,7 +431,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 	}
 	const { manifest, document: doc, files } = parsed;
 
-	// Belege vorbereiten (Typ per Magic Bytes, Groesse)
+	// Belege vorbereiten (Typ per Magic Bytes, Größe)
 	const warnings: string[] = [];
 	const receiptJobs: {
 		exportId: string;
@@ -424,7 +445,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		referenced.add(e.receipt.file);
 		const bytes = files.get(e.receipt.file)!;
 		if (bytes.byteLength === 0 || bytes.byteLength > MAX_RECEIPT_BYTES) {
-			validationError('Ein Beleg ist leer oder groesser als 10 MB');
+			validationError('Ein Beleg ist leer oder größer als 10 MB');
 		}
 		const type = detectReceiptType(bytes);
 		if (!type) validationError('Ein Beleg hat keinen erlaubten Dateityp (PDF, JPEG, PNG, WebP)');
@@ -441,7 +462,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		await core.permissions.require(ctx, 'actions.storage.write');
 	}
 
-	// IBANs pruefen und verschluesseln (Core-Crypto, ausserhalb der Transaktion)
+	// IBANs prüfen und verschlüsseln (Core-Crypto, außerhalb der Transaktion)
 	const canPayout = core.permissions.has(ctx, 'actions.payout.view');
 	const payeeIban = new Map<string, { enc: string; last: string }>();
 	let ibanSkipped = 0;
@@ -459,6 +480,23 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		}
 		const normalized = normalizeIban(p.iban);
 		payeeIban.set(p.id, { enc: crypt().encrypt(normalized), last: ibanLast(normalized) });
+	}
+	const entryIban = new Map<string, { enc: string; last: string }>();
+	for (const e of doc.entries) {
+		const iban = e.transfer?.iban;
+		if (!iban) continue;
+		if (!canPayout) {
+			ibanSkipped += 1;
+			continue;
+		}
+		if (!isValidIban(iban)) {
+			warnings.push(
+				`Die IBAN der Ausgabe „${e.description}“ ist ungültig; sie wurde ohne IBAN angelegt.`
+			);
+			continue;
+		}
+		const normalized = normalizeIban(iban);
+		entryIban.set(e.id, { enc: crypt().encrypt(normalized), last: ibanLast(normalized) });
 	}
 	if (ibanSkipped > 0) {
 		warnings.push(
@@ -484,7 +522,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 	const yids = new Map(doc.payees.map((p) => [p.id, crypto.randomUUID()]));
 	const eids = new Map(doc.entries.map((e) => [e.id, crypto.randomUUID()]));
 
-	// Belege hochladen (erst Storage, dann DB; bei Fehlern best-effort aufraeumen)
+	// Belege hochladen (erst Storage, dann DB; bei Fehlern best-effort aufräumen)
 	const uploaded: string[] = [];
 	const receiptPath = new Map<string, { path: string; name: string; contentType: string }>();
 	const cleanup = async () => {
@@ -516,11 +554,11 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 			const a = doc.action;
 			await tx.execute(
 				sql`INSERT INTO actions (id, name, description, location, starts_on, starts_time, ends_on,
-						ends_time, owner_id, fee_cents, team_fee_cents, fee_applied_at, fee_applied_by)
+						ends_time, owner_id, fee_cents, team_fee_cents, fee_applied_at, fee_applied_by, is_past)
 					VALUES (${actionId}, ${a.name}, ${a.description}, ${a.location}, ${a.startsOn},
 						${a.startsTime}, ${a.endsOn}, ${a.endsTime}, ${ownerId}, ${a.feeCents},
 						${a.teamFeeCents}, ${a.feeCents == null ? null : now},
-						${a.feeCents == null ? null : ownerId})`
+						${a.feeCents == null ? null : ownerId}, ${a.isPast ?? false})`
 			);
 
 			const c = doc.calculation;
@@ -593,15 +631,24 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 
 			for (const [i, e] of doc.entries.entries()) {
 				const r = receiptPath.get(e.id);
+				const t = e.transfer ?? null;
+				const iban = entryIban.get(e.id);
+				// Stamm-Ausgaben älterer Archive (ohne `transfer`) gelten als bezahlt
+				const clubExpense = e.type === 'expense' && e.paidBy === 'club' && e.category !== 'refund';
+				const paidAt = t ? t.paidAt : clubExpense ? stamp(i) : null;
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
 							amount_cents, entry_date, paid_by, payee_id, receipt_path, receipt_name,
-							receipt_content_type, reimbursed_at, created_by, created_at, updated_at)
+							receipt_content_type, reimbursed_at, reimbursed_upfront, created_by, created_at, updated_at,
+							recipient_name, recipient_iban_enc, recipient_iban_last4, recipient_bic, purpose,
+							club_paid_at, club_paid_via)
 						VALUES (${eids.get(e.id)!}, ${actionId}, ${e.type}, ${e.category}, ${e.description},
 							${e.amountCents}, ${e.entryDate}, ${e.paidBy},
 							${e.payeeRef ? yids.get(e.payeeRef)! : null}, ${r?.path ?? null},
-							${r?.name ?? null}, ${r?.contentType ?? null}, ${e.reimbursedAt}, ${ownerId},
-							${stamp(i)}, ${stamp(i)})`
+							${r?.name ?? null}, ${r?.contentType ?? null}, ${e.reimbursedAt}, ${e.reimbursedUpfront === true}, ${ownerId},
+							${stamp(i)}, ${stamp(i)}, ${t?.recipientName ?? null}, ${iban?.enc ?? null},
+							${iban?.last ?? null}, ${t?.bic ?? null}, ${t?.purpose ?? null}, ${paidAt},
+							${paidAt ? 'manual' : null})`
 				);
 			}
 
@@ -668,7 +715,7 @@ export const exportImportEndpoints: ApiEndpoint[] = [
 		path: '/actions/import',
 		summary: 'Aktion aus einem ZIP-Export importieren (multipart, Feld "file")',
 		description:
-			'Legt immer eine neue Aktion an (Eigentuemer*in = Importierende*r). Mit Belegen ist actions.storage.write noetig. Hoechstens 200 MB.',
+			'Legt immer eine neue Aktion an (Eigentümer*in = Importierende*r). Mit Belegen ist actions.storage.write nötig. Höchstens 200 MB.',
 		tags: TAGS,
 		permission: 'actions.action.create',
 		handler: async ({ ctx, request }) => importAction(ctx, request)

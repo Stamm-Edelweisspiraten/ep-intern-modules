@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Loader from '@lucide/svelte/icons/loader-circle';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -30,7 +31,9 @@
 	let fieldKey = $state(0);
 
 	$effect(() => {
-		if (!open && !busy) reset();
+		// `reset()` liest und schreibt `fieldKey` – ohne `untrack` löst sich der Effekt endlos selbst aus
+		// (`effect_update_depth_exceeded`, Aktionsliste blieb im Ladezustand)
+		if (!open && !busy) untrack(reset);
 	});
 
 	function reset() {

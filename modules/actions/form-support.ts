@@ -1,6 +1,6 @@
 /**
- * Reine Hilfen fuer das Anmeldeformular (ohne Server-/Svelte-Imports, in Tests nutzbar):
- * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschluessel, CSV.
+ * Reine Hilfen für das Anmeldeformular (ohne Server-/Svelte-Imports, in Tests nutzbar):
+ * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschlüssel, CSV.
  */
 import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
 import { DIETS, DIET_LABELS, STANDARD_FORM_KEYS, ageAt, type FormStatus } from './schemas';
@@ -10,6 +10,15 @@ const K = STANDARD_FORM_KEYS;
 export const NO_FEE_TEXT = 'den noch festzulegenden Beitrag';
 
 // --- Standarddefinition -----------------------------------------------------
+
+/** Standardfelder, die an Zusatzfelder des Mitglieds gebunden sind (Vorbelegung + Rückschreiben) */
+export const MEMBER_KEY_BY_STANDARD: Record<string, string> = {
+	[K.diet]: 'ernaehrung',
+	[K.allergies]: 'allergien'
+};
+
+/** Stammdatenfelder, die bei einer Anmeldung mit Mitglied aus dem Mitglied kommen (nicht abgefragt) */
+export const IDENTITY_KEYS: string[] = [K.name, K.group, K.birthDate, K.bremenResident, K.email];
 
 function yesNoOptions() {
 	return [
@@ -62,6 +71,7 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Ernährung',
 			required: true,
 			locked: true,
+			memberKey: MEMBER_KEY_BY_STANDARD[K.diet],
 			options: dietOptions()
 		},
 		{
@@ -70,7 +80,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			type: 'textarea',
 			label: 'Unverträglichkeiten und Allergien',
 			required: false,
-			locked: true
+			locked: true,
+			memberKey: MEMBER_KEY_BY_STANDARD[K.allergies]
 		},
 		{
 			id: K.notes,
@@ -111,8 +122,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 }
 
 /**
- * Stellt die Pflicht-Standardfelder sicher: fehlende werden ergaenzt, `locked` bleibt gesetzt,
- * der Typ gesperrter Felder aendert sich nicht (sonst Standardfeld), feste Optionen werden erzwungen.
+ * Stellt die Pflicht-Standardfelder sicher: fehlende werden ergänzt, `locked` bleibt gesetzt,
+ * der Typ gesperrter Felder ändert sich nicht (sonst Standardfeld), feste Optionen werden erzwungen.
  */
 export function mergeStandardFields(
 	def: FormDefinition,
@@ -132,6 +143,9 @@ export function mergeStandardFields(
 			fields.push(std);
 		} else {
 			const merged = { ...f, locked: true } as FieldDefinition;
+			if (MEMBER_KEY_BY_STANDARD[f.key]) {
+				merged.memberKey = MEMBER_KEY_BY_STANDARD[f.key];
+			}
 			if (f.key === K.diet || f.key === K.bremenResident) {
 				(merged as { options: unknown }).options = (std as { options: unknown }).options;
 			}
@@ -148,7 +162,7 @@ export function mergeStandardFields(
 	return { ...def, version: 1, fields };
 }
 
-/** Oeffentliche Sicht: ohne `hidden`-Felder, Datenschutz-Link und gerenderter Disclaimer gesetzt. */
+/** Öffentliche Sicht: ohne `hidden`-Felder, Datenschutz-Link und gerenderter Disclaimer gesetzt. */
 export function toPublicDefinition(
 	def: FormDefinition,
 	runtime: { privacyUrl: string | null; disclaimer: string }
@@ -166,6 +180,68 @@ export function toPublicDefinition(
 		}
 	}
 	return { ...def, fields };
+}
+
+// --- Anmeldung mit Mitglied ---------------------------------------------------
+
+/** Wohnort Bremen/Bremerhaven (Land DE, Ort ohne Beachtung der Groß-/Kleinschreibung) */
+export function isBremenCity(city: string, country: string): boolean | null {
+	if (!city.trim()) return null;
+	if (country && country !== 'DE') return false;
+	return /^(freie hansestadt )?(bremen|bremerhaven)$/i.test(city.trim());
+}
+
+/** Definition ohne die Stammdatenfelder, die aus dem Mitglied kommen (für Validierung/Anzeige). */
+export function withoutIdentityFields(def: FormDefinition): FormDefinition {
+	return { ...def, fields: def.fields.filter((f) => !IDENTITY_KEYS.includes(f.key)) };
+}
+
+export interface MemberForRegistration {
+	firstName: string;
+	lastName: string;
+	birthDate: string;
+	groups: { name: string }[];
+	email: string | null;
+	city: string;
+	country: string;
+	custom: Record<string, unknown>;
+}
+
+/** Werte der Stammdatenfelder, die der SERVER aus dem Mitglied setzt (Client-Angaben werden ignoriert). */
+export function identityValues(m: MemberForRegistration, accountEmail: string | null): FormValues {
+	const bremen = isBremenCity(m.city, m.country);
+	const groups = m.groups.map((g) => g.name).join(', ');
+	return {
+		[K.name]: `${m.firstName} ${m.lastName}`.replace(/\s+/g, ' ').trim(),
+		[K.group]: groups ? groups.slice(0, 150) : null,
+		[K.birthDate]: m.birthDate,
+		[K.bremenResident]: bremen === null ? null : bremen ? 'yes' : 'no',
+		[K.email]: m.email ?? accountEmail
+	};
+}
+
+/** Vorbelegung: Wert je Formularfeld aus den Zusatzfeldern des Mitglieds (`memberKey`). */
+export function prefillValues(def: FormDefinition, custom: Record<string, unknown>): FormValues {
+	const out: FormValues = {};
+	for (const f of def.fields) {
+		if (!f.memberKey || f.hidden || f.type === 'info') continue;
+		const v = custom[f.memberKey];
+		out[f.key] =
+			typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || Array.isArray(v)
+				? (v as FormValues[string])
+				: null;
+	}
+	return out;
+}
+
+/** Zu speichernde Zusatzfeld-Werte: je gebundenem, sichtbarem Feld der eingegebene Wert unter dem `memberKey`. */
+export function memberUpdates(def: FormDefinition, values: FormValues): FormValues {
+	const out: FormValues = {};
+	for (const f of def.fields) {
+		if (!f.memberKey || f.hidden || f.type === 'info' || !(f.key in values)) continue;
+		out[f.memberKey] = values[f.key] ?? null;
+	}
+	return out;
 }
 
 // --- Disclaimer -------------------------------------------------------------
@@ -244,7 +320,7 @@ export interface MappedAnswers {
 	allergies: string | null;
 	notes: string | null;
 	email: string | null;
-	/** Alle uebrigen Antworten (nur Felder der Definition) */
+	/** Alle übrigen Antworten (nur Felder der Definition) */
 	answers: Record<string, unknown>;
 }
 
@@ -277,7 +353,7 @@ export function mapStandardAnswers(def: FormDefinition, values: FormValues): Map
 	};
 }
 
-/** Geburtsdatum plausibel (nicht in der Zukunft, hoechstens 120 Jahre)? */
+/** Geburtsdatum plausibel (nicht in der Zukunft, höchstens 120 Jahre)? */
 export function isPlausibleBirthDate(birthIso: string, todayIso: string): boolean {
 	if (birthIso > todayIso) return false;
 	const age = ageAt(birthIso, todayIso);
@@ -288,33 +364,60 @@ export function normalizeDedupeKey(name: string, birthDate: string): string {
 	return `${name.trim().toLowerCase().replace(/\s+/g, ' ')}|${birthDate.trim()}`;
 }
 
-// --- Bestaetigungs-Mail -----------------------------------------------------
+// --- Bestätigungs-Mail -----------------------------------------------------
 
+const escapeHtml = (v: string) =>
+	v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Anmeldebestätigung. Mit `invoice` (Kasse aktiv) folgt nach den Angaben die Rechnung mit
+ * Zahlungskasten (Bankdaten, Betrag, Verwendungszweck = Rechnungsnummer) und Hinweis auf das PDF.
+ */
 export function buildConfirmationMail(p: {
 	actionName: string;
 	name: string;
 	groupLabel: string | null;
 	birthDate: string | null;
 	disclaimer: string;
-}): { subject: string; text: string } {
+	invoice?: { number: string; totalCents: number; paymentText: string; paymentHtml: string } | null;
+}): { subject: string; text: string; html: string } {
 	const birth = p.birthDate ? p.birthDate.split('-').reverse().join('.') : '';
-	const lines = [
-		`Hallo ${p.name},`,
-		'',
-		`vielen Dank für die Anmeldung zu „${p.actionName}“. Wir haben folgende Angaben erhalten:`,
-		'',
+	const details = [
 		`Name: ${p.name}`,
 		...(p.groupLabel ? [`Gruppe: ${p.groupLabel}`] : []),
-		...(birth ? [`Geburtsdatum: ${birth}`] : []),
-		'',
-		p.disclaimer,
-		'',
-		'Herzliche Grüße',
-		'Dein Team'
+		...(birth ? [`Geburtsdatum: ${birth}`] : [])
 	];
+	const euro = p.invoice ? `${(p.invoice.totalCents / 100).toFixed(2).replace('.', ',')} €` : '';
+	const invoiceIntro = p.invoice
+		? `Für die Teilnahme stellen wir dir ${euro} in Rechnung (Rechnung ${p.invoice.number}, als PDF im Anhang). Bitte überweise den Betrag mit diesen Angaben:`
+		: '';
+	const paragraphs: { text?: string; html?: string }[] = [
+		{ text: `Hallo ${p.name},` },
+		{
+			text: `vielen Dank für die Anmeldung zu „${p.actionName}“. Wir haben folgende Angaben erhalten:`
+		},
+		{ text: details.join('\n') },
+		{ text: p.disclaimer },
+		...(p.invoice
+			? [{ text: invoiceIntro }, { text: p.invoice.paymentText, html: p.invoice.paymentHtml }]
+			: []),
+		{ text: 'Herzliche Grüße und Gut Pfad\nDein Team' }
+	];
+	const html = paragraphs
+		.filter((x) => x.text?.trim() || x.html)
+		.map((x) =>
+			x.html
+				? x.html
+				: `<p style="margin:0 0 16px;">${escapeHtml(x.text!.trim()).replace(/\n/g, '<br/>')}</p>`
+		)
+		.join('');
 	return {
 		subject: `Anmeldebestätigung: ${p.actionName}`.replace(/[\r\n]+/g, ' ').slice(0, 200),
-		text: lines.join('\n')
+		text: paragraphs
+			.map((x) => x.text?.trim() ?? '')
+			.filter(Boolean)
+			.join('\n\n'),
+		html
 	};
 }
 

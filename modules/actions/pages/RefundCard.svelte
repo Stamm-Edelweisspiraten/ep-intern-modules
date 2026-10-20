@@ -18,7 +18,7 @@
 		actionId: string;
 		/** Bearbeitungsrecht und Abrechnung offen */
 		editable: boolean;
-		/** Aendert sich, wenn die Buchungen neu geladen wurden */
+		/** Ändert sich, wenn die Buchungen neu geladen wurden */
 		reloadKey?: number;
 		onchanged: () => void | Promise<void>;
 	} = $props();
