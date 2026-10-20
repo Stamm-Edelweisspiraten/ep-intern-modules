@@ -24,5 +24,16 @@ export default {
 			permission: 'members.own.view',
 			component: () => import('./pages/ProfileMailPrefs.svelte')
 		}
+	],
+	dashboardWidgets: [
+		{
+			id: 'mine',
+			title: 'Meine Mitglieder',
+			description: 'Verknüpfte Mitglieder mit Gruppen und nächstem Geburtstag',
+			order: 20,
+			size: 'sm',
+			permission: 'members.own.view',
+			component: () => import('./pages/widgets/MyMembersWidget.svelte')
+		}
 	]
 } satisfies ModuleUi;

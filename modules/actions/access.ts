@@ -90,3 +90,17 @@ export function visibleActionsFilter(ctx: RequestContext) {
 		SELECT 1 FROM action_shares s WHERE s.action_id = a.id AND s.user_id = ${uid}
 	))`;
 }
+
+/**
+ * SQL-Bedingung (Alias `a`) für Listen mit Bearbeiten-Zugriff: System/`edit-all` → alle,
+ * sonst Eigentümer*in oder Freigabe `edit` (gleiche Regeln wie `resolveAccess`).
+ */
+export function editableActionsFilter(ctx: RequestContext) {
+	if (ctx.actor.type === 'system' || core.permissions.has(ctx, 'actions.action.edit-all')) {
+		return sql`TRUE`;
+	}
+	const uid = ctx.userId ?? '';
+	return sql`(a.owner_id = ${uid} OR EXISTS (
+		SELECT 1 FROM action_shares s WHERE s.action_id = a.id AND s.user_id = ${uid} AND s.level = 'edit'
+	))`;
+}

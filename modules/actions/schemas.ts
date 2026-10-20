@@ -1425,3 +1425,37 @@ export const participantBulkInput = z
 		path: ['subsidyEligible']
 	});
 export type ParticipantBulkInput = z.infer<typeof participantBulkInput>;
+
+// --- Dashboard („meine“ Anmeldungen, offene Abrechnungen) ------------------------
+
+/** Kommende Aktion, bei der der Aufrufer oder ein verknüpftes Mitglied teilnimmt */
+export interface MyRegistration {
+	actionId: string;
+	name: string;
+	/** `YYYY-MM-DD` */
+	startsOn: string;
+	endsOn: string | null;
+	startsTime: string | null;
+	endsTime: string | null;
+	location: string | null;
+	/** Namen der eigenen angemeldeten Personen */
+	people: string[];
+	/** Summe der Beiträge dieser Personen; `null`, wenn (noch) kein Beitrag übernommen ist */
+	feeCents: number | null;
+}
+
+/** Vergangene Aktion mit Bearbeiten-Zugriff, deren Abrechnung noch nicht abgeschlossen ist */
+export interface OpenAccounting {
+	actionId: string;
+	name: string;
+	/** Ende bzw. Start (`YYYY-MM-DD`) */
+	endsOn: string;
+	entryCount: number;
+	/** Ausgaben ohne Beleg (ohne Rückzahlung) */
+	missingReceipts: number;
+	/** Auslagen von Personen, die noch nicht erstattet sind */
+	openReimbursements: number;
+}
+
+/** Höchstzahl Einträge der Dashboard-Listen */
+export const DASHBOARD_LIST_LIMIT = 20;

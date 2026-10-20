@@ -3,6 +3,7 @@ import { defineModule } from '$lib/sdk/server';
 import { linksEndpoints } from './links.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { nodesEndpoints } from './nodes.endpoints';
+import { recentEndpoints } from './recent.endpoints';
 import { sharesEndpoints } from './shares.endpoints';
 import { trashEndpoints } from './trash.endpoints';
 import { uploadEndpoints } from './upload.endpoints';
@@ -89,6 +90,7 @@ export default defineModule({
 	endpoints: [
 		...linksEndpoints,
 		...metaEndpoints,
+		...recentEndpoints,
 		...trashEndpoints,
 		...sharesEndpoints,
 		...uploadEndpoints,

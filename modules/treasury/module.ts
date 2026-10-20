@@ -9,6 +9,7 @@ import { historyEndpoints } from './history.endpoints';
 import { runScheduledAnnualFees } from './annual-fee.service';
 import { importEndpoints } from './import.endpoints';
 import { invoiceEndpoints } from './invoices.endpoints';
+import { myEndpoints } from './my.endpoints';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_extensions.sql?raw';
 import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
@@ -46,10 +47,12 @@ export default defineModule({
 		name: 'Kasse',
 		description:
 			'Konten und Buchungen, offene Beiträge aus Aktionen, Rechnungen, Zahlungserinnerungen und Kassenberichte.',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: ['members', 'actions'],
 		/** Benachrichtigungen an das Amt „Kasse“ (`office-notify.ts`), nur wenn `offices` aktiv ist */
 		optionalDependencies: ['offices'],
+		/** Mitglieder sehen die offenen Rechnungen ihrer verknüpften Mitglieder (Dashboard) */
+		defaultRoleGrants: { Mitglied: ['treasury.own.view'] },
 		offices: [
 			{
 				key: 'kasse',
@@ -72,6 +75,7 @@ export default defineModule({
 		],
 		permissions: [
 			'treasury.cash.view',
+			'treasury.own.view',
 			'treasury.transaction.edit',
 			'treasury.transaction.delete',
 			'treasury.account.manage',
@@ -91,6 +95,8 @@ export default defineModule({
 		permissionDescriptions: {
 			'treasury.cash.view':
 				'Kasse ansehen: Konten, Buchungen, Rechnungen und Belege; Grundrecht für das Modul',
+			'treasury.own.view':
+				'Eigene offene Rechnungen sehen (der verknüpften Mitglieder), z. B. auf dem Dashboard',
 			'treasury.transaction.edit':
 				'Buchungen und Umbuchungen erfassen, Zahlungen zuordnen, Kontoauszüge importieren',
 			'treasury.transaction.delete': 'Buchungen löschen',
@@ -293,6 +299,7 @@ export default defineModule({
 	backup: treasuryBackup,
 	resetUsers,
 	endpoints: [
+		...myEndpoints,
 		...accountEndpoints,
 		...transactionEndpoints,
 		...invoiceEndpoints,
