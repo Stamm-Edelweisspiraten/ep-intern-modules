@@ -121,8 +121,9 @@
 	const canEmbedPdf = $derived.by(() => {
 		if (typeof navigator === 'undefined') return true;
 		const nav = navigator as Navigator & { pdfViewerEnabled?: boolean };
-		if (typeof nav.pdfViewerEnabled === 'boolean') return nav.pdfViewerEnabled;
-		return !(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+		// Touch-Geräte: iOS zeigt im iframe nur die erste Seite, Android-Chrome nichts
+		if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) return false;
+		return typeof nav.pdfViewerEnabled === 'boolean' ? nav.pdfViewerEnabled : true;
 	});
 
 	// ---------- Bild ----------

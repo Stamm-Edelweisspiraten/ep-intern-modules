@@ -12,7 +12,13 @@
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, MoneyInput, formatEuro, openProtectedFile } from '$lib/components/layout';
+	import {
+		FormField,
+		MoneyInput,
+		PdfEmbed,
+		formatEuro,
+		openProtectedFile
+	} from '$lib/components/layout';
 	import {
 		CALC_CATEGORIES,
 		CALC_CATEGORY_LABELS,
@@ -348,11 +354,11 @@
 							class="bg-muted/30 max-h-96 w-full rounded-md border object-contain"
 						/>
 					{:else if previewUrl}
-						<iframe
-							src={previewUrl}
+						<PdfEmbed
+							url={previewUrl}
 							title="Beleg {submission.receipt.name}"
-							class="h-96 w-full rounded-md border"
-						></iframe>
+							fileName={submission.receipt.name}
+						/>
 					{/if}
 				</section>
 

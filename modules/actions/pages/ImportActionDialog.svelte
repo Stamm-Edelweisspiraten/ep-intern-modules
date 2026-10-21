@@ -97,7 +97,7 @@
 				<p class="text-sm">
 					<strong>{result.name}</strong> wurde importiert.
 				</p>
-				<ul class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+				<ul class="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
 					{#each countRows as [label, n] (label)}
 						<li class="flex justify-between gap-2 border-b py-1">
 							<span class="text-muted-foreground">{label}</span><span>{n}</span>

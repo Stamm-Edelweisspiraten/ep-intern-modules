@@ -39,6 +39,7 @@
 
 <DataTable
 	caption="Empfänger des Jahresbeitrags"
+	mobile="cards"
 	title={mode === 'catch-up' ? 'Noch nicht abgerechnet' : 'Empfänger'}
 	description={mode === 'catch-up'
 		? 'Mitglieder, die seit dem Versand dazugekommen sind und noch keine Rechnung für dieses Jahr haben.'

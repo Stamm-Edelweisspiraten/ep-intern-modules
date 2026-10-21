@@ -273,33 +273,35 @@
 			<Table.Row class="bg-muted/30 hover:bg-muted/30">
 				<Table.Cell colspan={8} data-label-manual id={`supplier-items-${o.id}`}>
 					<div class="space-y-2 py-1">
-						<table class="w-full text-sm">
-							<caption class="sr-only">Positionen von {o.number}</caption>
-							<thead class="text-xs text-muted-foreground">
-								<tr>
-									<th class="py-1 pr-2 text-left font-medium">Artikel</th>
-									<th class="px-2 py-1 text-right font-medium">Bestellt</th>
-									<th class="px-2 py-1 text-right font-medium">Eingegangen</th>
-									<th class="px-2 py-1 text-right font-medium">Storniert</th>
-									<th class="px-2 py-1 text-right font-medium">Offen</th>
-									<th class="py-1 pl-2 text-right font-medium">Preis</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each o.items as it (it.id)}
-									<tr class="border-t border-border/60">
-										<td class="py-1 pr-2">{itemName(it.articleTitle, it.variantLabel)}</td>
-										<td class="px-2 py-1 text-right tabular-nums">{it.quantity}</td>
-										<td class="px-2 py-1 text-right tabular-nums">{it.receivedQty}</td>
-										<td class="px-2 py-1 text-right tabular-nums">{it.cancelledQty}</td>
-										<td class="px-2 py-1 text-right font-medium tabular-nums">{it.openQty}</td>
-										<td class="py-1 pl-2 text-right tabular-nums">
-											{it.unitCostCents != null ? formatEuro(it.unitCostCents) : '–'}
-										</td>
+						<div class="overflow-x-auto">
+							<table class="w-full min-w-[26rem] text-sm">
+								<caption class="sr-only">Positionen von {o.number}</caption>
+								<thead class="text-xs text-muted-foreground">
+									<tr>
+										<th class="py-1 pr-2 text-left font-medium">Artikel</th>
+										<th class="px-2 py-1 text-right font-medium">Bestellt</th>
+										<th class="px-2 py-1 text-right font-medium">Eingegangen</th>
+										<th class="px-2 py-1 text-right font-medium">Storniert</th>
+										<th class="px-2 py-1 text-right font-medium">Offen</th>
+										<th class="py-1 pl-2 text-right font-medium">Preis</th>
 									</tr>
-								{/each}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{#each o.items as it (it.id)}
+										<tr class="border-t border-border/60">
+											<td class="py-1 pr-2">{itemName(it.articleTitle, it.variantLabel)}</td>
+											<td class="px-2 py-1 text-right tabular-nums">{it.quantity}</td>
+											<td class="px-2 py-1 text-right tabular-nums">{it.receivedQty}</td>
+											<td class="px-2 py-1 text-right tabular-nums">{it.cancelledQty}</td>
+											<td class="px-2 py-1 text-right font-medium tabular-nums">{it.openQty}</td>
+											<td class="py-1 pl-2 text-right tabular-nums">
+												{it.unitCostCents != null ? formatEuro(it.unitCostCents) : '–'}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
 						<p class="text-xs text-muted-foreground">
 							{#if o.createdBy}Angelegt von {o.createdBy.name}{/if}
 							{#if o.closedAt}· abgeschlossen am {fmtDate(o.closedAt)}{/if}
