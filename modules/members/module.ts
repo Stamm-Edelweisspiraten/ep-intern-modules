@@ -125,32 +125,29 @@ export default defineModule({
 				path: '/modules/members',
 				// Gruppenleitungen sehen dieselbe Seite, eingeschränkt auf ihre Gruppen
 				anyPermission: ['members.member.view', LED_VIEW],
-				group: 'Stamm',
-				groupIcon: 'users'
-			},
-			{
-				label: 'Zusatzfelder',
-				icon: 'settings',
-				path: '/modules/members/fields',
-				permission: 'members.field.manage',
-				group: 'Stamm',
-				groupIcon: 'users'
+				order: 50
 			},
 			{
 				label: 'Gruppen',
 				icon: 'folder',
 				path: '/modules/members/groups',
 				permission: 'members.group.view',
-				group: 'Stamm',
-				groupIcon: 'users'
+				order: 60
+			},
+			// Konfigurationsseiten: in der Verwaltung (Abschnitt „Module“), nicht im Hauptmenü
+			{
+				label: 'Zusatzfelder',
+				icon: 'settings',
+				path: '/modules/members/fields',
+				permission: 'members.field.manage',
+				admin: true
 			},
 			{
 				label: 'Löschfristen',
 				icon: 'shield',
 				path: '/modules/members/retention',
 				permission: 'members.member.delete',
-				group: 'Stamm',
-				groupIcon: 'users'
+				admin: true
 			}
 		]
 	},

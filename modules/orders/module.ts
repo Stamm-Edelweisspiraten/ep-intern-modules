@@ -86,7 +86,8 @@ export default defineModule({
 				label: 'Bestellungen',
 				icon: 'shopping-basket',
 				path: '/modules/orders',
-				permission: PERMISSIONS.view
+				permission: PERMISSIONS.view,
+				order: 40
 			}
 		]
 	},

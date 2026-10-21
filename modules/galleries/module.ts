@@ -46,7 +46,8 @@ export default defineModule({
 				label: 'Galerien',
 				icon: 'images',
 				path: '/modules/galleries',
-				permission: 'galleries.gallery.view'
+				permission: 'galleries.gallery.view',
+				order: 20
 			}
 		]
 	},

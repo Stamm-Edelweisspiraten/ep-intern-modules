@@ -42,7 +42,8 @@ export default defineModule({
 				label: 'Ämter',
 				icon: 'offices',
 				path: '/modules/offices',
-				permission: 'offices.office.view'
+				permission: 'offices.office.view',
+				order: 90
 			}
 		]
 	},

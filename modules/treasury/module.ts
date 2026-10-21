@@ -127,14 +127,16 @@ export default defineModule({
 				label: 'Kasse',
 				icon: 'wallet',
 				path: '/modules/treasury',
-				permission: 'treasury.cash.view'
+				permission: 'treasury.cash.view',
+				order: 100
 			},
 			{
 				label: 'Kasse',
 				icon: 'wallet',
 				path: '/modules/treasury/settings',
 				permission: 'treasury.settings.manage',
-				admin: true
+				admin: true,
+				settingsPage: true
 			}
 		]
 	},

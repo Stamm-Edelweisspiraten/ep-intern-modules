@@ -12,7 +12,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 ## Dateien (`src/lib/modules/members/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (Rechte, Navigation Gruppe „Stamm“, Einstellungen `members.address.*`), Migrationen, `provides` (`membersService` + `listMemberSheets` + `principalsService`), `search`, `backup` (`membersBackup`), `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`; Endpoints (Reihenfolge website → sheets → members → address → fields → link → groups → group-image → documents → retention) |
+| `module.ts` | Manifest (Rechte, Navigation Mitglieder/Gruppen im Hauptmenü, Zusatzfelder/Löschfristen mit `admin: true` in der Administration, Einstellungen `members.address.*`), Migrationen, `provides` (`membersService` + `listMemberSheets` + `principalsService`), `search`, `backup` (`membersBackup`), `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`; Endpoints (Reihenfolge website → sheets → members → address → fields → link → groups → group-image → documents → retention) |
 | `ui.ts` | Routen `''` → `MembersPage`, `groups` → `GroupsPage`, `fields` → `FieldsPage`, `retention` → `RetentionPage`; öffentlich `verknuepfen/:token` → `LinkAccount`; `profileSections`, Dashboard-Kachel (`pages/widgets/MyMembersWidget.svelte`) |
 | `contract.ts` | Vertrag `MembersService` für abhängige Module (`core.modules.use('members', …)`) |
 | `principals.service.ts` | `principalsService` (Vertrag `PrincipalProvider`): `listGroups`, `principalIdsForUser`, `searchMembers` (ohne Rechteprüfung, Aufrufer prüft), `searchMemberPrincipals` (Freigabe-Suche, prüft selbst `members.member.view`) |
@@ -253,7 +253,7 @@ Einwilligungen, Ein-/Austritt, Adresse, Dokumente.
   `POST /retention/anonymize { ids (1–200) }` (`members.member.delete`, 20/600 s) → `{ affected, skipped[{id, name, reason}] }`; nicht fällig/unbekannt/
   bereits anonymisiert/einzige Leitung → übersprungen. Anonymisieren siehe `docs/security.md` → „Löschkonzept“ (`anonymized_at`, Name „Anonymisiert“,
   Geburtsdatum 1.1. des Jahres, alles Weitere gelöscht; Stand, Ein-/Austritt, Zweitmitglied, Ebenen bleiben). Audit `members.member.anonymized` (Zähler).
-  Seite `/modules/members/retention` („Löschfristen“ in der Gruppe Stamm, nur mit `members.member.delete`). **Keine** automatische Löschung.
+  Seite `/modules/members/retention` („Löschfristen“ unter Administration › Module, nur mit `members.member.delete`). **Keine** automatische Löschung.
 - **Hook `onMemberDeleted`**: `deleteMember` und das Anonymisieren rufen nach der Transaktion `core.modules.memberDeleted('members', { memberIds,
   reason: 'deleted' | 'anonymized' })` → alle anderen aktiven Module mit `onMemberDeleted` (z. B. `actions`). Dokument-Löschfehler werden protokolliert
   (`removeMemberFiles`, ohne Pfad).
