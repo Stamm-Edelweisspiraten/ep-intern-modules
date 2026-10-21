@@ -48,8 +48,8 @@ export default defineModule({
 				label: 'Termine',
 				icon: 'calendar',
 				path: '/modules/events',
-				// Ohne `group`: Gruppen gelten je Modul, „Stamm“ würde neben `members` doppelt erscheinen
-				permission: 'events.event.view'
+				permission: 'events.event.view',
+				order: 10
 			}
 		]
 	},

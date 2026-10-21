@@ -38,8 +38,7 @@ export default defineModule({
 				icon: 'mail',
 				path: '/modules/messages',
 				permission: PERM_SEND,
-				group: 'Stamm',
-				groupIcon: 'users'
+				order: 70
 			}
 		]
 	},

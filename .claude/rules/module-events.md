@@ -9,7 +9,7 @@ Schema `mod_events`, Version 1.2.0, keine harten
 Abhängigkeiten; `optionalDependencies: ['members']` (Gruppen für Zuordnung, Gruppen/Mitglieder als Freigabe-Ziele –
 ohne `members` nur Stamm, Rollen, Benutzer*innen). Erstes Modul mit der generischen **Freigabe an Principals**
 (`$lib/sdk/server/sharing.ts`, siehe `architecture.md` → „Freigabe an Principals“). Navigation „Termine“ (Icon `calendar`)
-als eigener Eintrag (ohne `group`: Sidebar-Gruppen gelten je Modul, „Stamm“ erschiene neben `members` doppelt).
+als eigener Eintrag (`order` 10, ganz oben nach dem Dashboard).
 
 ## Dateien (`src/lib/modules/events/`)
 | Datei | Inhalt |

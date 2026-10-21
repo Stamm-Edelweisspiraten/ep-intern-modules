@@ -85,7 +85,8 @@ export default defineModule({
 				label: 'Aktionen',
 				icon: 'backpack',
 				path: '/modules/actions',
-				permission: 'actions.action.view'
+				permission: 'actions.action.view',
+				order: 80
 			}
 		]
 	},

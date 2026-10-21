@@ -49,7 +49,8 @@ export default defineModule({
 				label: 'Dateien',
 				icon: 'cloud',
 				path: '/modules/files',
-				permission: PERMISSIONS.view
+				permission: PERMISSIONS.view,
+				order: 30
 			}
 		]
 	},

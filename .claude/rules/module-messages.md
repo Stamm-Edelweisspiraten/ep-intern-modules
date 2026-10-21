@@ -3,7 +3,7 @@
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
 Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger. Schema `mod_messages`, Version 1.0.0,
-`dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Gruppe „Stamm“, Icon `mail`).
+`dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
 
 ## Dateien (`src/lib/modules/messages/`)
 | Datei | Inhalt |
