@@ -117,7 +117,8 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
 ## API (`/api/v1/modules/members/…`, Session oder API-Key, nicht öffentlich)
 | Methode + Pfad | Recht | Besonderheiten |
 |---|---|---|
-| GET `/members` | member.view | Query `search` (Vor-/Nach-/Pfadname ILIKE), `stage`, `groupId`, `status` (`active` Standard = kein Austritt oder Austritt > heute, `left` = Austritt ≤ heute, `all`), `limit` 1–200 (50), `offset`; `{items,total}` |
+| GET `/members` | member.view | Query `search` (Vor-/Nach-/Pfadname ILIKE), `status` (`active` Standard = kein Austritt oder Austritt > heute, `left` = Austritt ≤ heute, `all`), `limit` 1–200 (50), `offset`; `{items,total}`. **Filter (2026-10-21, `memberFilterShape` in `schemas.ts`, Bedingungen in `buildMemberFilter` in `members.service.ts`)**: `stage` + `stages` (kommagetrennt, ODER), `groupId` + `groupIds` (kommagetrennt, ≤ 50) mit `groupMode` `any` (Standard) / `all`, `ungrouped=yes` („Ohne Gruppe“, bei `any` ODER-verknüpft), `ageMin`/`ageMax` (0–120, Jahre heute Berlin), `consentWebsite\|consentSocialMedia\|consentPrint\|secondary\|hasEmail` (`yes`/`no`), `entryFrom`/`entryTo` (`YYYY-MM-DD`). Dieselben Filter gelten für `/led/members` |
+| GET `/members/ids` | member.view | gleiche Filter ohne `limit/offset` → `{ items[{id,name}], total, truncated }` (höchstens `SELECT_ALL_MAX` = 2000, danach `truncated`); für „Alle Treffer auswählen“; 60/min; Pfad vor `/members/:id`; Gruppenleitung: `/led/members/ids` |
 | GET `/members/:id` | member.view | 404 wenn fehlt |
 | POST `/members` | member.edit | Gruppen optional; `custom` = Werte der Zusatzfelder (nur aktive Schlüssel, sonst 422) |
 | PUT `/members/:id` | member.edit | `FOR UPDATE`; `custom` wird mit den gespeicherten Werten **zusammengeführt** (fehlend = unverändert, leer = gelöscht) |
@@ -125,7 +126,7 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
 | GET `/groups`, `/groups/:id` | group.view | inkl. Leiter und `memberCount` |
 | POST `/groups`, PUT `/groups/:id` | group.edit | ≥ 1 Leiter (Mitglied, 422); Name case-insensitiv eindeutig (409) |
 | DELETE `/groups/:id` | group.delete | 409, solange Mitglieder zugeordnet |
-| POST `/members/bulk` | member.edit (`delete`: zusätzlich member.delete) | Body `{ action: add-groups\|remove-groups\|set-stage\|set-consent\|delete, ids (1–200), … }`; Antwort `{ affected, skipped[{id,name,reason}] }`; unbekannte ID → 404 (nichts geändert); `remove-groups` lässt ≥ 1 Gruppe übrig, `delete` überspringt einzige Leiter (409-Grund); Audit `members.member.bulk_updated` ohne Namen |
+| POST `/members/bulk` | member.edit (`delete`: zusätzlich member.delete) | Body `{ action: add-groups\|remove-groups\|set-stage\|set-consent\|delete, ids (1–2000 = `BULK_MAX_IDS`), … }`; Antwort `{ affected, skipped[{id,name,reason}] }`; unbekannte ID → 404 (nichts geändert); `remove-groups` lässt ≥ 1 Gruppe übrig, `delete` überspringt einzige Leiter (409-Grund); Audit `members.member.bulk_updated` ohne Namen |
 | POST/GET/DELETE `/members/:id/documents/:kind` | edit/view/edit | `kind` = `privacy`\|`registration`; Upload multipart Feld `file`, PDF/JPEG/PNG/WebP ≤ 10 MB; ersetzt altes |
 | POST/GET/DELETE `/groups/:id/image` | edit/view/edit | JPEG/PNG/WebP ≤ 2 MB, Inhalt muss zum Typ passen (sonst 400); gespeichert nur bereinigtes WebP (`groups/<id>/img-<uuid>.webp`); GET ohne Bild 404, eigenes Rate-Limit `IMAGE_RATE_LIMIT` |
 
@@ -139,7 +140,7 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
   (`LIST_PRESET_KEYS`, auf vorhandene Spalten gekürzt). `rowFromMember(m, defs, today)` liefert alle Spalten als fertigen Text. Leere Spalten entfallen bei `hideEmpty` (Standard).
 - API (alle `members.data.export`, zusätzlich im Handler `members.member.view`, bei Gruppen `members.group.view` → sonst 403; PDF `private, no-store`):
   `GET /members/sheet-columns` → `{ columns: ListColumn[], presets: ListPreset[] }`;
-  `POST /members/sheets.pdf` `{ ids (1–200), selection? }` (Reihenfolge = ids, unbekannt 404), `POST /groups/sheets.pdf` `{ groupIds (1–20), selection? }` (Seite je Gruppe, nur aktuelle Mitglieder,
+  `POST /members/sheets.pdf` `{ ids (1–2000), selection? }` (Reihenfolge = ids, unbekannt 404), `POST /groups/sheets.pdf` `{ groupIds (1–20), selection? }` (Seite je Gruppe, nur aktuelle Mitglieder,
   Mehrfachmitglieder in jeder Gruppe). `selection = { preset?, columns (1–40), hideEmpty (Standard true) }` strikt; fehlt sie oder sind alle Schlüssel unbekannt → Voreinstellung `fahrt`.
   Audit `members.member.sheet_generated` / `members.group.sheet_generated` (nur Zähler: `count`, `groups`, `columns`).
   Falle: `sheetEndpoints` stehen in `module.ts` **vor** `memberEndpoints`, sonst fängt `GET /members/:id` den Pfad `/members/sheet-columns` ab (erster Treffer gewinnt).
@@ -297,7 +298,7 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
 ## UI
 - `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberForm` als Ansicht (`readonly`); Checkbox- und Aktionszelle stoppen den Klick.
   Filter „Mitgliedschaft“ (Aktiv/Ausgetreten/Alle, URL-Parameter `status`, Standard aktiv); Badges „Zweitmitglied“, „ausgetreten“ in der Namenszelle.
-  Checkbox-Spalte + Sammelleiste (Gruppen hinzufügen/entfernen, Stand, Einwilligungen, Löschen; `BulkDialog`), Auswahl wird bei Filterwechsel verworfen. `DataTable` (Suche, Filter Stand/Gruppe via `SelectField`), Spalten Name, Stand, Gruppen (Farb-Badges),
+  Checkbox-Spalte + Sammelleiste (Gruppen hinzufügen/entfernen, Stand, Einwilligungen, Löschen; `BulkDialog`), Auswahl wird bei Filterwechsel verworfen. **„Alle Treffer auswählen“** (2026-10-21): Kopf-Checkbox wählt die Seite; sind alle Zeilen gewählt und es gibt mehr Treffer, bietet eine Leiste „Alle N Treffer auswählen“ → `GET …/members/ids` mit dem aktuellen Filter (`allMatched`; bei `truncated` Warnung). Verknüpfungs-Briefe bleiben bei 100 (`LINK_LETTERS_MAX_IDS`). **Filter** (`pages/MemberFilters.svelte`, URL-Parameter wie in der API): Suche, Mitgliedschaft, Stände und Gruppen als `MultiSelect` (Gruppen mit „Ohne Gruppe“, Umschalter „mindestens eine/alle gewählten“ ab 2 Gruppen), Knopf „Erweitert“ (Badge, bleibt offen solange etwas gesetzt ist): Alter von/bis, Eintritt ab/bis, Einwilligungen, Zweitmitglied, E-Mail; „Filter zurücksetzen“. Spalten Name, Stand, Gruppen (Farb-Badges),
   Geburtsdatum + Alter, „Darf gezeigt werden“ (Einwilligungen), Aktionen; Dialog `MemberForm` (`ContactListField`,
   `MultiSelect` Gruppen, `FileField` für Dokumente, Einwilligungs-Checkboxen).
 - `MemberForm`: Tabs Person / Kontakt / Mitgliedschaft (Stand, Gruppen, Eintritt/Austritt, Schalter „Zweitmitglied“ →

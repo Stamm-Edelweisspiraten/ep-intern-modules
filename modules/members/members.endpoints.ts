@@ -1,10 +1,11 @@
 import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
-import { bulkInput, idParams, memberInput, memberListQuery } from './schemas';
+import { bulkInput, idParams, memberIdsQuery, memberInput, memberListQuery } from './schemas';
 import {
 	bulkUpdateMembers,
 	createMember,
 	deleteMember,
 	getMember,
+	listMemberIds,
 	listMembers,
 	updateMember
 } from './members.service';
@@ -20,6 +21,17 @@ export const memberEndpoints: ApiEndpoint[] = [
 		permission: 'members.member.view',
 		query: memberListQuery,
 		handler: ({ query }) => listMembers(query)
+	}),
+	// fester Pfad vor `/members/:id`
+	defineEndpoint({
+		method: 'GET',
+		path: '/members/ids',
+		summary: 'IDs und Namen aller Treffer eines Filters (für „alle Treffer auswählen“)',
+		tags,
+		permission: 'members.member.view',
+		query: memberIdsQuery,
+		rateLimit: { limit: 60, windowSec: 60 },
+		handler: ({ query }) => listMemberIds(query)
 	}),
 	defineEndpoint({
 		method: 'GET',

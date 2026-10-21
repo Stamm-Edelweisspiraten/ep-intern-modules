@@ -270,15 +270,69 @@ export type MemberInput = z.infer<typeof memberInput>;
 /** Eingabeform vor dem Parsen (z. B. für Formulare) */
 export type MemberFormInput = z.input<typeof memberInput>;
 
-export const memberListQuery = z.object({
+/** Kommagetrennte Liste (`a,b,c`) → Array; leer → `undefined` */
+const csvList = <T extends z.ZodType>(item: T, max: number) =>
+	z.preprocess(
+		(v) =>
+			typeof v === 'string'
+				? v
+						.split(',')
+						.map((s) => s.trim())
+						.filter(Boolean)
+				: v,
+		z.array(item).max(max).optional()
+	);
+const yesNo = z.enum(['yes', 'no']).optional();
+const filterDate = z
+	.string()
+	.refine((v) => isRealDate(v), 'Ungültiges Datum')
+	.optional();
+
+/** Filter der Mitgliederliste (ohne Seitenangaben) – gemeinsam für Liste und `/members/ids` */
+const memberFilterShape = {
 	search: z.string().trim().max(100).optional(),
 	stage: z.enum(STAGES).optional(),
+	/** Mehrere Stände (kommagetrennt), ODER-verknüpft; zusätzlich zu `stage` */
+	stages: csvList(z.enum(STAGES), STAGES.length),
 	groupId: id.optional(),
+	/** Mehrere Gruppen (kommagetrennt) */
+	groupIds: csvList(id, 50),
+	/** `any` = mindestens eine der Gruppen (Standard), `all` = alle Gruppen */
+	groupMode: z.enum(['any', 'all']).default('any'),
+	/** Nur Mitglieder ohne Gruppe (ODER-verknüpft mit den gewählten Gruppen bei `any`) */
+	ungrouped: z.enum(['yes']).optional(),
 	/** Mitgliedschaft heute: aktiv (Standard), ausgetreten oder alle */
 	status: z.enum(['active', 'left', 'all']).default('active'),
+	/** Alter in Jahren (heute, Europe/Berlin) */
+	ageMin: z.coerce.number().int().min(0).max(120).optional(),
+	ageMax: z.coerce.number().int().min(0).max(120).optional(),
+	consentWebsite: yesNo,
+	consentSocialMedia: yesNo,
+	consentPrint: yesNo,
+	secondary: yesNo,
+	hasEmail: yesNo,
+	entryFrom: filterDate,
+	entryTo: filterDate
+};
+
+export const memberListQuery = z.object({
+	...memberFilterShape,
 	limit: z.coerce.number().int().min(1).max(200).default(50),
 	offset: z.coerce.number().int().min(0).default(0)
 });
+export type MemberListQuery = z.infer<typeof memberListQuery>;
+/** Filter ohne Seitenangaben */
+export type MemberFilter = Omit<MemberListQuery, 'limit' | 'offset'>;
+
+/** `GET /members/ids`: alle Treffer des Filters (Auswahl „alle Treffer“) */
+export const memberIdsQuery = z.object(memberFilterShape);
+export const SELECT_ALL_MAX = 2000;
+export interface MemberIdsResult {
+	items: { id: string; name: string }[];
+	total: number;
+	/** `true`, wenn es mehr als `SELECT_ALL_MAX` Treffer gibt (Liste gekürzt) */
+	truncated: boolean;
+}
 
 const hexColor = z
 	.string()
@@ -412,7 +466,7 @@ export interface WebsiteGroup {
 }
 
 /** Sammelaktionen auf markierten Mitgliedern (`POST /members/bulk`). */
-export const BULK_MAX_IDS = 200;
+export const BULK_MAX_IDS = 2000;
 const bulkIds = z
 	.array(id)
 	.min(1, 'Mindestens ein Mitglied auswählen')
@@ -669,7 +723,7 @@ export const linkLettersInput = z
 	.strict();
 
 /** Mitgliedsdaten-PDF (`POST /members/sheets.pdf`, `POST /groups/sheets.pdf`) */
-export const SHEETS_MAX_IDS = 200;
+export const SHEETS_MAX_IDS = 2000;
 export const memberSheetsInput = z
 	.object({
 		ids: z
