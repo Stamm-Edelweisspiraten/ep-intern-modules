@@ -60,7 +60,7 @@ export function toastOutcome(
 
 /** Erinnerungen für mehrere Rechnungen (je Rechnung `POST /invoices/:id/remind`). */
 export async function remindInvoices(invoices: InvoiceSummary[]): Promise<BulkOutcome> {
-	const id = toast.loading(`Sende Erinnerungen … 0 von ${invoices.length}`);
+	const id = toast.loading(`Sendet Erinnerungen … 0 von ${invoices.length}`);
 	let mails = 0;
 	const outcome = await runSequential(
 		invoices,
@@ -74,7 +74,7 @@ export async function remindInvoices(invoices: InvoiceSummary[]): Promise<BulkOu
 			if (r.invoices) return null;
 			return r.withoutAddress ? 'keine E-Mail-Adresse hinterlegt' : 'nicht gesendet';
 		},
-		(done, total) => toast.loading(`Sende Erinnerungen … ${done} von ${total}`, { id })
+		(done, total) => toast.loading(`Sendet Erinnerungen … ${done} von ${total}`, { id })
 	);
 	toastOutcome(
 		outcome,

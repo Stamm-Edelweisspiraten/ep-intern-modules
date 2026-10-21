@@ -147,9 +147,7 @@
 				<div
 					class={[
 						'text-2xl font-semibold tabular-nums',
-						summary.balanceCents < 0
-							? 'text-red-700 dark:text-red-400'
-							: 'text-green-700 dark:text-green-400'
+						summary.balanceCents < 0 ? 'text-destructive' : 'text-success'
 					]}
 				>
 					{formatEuro(summary.balanceCents)}
@@ -160,15 +158,9 @@
 				{#each items as item (item.key)}
 					<li class="flex items-start gap-3">
 						{#if item.status === 'ok'}
-							<CircleCheck
-								class="mt-0.5 size-4 shrink-0 text-green-700 dark:text-green-400"
-								aria-label="in Ordnung"
-							/>
+							<CircleCheck class="mt-0.5 size-4 shrink-0 text-success" aria-label="in Ordnung" />
 						{:else if item.status === 'warn'}
-							<TriangleAlert
-								class="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
-								aria-label="Warnung"
-							/>
+							<TriangleAlert class="mt-0.5 size-4 shrink-0 text-warning" aria-label="Warnung" />
 						{:else}
 							<Info class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Hinweis" />
 						{/if}

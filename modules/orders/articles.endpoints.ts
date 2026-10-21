@@ -189,6 +189,9 @@ export const articlesEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, body }): Promise<Article> => {
 			const id = crypto.randomUUID();
 			const article = await mdb().transaction(async (tx) => {
+				// Sperre bis Transaktionsende: parallele Anlagen bekommen eindeutige Positionen und die
+				// Höchstzahl gilt auch unter Nebenläufigkeit (#73, 07-12)
+				await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('orders:articles'))`);
 				const [r] = await rows(
 					tx,
 					sql`SELECT count(*)::int AS n FROM articles WHERE archived_at IS NULL`

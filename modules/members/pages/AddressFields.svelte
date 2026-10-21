@@ -39,7 +39,8 @@
 		city = $bindable(''),
 		country = $bindable('DE'),
 		errors = {},
-		idPrefix = 'm'
+		idPrefix = 'm',
+		apiBase = '/modules/members'
 	}: {
 		street?: string;
 		postalCode?: string;
@@ -47,6 +48,8 @@
 		country?: string;
 		errors?: Record<string, string>;
 		idPrefix?: string;
+		/** API-Basis; Gruppenleitungen nutzen `/modules/members/led` (ohne Mitglieder-Anschriften) */
+		apiBase?: string;
 	} = $props();
 
 	const uid = $props.id();
@@ -68,7 +71,12 @@
 		const q = street.trim().replace(/\s+/g, ' ');
 		const plz = postalCode.trim();
 		const { name, number } = splitHouseNumber(q);
-		return { q, plz, number, key: `${name.toLowerCase()}|${plz.slice(0, 2)}|${country}` };
+		return {
+			q,
+			plz,
+			number,
+			key: `${apiBase}|${name.toLowerCase()}|${plz.slice(0, 2)}|${country}`
+		};
 	}
 
 	/**
@@ -140,7 +148,7 @@
 		if (plz) params.set('postalCode', plz);
 		if (country) params.set('country', country);
 		try {
-			const res = await apiFetch<Result>(`/modules/members/address/suggest?${params}`);
+			const res = await apiFetch<Result>(`${apiBase}/address/suggest?${params}`);
 			if (!res.unavailable) cache.set(key, { at: Date.now(), number, value: res });
 			if (mine === seq) show(res, number, currentQuery().number, currentQuery().q);
 		} catch {
@@ -196,7 +204,7 @@
 		untrack(() => {
 			places = [];
 			if (c !== 'DE' || !/^\d{5}$/.test(code)) return;
-			apiFetch<{ items: string[] }>(`/modules/members/address/places?postalCode=${code}`)
+			apiFetch<{ items: string[] }>(`${apiBase}/address/places?postalCode=${code}`)
 				.then((r) => {
 					if (postalCode.trim() !== code) return;
 					if (r.items.length === 1 && !city.trim()) city = r.items[0]!;

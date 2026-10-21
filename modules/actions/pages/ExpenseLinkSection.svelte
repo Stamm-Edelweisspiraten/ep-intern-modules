@@ -283,7 +283,7 @@
 				{/if}
 				{#if linkClosed}
 					<p
-						class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+						class="rounded-md border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning"
 						role="note"
 					>
 						Die Abrechnung ist abgeschlossen – der Link nimmt derzeit keine Auslagen an.

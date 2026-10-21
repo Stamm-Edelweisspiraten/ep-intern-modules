@@ -76,7 +76,7 @@
 				{/if}
 				{#if preview.withoutEmail.length || preview.skipped.length || preview.payerSuggestions > 0}
 					<ul
-						class="space-y-1.5 rounded-md border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+						class="space-y-1.5 rounded-md border border-warning-border bg-warning-muted p-3 text-sm text-warning"
 					>
 						{#if preview.withoutEmail.length}
 							<li class="flex gap-2">
@@ -149,7 +149,7 @@
 						<div class="truncate text-xs">{email}</div>
 					{/each}
 				{:else}
-					<span class="text-xs text-amber-700 dark:text-amber-400">keine</span>
+					<span class="text-xs text-warning">keine</span>
 				{/if}
 			</Table.Cell>
 			<Table.Cell class="text-right align-top font-medium tabular-nums">

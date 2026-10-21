@@ -29,7 +29,8 @@
 		EmptyState,
 		MobileActionBar,
 		PageHeader,
-		toastWithUndo
+		toastWithUndo,
+		PageTitle
 	} from '$lib/components/layout';
 	import {
 		ROOT_LABEL,
@@ -476,7 +477,7 @@
 	});
 </script>
 
-<svelte:head><title>{VIEW_LABELS[view]}</title></svelte:head>
+<PageTitle title={VIEW_LABELS[view]} />
 
 <PageHeader
 	title={VIEW_LABELS[view]}
@@ -780,7 +781,7 @@
 						<Icon
 							class={[
 								'size-5 shrink-0',
-								hit.kind === 'folder' ? 'text-primary' : 'text-muted-foreground'
+								hit.kind === 'folder' ? 'text-link' : 'text-muted-foreground'
 							]}
 							aria-hidden="true"
 						/>

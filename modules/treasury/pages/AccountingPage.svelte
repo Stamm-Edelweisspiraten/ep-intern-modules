@@ -11,9 +11,14 @@
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { EmptyState, PageHeader, SummaryList, type SummaryRow } from '$lib/components/layout';
+	import {
+		EmptyState,
+		PageHeader,
+		SummaryList,
+		type SummaryRow,
+		BUSY_LOAD
+	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import { ACCOUNTING_CATEGORY_LABELS, type AccountingEntry } from '$lib/modules/actions/schemas';
 	import type { AccountingInterimItem, ClosedAccountingDetailItem } from '../closed-accountings';
 	import { PAYABLE_SOURCE_LABELS } from '../schemas';
 	import { BASE, errorMessage, fmtDate, openApiFile } from './helpers';
@@ -23,7 +28,10 @@
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canReceipts = $derived(can(permissions, 'treasury.storage.read'));
 
+	type AccountingEntry = ClosedAccountingDetailItem['entries'][number];
 	let acc = $state<ClosedAccountingDetailItem | null>(null);
+	/** Kategorie-Bezeichnung aus dem DTO (Server löst über den Vertrag von `actions` auf) */
+	const categoryLabel = (key: string) => acc?.categoryLabels?.[key] ?? key;
 	let loading = $state(true);
 	let notFound = $state(false);
 	let error = $state('');
@@ -237,7 +245,7 @@
 							{#each acc.summary.byCategory as c (c.category)}
 								<Table.Row>
 									<Table.Cell>
-										{ACCOUNTING_CATEGORY_LABELS[c.category]}
+										{categoryLabel(c.category)}
 										<span class="text-xs text-muted-foreground"
 											>{c.type === 'income' ? 'Einnahme' : 'Ausgabe'}</span
 										>
@@ -318,7 +326,7 @@
 												disabled={interimBusy === `${it.id}:dl`}
 											>
 												<Download />
-												{interimBusy === `${it.id}:dl` ? 'Lädt …' : 'Herunterladen'}<span
+												{interimBusy === `${it.id}:dl` ? BUSY_LOAD : 'Herunterladen'}<span
 													class="sr-only"
 												>
 													: Zwischenabrechnung Nr. {it.number}</span
@@ -360,8 +368,7 @@
 									<div class="font-medium">{r.label}</div>
 									<Badge variant="secondary" class="mt-1">Automatisch</Badge>
 								</Table.Cell>
-								<Table.Cell
-									class="text-right whitespace-nowrap text-green-700 tabular-nums dark:text-green-400"
+								<Table.Cell class="text-right whitespace-nowrap text-success tabular-nums"
 									>+{formatEuro(r.cents)}</Table.Cell
 								>
 								<Table.Cell class="text-muted-foreground">–</Table.Cell>
@@ -379,15 +386,15 @@
 										{e.description}
 									</div>
 									<div class="text-xs text-muted-foreground">
-										{ACCOUNTING_CATEGORY_LABELS[e.category]}{payerText(e)
-											? ` · ${payerText(e)}`
-											: ''}{e.purpose ? ` · Zweck: ${e.purpose}` : ''}
+										{categoryLabel(e.category)}{payerText(e) ? ` · ${payerText(e)}` : ''}{e.purpose
+											? ` · Zweck: ${e.purpose}`
+											: ''}
 									</div>
 								</Table.Cell>
 								<Table.Cell
 									class={[
 										'text-right align-top whitespace-nowrap tabular-nums',
-										e.type === 'income' && 'text-green-700 dark:text-green-400'
+										e.type === 'income' && 'text-success'
 									]}
 								>
 									{e.type === 'income' ? '+' : '−'}{formatEuro(e.amountCents)}
@@ -405,21 +412,14 @@
 									{:else if e.receipt}
 										<span class="text-sm">vorhanden</span>
 									{:else if e.type === 'expense' && e.category !== 'refund'}
-										<Badge
-											variant="outline"
-											class="border-amber-500/50 text-amber-700 dark:text-amber-400">fehlt</Badge
-										>
+										<Badge variant="warning">fehlt</Badge>
 									{:else}
 										<span class="text-muted-foreground">–</span>
 									{/if}
 								</Table.Cell>
 								<Table.Cell class="align-top">
 									{#if st.tone === 'open'}
-										<Badge
-											variant="outline"
-											class="border-amber-500/50 text-amber-700 dark:text-amber-400"
-											>{st.text}</Badge
-										>
+										<Badge variant="warning">{st.text}</Badge>
 									{:else if st.tone === 'ok'}
 										<Badge variant="secondary">{st.text}</Badge>
 									{/if}
@@ -483,10 +483,7 @@
 													: ''}</Badge
 											>
 										{:else}
-											<Badge
-												variant="outline"
-												class="border-amber-500/50 text-amber-700 dark:text-amber-400">offen</Badge
-											>
+											<Badge variant="warning">offen</Badge>
 										{/if}
 									</Table.Cell>
 								</Table.Row>

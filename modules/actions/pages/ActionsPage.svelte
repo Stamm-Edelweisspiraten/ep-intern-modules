@@ -96,7 +96,7 @@
 		<Table.Row>
 			<Table.Cell class="font-medium">
 				<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<a href={`/modules/actions/${a.id}`} class="text-primary hover:underline">{a.name}</a>
+					<a href={`/modules/actions/${a.id}`} class="text-link hover:underline">{a.name}</a>
 					{#if a.isPast}<Badge variant="outline" class="shrink-0">Vergangen</Badge>{/if}
 				</div>
 			</Table.Cell>

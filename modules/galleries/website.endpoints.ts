@@ -5,9 +5,17 @@
  * Core-Aufrufe (`events`-Dienst, Storage) laufen außerhalb der Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
-import { defineEndpoint, errors, type ApiEndpoint } from '$lib/sdk/server';
+import {
+	type AnyApiEndpoint,
+	defineEndpoint,
+	errors,
+	IMAGE_RATE_LIMIT,
+	type Row,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
 import type { EventRefInfo } from '$lib/modules/events/contract';
-import { rowsOf } from './access';
 import { VARIANT_COLUMN, db, effectiveCoverSql, eventsService, fileResponse } from './files';
 import {
 	idParams,
@@ -25,16 +33,10 @@ const NOT_FOUND = 'Galerie nicht gefunden';
 /** Höchstzahl IDs je Aufruf von `websiteEventRefs` (Vertrag `events`) */
 const EVENT_REF_CHUNK = 500;
 
-type Row = Record<string, unknown>;
-
 const KEY_HINT =
 	'Der API-Key gehört nur auf den Server der Website (nie in den Browser ausliefern); ' +
 	'Bilddateien mit demselben Key über `/website/galleries/:id/images/:imageId/:variant` laden ' +
 	'und auf der Website zwischenspeichern.';
-
-function iso(v: unknown): string {
-	return new Date(String(v)).toISOString();
-}
 
 function textOrNull(v: unknown): string | null {
 	return v === null || v === undefined ? null : String(v);
@@ -57,7 +59,7 @@ function galleryOf(r: Row, events: WebsiteEventRef[]): WebsiteGallery {
 		imageCount: Number(r.image_count ?? 0),
 		cover: coverOf(r),
 		events,
-		updatedAt: iso(r.updated_at)
+		updatedAt: toIso(r.updated_at)
 	};
 }
 
@@ -114,7 +116,7 @@ function imageOf(r: Row): WebsiteImage {
 	};
 }
 
-async function linksFor(tx: Parameters<typeof rowsOf>[0], galleryIds: string[]): Promise<Row[]> {
+async function linksFor(tx: Tx, galleryIds: string[]): Promise<Row[]> {
 	if (galleryIds.length === 0) return [];
 	return rowsOf(
 		tx,
@@ -127,7 +129,7 @@ async function linksFor(tx: Parameters<typeof rowsOf>[0], galleryIds: string[]):
 	);
 }
 
-export const websiteEndpoints = [
+export const websiteEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/website/galleries',
@@ -145,7 +147,7 @@ export const websiteEndpoints = [
 		tags: TAGS,
 		permission: 'galleries.website.read',
 		query: websiteListQuery,
-		rateLimit: { limit: 120, windowSec: 60 },
+		rateLimit: { limit: 600, windowSec: 60 },
 		handler: async ({ query }) => {
 			if (query.eventId) {
 				const event = await websiteEventMap([query.eventId]);
@@ -187,11 +189,11 @@ export const websiteEndpoints = [
 			'muss zu einer öffentlichen Galerie gehören, sonst 404. Antwort mit ' +
 			'`Cache-Control: public, max-age=86400` – bitte auf dem Website-Server zwischenspeichern ' +
 			'(der API-Key darf nicht im Browser landen, Bilder also über den eigenen Server ausliefern). ' +
-			'Höheres Rate-Limit (600/60 s), da eine Seite viele Bilder lädt.',
+			'Eigenes Rate-Limit für Bilder (1200/60 s), da eine Seite viele Bilder lädt.',
 		tags: TAGS,
 		permission: 'galleries.website.read',
 		params: websiteVariantParams,
-		rateLimit: { limit: 600, windowSec: 60 },
+		rateLimit: IMAGE_RATE_LIMIT,
 		handler: async ({ params }) => {
 			const column = sql.raw(`i.${VARIANT_COLUMN[params.variant]}`);
 			const path = await db().transaction(async (tx) => {
@@ -221,7 +223,7 @@ export const websiteEndpoints = [
 		tags: TAGS,
 		permission: 'galleries.website.read',
 		params: idParams,
-		rateLimit: { limit: 120, windowSec: 60 },
+		rateLimit: { limit: 600, windowSec: 60 },
 		handler: async ({ params }) => {
 			const data = await db().transaction(async (tx) => {
 				const [gallery] = await rowsOf(
@@ -249,4 +251,4 @@ export const websiteEndpoints = [
 			return detail;
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

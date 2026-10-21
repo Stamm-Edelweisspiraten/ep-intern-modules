@@ -129,7 +129,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+	<Dialog.Content class="sm:max-w-3xl">
 		<Dialog.Header>
 			<Dialog.Title>Kontoauszug importieren</Dialog.Title>
 			<Dialog.Description>
@@ -272,7 +272,7 @@
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 		</div>
-		<Dialog.Footer>
+		<Dialog.Footer sticky>
 			<Button variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 			{#if preview && preview.valid > 0}
 				<Button onclick={run} disabled={busy}>

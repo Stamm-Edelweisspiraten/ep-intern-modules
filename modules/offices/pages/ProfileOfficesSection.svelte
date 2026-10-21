@@ -87,7 +87,7 @@
 					<p class="mt-3 text-xs text-muted-foreground">
 						Alle Ämter mit Inhaber*innen findest du unter <a
 							href="/modules/offices"
-							class="text-primary underline-offset-4 hover:underline">Ämter</a
+							class="text-link underline-offset-4 hover:underline">Ämter</a
 						>.
 					</p>
 				</CardContent>

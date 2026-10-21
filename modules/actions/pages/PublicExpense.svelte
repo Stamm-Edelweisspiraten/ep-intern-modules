@@ -325,7 +325,7 @@
 	{:else if unavailable || loadError || !link}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title class="text-lg">
+				<Card.Title level={1} class="text-section">
 					{unavailable ? 'Dieser Link ist nicht verfügbar' : 'Seite nicht geladen'}
 				</Card.Title>
 				<Card.Description>
@@ -343,15 +343,15 @@
 	{:else}
 		<header class="flex flex-col gap-1">
 			<p class="text-muted-foreground text-sm">Auslagen einreichen</p>
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{link.actionName}</h1>
+			<h1 class="text-title">{link.actionName}</h1>
 			<p class="text-muted-foreground text-sm">{period}</p>
 		</header>
 
 		{#if done}
 			<Card.Root>
 				<Card.Content class="flex flex-col items-center gap-4 text-center">
-					<CircleCheck class="size-12 text-green-600" aria-hidden="true" />
-					<h2 class="text-xl font-semibold">Vielen Dank, {name.trim()}!</h2>
+					<CircleCheck class="size-12 text-success" aria-hidden="true" />
+					<h2 class="text-section">Vielen Dank, {name.trim()}!</h2>
 					<p class="text-sm font-medium tabular-nums" role="status">
 						{countLabel(done.count)} über {formatEuro(done.totalCents)} eingereicht.
 					</p>
@@ -376,7 +376,7 @@
 			<form class="flex flex-col gap-6" onsubmit={submit} novalidate>
 				<Card.Root>
 					<Card.Header>
-						<Card.Title class="text-base">Deine Angaben</Card.Title>
+						<Card.Title>Deine Angaben</Card.Title>
 					</Card.Header>
 					<Card.Content class="flex flex-col gap-4">
 						<FormField label="Name *" id="exp-name" error={errors.name}>
@@ -411,11 +411,11 @@
 				</Card.Root>
 
 				<section class="flex flex-col gap-4" aria-labelledby="exp-items-heading">
-					<h2 id="exp-items-heading" class="text-base font-semibold">Auslagen</h2>
+					<h2 id="exp-items-heading" class="text-section">Auslagen</h2>
 					{#each items as item, i (item.key)}
 						<Card.Root>
 							<Card.Header class="flex flex-row items-center justify-between gap-2">
-								<Card.Title id="exp-item-{i}-title" class="text-base outline-none" tabindex={-1}>
+								<Card.Title level={3} id="exp-item-{i}-title" class="outline-none" tabindex={-1}>
 									Auslage {i + 1}
 								</Card.Title>
 								{#if items.length > 1}
@@ -572,7 +572,7 @@
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title class="text-base">Konto für die Erstattung</Card.Title>
+						<Card.Title>Konto für die Erstattung</Card.Title>
 						<Card.Description>
 							Deine Kontodaten werden verschlüsselt gespeichert und nur für die Erstattung genutzt.
 						</Card.Description>

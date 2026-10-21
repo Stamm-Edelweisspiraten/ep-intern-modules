@@ -1,10 +1,10 @@
-import { defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
 import { listFieldDefs, putFieldDefs } from './fields.service';
 import { memberFieldsInput } from './schemas';
 
 const tags = ['Mitglieder'];
 
-export const fieldEndpoints: ApiEndpoint[] = [
+export const fieldEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/fields',
@@ -27,4 +27,4 @@ export const fieldEndpoints: ApiEndpoint[] = [
 			)
 		})
 	})
-] as unknown as ApiEndpoint[];
+];

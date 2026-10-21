@@ -1,7 +1,18 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	readUpload,
+	rowsOf,
+	safeFileName,
+	secureFileResponse,
+	type Tx
+} from '$lib/sdk/server';
 import type { ActionContributions } from '$lib/modules/treasury/contract';
-import { requireAccess, rowsOf } from './access';
+import { requireAccess } from './access';
 import {
 	ENTRY_COLUMNS,
 	assertOpen,
@@ -15,7 +26,6 @@ import {
 	resolveInterimUsers
 } from './accounting-core';
 import { payeeTotals, summarize } from './accounting';
-import { detectReceiptType, sanitizeName } from './action-archive';
 import { ibanLast, maskFromLast } from './iban';
 import {
 	MAX_RECEIPT_BYTES,
@@ -32,7 +42,6 @@ import {
 	type SummaryEntry
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 function toSummaryEntries(rows: Record<string, unknown>[]): SummaryEntry[] {
@@ -137,8 +146,9 @@ async function lockEntry(
 	return r;
 }
 
+/** Heute (Europe/Berlin) + 1 Jahr; 29.02. → 01.03. */
 function oneYearAhead(): string {
-	const d = new Date();
+	const d = new Date(`${todayBerlin()}T00:00:00Z`);
 	d.setUTCFullYear(d.getUTCFullYear() + 1);
 	return d.toISOString().slice(0, 10);
 }
@@ -198,7 +208,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
 			const treasury = await loadTreasuryContributions(id);
-			const loaded = await mdb().transaction(async (tx) => {
+			const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
 				return loadState(
 					tx,
@@ -233,7 +243,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const input = body as EntryInput;
 			const encrypted = input.iban ? crypt().encrypt(input.iban) : null;
-			const entry = await mdb().transaction(async (tx) => {
+			const entry = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await validateEntry(tx, id, input);
@@ -276,7 +286,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 			const { id, entryId } = params as { id: string; entryId: string };
 			const input = body as EntryInput;
 			const encrypted = input.iban ? crypt().encrypt(input.iban) : null;
-			const { entry, removedReceipt } = await mdb().transaction(async (tx) => {
+			const { entry, removedReceipt } = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);
@@ -337,7 +347,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		params: entryParams,
 		handler: async ({ ctx, params }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
-			const info = await mdb().transaction(async (tx) => {
+			const info = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);
@@ -379,7 +389,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			await core.permissions.require(ctx, 'actions.payout.view');
 			const { id, entryId } = params as { id: string; entryId: string };
-			const enc = await mdb().transaction(async (tx) => {
+			const enc = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				const [r] = await rowsOf(
 					tx,
@@ -413,21 +423,16 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		params: entryParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
+			// Typ, Größe und Inhalt (Magic Bytes) einheitlich geprüft (#33)
+			const file = await readUpload(request, {
+				maxBytes: MAX_RECEIPT_BYTES,
+				allowedTypes: RECEIPT_CONTENT_TYPES,
+				typesLabel: 'PDF, JPEG, PNG oder WebP',
+				fallbackName: 'beleg'
 			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const contentType = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (!(RECEIPT_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_RECEIPT_BYTES) {
-				throw errors.tooLarge('Datei überschreitet das Limit von 10 MB');
-			}
+			const { bytes, contentType } = file;
 
-			const old = await mdb().transaction(async (tx) => {
+			const old = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);
@@ -437,13 +442,8 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				return cur.receipt_path == null ? null : String(cur.receipt_path);
 			});
 
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			// Inhalt muss zum angegebenen Typ passen (Magic Bytes)
-			if (detectReceiptType(bytes) !== contentType) {
-				throw errors.validation({ file: 'Dateiinhalt passt nicht zum Dateityp' });
-			}
-			const displayName = file.name?.trim() || 'beleg';
-			const path = `${id}/${entryId}-${crypto.randomUUID()}-${sanitizeName(displayName)}`;
+			const displayName = file.name;
+			const path = `${id}/${entryId}-${crypto.randomUUID()}-${safeFileName(displayName)}`;
 			await core.storage.upload(ctx, {
 				module: MODULE_ID,
 				path,
@@ -452,7 +452,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				name: displayName
 			});
 			try {
-				await mdb().transaction(async (tx) => {
+				await moduleDb(MODULE_ID).transaction(async (tx) => {
 					await assertOpen(tx, id);
 					await lockEntry(tx, id, entryId);
 					await tx.execute(
@@ -484,7 +484,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		params: entryParams,
 		handler: async ({ ctx, params }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
-			const ref = await mdb().transaction(async (tx) => {
+			const ref = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const [r] = await rowsOf(
 					tx,
@@ -503,15 +503,12 @@ export const accountingEndpoints: ApiEndpoint[] = [
 				path: ref.path
 			});
 			const name = ref.name || file.name || 'beleg';
-			return new Response(buffer as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-length': String(buffer.byteLength),
-					'content-disposition': `inline; filename="${sanitizeName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			// Gemeinsame gehärtete Antwort (CSP-Sandbox, nosniff, RFC-5987-Name; #67, 01b-11)
+			return secureFileResponse(buffer, {
+				contentType: file.contentType,
+				size: buffer.byteLength,
+				name,
+				cache: 'private, no-store'
 			});
 		}
 	} as ApiEndpoint,
@@ -524,7 +521,7 @@ export const accountingEndpoints: ApiEndpoint[] = [
 		params: entryParams,
 		handler: async ({ ctx, params }) => {
 			const { id, entryId } = params as { id: string; entryId: string };
-			const path = await mdb().transaction(async (tx) => {
+			const path = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const cur = await lockEntry(tx, id, entryId);

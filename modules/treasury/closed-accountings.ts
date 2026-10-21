@@ -5,9 +5,8 @@
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint } from '$lib/sdk/server';
+import { core, errors, logBestEffort, secureFileResponse, type ApiEndpoint } from '$lib/sdk/server';
 import { actionsService, mdb, rows, str } from './db';
-import { sanitizeName } from './logic';
 import { listPayables } from './payables';
 import type {
 	ClosedAccounting,
@@ -41,6 +40,8 @@ export interface ClosedAccountingDetailItem extends ClosedAccountingDetail {
 	filedBy: string | null;
 	/** Auszahlungen der Kasse zu dieser Aktion (Auslagen, Stamm-Ausgaben, Rückzahlungen) */
 	payables: Payable[];
+	/** Anzeigenamen der Kategorien (aus dem Vertrag von `actions`) */
+	categoryLabels: Record<string, string>;
 }
 
 export const closedAccountingEndpoints = [
@@ -63,7 +64,10 @@ export const closedAccountingEndpoints = [
 			);
 			const userIds = [...new Set(filed.map((f) => str(f.filed_by)).filter(Boolean) as string[])];
 			const users = userIds.length
-				? await core.users.directory(ctx, { ids: userIds, limit: 30 }).catch(() => [])
+				? await core.users.directory(ctx, { ids: userIds, limit: 30 }).catch((e) => {
+						logBestEffort('Namen für die Ablage laden', e, { ctx });
+						return [];
+					})
 				: [];
 			const filedOf = (actionId: string) => {
 				const f = filed.find((x) => x.action_id === actionId);
@@ -111,7 +115,7 @@ export const closedAccountingEndpoints = [
 		handler: async ({ ctx, params: p }) => {
 			const { id } = p as { id: string };
 			const svc = await actionsService();
-			if (!(await svc.listClosedAccountings()).some((a) => a.actionId === id)) {
+			if (!(await svc.isAccountingClosed(id))) {
 				throw errors.notFound('Abgeschlossene Abrechnung nicht gefunden');
 			}
 			const pdf = await svc.accountingReportPdf(
@@ -119,13 +123,10 @@ export const closedAccountingEndpoints = [
 				core.permissions.has(ctx, 'treasury.bank.view'),
 				ctx
 			);
-			return new Response(Buffer.from(pdf.data), {
-				status: 200,
-				headers: {
-					'content-type': 'application/pdf',
-					'content-disposition': `inline; filename="${pdf.fileName}"`,
-					'cache-control': 'private, no-store'
-				}
+			return secureFileResponse(pdf.data, {
+				contentType: 'application/pdf',
+				name: pdf.fileName,
+				cache: 'private, no-store'
 			});
 		}
 	},
@@ -148,13 +149,10 @@ export const closedAccountingEndpoints = [
 				core.permissions.has(ctx, 'treasury.bank.view'),
 				ctx
 			);
-			return new Response(Buffer.from(pdf.data), {
-				status: 200,
-				headers: {
-					'content-type': 'application/pdf',
-					'content-disposition': `inline; filename="${sanitizeName(pdf.fileName)}"`,
-					'cache-control': 'private, no-store'
-				}
+			return secureFileResponse(pdf.data, {
+				contentType: 'application/pdf',
+				name: pdf.fileName,
+				cache: 'private, no-store'
 			});
 		}
 	},
@@ -167,7 +165,8 @@ export const closedAccountingEndpoints = [
 		params,
 		handler: async ({ ctx, params: p }) => {
 			const { id } = p as { id: string };
-			const detail = await (await actionsService()).getClosedAccounting(id);
+			const svc = await actionsService();
+			const detail = await svc.getClosedAccounting(id);
 			if (!detail) throw errors.notFound('Abgeschlossene Abrechnung nicht gefunden');
 			const payables = await listPayables(sql`p.action_id = ${id} AND p.source <> 'manual'`);
 			const interims =
@@ -178,14 +177,18 @@ export const closedAccountingEndpoints = [
 			);
 			const by = filed ? str(filed.filed_by) : null;
 			const users = by
-				? await core.users.directory(ctx, { ids: [by], limit: 30 }).catch(() => [])
+				? await core.users.directory(ctx, { ids: [by], limit: 30 }).catch((e) => {
+						logBestEffort('Namen für die Ablage laden', e, { ctx, target: id });
+						return [];
+					})
 				: [];
 			const out: ClosedAccountingDetailItem = {
 				...detail,
 				interims,
 				filedAt: filed ? new Date(String(filed.filed_at)).toISOString() : null,
 				filedBy: by ? (users.find((u) => u.id === by)?.name ?? 'Unbekannt') : null,
-				payables
+				payables,
+				categoryLabels: svc.accountingCategoryLabels()
 			};
 			return out;
 		}
@@ -210,14 +213,10 @@ export const closedAccountingEndpoints = [
 				target: id,
 				metadata: { entryId }
 			});
-			return new Response(file.data as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-disposition': `inline; filename="${sanitizeName(file.name)}"`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			return secureFileResponse(file.data, {
+				contentType: file.contentType,
+				name: file.name,
+				cache: 'private, no-store'
 			});
 		}
 	},

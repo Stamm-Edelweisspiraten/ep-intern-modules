@@ -3,10 +3,14 @@
  * Wird von Server UND UI genutzt – keine Server-Imports.
  */
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 import { daysBetween, minGapDays } from './recurrence';
 
 export const MODULE_ID = 'events';
+
+/** Eigenes Recht zum Veröffentlichen auf der Stammeswebsite (#67, 01b-06) */
+export const PUBLISH_PERMISSION = 'events.event.publish';
 
 /** Gruppen-ID für „ganzer Stamm“ in der Gruppen-Zuordnung (`event_groups.group_id`) */
 export const STAMM_GROUP_ID = 'stamm';
@@ -34,12 +38,8 @@ export const COLOR_PRESETS = [
 ] as const;
 
 /** Echtes Kalenderdatum `JJJJ-MM-TT` */
-export function isRealDate(iso: string): boolean {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-	if (!m) return false;
-	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-	return d.toISOString().slice(0, 10) === iso;
-}
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
 
 /** Tag normalisieren: trimmen, Mehrfach-Leerzeichen zusammenfassen; leer → `''` */
 export function normalizeTag(tag: string): string {
@@ -356,6 +356,8 @@ export interface EventGroupRef {
 	/** Gruppenstunde aus `members` (1 = Mo … 7 = So), für Vorschläge; beim Stamm `null` */
 	meetingWeekday?: number | null;
 	meetingTime?: string | null;
+	/** Ende der Gruppenstunde (`HH:MM[:SS]`) oder `null` */
+	meetingEndTime?: string | null;
 	meetingPlace?: string | null;
 }
 

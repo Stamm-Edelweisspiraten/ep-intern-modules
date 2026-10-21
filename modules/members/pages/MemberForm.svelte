@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Link2 from '@lucide/svelte/icons/link-2';
@@ -17,7 +18,13 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ColorBadge, ContactListField, FileField, FormField } from '$lib/components/layout';
+	import {
+		ColorBadge,
+		ConfirmDialog,
+		ContactListField,
+		FileField,
+		FormField
+	} from '$lib/components/layout';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FormRenderer } from '$lib/components/forms';
 	import type { FieldDefinition, FormValues } from '$lib/forms';
@@ -36,7 +43,7 @@
 		STAGE_LABELS,
 		type DocumentKind,
 		type FeeLevel,
-		type Group,
+		type GroupRef,
 		type ContactEntry,
 		type Member,
 		type MemberFormInput,
@@ -54,12 +61,14 @@
 		canEdit = false,
 		canLinkView = false,
 		linkCount = 0,
+		apiBase = '/modules/members',
+		restricted = false,
 		onlinks,
 		onsaved
 	}: {
 		open?: boolean;
 		member?: Member | null;
-		groups: Group[];
+		groups: GroupRef[];
 		canUpload: boolean;
 		canRemoveDoc: boolean;
 		/** Tab beim Öffnen (Standard „Person“) */
@@ -69,17 +78,21 @@
 		canEdit?: boolean;
 		canLinkView?: boolean;
 		linkCount?: number;
+		/** API-Basis; Gruppenleitungen arbeiten über `/modules/members/led` */
+		apiBase?: string;
+		/** Gruppenleitung: Gruppen und Mitgliedschaftsdaten gesperrt (ändert die Mitgliederverwaltung) */
+		restricted?: boolean;
 		onlinks?: (m: Member) => void;
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
 	const viewing = $derived(readonly && !!member);
 
-	const base = '/api/v1/modules/members/members';
+	const base = $derived(`/api/v1${apiBase}/members`);
 	const accept = DOCUMENT_CONTENT_TYPES.join(',');
 	const maxMb = MAX_DOCUMENT_BYTES / 1024 / 1024;
 	const hasGroups = $derived(groups.length > 0);
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayBerlin();
 	const left = $derived(!!member?.exitDate && member.exitDate <= today);
 	const groupOptions = $derived(
 		groups.map((g) => ({ value: g.id, label: g.name, description: GROUP_TYPE_LABELS[g.type] }))
@@ -207,7 +220,7 @@
 		const seq = ++customLoad;
 		try {
 			const r = await apiFetch<{ fields: { active: boolean; field: FieldDefinition }[] }>(
-				'/modules/members/fields'
+				`${apiBase}/fields`
 			);
 			if (seq !== customLoad) return;
 			customFields = r.fields.filter((d) => d.active).map((d) => d.field);
@@ -222,16 +235,24 @@
 	async function uploadDoc(id: string, kind: DocumentKind, file: File) {
 		const fd = new FormData();
 		fd.append('file', file);
-		await apiFetch<{ name: string }>(`/modules/members/members/${id}/documents/${kind}`, {
+		await apiFetch<{ name: string }>(`${apiBase}/members/${id}/documents/${kind}`, {
 			method: 'POST',
 			body: fd
 		});
 	}
 
+	// Entfernen löscht sofort und endgültig → erst nach Bestätigung (#53)
+	let removeKind = $state<DocumentKind | null>(null);
+	let removeOpen = $state(false);
+	function askRemoveDoc(kind: DocumentKind) {
+		removeKind = kind;
+		removeOpen = true;
+	}
+
 	async function removeDoc(kind: DocumentKind) {
 		if (!member) return;
 		try {
-			await apiFetch(`/modules/members/members/${member.id}/documents/${kind}`, {
+			await apiFetch(`${apiBase}/members/${member.id}/documents/${kind}`, {
 				method: 'DELETE'
 			});
 			docNames[kind] = null;
@@ -429,7 +450,7 @@
 		busy = true;
 		try {
 			const saved = member
-				? await apiFetch<Member>(`/modules/members/members/${member.id}`, {
+				? await apiFetch<Member>(`${apiBase}/members/${member.id}`, {
 						method: 'PUT',
 						body: JSON.stringify(body)
 					})
@@ -481,10 +502,22 @@
 	const docs = DOCUMENT_KINDS.map((kind) => ({ kind, label: DOCUMENT_LABELS[kind] }));
 	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 	const consentItems = [
-		{ id: 'm-consent-social', label: 'Socialmedia', key: 'consentSocialMedia' },
-		{ id: 'm-consent-web', label: 'Stammeswebsite', key: 'consentWebsite' },
-		{ id: 'm-consent-print', label: 'Print', key: 'consentPrint' }
+		{
+			id: 'm-consent-social',
+			label: 'Socialmedia',
+			key: 'consentSocialMedia',
+			proof: 'socialMedia'
+		},
+		{ id: 'm-consent-web', label: 'Stammeswebsite', key: 'consentWebsite', proof: 'website' },
+		{ id: 'm-consent-print', label: 'Print', key: 'consentPrint', proof: 'print' }
 	] as const;
+	/** Nachweis (#27): „erteilt/widerrufen am …“ der letzten Änderung */
+	function consentProofText(kind: 'socialMedia' | 'website' | 'print', given: boolean): string {
+		const p = member?.consentProof?.[kind];
+		if (!p) return '';
+		const d = new Date(p.at).toLocaleDateString('de-DE');
+		return `${given ? 'erteilt' : 'widerrufen'} am ${d}`;
+	}
 	const tabs = $derived([
 		{ value: 'person' as const, label: 'Person' },
 		{ value: 'contact' as const, label: 'Kontakt' },
@@ -518,7 +551,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[90vh] flex-col sm:max-w-2xl">
+	<Dialog.Content class="flex flex-col sm:max-w-2xl">
 		<Dialog.Header>
 			{#if viewing && member}
 				<Dialog.Title class="flex flex-wrap items-center gap-2">
@@ -539,10 +572,7 @@
 
 		<form class="flex min-h-0 flex-1 flex-col gap-4" onsubmit={submit} novalidate>
 			<Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col gap-3">
-				<Tabs.List
-					variant="line"
-					class="w-full flex-wrap justify-start gap-y-2 group-data-[orientation=horizontal]/tabs:h-auto"
-				>
+				<Tabs.List variant="line" class="w-full justify-start">
 					{#each tabs as t (t.value)}
 						<Tabs.Trigger value={t.value} class="flex-none">
 							{t.label}
@@ -621,6 +651,7 @@
 								bind:city
 								bind:country
 								errors={fieldErrors}
+								{apiBase}
 							/>
 						</Tabs.Content>
 
@@ -663,85 +694,100 @@
 								/>
 							</FormField>
 
-							<div class="space-y-1.5">
-								{#if viewing}
-									<p class="text-sm font-medium">Gruppen</p>
-									<div
-										id="m-groups"
-										class="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-muted/40 px-2 py-1 text-sm"
-									>
-										{#each member?.groups ?? [] as g (g.id)}
-											<ColorBadge color={g.color}>{g.name}</ColorBadge>
-										{:else}
-											<span class="text-muted-foreground">Keine Gruppe</span>
-										{/each}
-									</div>
-								{:else if hasGroups}
-									<MultiSelect
-										id="m-groups"
-										label="Gruppen"
-										options={groupOptions}
-										bind:value={groupIds}
-										placeholder="Gruppen auswählen (optional)"
-										searchPlaceholder="Gruppe suchen …"
-										emptyText="Keine Gruppe gefunden."
-										invalid={!!fieldErrors.groupIds}
-									/>
-								{:else}
-									<p class="text-sm font-medium">Gruppen</p>
-									<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
-								{/if}
-								{#if fieldErrors.groupIds}
-									<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
-								{/if}
-							</div>
-
-							<div class="grid gap-4 sm:grid-cols-2">
-								{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
-								{@render dateInput('m-exit', 'exitDate', 'Austritt')}
-							</div>
-							<p class="-mt-2 text-xs text-muted-foreground" hidden={viewing}>
-								Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter
-								„Ausgetreten“.
-							</p>
-
-							<div class="space-y-3 rounded-md border p-3">
-								<div class="flex items-center justify-between gap-4">
-									<label for="m-secondary" class="space-y-0.5">
-										<span class="block text-sm font-medium">Zweitmitglied</span>
-										<span class="block text-xs text-muted-foreground">
-											Hauptmitgliedschaft in einem anderen Stamm.
-										</span>
-									</label>
-									<Switch id="m-secondary" bind:checked={secondaryMember} />
-								</div>
-								{#if secondaryMember}
-									<fieldset class="space-y-2">
-										<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
-										<div class="flex flex-wrap gap-x-5 gap-y-2">
-											{#each FEE_LEVELS as level (level)}
-												<div class="flex items-center gap-2">
-													<Checkbox
-														id={`m-fee-${level}`}
-														checked={feeLevels.includes(level)}
-														aria-invalid={!!fieldErrors.feeLevels}
-														onCheckedChange={(v) => toggleLevel(level, v === true)}
-													/>
-													<label for={`m-fee-${level}`} class="text-sm">
-														{FEE_LEVEL_LABELS[level]}
-													</label>
-												</div>
+							{#if restricted && !viewing}
+								<p class="text-xs text-muted-foreground">
+									Gruppen und Mitgliedschaftsdaten ändert die Mitgliederverwaltung.
+								</p>
+							{/if}
+							<!-- Gruppenleitung: Gruppen und Mitgliedschaftsdaten gesperrt (Server ignoriert sie ebenfalls) -->
+							<fieldset
+								disabled={restricted && !viewing}
+								class={[
+									'min-w-0 space-y-4',
+									restricted &&
+										'[&_:disabled]:cursor-default [&_:disabled]:opacity-100 [&_input:disabled]:bg-muted/40 [&_label]:opacity-100'
+								]}
+							>
+								<div class="space-y-1.5">
+									{#if viewing || restricted}
+										<p class="text-sm font-medium">Gruppen</p>
+										<div
+											id="m-groups"
+											class="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-muted/40 px-2 py-1 text-sm"
+										>
+											{#each member?.groups ?? [] as g (g.id)}
+												<ColorBadge color={g.color}>{g.name}</ColorBadge>
+											{:else}
+												<span class="text-muted-foreground">Keine Gruppe</span>
 											{/each}
 										</div>
-										<p class="text-xs text-muted-foreground">
-											Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
-										</p>
-										{#if fieldErrors.feeLevels}
-											<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
-										{/if}
-									</fieldset>
-								{/if}
-							</div>
+									{:else if hasGroups}
+										<MultiSelect
+											id="m-groups"
+											label="Gruppen"
+											options={groupOptions}
+											bind:value={groupIds}
+											placeholder="Gruppen auswählen (optional)"
+											searchPlaceholder="Gruppe suchen …"
+											emptyText="Keine Gruppe gefunden."
+											invalid={!!fieldErrors.groupIds}
+										/>
+									{:else}
+										<p class="text-sm font-medium">Gruppen</p>
+										<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
+									{/if}
+									{#if fieldErrors.groupIds}
+										<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
+									{/if}
+								</div>
+
+								<div class="grid gap-4 sm:grid-cols-2">
+									{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
+									{@render dateInput('m-exit', 'exitDate', 'Austritt')}
+								</div>
+								<p class="-mt-2 text-xs text-muted-foreground" hidden={viewing || restricted}>
+									Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter
+									„Ausgetreten“.
+								</p>
+
+								<div class="space-y-3 rounded-md border p-3">
+									<div class="flex items-center justify-between gap-4">
+										<label for="m-secondary" class="space-y-0.5">
+											<span class="block text-sm font-medium">Zweitmitglied</span>
+											<span class="block text-xs text-muted-foreground">
+												Hauptmitgliedschaft in einem anderen Stamm.
+											</span>
+										</label>
+										<Switch id="m-secondary" bind:checked={secondaryMember} />
+									</div>
+									{#if secondaryMember}
+										<fieldset class="space-y-2">
+											<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
+											<div class="flex flex-wrap gap-x-5 gap-y-2">
+												{#each FEE_LEVELS as level (level)}
+													<div class="flex items-center gap-2">
+														<Checkbox
+															id={`m-fee-${level}`}
+															checked={feeLevels.includes(level)}
+															aria-invalid={!!fieldErrors.feeLevels}
+															onCheckedChange={(v) => toggleLevel(level, v === true)}
+														/>
+														<label for={`m-fee-${level}`} class="text-sm">
+															{FEE_LEVEL_LABELS[level]}
+														</label>
+													</div>
+												{/each}
+											</div>
+											<p class="text-xs text-muted-foreground">
+												Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
+											</p>
+											{#if fieldErrors.feeLevels}
+												<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
+											{/if}
+										</fieldset>
+									{/if}
+								</div>
+							</fieldset>
 						</Tabs.Content>
 
 						{#if visibleCustomFields.length}
@@ -777,6 +823,11 @@
 												<Checkbox id={c.id} bind:checked={consentPrint} />
 											{/if}
 											<label for={c.id} class="text-sm">{c.label}</label>
+											{#if consentProofText(c.proof, Boolean(member?.[c.key]))}
+												<span class="text-xs text-muted-foreground">
+													({consentProofText(c.proof, Boolean(member?.[c.key]))})
+												</span>
+											{/if}
 										</div>
 									{/each}
 								</div>
@@ -797,7 +848,7 @@
 												existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
 												canUpload={canUpload && !viewing}
 												canRemove={canRemoveDoc && !viewing}
-												onremove={() => removeDoc(d.kind)}
+												onremove={() => askRemoveDoc(d.kind)}
 											/>
 										{/key}
 										{#if canUpload && !viewing}
@@ -858,3 +909,14 @@
 		</form>
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={removeOpen}
+	title={removeKind ? `${DOCUMENT_LABELS[removeKind]} entfernen?` : 'Dokument entfernen?'}
+	description={removeKind
+		? `„${docNames[removeKind] ?? DOCUMENT_LABELS[removeKind]}“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.`
+		: undefined}
+	confirmLabel="Entfernen"
+	destructive
+	onconfirm={() => (removeKind ? removeDoc(removeKind) : undefined)}
+/>

@@ -1,20 +1,14 @@
 import { ApiClientError } from '$lib/sdk/client';
 import { formatEuro } from '$lib/components/layout/money';
+import { addDays, formatDateDe, formatDateTimeDe, todayBerlin } from '$lib/sdk/dates';
 import type { BadgeVariant } from '$lib/components/ui/badge';
 import type { InvoiceStatus, InvoiceSummary } from '../schemas';
 
 export const BASE = '/modules/treasury';
 
-export function fmtDate(d: string | null | undefined): string {
-	if (!d) return '–';
-	const [y, m, day] = d.slice(0, 10).split('-');
-	return `${day}.${m}.${y}`;
-}
+export const fmtDate = (d: string | null | undefined): string => formatDateDe(d, '–');
 
-export function fmtDateTime(iso: string | null | undefined): string {
-	if (!iso) return '–';
-	return new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-}
+export const fmtDateTime = (iso: string | null | undefined): string => formatDateTimeDe(iso, '–');
 
 /** Betrag mit Vorzeichen (Ausgaben negativ) */
 export function signedEuro(cents: number): string {
@@ -27,14 +21,10 @@ export function defaultAccountId(accounts: import('../schemas').Account[]): stri
 	return (active.find((a) => a.isDefault) ?? active[0])?.id ?? null;
 }
 
-export const todayIso = (): string =>
-	new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date());
+/** Heute in Europe/Berlin (`YYYY-MM-DD`) */
+export const todayIso = (): string => todayBerlin();
 
-export function addDaysIso(date: string, days: number): string {
-	const d = new Date(`${date}T00:00:00Z`);
-	d.setUTCDate(d.getUTCDate() + days);
-	return d.toISOString().slice(0, 10);
-}
+export const addDaysIso = addDays;
 
 /** Feldfehler aus Server-Details (Zod-Issues als Liste oder `{ issues }`) */
 export function fieldErrorsFrom(details: unknown): Record<string, string> {

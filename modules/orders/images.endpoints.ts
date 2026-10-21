@@ -3,7 +3,15 @@
  * Löschen, Reihenfolge (erstes Bild = Titelbild). Muster wie `galleries/images.endpoints.ts`.
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	defineEndpoint,
+	errors,
+	IMAGE_RATE_LIMIT,
+	readUpload,
+	type AnyApiEndpoint,
+	type Tx
+} from '$lib/sdk/server';
 import { canManageArticles, requireArticleRow, toArticleImage } from './articles.service';
 import { mdb, rows, type Row } from './db';
 import {
@@ -54,7 +62,7 @@ async function imagesOf(tx: Tx, articleId: string): Promise<ArticleImage[]> {
 	).map(toArticleImage);
 }
 
-export const imagesEndpoints: ApiEndpoint[] = [
+export const imagesEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/articles/:id/images/order',
@@ -105,19 +113,14 @@ export const imagesEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params, request }): Promise<ArticleImage> => {
 			const articleId = params.id;
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
+			// Typ/leer/fehlend → 422, Größe → 413 (#33); den Bildinhalt prüft core.images.process
+			const file = await readUpload(request, {
+				maxBytes: MAX_IMAGE_BYTES,
+				allowedTypes: IMAGE_CONTENT_TYPES,
+				typesLabel: 'JPEG, PNG, WebP, AVIF oder GIF',
+				detectMissingType: true,
+				sniff: false
 			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const declared = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (declared && !(IMAGE_CONTENT_TYPES as readonly string[]).includes(declared)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (JPEG, PNG, WebP, AVIF oder GIF)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_IMAGE_BYTES) {
-				throw errors.tooLarge(`Bild überschreitet das Limit von ${MAX_MB} MB`);
-			}
 
 			const assertRoom = async (tx: Tx) => {
 				await requireArticleRow(tx, articleId);
@@ -131,7 +134,7 @@ export const imagesEndpoints: ApiEndpoint[] = [
 			};
 			await mdb().transaction(assertRoom);
 
-			const bytes = new Uint8Array(await file.arrayBuffer());
+			const bytes = file.bytes;
 			const processed = await core.images.process(bytes, {
 				variants: VARIANT_SPECS,
 				maxInputBytes: MAX_IMAGE_BYTES
@@ -164,6 +167,10 @@ export const imagesEndpoints: ApiEndpoint[] = [
 			let row: Row;
 			try {
 				row = await mdb().transaction(async (tx) => {
+					// Sperre je Artikel: parallele Uploads bekommen eindeutige Positionen, Höchstzahl hält (#73, 07-12)
+					await tx.execute(
+						sql`SELECT pg_advisory_xact_lock(hashtext(${'orders:article-images:' + articleId}))`
+					);
 					await assertRoom(tx);
 					await tx.execute(
 						sql`INSERT INTO article_images (id, article_id, position, width, height, thumb_path, web_path, uploaded_by)
@@ -223,6 +230,8 @@ export const imagesEndpoints: ApiEndpoint[] = [
 		tags,
 		permission: PERMISSIONS.view,
 		params: imageVariantParams,
+		// eigenes Kontingent für Bilder (#23)
+		rateLimit: IMAGE_RATE_LIMIT,
 		handler: async ({ ctx, params }) => {
 			const manage = canManageArticles(ctx);
 			const path = await mdb().transaction(async (tx) => {
@@ -240,5 +249,5 @@ export const imagesEndpoints: ApiEndpoint[] = [
 			});
 			return fileResponse(path, { cache: 'private, max-age=3600' });
 		}
-	}) as unknown as ApiEndpoint // Enum-Parameter (`variant`) passt nicht zu Record<string, string>
-] as ApiEndpoint[];
+	})
+];

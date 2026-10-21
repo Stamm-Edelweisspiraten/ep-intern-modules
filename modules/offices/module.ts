@@ -3,22 +3,28 @@ import { syncGrants } from './grants.service';
 import { holderEndpoints } from './holders.endpoints';
 import { notificationEndpoints } from './notifications.endpoints';
 import { officesService, sendDigest } from './notify.service';
+import type { OfficesService } from './contract';
 import { officeEndpoints } from './offices.endpoints';
 import { profileEndpoints } from './profile.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { onUserDeleted } from './user-deleted';
 import { officesSearch } from './search';
+import { subjectExport } from './subject-export';
 import { applyTemplates } from './templates.service';
 import { websiteEndpoints } from './website.endpoints';
 import { HOLDER_ROLE_NAME } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_templates_notifications.sql?raw';
+import m0003 from './migrations/0003_notification_queue_retention.sql?raw';
+import m0004 from './migrations/0004_website_optin.sql?raw';
+import m0005 from './migrations/0005_bio_check.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'offices',
 		name: 'Ämter',
 		description: 'Ämter mit Reihenfolge, E-Mail-Adressen, Inhaber*innen und verknüpften Rollen',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: [],
 		/** Jede*r Inhaber*in erhält diese Rolle automatisch (Ämter ansehen, eigene Beschreibung) */
 		defaultRoleGrants: { [HOLDER_ROLE_NAME]: ['offices.office.view'] },
@@ -42,12 +48,18 @@ export default defineModule({
 	},
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_templates_notifications', sql: m0002 }
+		{ name: '0002_templates_notifications', sql: m0002 },
+		{ name: '0003_notification_queue_retention', sql: m0003 },
+		{ name: '0004_website_optin', sql: m0004 },
+		{ name: '0005_bio_check', sql: m0005 }
 	],
 	/** Dienst für andere Module (`OfficesService`, siehe `contract.ts`) */
-	provides: officesService as unknown as Record<string, unknown>,
+	provides: officesService satisfies OfficesService,
 	resetAreas,
 	resetUsers,
+	onUserDeleted,
+	/** Datenauskunft (Art. 15/20): Ämter, Beschreibung, Website-Zustimmung, Benachrichtigungen */
+	subjectExport,
 	jobs: [
 		{
 			id: 'sync-grants',
@@ -66,7 +78,7 @@ export default defineModule({
 			schedule: 'daily',
 			run: async (ctx) => {
 				const r = await sendDigest(ctx);
-				return `${r.sent} Mails mit ${r.events} Hinweisen, ${r.failed} fehlgeschlagen, ${r.dropped} verworfen`;
+				return `${r.sent} Mails mit ${r.events} Hinweisen, ${r.failed} fehlgeschlagen, ${r.dropped} verworfen (davon ${r.expired} wegen Alter/Versuchen)`;
 			}
 		}
 	],

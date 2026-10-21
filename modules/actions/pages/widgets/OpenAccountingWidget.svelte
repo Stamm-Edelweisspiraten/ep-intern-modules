@@ -70,7 +70,7 @@
 							: 'noch keine Buchungen'}
 					</span>
 					{#if a.missingReceipts || a.openReimbursements}
-						<span class="block text-xs text-amber-700 tabular-nums dark:text-amber-400">
+						<span class="block text-xs text-warning tabular-nums">
 							{[
 								a.missingReceipts ? plural(a.missingReceipts, 'Beleg fehlt', 'Belege fehlen') : '',
 								a.openReimbursements

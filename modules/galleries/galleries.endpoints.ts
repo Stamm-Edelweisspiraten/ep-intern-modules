@@ -1,30 +1,37 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
+	type ApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
 	principalKeysFor,
-	validatePrincipals,
-	type ApiEndpoint
+	type RequestContext,
+	rowsOf,
+	toIso,
+	validatePrincipals
 } from '$lib/sdk/server';
-import { accessForMany, requireAccess, rowsOf, visibleGalleriesFilter } from './access';
+import {
+	accessForMany,
+	loadShares,
+	replaceShares,
+	requireAccess,
+	visibleGalleriesFilter
+} from './access';
 import { db, effectiveCoverSql, removeFiles } from './files';
 import {
 	describeEvents,
 	eventIdsByGallery,
 	finishDetail,
-	iso,
 	likePattern,
 	loadDetailData,
 	loadEventIds,
-	loadShares,
 	pickEvents,
 	replaceGalleryEvents,
-	replaceShares,
 	validateEventIds
 } from './galleries.service';
 import {
 	MODULE_ID,
+	PUBLISH_PERMISSION,
 	coverInput,
 	galleryInput,
 	idParams,
@@ -35,6 +42,29 @@ import {
 } from './schemas';
 
 const tags = ['Modul: galleries'];
+
+export const CONSENT_REQUIRED_MESSAGE =
+	'Bitte bestätige, dass für alle erkennbaren Personen eine Einwilligung zur Veröffentlichung ' +
+	'auf der Website vorliegt';
+
+/**
+ * Veröffentlichen (Neuanlage öffentlich oder Wechsel privat → öffentlich) verlangt das eigene Recht
+ * `galleries.gallery.publish` (#67, 01b-06; sonst 403) **und** die Bestätigung der Einwilligungen
+ * (#27; sonst 422 mit Pfad `consentConfirmed`). Zurücknehmen (öffentlich → privat) darf jede*r mit
+ * Bearbeitungsrecht. Rückgabe: `true` = wird gerade veröffentlicht (Bestätigung speichern).
+ */
+async function requirePublishConsent(
+	ctx: RequestContext,
+	before: Visibility | null,
+	body: { visibility: Visibility; consentConfirmed?: boolean }
+): Promise<boolean> {
+	const publishing = body.visibility === 'public' && before !== 'public';
+	if (publishing) await core.permissions.require(ctx, PUBLISH_PERMISSION);
+	if (publishing && body.consentConfirmed !== true) {
+		throw errors.validation([{ path: ['consentConfirmed'], message: CONSENT_REQUIRED_MESSAGE }]);
+	}
+	return publishing;
+}
 
 export const galleriesEndpoints = [
 	defineEndpoint({
@@ -103,8 +133,8 @@ export const galleriesEndpoints = [
 									},
 						ownerId: String(r.owner_id),
 						access: access.get(id) ?? { level: 'read', isOwner: false },
-						createdAt: iso(r.created_at),
-						updatedAt: iso(r.updated_at)
+						createdAt: toIso(r.created_at),
+						updatedAt: toIso(r.updated_at)
 					};
 				});
 				return { items, eventIds, total: Number(count?.total ?? 0) };
@@ -144,6 +174,7 @@ export const galleriesEndpoints = [
 			await core.permissions.require(ctx, 'galleries.gallery.view');
 			const ownerId = ctx.userId;
 			if (!ownerId) throw errors.badRequest('Galerien können nur von Benutzern angelegt werden');
+			const publishing = await requirePublishConsent(ctx, null, body);
 			const keys = await principalKeysFor(ctx, MODULE_ID);
 			await validatePrincipals(ctx, MODULE_ID, body.shares);
 			await validateEventIds(ctx, body.eventIds);
@@ -151,9 +182,11 @@ export const galleriesEndpoints = [
 			const id = crypto.randomUUID();
 			const data = await db().transaction(async (tx) => {
 				await tx.execute(
-					sql`INSERT INTO galleries (id, title, description, visibility, owner_id, created_by)
+					sql`INSERT INTO galleries (id, title, description, visibility, owner_id, created_by,
+							public_confirmed_at, public_confirmed_by)
 						VALUES (${id}, ${body.title}, ${body.description}, ${body.visibility},
-							${ownerId}, ${ownerId})`
+							${ownerId}, ${ownerId}, ${publishing ? sql`now()` : null},
+							${publishing ? ownerId : null})`
 				);
 				await replaceShares(tx, ctx, id, body.shares);
 				await replaceGalleryEvents(tx, id, body.eventIds);
@@ -165,9 +198,13 @@ export const galleriesEndpoints = [
 				metadata: {
 					visibility: body.visibility,
 					shares: body.shares.length,
-					events: body.eventIds.length
+					events: body.eventIds.length,
+					...(publishing ? { consentConfirmed: true } : {})
 				}
 			});
+			if (publishing) {
+				await core.audit.logFromContext(ctx, 'galleries.gallery.published', { target: id });
+			}
 			return detail;
 		}
 	}),
@@ -226,11 +263,17 @@ export const galleriesEndpoints = [
 			// Termin für den Aufrufer nicht (mehr) sichtbar ist.
 			const stored = await db().transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
+				const [row] = await rowsOf(
+					tx,
+					sql`SELECT visibility FROM galleries WHERE id = ${params.id}`
+				);
 				return {
+					visibility: (row ? String(row.visibility) : null) as Visibility | null,
 					shares: await loadShares(tx, params.id),
 					eventIds: await loadEventIds(tx, params.id)
 				};
 			});
+			const publishing = await requirePublishConsent(ctx, stored.visibility, body);
 			await validatePrincipals(ctx, MODULE_ID, body.shares, {
 				keep: new Set(stored.shares.map((s) => `${s.type}:${s.id}`))
 			});
@@ -243,6 +286,12 @@ export const galleriesEndpoints = [
 							visibility = ${body.visibility}, updated_at = now()
 						WHERE id = ${params.id}`
 				);
+				if (publishing) {
+					await tx.execute(
+						sql`UPDATE galleries SET public_confirmed_at = now(), public_confirmed_by = ${ctx.userId}
+							WHERE id = ${params.id}`
+					);
+				}
 				await replaceShares(tx, ctx, params.id, body.shares);
 				await replaceGalleryEvents(tx, params.id, body.eventIds);
 				// Zugriff neu bestimmen (Freigaben können sich geändert haben)
@@ -254,9 +303,17 @@ export const galleriesEndpoints = [
 				metadata: {
 					visibility: body.visibility,
 					shares: body.shares.length,
-					events: body.eventIds.length
+					events: body.eventIds.length,
+					...(publishing ? { consentConfirmed: true } : {})
 				}
 			});
+			if (stored.visibility !== null && body.visibility !== stored.visibility) {
+				await core.audit.logFromContext(
+					ctx,
+					publishing ? 'galleries.gallery.published' : 'galleries.gallery.unpublished',
+					{ target: params.id }
+				);
+			}
 			return detail;
 		}
 	}),

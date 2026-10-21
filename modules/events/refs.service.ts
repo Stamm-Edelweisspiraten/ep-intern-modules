@@ -2,9 +2,16 @@
  * Dienst `EventRefsService` für andere Module (z. B. `galleries`), siehe `contract.ts`.
  * Sichtbarkeit wie `GET /events`: Principal-Schlüssel VOR der Transaktion, dann `visibleEventsFilter`.
  */
-import { sql, type SQL } from 'drizzle-orm';
-import { core, principalKeysFor, type RequestContext } from '$lib/sdk/server';
-import { rowsOf, visibleEventsFilter } from './access';
+import { sql } from 'drizzle-orm';
+import {
+	core,
+	inList,
+	moduleDb,
+	principalKeysFor,
+	type RequestContext,
+	rowsOf
+} from '$lib/sdk/server';
+import { visibleEventsFilter } from './access';
 import type { EventRefInfo, EventRefsService } from './contract';
 
 const MAX_IDS = 500;
@@ -41,13 +48,6 @@ function normalizeIds(ids: readonly string[]): string[] {
 	);
 }
 
-function inList(ids: readonly string[]): SQL {
-	return sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-}
-
 function inOrder(ids: readonly string[], refs: EventRefInfo[]): EventRefInfo[] {
 	const byId = new Map(refs.map((r) => [r.id, r]));
 	return ids.flatMap((id) => {
@@ -65,7 +65,7 @@ export async function searchEventRefs(
 	const limit = Math.min(MAX_LIMIT, Math.max(1, raw));
 	const search = opts.search?.trim() ?? '';
 	const keys = await principalKeysFor(ctx, 'events');
-	const rows = await core.database.forModule('events').transaction((tx) =>
+	const rows = await moduleDb('events').transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT ${COLUMNS} FROM events e
@@ -85,7 +85,7 @@ export async function describeEventRefs(
 	const list = normalizeIds(ids);
 	if (list.length === 0 || !canView(ctx)) return [];
 	const keys = await principalKeysFor(ctx, 'events');
-	const rows = await core.database.forModule('events').transaction((tx) =>
+	const rows = await moduleDb('events').transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT ${COLUMNS} FROM events e
@@ -98,7 +98,7 @@ export async function describeEventRefs(
 export async function websiteEventRefs(ids: readonly string[]): Promise<EventRefInfo[]> {
 	const list = normalizeIds(ids);
 	if (list.length === 0) return [];
-	const rows = await core.database.forModule('events').transaction((tx) =>
+	const rows = await moduleDb('events').transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT ${COLUMNS} FROM events e

@@ -11,7 +11,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput } from '$lib/components/layout';
+	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		MAX_INVOICE_LINES,
@@ -160,7 +160,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+	<Dialog.Content class="sm:max-w-2xl">
 		<Dialog.Header>
 			<Dialog.Title>
 				{invoice ? `Rechnung ${invoice.number} bearbeiten` : 'Neue Rechnung'}
@@ -298,9 +298,9 @@
 				<Label for="inv-paused">Keine automatischen Erinnerungen für diese Rechnung</Label>
 			</div>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

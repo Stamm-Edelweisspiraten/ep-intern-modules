@@ -5,17 +5,21 @@
  * Modul-Transaktion gelesen/geschrieben (`load*`, `write*`), Namen aus Core-Diensten
  * (Benutzerverzeichnis, Gruppen, Principals, Einstellungen) erst DANACH aufgelöst (`build*`).
  */
-import { sql, type SQL } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
 	core,
 	describePrincipals,
 	errors,
+	inList,
 	type Principal,
 	type RequestContext,
+	rowsOf,
+	toIso,
 	type Tx
 } from '$lib/sdk/server';
 import type { z } from 'zod';
-import { rowsOf } from './access';
+import { replaceShares } from './access';
 import { loadGroupMap, stammName } from './groups';
 import {
 	addDays,
@@ -89,10 +93,8 @@ export interface ShareRow extends Principal {
 	level: ShareLevel;
 }
 
-const DIRECTORY_CHUNK = 30;
 const FAR_FUTURE = '9999-12-31';
 
-const iso = (v: unknown): string => new Date(String(v)).toISOString();
 const strOrNull = (v: unknown): string | null => (v == null ? null : String(v));
 
 /** jsonb: pg liefert Objekte, PGlite je nach Version auch Strings */
@@ -122,17 +124,8 @@ function parseOverride(v: unknown): OccurrenceOverride | null {
 	return parsed.success && Object.keys(parsed.data).length ? parsed.data : null;
 }
 
-/** Heutiges Datum in Europe/Berlin als `JJJJ-MM-TT` (unabhängig von der Server-Zeitzone) */
-export function todayBerlin(now: Date = new Date()): string {
-	const parts = new Intl.DateTimeFormat('en-CA', {
-		timeZone: 'Europe/Berlin',
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit'
-	}).formatToParts(now);
-	const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-	return `${get('year')}-${get('month')}-${get('day')}`;
-}
+/** Heutiges Datum in Europe/Berlin als `JJJJ-MM-TT` (zentral in `$lib/sdk/dates`) */
+export { todayBerlin };
 
 export const EVENT_COLUMNS = sql`e.id, e.title, e.description, e.location, e.color,
 	to_char(e.starts_on, 'YYYY-MM-DD') AS starts_on, e.starts_at,
@@ -140,13 +133,6 @@ export const EVENT_COLUMNS = sql`e.id, e.title, e.description, e.location, e.col
 	e.on_website, e.owner_id, e.created_at, e.updated_at, e.recurrence`;
 
 export const EVENT_ORDER = sql`e.starts_on, e.starts_at NULLS FIRST, e.title, e.id`;
-
-function inList(ids: readonly string[]): SQL {
-	return sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-}
 
 /** Zeilen mit Tags (nach `position`) und Gruppen-IDs anreichern */
 export async function hydrateRows(tx: Tx, rows: Record<string, unknown>[]): Promise<EventRow[]> {
@@ -186,8 +172,8 @@ export async function hydrateRows(tx: Tx, rows: Record<string, unknown>[]): Prom
 			endsTime: strOrNull(r.ends_at),
 			onWebsite: r.on_website === true || r.on_website === 't',
 			ownerId: String(r.owner_id),
-			createdAt: iso(r.created_at),
-			updatedAt: iso(r.updated_at),
+			createdAt: toIso(r.created_at),
+			updatedAt: toIso(r.updated_at),
 			tags: tags.get(id) ?? [],
 			groupIds: groups.get(id) ?? [],
 			recurrence: parseRecurrence(r.recurrence)
@@ -201,19 +187,6 @@ export async function loadEventRow(tx: Tx, id: string): Promise<EventRow | null>
 	return row ?? null;
 }
 
-export async function loadShares(tx: Tx, id: string): Promise<ShareRow[]> {
-	const rows = await rowsOf(
-		tx,
-		sql`SELECT principal_type, principal_id, level FROM event_shares
-			WHERE event_id = ${id} ORDER BY created_at, principal_type, principal_id`
-	);
-	return rows.map((r) => ({
-		type: String(r.principal_type) as ShareRow['type'],
-		id: String(r.principal_id),
-		level: String(r.level) as ShareLevel
-	}));
-}
-
 /** Tags, Gruppen und Freigaben vollständig ersetzen */
 async function replaceChildren(
 	tx: Tx,
@@ -223,7 +196,6 @@ async function replaceChildren(
 ): Promise<void> {
 	await tx.execute(sql`DELETE FROM event_tags WHERE event_id = ${id}`);
 	await tx.execute(sql`DELETE FROM event_groups WHERE event_id = ${id}`);
-	await tx.execute(sql`DELETE FROM event_shares WHERE event_id = ${id}`);
 	for (const [position, tag] of input.tags.entries()) {
 		await tx.execute(
 			sql`INSERT INTO event_tags (event_id, tag, position) VALUES (${id}, ${tag}, ${position})`
@@ -232,12 +204,7 @@ async function replaceChildren(
 	for (const groupId of input.groupIds) {
 		await tx.execute(sql`INSERT INTO event_groups (event_id, group_id) VALUES (${id}, ${groupId})`);
 	}
-	for (const s of input.shares) {
-		await tx.execute(
-			sql`INSERT INTO event_shares (event_id, principal_type, principal_id, level, created_by)
-				VALUES (${id}, ${s.type}, ${s.id}, ${s.level}, ${ctx.userId ?? null})`
-		);
-	}
+	await replaceShares(tx, ctx, id, input.shares);
 }
 
 export function seriesDates(input: EventDates): EventDates {
@@ -594,14 +561,10 @@ async function resolveOwners(
 	ctx: RequestContext,
 	ids: readonly string[]
 ): Promise<Map<string, UserRef>> {
-	const unique = [...new Set(ids)];
-	const map = new Map<string, UserRef>();
-	for (let i = 0; i < unique.length; i += DIRECTORY_CHUNK) {
-		const chunk = unique.slice(i, i + DIRECTORY_CHUNK);
-		const found = await core.users.directory(ctx, { ids: chunk, limit: DIRECTORY_CHUNK });
-		for (const u of found) map.set(u.id, { id: u.id, name: u.name, image: u.image });
-	}
-	return map;
+	const found = await core.users.byIds(ctx, ids);
+	return new Map(
+		[...found.values()].map((u) => [u.id, { id: u.id, name: u.name, image: u.image }])
+	);
 }
 
 function toItem(

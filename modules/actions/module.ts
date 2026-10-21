@@ -5,7 +5,7 @@ import { actionEndpoints } from './actions.endpoints';
 import { myEndpoints } from './my.endpoints';
 import { calculationEndpoints } from './calculation.endpoints';
 import { accountingEndpoints } from './accounting.endpoints';
-import { formEndpoints } from './form.endpoints';
+import { formEndpoints, purgeExpiredRegistrations } from './form.endpoints';
 import { payoutEndpoints } from './payouts.endpoints';
 import { participantEndpoints } from './participants.endpoints';
 import { participantSheetEndpoints } from './participants-sheet.endpoints';
@@ -25,19 +25,28 @@ import m0013 from './migrations/0013_entry_reimbursed_upfront.sql?raw';
 import { refundEndpoints } from './refund.endpoints';
 import { exportImportEndpoints } from './export-import.endpoints';
 import { actionsService } from './service';
+import type { ActionsService } from './contract';
 import { interimEndpoints } from './interim.endpoints';
 import { expenseLinkEndpoints } from './expense-link.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { onUserDeleted } from './user-deleted';
 import m0014 from './migrations/0014_accounting_interims.sql?raw';
 import m0015 from './migrations/0015_expense_links.sql?raw';
 import m0016 from './migrations/0016_interim_snapshots.sql?raw';
 import m0017 from './migrations/0017_expense_batches.sql?raw';
+import m0018 from './migrations/0018_health_encryption.sql?raw';
+import m0019 from './migrations/0019_registration_optin.sql?raw';
+import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
+import { encryptStoredHealthData } from './health';
+import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
+import { withTreasurySync } from './treasury-sync';
+import { healthRetentionSetting, onMemberDeleted, purgeHealthJob, subjectExport } from './privacy';
 
 export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -81,7 +90,7 @@ export default defineModule({
 		]
 	},
 	/** Dienste für abhängige Module (Vertrag: `contract.ts`) */
-	provides: actionsService as unknown as Record<string, unknown>,
+	provides: actionsService satisfies ActionsService,
 	settings: [
 		{
 			key: 'actions.bank.holder',
@@ -99,11 +108,15 @@ export default defineModule({
 			description: 'Platzhalter: {{aktion}}. Beispiel: „{{aktion}} + Name“.',
 			schema: z.string().max(140),
 			default: '{{aktion}} + Name'
-		}
+		},
+		healthRetentionSetting
 	],
 	search: actionsSearch,
 	resetAreas,
 	resetUsers,
+	onUserDeleted,
+	onMemberDeleted,
+	subjectExport,
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_calculation', sql: m0002 },
@@ -121,9 +134,50 @@ export default defineModule({
 		{ name: '0014_accounting_interims', sql: m0014 },
 		{ name: '0015_expense_links', sql: m0015 },
 		{ name: '0016_interim_snapshots', sql: m0016 },
-		{ name: '0017_expense_batches', sql: m0017 }
+		{ name: '0017_expense_batches', sql: m0017 },
+		{ name: '0018_health_encryption', sql: m0018 },
+		{ name: '0019_registration_optin', sql: m0019 },
+		{ name: '0020_link_token_hash_constraints', sql: m0020 }
 	],
-	endpoints: [
+	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
+	jobs: [
+		{
+			id: 'encrypt-health',
+			summary: 'Gesundheitsdaten der Teilnehmenden verschlüsseln (Altbestand)',
+			schedule: 'hourly',
+			run: async () => {
+				const { updated } = await encryptStoredHealthData();
+				return `${updated} Teilnehmende verschlüsselt`;
+			}
+		},
+		{
+			id: 'purge-pending',
+			summary: 'Unbestätigte Anmeldungen und alte Mail-Zähler löschen',
+			schedule: 'hourly',
+			run: async () => {
+				const { deleted } = await purgeExpiredRegistrations();
+				return `${deleted} unbestätigte Anmeldungen gelöscht`;
+			}
+		},
+		purgeHealthJob,
+		{
+			id: 'hash-link-tokens',
+			summary: 'Öffentliche Link-Tokens nur noch als Hash speichern (Altbestand)',
+			schedule: 'hourly',
+			run: async () => {
+				const { updated } = await hashStoredLinkTokens();
+				return `${updated} Links umgestellt`;
+			}
+		}
+	],
+	onEnable: async () => {
+		await encryptStoredHealthData();
+		await hashStoredLinkTokens();
+	},
+	/** Datensicherung: `token_hash` der Links mit dem Schlüssel des Zielservers neu berechnen */
+	backup: actionsBackup,
+	/** Kasse: nach schreibenden Vorgängen gezielt diese Aktion abgleichen (`treasury-sync.ts`) */
+	endpoints: withTreasurySync([
 		...myEndpoints,
 		...actionEndpoints,
 		...participantEndpoints,
@@ -136,5 +190,5 @@ export default defineModule({
 		...exportImportEndpoints,
 		...interimEndpoints,
 		...expenseLinkEndpoints
-	]
+	])
 });

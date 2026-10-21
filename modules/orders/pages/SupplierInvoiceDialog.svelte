@@ -144,9 +144,7 @@
 			</Dialog.Description>
 		</Dialog.Header>
 		{#if !treasuryActive}
-			<p
-				class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300"
-			>
+			<p class="rounded-md border border-warning-border bg-warning-muted p-3 text-sm text-warning">
 				Das Modul Kasse ist nicht aktiv – die Rechnung kann erst übergeben werden, wenn die Kasse
 				aktiviert ist.
 			</p>

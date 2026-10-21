@@ -531,7 +531,7 @@
 												<li>
 													<button
 														type="button"
-														class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none"
+														class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:-outline-offset-2"
 														onclick={() => addHolder(u)}
 													>
 														<EntityAvatar name={u.name} size={28} />

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, isCoreError, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import { core, errors, isUniqueViolation, type ApiEndpoint, type Tx } from '$lib/sdk/server';
 import { loadAccounts, mdb, num, rows } from './db';
 import {
 	DEFAULT_INVOICE_BODY,
@@ -30,7 +30,7 @@ async function uniqueName<T>(fn: () => Promise<T>, what: string): Promise<T> {
 	try {
 		return await fn();
 	} catch (e) {
-		if (!isCoreError(e) && /unique|duplicate/i.test(String((e as Error)?.message ?? e))) {
+		if (isUniqueViolation(e)) {
 			throw errors.conflict(`${what} mit diesem Namen existiert bereits`);
 		}
 		throw e;
@@ -302,11 +302,12 @@ export const accountEndpoints = [
 		body: settingsInput,
 		handler: async ({ ctx, body }) => {
 			const input = body as TreasurySettings;
-			// Kassen-Einstellungen gehören dem Modul: Recht wird hier geprüft, gespeichert als System
-			const system = core.auth.systemContext('treasury-settings');
-			for (const [field, key] of SETTING_MAP) {
-				await core.settings.set(system, key, input[field]);
-			}
+			// Atomar in EINER Transaktion: ein ungültiger Wert → nichts gespeichert. Mit dem Kontext der
+			// Person, damit die Schreibrechte der Schlüssel (`treasury.settings.manage`) greifen.
+			await core.settings.setMany(
+				ctx,
+				Object.fromEntries(SETTING_MAP.map(([field, key]) => [key, input[field]]))
+			);
 			await core.audit.logFromContext(ctx, 'treasury.settings.updated', {
 				metadata: { keys: SETTING_MAP.length }
 			});

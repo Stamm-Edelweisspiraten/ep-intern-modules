@@ -1,6 +1,8 @@
 /** API-Vertrag des Moduls "members": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
-import { LIST_MAX_COLUMNS } from '$lib/pdf-lists/types';
+import { ageFromBirthDate as ageOnDate, isRealDate, todayBerlin } from '$lib/sdk/dates';
+import { listSelectionInput } from '$lib/pdf-lists/schema';
+import { MEMBER_HEALTH_FIELD_KEYS } from '$lib/pdf-lists/member-columns';
 
 export const MODULE_ID = 'members';
 
@@ -75,25 +77,17 @@ export const GROUP_IMAGE_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp
 
 // --- Hilfsfunktionen --------------------------------------------------------
 
-/** Alter in vollen Jahren zum Stichtag `today` (Standard: heute); `null` bei ungültigem Datum. */
-export function ageFromBirthDate(iso: string, today: Date = new Date()): number | null {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-	if (!m) return null;
-	const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-	let age = today.getFullYear() - y;
-	const beforeBirthday =
-		today.getMonth() + 1 < mo || (today.getMonth() + 1 === mo && today.getDate() < d);
-	if (beforeBirthday) age--;
-	return age;
+/**
+ * Alter in vollen Jahren zum Stichtag `today` (Standard: heute in Europe/Berlin; `Date` = dessen Kalendertag in
+ * Europe/Berlin); `null` bei ungültigem Datum. Rechnung zentral in `$lib/sdk/dates` (#32).
+ */
+export function ageFromBirthDate(iso: string, today: Date | string = todayBerlin()): number | null {
+	return ageOnDate(iso, typeof today === 'string' ? today : todayBerlin(today));
 }
 
 /** Echtes Kalenderdatum im Format JJJJ-MM-TT? */
-export function isRealDate(iso: string): boolean {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-	if (!m) return false;
-	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-	return d.toISOString().slice(0, 10) === iso;
-}
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
 
 /** `#abc` / `#AABBCC` -> `#aabbcc`; sonst `null`. */
 export function normalizeHexColor(value: string): string | null {
@@ -165,7 +159,7 @@ const birthDate = z
 	.string()
 	.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format JJJJ-MM-TT')
 	.refine(isRealDate, 'Kein gültiges Datum')
-	.refine((v) => v <= new Date().toISOString().slice(0, 10), 'Darf nicht in der Zukunft liegen')
+	.refine((v) => v <= todayBerlin(), 'Darf nicht in der Zukunft liegen')
 	.refine((v) => (ageFromBirthDate(v) ?? 0) <= 120, 'Geburtsdatum unplausibel');
 
 /** Optionales Datum JJJJ-MM-TT; leer → null */
@@ -530,6 +524,17 @@ export interface MemberDocument {
 	name: string;
 }
 
+/** Nachweis einer Einwilligung (Art. 7 Abs. 1 DSGVO): letzte Änderung */
+export interface ConsentRecord {
+	/** ISO-Zeitstempel */
+	at: string;
+	/** Benutzer-ID der erfassenden Person bzw. `<actor-typ>:<id>` (API-Key, System) */
+	by: string | null;
+}
+
+export const CONSENT_KINDS = ['socialMedia', 'website', 'print'] as const;
+export type ConsentKind = (typeof CONSENT_KINDS)[number];
+
 export interface Member extends MemberRef {
 	/** JJJJ-MM-TT */
 	birthDate: string;
@@ -545,6 +550,10 @@ export interface Member extends MemberRef {
 	consentSocialMedia: boolean;
 	consentWebsite: boolean;
 	consentPrint: boolean;
+	/** Zeitpunkt + erfassende Person je Einwilligung (`null` = Altbestand ohne Nachweis) */
+	consentProof: Record<ConsentKind, ConsentRecord | null>;
+	/** Gesetzt, wenn das ehemalige Mitglied anonymisiert wurde (ISO) */
+	anonymizedAt: string | null;
 	privacyConsent: MemberDocument | null;
 	registration: MemberDocument | null;
 	/** Eintritt/Austritt (JJJJ-MM-TT) oder null */
@@ -594,10 +603,21 @@ export interface Group {
 export const LINK_CODE_TTL_DAYS = 90;
 export const LINK_MAX_FAILED_ATTEMPTS = 10;
 export const LINK_LOCK_MINUTES = 60;
+/** Einstellung: wie viele Konten sich mit einem Code verknüpfen lassen (Standard 2 = beide Elternteile) */
+export const LINK_MAX_USES_SETTING = 'members.link.maxUses';
+export const LINK_MAX_USES_DEFAULT = 2;
 export const LINK_LETTERS_MAX_IDS = 100;
 /** Rolle, die per Verknüpfungscode angelegte Konten erhalten (wird ohne Rechte angelegt) */
 export const LINK_DEFAULT_ROLE = 'Mitglied';
-export const LINK_PUBLIC_PREFIX = '/p/members/verknuepfen';
+
+// --- Gruppenleitung ----------------------------------------------------------
+
+/** Automatische Rolle für Konten, deren eigenes Mitglied eine Gruppe leitet (`user_role_grant`) */
+export const LEADER_ROLE_NAME = 'Gruppenleitung';
+/** Rechte für die Mitglieder der selbst geleiteten Gruppen (wirken nur auf diese Gruppen) */
+export const LED_VIEW = 'members.led-member.view';
+export const LED_EDIT = 'members.led-member.edit';
+export const LED_EXPORT = 'members.led-member.export';
 
 const linkCode = z
 	.string()
@@ -622,6 +642,8 @@ export const linkManualInput = z
 		relation: linkRelation
 	})
 	.strict();
+/** Verknüpftes Konto als eigenes Konto des Mitglieds markieren (nur Verwaltung, nie über den Code) */
+export const linkSelfInput = z.object({ self: z.boolean() }).strict();
 /** Kontosuche für das manuelle Verknüpfen (ab 2 Zeichen) */
 export const linkUserSearchQuery = z.object({ search: z.string().trim().max(100).default('') });
 export const linkRegisterInput = z
@@ -648,17 +670,6 @@ export const linkLettersInput = z
 
 /** Mitgliedsdaten-PDF (`POST /members/sheets.pdf`, `POST /groups/sheets.pdf`) */
 export const SHEETS_MAX_IDS = 200;
-/** Auswahl der Listenspalten (Schlüssel prüft der Server gegen den Katalog; ohne Auswahl gilt „Fahrt“) */
-export const listSelectionInput = z
-	.object({
-		preset: z.string().max(40).optional(),
-		columns: z
-			.array(z.string().min(1).max(60))
-			.min(1, 'Mindestens eine Spalte wählen')
-			.max(LIST_MAX_COLUMNS, `Höchstens ${LIST_MAX_COLUMNS} Spalten`),
-		hideEmpty: z.boolean().default(true)
-	})
-	.strict();
 export const memberSheetsInput = z
 	.object({
 		ids: z
@@ -685,6 +696,8 @@ export interface LinkedUser {
 	name: string;
 	email: string | null;
 	relation: string | null;
+	/** Eigenes Konto des Mitglieds (zählt für die Rolle „Gruppenleitung“), nicht z. B. ein Elternteil */
+	self: boolean;
 	linkedAt: string;
 }
 /** Treffer der Kontosuche (`GET /link-users`) */
@@ -695,7 +708,15 @@ export interface LinkUserRef {
 }
 export interface MemberLinks {
 	users: LinkedUser[];
-	code: { expiresAt: string; expired: boolean; locked: boolean } | null;
+	code: {
+		expiresAt: string;
+		expired: boolean;
+		locked: boolean;
+		/** Verknüpfungen über diesen Code / erlaubte Höchstzahl; `exhausted` = verbraucht */
+		uses: number;
+		maxUses: number;
+		exhausted: boolean;
+	} | null;
 }
 export interface PublicLinkInfo {
 	memberFirstName: string;
@@ -725,24 +746,15 @@ export interface MyFieldDefinition {
 	field: import('$lib/forms').FieldDefinition;
 	sensitive: boolean;
 }
-/** Zusatzfelder mit Gesundheitsbezug (Vorlagen) */
-export const SENSITIVE_FIELD_KEYS: readonly string[] = [
-	'ernaehrung',
-	'allergien',
-	'medikamente',
-	'gesundheit',
-	'zecken',
-	'tetanus',
-	'krankenkasse'
-];
+/** Zusatzfelder mit Gesundheitsbezug (Vorlagen); Quelle: `$lib/pdf-lists/member-columns` (auch von `actions` genutzt) */
+export const SENSITIVE_FIELD_KEYS: readonly string[] = MEMBER_HEALTH_FIELD_KEYS;
 
 // --- Mail-Einstellungen je Mitglied ---------------------------------------------
 
 /** Abschaltbare Kategorien (Standard: an; nur Abwahlen werden gespeichert) */
 export const MAIL_CATEGORIES = ['payment-confirmation', 'action-info'] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
-/** Verbindliche Mails (nicht abschaltbar): Rechnungen, Jahresbeitrag, Erinnerungen, Anmeldebestätigung */
-export const MANDATORY_MAIL = ['invoice', 'annual-fee', 'reminder', 'registration'] as const;
+// Verbindlich (nicht abschaltbar, daher keine Kategorie): Rechnungen, Jahresbeitrag, Erinnerungen, Anmeldebestätigung
 
 export const mailPrefInput = z
 	.object({

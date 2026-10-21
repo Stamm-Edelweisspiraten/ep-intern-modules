@@ -16,8 +16,8 @@
  * Alle Knoten haben `space = 'personal'` (eine Ansicht); `ownerId` = Eigentümer*in des Zielordners bzw. der Wurzel.
  */
 import { sql } from 'drizzle-orm';
-import { errors, type Tx } from '$lib/sdk/server';
-import { mdb, rowsOf } from './db';
+import { errors, isUniqueViolation, rowsOf, type Tx } from '$lib/sdk/server';
+import { mdb } from './db';
 import { normalizeName, uniqueName } from './names';
 import { ensureFolderPath, siblingNames } from './nodes.service';
 import { assertQuota, removeObjects, storeContent, type StoredContent } from './storage';
@@ -75,16 +75,6 @@ export function cleanUploaderName(name: string | null | undefined): string | nul
 		.trim();
 	const cut = Array.from(clean).slice(0, MAX_UPLOADER_NAME).join('').trim();
 	return cut || null;
-}
-
-/** Verletzung des Unique-Index (gleichzeitiger Upload mit gleichem Namen) erkennen */
-function isUniqueViolation(e: unknown): boolean {
-	let cur: unknown = e;
-	for (let i = 0; i < 5 && cur && typeof cur === 'object'; i++) {
-		if (String((cur as { code?: unknown }).code) === '23505') return true;
-		cur = (cur as { cause?: unknown }).cause;
-	}
-	return false;
 }
 
 const sameKey = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -238,7 +228,7 @@ export async function storeIntoFolder(input: StoreIntoFolderInput): Promise<Stor
 	let result: Awaited<ReturnType<typeof commit>>;
 	try {
 		result = await commit().catch((e: unknown) => {
-			// eigene, neue Transaktion: die fehlgeschlagene ist nach 23505 abgebrochen
+			// eigene, neue Transaktion: die fehlgeschlagene ist nach der Unique-Verletzung abgebrochen
 			if (isUniqueViolation(e)) return commit();
 			throw e;
 		});

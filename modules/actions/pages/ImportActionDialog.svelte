@@ -83,7 +83,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+	<Dialog.Content class="sm:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title>Aktion importieren</Dialog.Title>
 			<Dialog.Description>
@@ -105,7 +105,7 @@
 					{/each}
 				</ul>
 				{#if result.warnings.length}
-					<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+					<div class="rounded-md border border-warning-border bg-warning-muted p-3 text-sm">
 						<p class="font-medium">Hinweise</p>
 						<ul class="mt-1 list-disc pl-5">
 							{#each result.warnings as w (w)}<li>{w}</li>{/each}

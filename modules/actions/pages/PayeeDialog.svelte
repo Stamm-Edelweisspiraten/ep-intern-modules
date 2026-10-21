@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, BUSY_SAVE, BUSY_LOAD } from '$lib/components/layout';
 	import { payeeInput, payeeUpdateInput, type AccountingPayee } from '../schemas';
 
 	let {
@@ -134,7 +134,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+	<Dialog.Content class="sm:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title>{payee ? 'Bankdaten bearbeiten' : 'Neue Person'}</Dialog.Title>
 			<Dialog.Description>
@@ -157,7 +157,7 @@
 				label={payee ? 'IBAN' : 'IBAN *'}
 				id="payee-iban"
 				error={fieldErrors.iban}
-				hint={loadingIban ? 'Lade …' : undefined}
+				hint={loadingIban ? BUSY_LOAD : undefined}
 			>
 				<Input
 					id="payee-iban"
@@ -191,10 +191,10 @@
 			</FormField>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || loadingIban}>
-					{busy ? 'Speichere …' : 'Speichern'}
+					{busy ? BUSY_SAVE : 'Speichern'}
 				</Button>
 			</Dialog.Footer>
 		</form>

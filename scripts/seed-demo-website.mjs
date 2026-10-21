@@ -269,6 +269,18 @@ for (const t of GROUP_TEMPLATES) {
 		console.log(`Gruppe „${group.name}“ auf der Website: /gruppen/${t.slug}`);
 	}
 }
+// Leitende erscheinen nur mit Website-Einwilligung (#27): für die Demo-Leitungen erteilen
+const leaderIds = [
+	...new Set([...websiteGroups.values()].flatMap((g) => (g.leaders ?? []).map((l) => l.id)))
+];
+if (leaderIds.length) {
+	const r = await call('POST', `${M}/members/bulk`, {
+		action: 'set-consent',
+		ids: leaderIds,
+		consent: { consentWebsite: true }
+	});
+	console.log(`Website-Einwilligung für ${leaderIds.length} Leitende: ${r.status}`);
+}
 
 // --- 3. Website-Termine --------------------------------------------------------------------
 
@@ -418,6 +430,8 @@ if (!gallery) {
 			title: detail.title,
 			description: detail.description ?? null,
 			visibility: 'public',
+			// Demo: Bestätigung der Website-Einwilligungen (Pflicht beim Veröffentlichen, #27)
+			consentConfirmed: true,
 			shares: (detail.shares ?? []).map((s) => ({ type: s.type, id: s.id, level: s.level })),
 			eventIds: [...ids]
 		});

@@ -11,6 +11,7 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { MAX_BIO, bioInput, type MyOffices } from '../schemas';
 	import { BASE, errorText, issuesToErrors } from './helpers';
@@ -28,11 +29,15 @@
 
 	const uid = $props.id();
 	const fieldId = `${uid}-bio`;
+	const websiteId = `${uid}-website`;
 
 	let draft = $state(untrack(() => my.bio ?? ''));
 	let saved = $state(untrack(() => my.bio ?? ''));
 	let busy = $state(false);
 	let error = $state('');
+	/** Opt-in für die Stammeswebsite (speichert sofort, Standard aus) */
+	let showOnWebsite = $state(untrack(() => my.showOnWebsite));
+	let websiteBusy = $state(false);
 
 	const dirty = $derived(draft.trim() !== saved.trim());
 	const officeNames = $derived(my.offices.map((o) => o.name).join(', '));
@@ -68,6 +73,31 @@
 		}
 	}
 
+	async function setWebsite(next: boolean) {
+		if (websiteBusy) return;
+		const previous = showOnWebsite;
+		showOnWebsite = next;
+		websiteBusy = true;
+		try {
+			const result = await apiFetch<MyOffices>(`${BASE}/me/website`, {
+				method: 'PUT',
+				body: JSON.stringify({ showOnWebsite: next })
+			});
+			showOnWebsite = result.showOnWebsite;
+			toast.success(
+				next
+					? 'Du erscheinst jetzt auf der Stammeswebsite'
+					: 'Du erscheinst nicht mehr auf der Website'
+			);
+			onsaved?.(result);
+		} catch (err) {
+			showOnWebsite = previous;
+			toast.error(errorText(err, 'Speichern fehlgeschlagen'));
+		} finally {
+			websiteBusy = false;
+		}
+	}
+
 	function reset() {
 		draft = saved;
 		error = '';
@@ -79,10 +109,28 @@
 		<CardTitle>Meine Beschreibung</CardTitle>
 		<CardDescription>
 			Gilt für alle deine Ämter{officeNames ? `: ${officeNames}` : ''}. Sie erscheint bei deinem
-			Namen in der Ämter-Übersicht.
+			Namen in der Ämter-Übersicht und – nur wenn du zustimmst – auf der Stammeswebsite.
 		</CardDescription>
 	</CardHeader>
-	<CardContent>
+	<CardContent class="space-y-4">
+		<div class="flex items-start justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2">
+			<Label for={websiteId} class="flex flex-col items-start gap-0.5">
+				<span>Auf der Stammeswebsite zeigen</span>
+				<span id="{websiteId}-hint" class="text-xs font-normal text-muted-foreground">
+					Dein Name, dein Profilbild und diese Beschreibung erscheinen öffentlich bei deinen Ämtern
+					auf der Stammeswebsite. Ohne Zustimmung wirst du dort nicht genannt. Du kannst die
+					Zustimmung jederzeit widerrufen.
+				</span>
+			</Label>
+			<Switch
+				id={websiteId}
+				checked={showOnWebsite}
+				onCheckedChange={(v) => void setWebsite(v)}
+				disabled={websiteBusy}
+				aria-describedby="{websiteId}-hint"
+				class="mt-1"
+			/>
+		</div>
 		<form class="space-y-3" onsubmit={save} novalidate>
 			<div class="grid gap-1.5">
 				<Label for={fieldId} class="sr-only">Meine Beschreibung</Label>
@@ -105,7 +153,7 @@
 						id="{fieldId}-count"
 						class={[
 							'shrink-0 text-xs tabular-nums',
-							length >= MAX_BIO ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+							length >= MAX_BIO ? 'text-warning' : 'text-muted-foreground'
 						]}
 					>
 						{length.toLocaleString('de-DE')} / {MAX_BIO.toLocaleString('de-DE')} Zeichen

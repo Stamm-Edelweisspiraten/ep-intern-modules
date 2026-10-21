@@ -61,10 +61,10 @@
 	);
 
 	const STATUS: Record<FormStatus, { label: string; cls: string }> = {
-		open: { label: 'Offen', cls: 'border-green-600/40 bg-green-600/10' },
+		open: { label: 'Offen', cls: 'border-success-border bg-success-muted' },
 		closed: { label: 'Geschlossen', cls: 'border-border' },
-		not_open: { label: 'Noch nicht geöffnet', cls: 'border-amber-500/40 bg-amber-500/10' },
-		full: { label: 'Ausgebucht', cls: 'border-amber-500/40 bg-amber-500/10' }
+		not_open: { label: 'Noch nicht geöffnet', cls: 'border-warning-border bg-warning-muted' },
+		full: { label: 'Ausgebucht', cls: 'border-warning-border bg-warning-muted' }
 	};
 	const status = $derived(STATUS[server.status]);
 

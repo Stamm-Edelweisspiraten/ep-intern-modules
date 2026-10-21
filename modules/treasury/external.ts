@@ -6,7 +6,14 @@
  * „Kasse“ werden vor bzw. nach der eigenen Transaktion aufgerufen (PGlite hat nur eine Sitzung).
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	checkUploadBytes,
+	core,
+	errors,
+	safeFileName,
+	type RequestContext,
+	type Tx
+} from '$lib/sdk/server';
 import { storeIban } from './bank';
 import type {
 	ExternalInvoiceStatus,
@@ -25,18 +32,13 @@ import {
 	rows,
 	str,
 	today,
-	type Row
+	type Row,
+	RECEIPT_UPLOAD
 } from './db';
 import { refreshSentDocuments, sendDocuments } from './documents';
-import { addDays, invoiceTotals, sanitizeName } from './logic';
+import { addDays, invoiceTotals } from './logic';
 import { notifyKasse, payableNotification } from './office-notify';
-import {
-	MAX_RECEIPT_BYTES,
-	MODULE_ID,
-	RECEIPT_CONTENT_TYPES,
-	SETTING_KEYS,
-	payableInput
-} from './schemas';
+import { MODULE_ID, SETTING_KEYS, payableInput } from './schemas';
 
 const ORDER_CANCEL_REASON = 'Bestellung storniert';
 const MAX_KEY = 200;
@@ -370,15 +372,11 @@ async function assertRefsFree(tx: Tx, want: WantLine[], invoiceId: string | null
 
 function validateReceipt(receipt: OrderPayableInput['receipt']) {
 	if (!receipt) return null;
-	const contentType = (receipt.contentType || '').split(';')[0]!.trim().toLowerCase();
-	if (!(RECEIPT_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-		throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
-	}
-	if (receipt.bytes.byteLength === 0) throw errors.badRequest('Datei ist leer');
-	if (receipt.bytes.byteLength > MAX_RECEIPT_BYTES) {
-		throw errors.tooLarge('Datei überschreitet 10 MB');
-	}
-	return { bytes: receipt.bytes, contentType, name: receipt.name?.trim() || 'beleg' };
+	const { bytes, contentType, name } = checkUploadBytes(receipt, {
+		...RECEIPT_UPLOAD,
+		field: 'receipt'
+	});
+	return { bytes, contentType, name };
 }
 
 /**
@@ -477,7 +475,7 @@ export async function upsertOrderPayable(
 	if (receipt) {
 		// Der Aufrufer hat keine Kassen-Speicherrechte: Ablage im Systemkontext der Kasse
 		const system = core.auth.systemContext('treasury-orders');
-		const path = `payables/${r.id}/receipt-${crypto.randomUUID()}-${sanitizeName(receipt.name)}`;
+		const path = `payables/${r.id}/receipt-${crypto.randomUUID()}-${safeFileName(receipt.name)}`;
 		await core.storage.upload(system, {
 			module: MODULE_ID,
 			path,

@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, PageHeader } from '$lib/components/layout';
+	import { EmptyState, ErrorState, PageHeader } from '$lib/components/layout';
 	import type { Account, Category } from '../schemas';
 	import { BASE, errorMessage, type TreasuryPerms } from './helpers';
 	import SettingsTab from './SettingsTab.svelte';
@@ -27,18 +26,33 @@
 	let accounts = $state<Account[]>([]);
 	let categories = $state<Category[]>([]);
 	let loading = $state(true);
+	let retrying = $state(false);
+	/** Ladefehler: KEINE (leeren) Einstellungen anzeigen, nur Fehlerzustand mit „Erneut versuchen“ */
+	let loadError = $state('');
 	let version = $state(0);
 
 	async function load() {
 		try {
-			[accounts, categories] = await Promise.all([
+			const [a, c] = await Promise.all([
 				apiFetch<Account[]>(`${BASE}/accounts`),
 				apiFetch<Category[]>(`${BASE}/categories`)
 			]);
+			accounts = a;
+			categories = c;
+			loadError = '';
 		} catch (e) {
-			toast.error(errorMessage(e, 'Einstellungen konnten nicht geladen werden'));
+			loadError = errorMessage(e, 'Einstellungen konnten nicht geladen werden');
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function retry() {
+		retrying = true;
+		try {
+			await load();
+		} finally {
+			retrying = false;
 		}
 	}
 
@@ -70,6 +84,13 @@
 		/>
 	{:else if loading}
 		<Skeleton class="h-64 w-full" />
+	{:else if loadError}
+		<ErrorState
+			title="Einstellungen konnten nicht geladen werden"
+			message={loadError}
+			onretry={retry}
+			busy={retrying}
+		/>
 	{:else}
 		<SettingsTab
 			{accounts}

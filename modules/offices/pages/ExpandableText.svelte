@@ -23,7 +23,7 @@
 	{#if long}
 		<button
 			type="button"
-			class="mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+			class="mt-1 text-xs font-medium text-link underline-offset-4 hover:underline focus-visible:underline"
 			aria-expanded={expanded}
 			aria-controls="{uid}-text"
 			onclick={() => (expanded = !expanded)}

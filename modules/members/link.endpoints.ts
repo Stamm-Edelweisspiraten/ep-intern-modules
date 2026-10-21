@@ -11,6 +11,7 @@ import {
 	myMembers,
 	publicLinkInfo,
 	registerWithLink,
+	setLinkSelf,
 	setMailPref,
 	unlinkUser,
 	updateLinkedContacts
@@ -21,6 +22,7 @@ import {
 	linkLettersInput,
 	linkManualInput,
 	linkRegisterInput,
+	linkSelfInput,
 	linkTokenParams,
 	linkUserParams,
 	linkUserSearchQuery,
@@ -82,9 +84,24 @@ export const linkEndpoints: ApiEndpoint[] = [
 		query: linkUserSearchQuery,
 		handler: async ({ ctx, query }): Promise<LinkUserRef[]> => {
 			if (query.search.length < 2) return [];
-			const users = await core.users.directory(ctx, { search: query.search, limit: 30 });
+			// members.link.manage: Adresse unterscheidet gleichnamige Konten beim Verknüpfen
+			const users = await core.users.directory(ctx, {
+				search: query.search,
+				limit: 30,
+				includeEmail: true
+			});
 			return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
 		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/members/:id/links/:userId',
+		summary: 'Verknüpftes Konto als eigenes Konto des Mitglieds markieren (für die Gruppenleitung)',
+		tags,
+		permission: 'members.link.manage',
+		params: linkUserParams,
+		body: linkSelfInput,
+		handler: ({ ctx, params, body }) => setLinkSelf(ctx, params.id, params.userId, body.self)
 	}),
 	defineEndpoint({
 		method: 'DELETE',

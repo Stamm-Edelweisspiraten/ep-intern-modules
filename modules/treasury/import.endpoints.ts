@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	readFormData,
+	takeUpload,
+	type ApiEndpoint,
+	type RequestContext
+} from '$lib/sdk/server';
 import { loadMatchLines } from './allocation';
 import { ibanHash, storeIban } from './bank';
 import {
@@ -30,7 +37,6 @@ import {
 	type ImportResult,
 	type MatchSuggestion
 } from './schemas';
-import { syncIfStale } from './sync';
 
 const TAGS = ['Modul: treasury'];
 
@@ -55,18 +61,14 @@ interface ParsedUpload {
 }
 
 async function readUpload(request: Request): Promise<ParsedUpload> {
-	const form = await request.formData().catch(() => {
-		throw errors.badRequest('Ungültige Formulardaten');
-	});
-	const file = form.get('file');
+	const form = await readFormData(request);
 	const accountId = String(form.get('accountId') ?? '');
-	if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
 	if (!/^[0-9a-f-]{36}$/.test(accountId)) {
 		throw errors.validation([{ path: ['accountId'], message: 'Bitte ein Konto wählen' }]);
 	}
-	if (file.size === 0) throw errors.badRequest('Datei ist leer');
-	if (file.size > MAX_IMPORT_BYTES) throw errors.tooLarge('Datei überschreitet 5 MB');
-	const text = decode(new Uint8Array(await file.arrayBuffer()));
+	// CSV: Client-Typ uneinheitlich (text/csv, application/vnd.ms-excel, leer) → keine Typliste, kein Sniffing
+	const file = await takeUpload(form, { maxBytes: MAX_IMPORT_BYTES, sniff: false });
+	const text = decode(file.bytes);
 	const delimiter = detectDelimiter(text);
 	let mapping: ImportMapping | null = null;
 	const rawMapping = form.get('mapping');
@@ -149,7 +151,6 @@ export async function bulkSuggestions(
 	ctx: RequestContext,
 	transactionIds?: string[]
 ): Promise<MatchSuggestion[]> {
-	await syncIfStale(ctx);
 	const raw = await mdb().transaction((tx) =>
 		loadTransactionsWhere(
 			tx,

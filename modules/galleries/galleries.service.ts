@@ -4,9 +4,18 @@
  * auf und dürfen NIE innerhalb einer offenen Modul-Transaktion laufen (PGlite, eine Sitzung).
  */
 import { sql } from 'drizzle-orm';
-import { core, describePrincipals, errors, type RequestContext, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
-import { db, effectiveCover, eventsService } from './files';
+import {
+	core,
+	describePrincipals,
+	errors,
+	type RequestContext,
+	type Row,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
+import { loadShares, requireAccess } from './access';
+import { effectiveCover, eventsService } from './files';
 import {
 	MODULE_ID,
 	type EventRef,
@@ -18,8 +27,6 @@ import {
 	type ShareLevel,
 	type Visibility
 } from './schemas';
-
-type Row = Record<string, unknown>;
 
 export interface ShareRow {
 	type: ShareInput['type'];
@@ -33,7 +40,6 @@ const DEFAULT_EVERYONE_LABEL = 'Stamm';
 /** Obergrenze von `describeEventRefs` je Aufruf */
 const EVENT_REF_CHUNK = 500;
 
-export const iso = (v: unknown): string => new Date(String(v)).toISOString();
 const textOrNull = (v: unknown): string | null => (v == null ? null : String(v));
 
 /** Anzeigename für `everyone` (Stammesname aus `events`, sonst „Stamm“) */
@@ -53,19 +59,6 @@ export const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c
 // ---------------------------------------------------------------------------
 // In der Transaktion
 // ---------------------------------------------------------------------------
-
-export async function loadShares(tx: Tx, galleryId: string): Promise<ShareRow[]> {
-	const rows = await rowsOf(
-		tx,
-		sql`SELECT principal_type, principal_id, level FROM gallery_shares
-			WHERE gallery_id = ${galleryId} ORDER BY created_at, principal_type, principal_id`
-	);
-	return rows.map((r) => ({
-		type: String(r.principal_type) as ShareRow['type'],
-		id: String(r.principal_id),
-		level: String(r.level) as ShareLevel
-	}));
-}
 
 /** Termin-IDs einer Galerie (in der Transaktion), sortiert */
 export async function loadEventIds(tx: Tx, galleryId: string): Promise<string[]> {
@@ -116,22 +109,6 @@ export async function replaceGalleryEvents(
 	}
 }
 
-/** Freigaben vollständig ersetzen */
-export async function replaceShares(
-	tx: Tx,
-	ctx: RequestContext,
-	galleryId: string,
-	shares: readonly ShareInput[]
-): Promise<void> {
-	await tx.execute(sql`DELETE FROM gallery_shares WHERE gallery_id = ${galleryId}`);
-	for (const s of shares) {
-		await tx.execute(
-			sql`INSERT INTO gallery_shares (gallery_id, principal_type, principal_id, level, created_by)
-				VALUES (${galleryId}, ${s.type}, ${s.id}, ${s.level}, ${ctx.userId ?? null})`
-		);
-	}
-}
-
 interface DetailData {
 	gallery: Row;
 	access: GalleryAccess;
@@ -151,7 +128,8 @@ export async function loadDetailData(
 	const access = await requireAccess(tx, ctx, galleryId, keys, 'read');
 	const [gallery] = await rowsOf(
 		tx,
-		sql`SELECT id, title, description, visibility, owner_id, created_at, updated_at
+		sql`SELECT id, title, description, visibility, owner_id, created_at, updated_at,
+				public_confirmed_at, public_confirmed_by
 			FROM galleries WHERE id = ${galleryId}`
 	);
 	if (!gallery) throw errors.notFound('Galerie nicht gefunden');
@@ -254,7 +232,13 @@ export async function describeShares(
 /** Detail aus den geladenen Daten bauen (Eigentümer*in, Termine, Freigaben auflösen) */
 export async function finishDetail(ctx: RequestContext, d: DetailData): Promise<GalleryDetail> {
 	const ownerId = String(d.gallery.owner_id);
-	const [ownerUser] = await core.users.directory(ctx, { ids: [ownerId], limit: 1 });
+	const confirmedBy = textOrNull(d.gallery.public_confirmed_by);
+	const people = await core.users.directory(ctx, {
+		ids: confirmedBy && confirmedBy !== ownerId ? [ownerId, confirmedBy] : [ownerId],
+		limit: 2
+	});
+	const ownerUser = people.find((u) => u.id === ownerId);
+	const confirmedUser = confirmedBy ? people.find((u) => u.id === confirmedBy) : undefined;
 	const events = pickEvents(d.eventIds, await describeEvents(ctx, d.eventIds));
 	const shares = d.access.level === 'edit' ? await describeShares(ctx, d.shares) : [];
 
@@ -269,7 +253,7 @@ export async function finishDetail(ctx: RequestContext, d: DetailData): Promise<
 			originalName: String(r.original_name),
 			position,
 			uploadedBy: textOrNull(r.uploaded_by),
-			createdAt: iso(r.created_at)
+			createdAt: toIso(r.created_at)
 		};
 	});
 
@@ -285,29 +269,22 @@ export async function finishDetail(ctx: RequestContext, d: DetailData): Promise<
 		events,
 		ownerId,
 		access: d.access,
-		createdAt: iso(d.gallery.created_at),
-		updatedAt: iso(d.gallery.updated_at),
+		createdAt: toIso(d.gallery.created_at),
+		updatedAt: toIso(d.gallery.updated_at),
 		owner:
 			ownerUser && ownerUser.id === ownerId
 				? { id: ownerUser.id, name: ownerUser.name, image: ownerUser.image }
 				: null,
+		publicConfirmation:
+			d.gallery.public_confirmed_at == null
+				? null
+				: {
+						at: toIso(d.gallery.public_confirmed_at),
+						by: confirmedUser ? { id: confirmedUser.id, name: confirmedUser.name } : null
+					},
 		coverImageId: d.cover?.imageId ?? null,
 		coverIsDefault: d.cover ? d.cover.isDefault : true,
 		shares,
 		images
 	};
-}
-
-/**
- * Galerie-Detail komplett laden und aufbauen (Zugriff `read` wird geprüft: fremd → 404).
- * Öffnet eine eigene Transaktion: nur AUSSERHALB einer offenen Modul-Transaktion aufrufen.
- * `keys` = `principalKeysFor(ctx, 'galleries')`.
- */
-export async function buildGalleryDetail(
-	ctx: RequestContext,
-	galleryId: string,
-	keys: readonly string[]
-): Promise<GalleryDetail> {
-	const data = await db().transaction((tx) => loadDetailData(tx, ctx, galleryId, keys));
-	return finishDetail(ctx, data);
 }

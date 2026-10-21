@@ -6,7 +6,18 @@
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	csvCents,
+	csvDocument,
+	errors,
+	readUpload,
+	safeFileName,
+	secureFileResponse,
+	type ApiEndpoint,
+	type CsvValue,
+	type Tx
+} from '$lib/sdk/server';
 import type { MemberContact } from '$lib/modules/members/contract';
 import { decryptIban, storeIban } from './bank';
 import {
@@ -19,29 +30,25 @@ import {
 	requireAccount,
 	rows,
 	str,
-	today
+	today,
+	RECEIPT_UPLOAD
 } from './db';
 import { formatIban, maskIban } from './iban';
 import { notifyKasse, payableNotification, type CreatedPayableInfo } from './office-notify';
 import { loadSummaries } from './invoices.endpoints';
 import {
-	centsToCsv,
-	csvDocument,
 	formatDateDe,
 	matchMember,
 	parseReimbursementRef,
 	planPayables,
 	reimbursementDescription,
 	reimbursementRef,
-	sanitizeName,
 	type PayableDesired,
 	type PayableExisting
 } from './logic';
 import {
-	MAX_RECEIPT_BYTES,
 	MODULE_ID,
 	PAYABLE_SOURCE_LABELS,
-	RECEIPT_CONTENT_TYPES,
 	idParams,
 	payableInput,
 	payableListQuery,
@@ -52,7 +59,6 @@ import {
 	type PayablePayInput,
 	type PayableSource
 } from './schemas';
-import { syncIfStale } from './sync';
 
 const TAGS = ['Modul: treasury'];
 const EDIT = 'treasury.payable.edit';
@@ -60,8 +66,21 @@ const REFUND_CATEGORY = 'cat-rueckzahlung';
 
 // --- Abgleich ------------------------------------------------------------------
 
+/**
+ * Eingrenzung des Auszahlungs-Abgleichs: nur Auszahlungen dieser Aktionen (Auslagen, Ausgaben,
+ * Rückzahlungen, Guthaben aus Rechnungen der Aktion) bzw. das Guthaben dieser Rechnungen.
+ * Gewünschte und vorhandene Auszahlungen werden mit DEMSELBEN Kriterium gefiltert.
+ */
+export interface PayableScope {
+	actionIds?: string[];
+	invoiceIds?: string[];
+}
+
 /** Erzeugt/aktualisiert automatische Auszahlungen. Dienste vor der Transaktion, Änderungen in einer. */
-export async function syncPayables(members: MemberContact[]): Promise<{
+export async function syncPayables(
+	members: MemberContact[],
+	scope?: PayableScope
+): Promise<{
 	created: number;
 	updated: number;
 	cancelled: number;
@@ -81,7 +100,19 @@ export async function syncPayables(members: MemberContact[]): Promise<{
 			a.name
 		])
 	);
-	const { summaries } = await loadSummaries();
+	const scopeActions = new Set(scope?.actionIds ?? []);
+	const scopeCredits = new Set((scope?.invoiceIds ?? []).map((id) => `credit:${id}`));
+	const inScope = (actionId: string | null, sourceRef: string) =>
+		!scope || (!!actionId && scopeActions.has(actionId)) || scopeCredits.has(sourceRef);
+	if (scope && !scopeActions.size && !scopeCredits.size) {
+		return { created: 0, updated: 0, cancelled: 0, createdItems: [] };
+	}
+	const { summaries } = await loadSummaries(
+		scope
+			? sql`(${scopeActions.size ? sql`i.action_id IN (${idList([...scopeActions])})` : sql`FALSE`}
+				OR ${scope.invoiceIds?.length ? sql`i.id IN (${idList(scope.invoiceIds)})` : sql`FALSE`})`
+			: sql`TRUE`
+	);
 
 	return mdb().transaction(async (tx) => {
 		const payerByMember = new Map(
@@ -98,8 +129,8 @@ export async function syncPayables(members: MemberContact[]): Promise<{
 		);
 		const existingRows = await rows(
 			tx,
-			sql`SELECT p.id, p.source_ref, p.amount_cents, p.description, p.recipient_name, p.payer_id, p.iban_last4,
-				p.cancelled_at, p.auto_cancelled,
+			sql`SELECT p.id, p.source_ref, p.action_id, p.amount_cents, p.description, p.recipient_name, p.payer_id,
+				p.iban_last4, p.cancelled_at, p.auto_cancelled,
 				coalesce((SELECT sum(pp.amount_cents) FROM payable_payments pp WHERE pp.payable_id = p.id), 0) AS paid
 			FROM payables p WHERE p.source NOT IN ('manual', 'order')`
 		);
@@ -207,19 +238,24 @@ export async function syncPayables(members: MemberContact[]): Promise<{
 					ibanEnc: originByInvoice.get(s.id)?.enc ?? null
 				}))
 		];
-		const existing: PayableExisting[] = existingRows.map((r) => ({
-			id: String(r.id),
-			sourceRef: String(r.source_ref),
-			amountCents: num(r.amount_cents),
-			paidCents: num(r.paid),
-			description: String(r.description),
-			recipientName: String(r.recipient_name),
-			payerId: str(r.payer_id),
-			ibanLast4: str(r.iban_last4),
-			cancelled: r.cancelled_at != null,
-			autoCancelled: Boolean(r.auto_cancelled)
-		}));
-		const plan = planPayables(desired, existing);
+		const existing: PayableExisting[] = existingRows
+			.filter((r) => inScope(str(r.action_id), String(r.source_ref)))
+			.map((r) => ({
+				id: String(r.id),
+				sourceRef: String(r.source_ref),
+				amountCents: num(r.amount_cents),
+				paidCents: num(r.paid),
+				description: String(r.description),
+				recipientName: String(r.recipient_name),
+				payerId: str(r.payer_id),
+				ibanLast4: str(r.iban_last4),
+				cancelled: r.cancelled_at != null,
+				autoCancelled: Boolean(r.auto_cancelled)
+			}));
+		const plan = planPayables(
+			scope ? desired.filter((d) => inScope(d.actionId, d.sourceRef)) : desired,
+			existing
+		);
 		const due = today();
 		for (const d of plan.create) {
 			await tx.execute(
@@ -482,9 +518,8 @@ export const payableEndpoints = [
 		tags: TAGS,
 		permission: 'treasury.cash.view',
 		query: payableListQuery,
-		handler: async ({ ctx, query }) => {
+		handler: async ({ query }) => {
 			const q = query as z.infer<typeof payableListQuery>;
-			await syncIfStale(ctx);
 			const all = await listPayables(q.source === 'all' ? sql`TRUE` : sql`p.source = ${q.source}`);
 			const items = all.filter((p) =>
 				q.status === 'all'
@@ -734,14 +769,14 @@ export const payableEndpoints = [
 		handler: async ({ ctx }) => {
 			const withBank = core.permissions.has(ctx, 'treasury.bank.view');
 			const open = (await listPayables()).filter((p) => p.openCents > 0);
-			const csvRows: (string | number | null)[][] = [];
+			const csvRows: CsvValue[][] = [];
 			for (const p of open) {
 				const iban = withBank && p.hasIban ? await payableIban(p.id).catch(() => null) : null;
 				csvRows.push([
 					p.recipientName,
 					iban ? formatIban(iban) : (p.ibanMasked ?? ''),
 					p.bic ?? '',
-					centsToCsv(p.openCents),
+					csvCents(p.openCents),
 					p.description.slice(0, 140),
 					PAYABLE_SOURCE_LABELS[p.source],
 					p.dueOn ? formatDateDe(p.dueOn) : ''
@@ -775,26 +810,18 @@ export const payableEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
-			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const contentType = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (!(RECEIPT_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei überschreitet 10 MB');
+			// Typ, Größe und Inhalt (Magic Bytes) einheitlich geprüft (#33)
+			const file = await readUpload(request, RECEIPT_UPLOAD);
+			const { bytes, contentType } = file;
 			const old = await mdb().transaction(async (tx) =>
 				str((await lockPayable(tx, id)).receipt_path)
 			);
-			const name = file.name?.trim() || 'beleg';
-			const path = `payables/${id}/receipt-${crypto.randomUUID()}-${sanitizeName(name)}`;
+			const name = file.name;
+			const path = `payables/${id}/receipt-${crypto.randomUUID()}-${safeFileName(name)}`;
 			await core.storage.upload(ctx, {
 				module: MODULE_ID,
 				path,
-				file: new Uint8Array(await file.arrayBuffer()),
+				file: bytes,
 				contentType,
 				name
 			});
@@ -837,14 +864,10 @@ export const payableEndpoints = [
 				module: MODULE_ID,
 				path: ref.path
 			});
-			return new Response(buffer as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-disposition': `inline; filename="${sanitizeName(ref.name)}"`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			return secureFileResponse(buffer, {
+				contentType: file.contentType,
+				name: ref.name,
+				cache: 'private, no-store'
 			});
 		}
 	}
@@ -958,8 +981,15 @@ export const payableReceiptEndpoints = [
 					};
 				}
 			} else if (p.source === 'reimbursement') {
-				const [, actionId] = String(p.source_ref).split(':');
-				file = await (await actionsService()).downloadReceipt(actionId!, entryId);
+				// Nur Belege genau dieser Auslage (Person + Freigabe) – nicht beliebige Belege der Aktion
+				const ref = parseReimbursementRef(String(p.source_ref));
+				const svc = await actionsService();
+				const allowed = ref
+					? await svc.listReimbursementReceipts(ref.actionId, ref.payeeId, ref.interimId)
+					: [];
+				if (ref && allowed.some((r) => r.entryId === entryId)) {
+					file = await svc.downloadReceipt(ref.actionId, entryId);
+				}
 			} else if (p.source === 'expense') {
 				const [, actionId, ownEntry] = String(p.source_ref).split(':');
 				if (ownEntry === entryId) {
@@ -971,14 +1001,10 @@ export const payableReceiptEndpoints = [
 				target: id,
 				metadata: { entryId }
 			});
-			return new Response(file.data as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-disposition': `inline; filename="${sanitizeName(file.name)}"`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			return secureFileResponse(file.data, {
+				contentType: file.contentType,
+				name: file.name,
+				cache: 'private, no-store'
 			});
 		}
 	}

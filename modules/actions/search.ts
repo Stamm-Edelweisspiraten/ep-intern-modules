@@ -4,8 +4,8 @@
  * Reihenfolge: laufende/kommende zuerst (früheste zuerst), danach vergangene (jüngste zuerst).
  */
 import { sql } from 'drizzle-orm';
-import { core, type ModuleSearchProvider, type SearchHit } from '$lib/sdk/server';
-import { rowsOf, visibleActionsFilter } from './access';
+import { moduleDb, type ModuleSearchProvider, rowsOf, type SearchHit } from '$lib/sdk/server';
+import { visibleActionsFilter } from './access';
 import { MODULE_ID } from './schemas';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -20,7 +20,7 @@ export const actionsSearch: ModuleSearchProvider = {
 	permission: 'actions.action.view',
 	async run(ctx, query, limit) {
 		const p = like(query);
-		const found = await core.database.forModule(MODULE_ID).transaction((tx) =>
+		const found = await moduleDb(MODULE_ID).transaction((tx) =>
 			rowsOf(
 				tx,
 				sql`SELECT a.id, a.name, a.location,

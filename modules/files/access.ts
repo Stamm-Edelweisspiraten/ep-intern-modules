@@ -11,8 +11,18 @@
  * `keys` = `principalKeysFor(ctx, 'files')`, immer VOR der Transaktion ermitteln.
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, errors, principalMatchSql, type RequestContext, type Tx } from '$lib/sdk/server';
-import { ancestorsOf, nodeRowOf, NODE_COLUMNS, rowsOf, type NodeRow } from './db';
+import {
+	core,
+	errors,
+	inList,
+	principalMatchSql,
+	rowsOf,
+	shareLevelOn,
+	type RequestContext,
+	type ShareTable,
+	type Tx
+} from '$lib/sdk/server';
+import { ancestorsOf, nodeRowOf, NODE_COLUMNS, type NodeRow } from './db';
 import { PERMISSIONS, type AccessLevel } from './schemas';
 
 export interface NodeAccess {
@@ -42,27 +52,8 @@ export function rootAccess(ctx: RequestContext, ownerId: string | null): AccessL
 	return ctx.userId && ownerId === ctx.userId ? 'edit' : null;
 }
 
-const idList = (ids: readonly string[]): SQL =>
-	sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-
-/** Höchste Freigabestufe für den Aufrufer auf einer Liste von Knoten (z. B. Knoten + Vorfahren) */
-async function shareLevelOn(
-	tx: Tx,
-	nodeIds: readonly string[],
-	keys: readonly string[]
-): Promise<AccessLevel | null> {
-	if (nodeIds.length === 0 || keys.length === 0) return null;
-	const rows = await rowsOf(
-		tx,
-		sql`SELECT DISTINCT s.level FROM node_shares s
-			WHERE s.node_id IN (${idList(nodeIds)}) AND ${principalMatchSql('s', keys)}`
-	);
-	if (rows.some((r) => r.level === 'edit')) return 'edit';
-	return rows.length > 0 ? 'read' : null;
-}
+/** Freigabe-Tabelle der Knoten (SDK-Bausteine `shareLevelOn`, `loadObjectShares`, `replaceObjectShares`) */
+export const NODE_SHARES: ShareTable = { shareTable: 'node_shares', fk: 'node_id' };
 
 /** Zugriff auf einen Knoten oder `null` (nicht vorhanden, im Papierkorb oder kein Zugriff) */
 export async function resolveAccess(
@@ -80,6 +71,7 @@ export async function resolveAccess(
 	if (level !== 'edit') {
 		const shared = await shareLevelOn(
 			tx,
+			NODE_SHARES,
 			chain.map((n) => n.id),
 			keys
 		);
@@ -156,7 +148,7 @@ export async function accessForMany(
 		tx,
 		sql`WITH RECURSIVE chain AS (
 			SELECT n.id AS start_id, n.id, n.parent_id, 0 AS depth
-			FROM nodes n WHERE n.id IN (${idList([...new Set(open.map((n) => n.id))])})
+			FROM nodes n WHERE n.id IN (${inList([...new Set(open.map((n) => n.id))])})
 			UNION ALL
 			SELECT c.start_id, p.id, p.parent_id, c.depth + 1
 			FROM chain c JOIN nodes p ON p.id = c.parent_id

@@ -3,6 +3,9 @@
  * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschlüssel, CSV.
  */
 import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
+import { formatEuro } from '$lib/components/layout/money';
+import { csvFromRecords, type CsvColumn } from '$lib/sdk/csv';
+import { safeFileName } from '$lib/sdk/file-names';
 import { DIETS, DIET_LABELS, STANDARD_FORM_KEYS, ageAt, type FormStatus } from './schemas';
 
 const K = STANDARD_FORM_KEYS;
@@ -33,7 +36,15 @@ function dietOptions() {
 export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {}): FormDefinition {
 	const groupOptions = [...new Set((opts.groupOptions ?? []).map((g) => g.trim()).filter(Boolean))];
 	const fields: FieldDefinition[] = [
-		{ id: K.name, key: K.name, type: 'text', label: 'Name', required: true, locked: true },
+		{
+			id: K.name,
+			key: K.name,
+			type: 'text',
+			label: 'Name',
+			required: true,
+			locked: true,
+			mandatory: true
+		},
 		{
 			id: K.group,
 			key: K.group,
@@ -53,7 +64,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			type: 'date',
 			label: 'Geburtsdatum',
 			required: true,
-			locked: true
+			locked: true,
+			mandatory: true
 		},
 		{
 			id: K.bremenResident,
@@ -71,6 +83,7 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Ernährung',
 			required: true,
 			locked: true,
+			health: true,
 			memberKey: MEMBER_KEY_BY_STANDARD[K.diet],
 			options: dietOptions()
 		},
@@ -81,6 +94,7 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Unverträglichkeiten und Allergien',
 			required: false,
 			locked: true,
+			health: true,
 			memberKey: MEMBER_KEY_BY_STANDARD[K.allergies]
 		},
 		{
@@ -89,7 +103,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			type: 'textarea',
 			label: 'Sonstiges (Medikamente, Mitteilungen)',
 			required: false,
-			locked: true
+			locked: true,
+			health: true
 		},
 		{
 			id: K.email,
@@ -97,7 +112,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			type: 'email',
 			label: 'E-Mail-Adresse (für die Bestätigung)',
 			required: true,
-			locked: true
+			locked: true,
+			mandatory: true
 		},
 		{
 			id: K.privacy,
@@ -106,7 +122,8 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Datenschutz',
 			text: 'Ich habe den Datenschutzhinweis gelesen und bin einverstanden.',
 			required: true,
-			locked: true
+			locked: true,
+			mandatory: true
 		},
 		{
 			id: K.disclaimer,
@@ -115,15 +132,29 @@ export function buildDefaultFormDefinition(opts: { groupOptions?: string[] } = {
 			label: 'Verbindliche Anmeldung',
 			text: 'Ich bestätige die verbindliche Anmeldung.',
 			required: true,
-			locked: true
+			locked: true,
+			mandatory: true
 		}
 	];
 	return { version: 1, fields };
 }
 
+/** Standardfelder, die immer sichtbar und Pflicht sind (Datenschutz-Einwilligung, Issue #28) */
+export const MANDATORY_KEYS: readonly string[] = [
+	K.name,
+	K.email,
+	K.birthDate,
+	K.privacy,
+	K.disclaimer
+];
+/** Standardfelder mit Gesundheitsdaten (Kennzeichen `health` fest gesetzt) */
+const HEALTH_STANDARD_KEYS: readonly string[] = [K.diet, K.allergies, K.notes];
+
 /**
  * Stellt die Pflicht-Standardfelder sicher: fehlende werden ergänzt, `locked` bleibt gesetzt,
  * der Typ gesperrter Felder ändert sich nicht (sonst Standardfeld), feste Optionen werden erzwungen.
+ * Name, E-Mail, Geburtsdatum, Datenschutz und Disclaimer sind nie ausgeblendet und immer Pflicht
+ * (`mandatory`), auch wenn der Client anderes schickt.
  */
 export function mergeStandardFields(
 	def: FormDefinition,
@@ -138,7 +169,9 @@ export function mergeStandardFields(
 		seen.add(f.key);
 		const std = byKey.get(f.key);
 		if (!std) {
-			fields.push(f);
+			// `mandatory` gibt es nur für Standardfelder des Hosts
+			const { mandatory: _m, ...rest } = f;
+			fields.push(rest as FieldDefinition);
 		} else if (f.type !== std.type) {
 			fields.push(std);
 		} else {
@@ -149,10 +182,14 @@ export function mergeStandardFields(
 			if (f.key === K.diet || f.key === K.bremenResident) {
 				(merged as { options: unknown }).options = (std as { options: unknown }).options;
 			}
-			if (f.key === K.name || f.key === K.email || f.key === K.birthDate) {
+			if (MANDATORY_KEYS.includes(f.key)) {
 				merged.required = true;
 				merged.hidden = false;
+				merged.mandatory = true;
+			} else {
+				delete merged.mandatory;
 			}
+			if (HEALTH_STANDARD_KEYS.includes(f.key)) merged.health = true;
 			fields.push(merged);
 		}
 	}
@@ -258,13 +295,8 @@ export interface DisclaimerVars {
 	purposeTemplate?: string;
 }
 
-export function formatEuro(cents: number): string {
-	const abs = Math.abs(Math.round(cents));
-	const whole = Math.floor(abs / 100)
-		.toString()
-		.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-	return `${cents < 0 ? '-' : ''}${whole},${String(abs % 100).padStart(2, '0')} €`;
-}
+// Geldformat zentral (`$lib/components/layout/money`, #34); hier für bestehende Importe weitergereicht
+export { formatEuro };
 
 function fill(template: string, values: Record<string, string>): string {
 	return template.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_m, k: string) => values[k] ?? '');
@@ -370,6 +402,68 @@ const escapeHtml = (v: string) =>
 	v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
+ * Links in Freitext unschädlich machen (Mail-Clients verlinken sonst automatisch): `://` → `[:]//`,
+ * Punkte in Domains → `[.]`, `@` in Adressen → `[at]`. Für Freitext, der in Mails erscheint.
+ */
+const LINKISH =
+	/\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>"']*|(?:[a-z0-9._%+-]+@)?\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,24}\b(?:\/[^\s<>"']*)?/gi;
+export function neutralizeLinks(text: string): string {
+	return text.replace(LINKISH, (m) =>
+		m.replace(/:\/\//g, '[:]//').replace(/\./g, '[.]').replace(/@/g, '[at]')
+	);
+}
+
+/** Tage, die ein Bestätigungslink (Double-Opt-in) gültig ist */
+export const OPTIN_VALID_DAYS = 7;
+
+const deDate = (iso: string) => iso.split('-').reverse().join('.');
+
+/** Zeitraum der Aktion als Text („12.07.2026“ bzw. „12.07.2026 – 19.07.2026“) */
+export function formatActionDates(startsOn: string, endsOn: string | null): string {
+	return endsOn && endsOn !== startsOn
+		? `${deDate(startsOn)} – ${deDate(endsOn)}`
+		: deDate(startsOn);
+}
+
+/**
+ * Bitte um Bestätigung der E-Mail-Adresse (Double-Opt-in, Issue #17). Enthält bewusst KEINE
+ * Angaben aus dem Formular (kein Name, keine Gruppe, keine Freitexte), nur Aktionsname, Datum,
+ * feste Texte und den Bestätigungslink – an eine unbestätigte Adresse geht kein steuerbarer Inhalt.
+ */
+export function buildOptInMail(p: {
+	actionName: string;
+	startsOn: string;
+	endsOn: string | null;
+	confirmUrl: string;
+	validDays?: number;
+}): { subject: string; text: string; html: string } {
+	const days = p.validDays ?? OPTIN_VALID_DAYS;
+	const when = formatActionDates(p.startsOn, p.endsOn);
+	const intro = `für „${p.actionName}“ (${when}) ist eine Anmeldung mit dieser E-Mail-Adresse eingegangen. Bitte bestätige die Anmeldung innerhalb von ${days} Tagen über diesen Link:`;
+	const after =
+		'Erst mit der Bestätigung ist die Anmeldung gültig; danach erhältst du die Anmeldebestätigung mit allen Angaben.';
+	const ignore =
+		'Hast du dich nicht angemeldet? Dann ignoriere diese E-Mail. Die Angaben werden ohne Bestätigung automatisch gelöscht.';
+	const text = ['Hallo,', intro, p.confirmUrl, after, ignore, 'Herzliche Grüße und Gut Pfad'].join(
+		'\n\n'
+	);
+	const para = (t: string) => `<p style="margin:0 0 16px;">${escapeHtml(t)}</p>`;
+	const html = [
+		para('Hallo,'),
+		para(intro),
+		`<p style="margin:0 0 16px;"><a href="${escapeHtml(p.confirmUrl)}">Anmeldung bestätigen</a></p>`,
+		para(after),
+		para(ignore),
+		para('Herzliche Grüße und Gut Pfad')
+	].join('');
+	return {
+		subject: `Bitte Anmeldung bestätigen: ${p.actionName}`.replace(/[\r\n]+/g, ' ').slice(0, 200),
+		text,
+		html
+	};
+}
+
+/**
  * Anmeldebestätigung. Mit `invoice` (Kasse aktiv) folgt nach den Angaben die Rechnung mit
  * Zahlungskasten (Bankdaten, Betrag, Verwendungszweck = Rechnungsnummer) und Hinweis auf das PDF.
  */
@@ -382,17 +476,20 @@ export function buildConfirmationMail(p: {
 	invoice?: { number: string; totalCents: number; paymentText: string; paymentHtml: string } | null;
 }): { subject: string; text: string; html: string } {
 	const birth = p.birthDate ? p.birthDate.split('-').reverse().join('.') : '';
+	// Freitext aus dem Formular: Links neutralisieren (Mail geht erst an bestätigte Adressen)
+	const name = neutralizeLinks(p.name);
+	const group = p.groupLabel ? neutralizeLinks(p.groupLabel) : null;
 	const details = [
-		`Name: ${p.name}`,
-		...(p.groupLabel ? [`Gruppe: ${p.groupLabel}`] : []),
+		`Name: ${name}`,
+		...(group ? [`Gruppe: ${group}`] : []),
 		...(birth ? [`Geburtsdatum: ${birth}`] : [])
 	];
-	const euro = p.invoice ? `${(p.invoice.totalCents / 100).toFixed(2).replace('.', ',')} €` : '';
+	const euro = p.invoice ? formatEuro(p.invoice.totalCents) : '';
 	const invoiceIntro = p.invoice
 		? `Für die Teilnahme stellen wir dir ${euro} in Rechnung (Rechnung ${p.invoice.number}, als PDF im Anhang). Bitte überweise den Betrag mit diesen Angaben:`
 		: '';
 	const paragraphs: { text?: string; html?: string }[] = [
-		{ text: `Hallo ${p.name},` },
+		{ text: `Hallo ${name},` },
 		{
 			text: `vielen Dank für die Anmeldung zu „${p.actionName}“. Wir haben folgende Angaben erhalten:`
 		},
@@ -423,39 +520,13 @@ export function buildConfirmationMail(p: {
 
 // --- CSV --------------------------------------------------------------------
 
-export interface CsvColumn {
-	key: string;
-	label: string;
-}
+export type { CsvColumn };
 
-const BOM = String.fromCharCode(0xfeff);
+/** CSV mit UTF-8-BOM, `;` als Trenner, CRLF und Formel-Injection-Schutz (zentral `$lib/sdk/csv`). */
+export const toCsv = (rows: Record<string, unknown>[], columns: CsvColumn[]): string =>
+	csvFromRecords(rows, columns);
 
-function csvCell(v: unknown): string {
-	if (v == null) return '';
-	let s = typeof v === 'string' ? v : String(v);
-	if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-	return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/** CSV mit UTF-8-BOM, `;` als Trenner, CRLF und Formel-Injection-Schutz. */
-export function toCsv(rows: Record<string, unknown>[], columns: CsvColumn[]): string {
-	const lines = [columns.map((c) => csvCell(c.label)).join(';')];
-	for (const r of rows) lines.push(columns.map((c) => csvCell(r[c.key])).join(';'));
-	return `${BOM}${lines.join('\r\n')}\r\n`;
-}
-
-/** Dateiname aus dem Aktionsnamen (ASCII, ohne Sonderzeichen). */
+/** Dateiname aus dem Aktionsnamen (ASCII, Umlaute ausgeschrieben, ≤ 60 Zeichen) + `suffix`. */
 export function safeFilename(name: string, suffix: string): string {
-	const base = name
-		.replace(/ä/g, 'ae')
-		.replace(/ö/g, 'oe')
-		.replace(/ü/g, 'ue')
-		.replace(/Ä/g, 'Ae')
-		.replace(/Ö/g, 'Oe')
-		.replace(/Ü/g, 'Ue')
-		.replace(/ß/g, 'ss')
-		.replace(/[^A-Za-z0-9_-]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 60);
-	return `${base || 'aktion'}${suffix}`;
+	return `${safeFileName(name, { replacement: '-', maxLength: 60, fallback: 'aktion', german: true })}${suffix}`;
 }

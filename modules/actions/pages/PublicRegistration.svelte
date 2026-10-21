@@ -203,7 +203,7 @@
 	{:else if unavailable || loadError || !form}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title class="text-lg">
+				<Card.Title level={1} class="text-section">
 					{unavailable ? 'Diese Anmeldung ist nicht verfügbar' : 'Anmeldung nicht geladen'}
 				</Card.Title>
 				<Card.Description>
@@ -220,7 +220,7 @@
 		</Card.Root>
 	{:else}
 		<header class="flex flex-col gap-1">
-			<h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">{form.actionName}</h1>
+			<h1 class="text-title">{form.actionName}</h1>
 			<p class="text-muted-foreground text-sm">
 				{period}{form.location ? ` · ${form.location}` : ''}
 			</p>
@@ -230,16 +230,27 @@
 			<Card.Root>
 				<Card.Content class="flex flex-col gap-5">
 					<div class="flex flex-col items-center gap-3 text-center">
-						<CircleCheck class="size-12 text-green-600" aria-hidden="true" />
-						<h2 class="text-xl font-semibold">Vielen Dank, {result.name}!</h2>
-						{#if result.memberUpdated}
-							<p class="text-muted-foreground text-sm">Dein Mitgliedsprofil wurde aktualisiert.</p>
+						<CircleCheck class="size-12 text-success" aria-hidden="true" />
+						{#if result.confirmationRequired}
+							<h2 class="text-section">Fast geschafft!</h2>
+							<p class="text-muted-foreground text-sm" role="status">
+								Wir haben dir eine E-Mail geschickt. Bitte bestätige die Anmeldung über den Link
+								darin innerhalb von 7 Tagen – erst dann ist sie gültig und du erhältst die
+								Anmeldebestätigung.
+							</p>
+						{:else}
+							<h2 class="text-section">Vielen Dank, {result.name}!</h2>
+							{#if result.memberUpdated}
+								<p class="text-muted-foreground text-sm">
+									Dein Mitgliedsprofil wurde aktualisiert.
+								</p>
+							{/if}
+							<p class="text-muted-foreground text-sm" role="status">
+								{result.emailSent
+									? 'Wir haben dir eine Bestätigung per E-Mail geschickt.'
+									: 'Wir konnten keine Bestätigung per E-Mail senden. Bitte notiere dir die folgenden Angaben.'}
+							</p>
 						{/if}
-						<p class="text-muted-foreground text-sm" role="status">
-							{result.emailSent
-								? 'Wir haben dir eine Bestätigung per E-Mail geschickt.'
-								: 'Wir konnten keine Bestätigung per E-Mail senden. Bitte notiere dir die folgenden Angaben.'}
-						</p>
 					</div>
 					{#if result.disclaimer}
 						<div class="bg-muted/50 rounded-lg px-4 py-3 text-sm whitespace-pre-line">
@@ -254,7 +265,7 @@
 		{:else if form.status !== 'open'}
 			<Card.Root>
 				<Card.Header>
-					<Card.Title class="text-lg">{closedText}</Card.Title>
+					<Card.Title class="text-section">{closedText}</Card.Title>
 					<Card.Description>
 						{#if form.status === 'not_open' && form.opensAt}
 							Die Anmeldung öffnet am {new Date(form.opensAt).toLocaleString('de-DE', {
@@ -274,7 +285,7 @@
 			{#if form.requireLogin && !form.viewer}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title class="text-lg">Anmeldung mit Konto</Card.Title>
+						<Card.Title class="text-section">Anmeldung mit Konto</Card.Title>
 						<Card.Description>
 							Für diese Aktion melden sich Mitglieder mit ihrem Konto an. Deine Daten werden dann
 							aus dem Mitgliedsprofil übernommen.
@@ -290,7 +301,7 @@
 			{:else if form.requireLogin && !form.members.length}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title class="text-lg">Konto noch nicht verknüpft</Card.Title>
+						<Card.Title class="text-section">Konto noch nicht verknüpft</Card.Title>
 						<Card.Description>
 							Dein Konto ist mit keinem Mitglied verknüpft. Nutze dafür den Link und den Code aus
 							dem Brief deines Stammes, danach kannst du dich hier anmelden.

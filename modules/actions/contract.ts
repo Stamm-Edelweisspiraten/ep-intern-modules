@@ -191,6 +191,10 @@ export interface ActionsService {
 	listClosedAccountings(): Promise<ClosedAccounting[]>;
 	/** Detail einer abgeschlossenen Abrechnung; `null`, wenn offen oder unbekannt */
 	getClosedAccounting(actionId: string): Promise<ClosedAccountingDetail | null>;
+	/** Ist die Abrechnung der Aktion abgeschlossen? (eine Abfrage, z. B. Prüfung vor dem PDF, #68) */
+	isAccountingClosed(actionId: string): Promise<boolean>;
+	/** Anzeigenamen der Abrechnungskategorien (Schlüssel `AccountingEntry.category`) */
+	accountingCategoryLabels(): Record<string, string>;
 	/** Ausgaben des Stammes (ohne Rückzahlung), offen oder bezahlt */
 	listClubExpenses(): Promise<ClubExpenseSource[]>;
 	/** Klartext-IBAN des Empfängers einer Stamm-Ausgabe (Aufrufer prüft Rechte und auditiert) */

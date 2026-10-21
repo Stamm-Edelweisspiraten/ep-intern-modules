@@ -270,7 +270,7 @@
 								<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
 									<span>{g.variantCount} {g.variantCount === 1 ? 'Größe' : 'Größen'}</span>
 									{#if g.lowCount > 0}
-										<span class="text-amber-700 dark:text-amber-400">
+										<span class="text-warning">
 											· {g.lowCount} unter Mindestbestand
 										</span>
 									{/if}
@@ -285,7 +285,7 @@
 													v.deficit > 0
 														? 'border-destructive/40 text-destructive'
 														: v.stock < v.minStock
-															? 'border-amber-500/40 text-amber-700 dark:text-amber-400'
+															? 'border-warning-border text-warning'
 															: 'text-muted-foreground'
 												].join(' ')}
 											>
@@ -405,7 +405,7 @@
 		<Table.Cell
 			class={[
 				'text-right font-medium tabular-nums',
-				r.stock < r.minStock ? 'text-amber-700 dark:text-amber-400' : ''
+				r.stock < r.minStock ? 'text-warning' : ''
 			].join(' ')}
 		>
 			{r.stock}
@@ -483,7 +483,7 @@
 							<span
 								class={[
 									'shrink-0 font-semibold tabular-nums',
-									m.delta > 0 ? 'text-emerald-700 dark:text-emerald-400' : '',
+									m.delta > 0 ? 'text-success' : '',
 									m.delta < 0 ? 'text-destructive' : ''
 								].join(' ')}
 							>

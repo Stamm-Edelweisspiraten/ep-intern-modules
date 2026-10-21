@@ -9,6 +9,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Landmark from '@lucide/svelte/icons/landmark';
 	import Plus from '@lucide/svelte/icons/plus';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Upload from '@lucide/svelte/icons/upload';
 	import Wallet from '@lucide/svelte/icons/wallet';
@@ -20,7 +21,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, FormField } from '$lib/components/layout';
+	import { EmptyState, FormField, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		ACCOUNT_KIND_LABELS,
@@ -39,6 +40,7 @@
 		type SharedData
 	} from './helpers';
 	import type { FamilyRef } from './navigation';
+	import { taskView } from './task-view';
 
 	let {
 		perm,
@@ -49,7 +51,9 @@
 		oncreate,
 		onimport,
 		onchanged,
-		onfamily
+		onfamily,
+		onsync,
+		syncing = false
 	}: SharedData & {
 		onopen: (tab: string) => void;
 		onallocate: (t: Transaction) => void;
@@ -61,6 +65,9 @@
 		onchanged: () => void | Promise<void>;
 		/** Familienkonto (Zahler) öffnen */
 		onfamily?: (ref: FamilyRef) => void;
+		/** „Jetzt abgleichen“ (Vollabgleich, nur mit `treasury.invoice.edit`) */
+		onsync?: () => void | Promise<void>;
+		syncing?: boolean;
 	} = $props();
 
 	let data = $state<Overview | null>(null);
@@ -120,61 +127,10 @@
 
 	const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-	/** Titel, Erklärung und Knopf einer Aufgabe */
-	function taskView(t: OverviewTask): { title: string; hint: string; action: string } {
-		const money = t.cents != null ? ` (${formatEuro(t.cents)})` : '';
-		switch (t.kind) {
-			case 'bank-missing':
-				return {
-					title: 'Kontodaten fehlen',
-					hint: 'Ohne Kontoinhaber und IBAN enthalten Rechnungen, Mails und Bestätigungen keine Zahlungsdaten.',
-					action: 'Einstellungen öffnen'
-				};
-			case 'unallocated':
-				return {
-					title: `${plural(t.count, 'Einnahme wartet', 'Einnahmen warten')} auf Zuordnung${money}`,
-					hint: 'Ordne die Zahlung einer Rechnung zu, damit sie als bezahlt gilt.',
-					action: perm.editTx ? 'Vorschläge prüfen' : 'Buchungen ansehen'
-				};
-			case 'overdue':
-				return {
-					title: `${plural(t.count, 'Rechnung ist', 'Rechnungen sind')} überfällig${money}`,
-					hint: 'Erinnerungen laufen automatisch; du kannst auch selbst erinnern.',
-					action: 'Offene Posten'
-				};
-			case 'payables-overdue':
-				return {
-					title: `${plural(t.count, 'Überweisung ist', 'Überweisungen sind')} überfällig${money}`,
-					hint: 'Diese Auszahlungen sollten schnell raus.',
-					action: 'Auszahlungen'
-				};
-			case 'payables-no-iban':
-				return {
-					title: `${plural(t.count, 'Überweisung hat', 'Überweisungen haben')} keine IBAN${money}`,
-					hint: 'Ohne IBAN lässt sich nicht überweisen.',
-					action: 'Auszahlungen'
-				};
-			case 'annual-draft':
-				return {
-					title: `Beitragslauf ${t.year} ist noch nicht versendet`,
-					hint: t.date
-						? `Zahlungsfrist ${fmtDate(t.date)}.`
-						: 'Sätze prüfen und Rechnungen senden.',
-					action: 'Beitragslauf öffnen'
-				};
-			case 'annual-scheduled':
-				return {
-					title: `Beitragslauf ${t.year} ist geplant`,
-					hint: t.date ? `Versand am ${fmtDate(t.date)}.` : 'Der Versand ist geplant.',
-					action: 'Ansehen'
-				};
-			case 'annual-missing':
-				return {
-					title: `Für ${t.year} gibt es noch keinen Beitragslauf`,
-					hint: 'Lege den Lauf an, wenn die Jahresbeiträge berechnet werden sollen.',
-					action: 'Beitragslauf anlegen'
-				};
-		}
+	/** Titel, Erklärung und Knopf einer Aufgabe (Texte aus `task-view.ts`, nur der Knopf hängt am Recht) */
+	function overviewTaskView(t: OverviewTask): { title: string; hint: string; action: string } {
+		const v = taskView(t);
+		return t.kind === 'unallocated' && perm.editTx ? { ...v, action: 'Vorschläge prüfen' } : v;
 	}
 
 	function runTask(t: OverviewTask) {
@@ -269,7 +225,7 @@
 		class="block text-lg leading-tight font-semibold tabular-nums {k.tone === 'critical'
 			? 'text-destructive'
 			: k.tone === 'warning'
-				? 'text-amber-700 dark:text-amber-400'
+				? 'text-warning'
 				: ''}"
 	>
 		{k.value}
@@ -311,10 +267,7 @@
 					class="flex items-center gap-2 rounded-xl bg-card ring-1 ring-foreground/10 px-3 py-2 text-sm"
 					role="status"
 				>
-					<CircleCheck
-						class="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-						aria-hidden="true"
-					/>
+					<CircleCheck class="size-4 shrink-0 text-success" aria-hidden="true" />
 					<span
 						><strong class="font-medium">Alles erledigt.</strong>
 						<span class="text-muted-foreground">Im Moment ist nichts offen.</span></span
@@ -327,15 +280,12 @@
 						: 'ring-foreground/10'}"
 				>
 					{#each data.tasks as t (t.kind)}
-						{@const v = taskView(t)}
+						{@const v = overviewTaskView(t)}
 						<li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:flex-nowrap">
 							{#if t.severity === 'critical'}
 								<CircleAlert class="size-4 shrink-0 text-destructive" aria-label="Dringend" />
 							{:else if t.severity === 'warning'}
-								<TriangleAlert
-									class="size-4 shrink-0 text-amber-600 dark:text-amber-400"
-									aria-label="Wichtig"
-								/>
+								<TriangleAlert class="size-4 shrink-0 text-warning" aria-label="Wichtig" />
 							{:else}
 								<Info class="size-4 shrink-0 text-muted-foreground" aria-label="Hinweis" />
 							{/if}
@@ -381,7 +331,7 @@
 								'critical'
 									? 'ring-destructive/40'
 									: k.tone === 'warning'
-										? 'ring-amber-500/40'
+										? 'ring-warning-border'
 										: 'ring-foreground/10'}"
 								onclick={k.run}
 								aria-label={`${k.label}: ${k.value}, ${k.sub} – ${k.target}`}
@@ -401,7 +351,7 @@
 		<div class="grid gap-4 lg:grid-cols-2">
 			<Card.Root size="sm">
 				<Card.Header>
-					<Card.Title class="text-sm">Konten</Card.Title>
+					<Card.Title>Konten</Card.Title>
 				</Card.Header>
 				<Card.Content>
 					{#if !data.accounts.length}
@@ -438,11 +388,24 @@
 
 			<Card.Root size="sm">
 				<Card.Header>
-					<Card.Title class="text-sm">Beiträge aus Aktionen</Card.Title>
+					<Card.Title>Beiträge aus Aktionen</Card.Title>
 					<Card.Description class="text-xs">
-						Je Teilnehmende*r entsteht automatisch eine Rechnung.
-						{#if data.lastSyncAt}Abgeglichen {fmtDateTime(data.lastSyncAt)}.{/if}
+						Je Teilnehmende*r entsteht automatisch eine Rechnung. Änderungen an Aktionen kommen
+						sofort an, der vollständige Abgleich läuft stündlich.
+						<span class="mt-1 block">
+							Stand des letzten Abgleichs: {data.lastSyncAt
+								? fmtDateTime(data.lastSyncAt)
+								: 'noch keiner'}
+						</span>
 					</Card.Description>
+					{#if onsync && perm.editInvoice}
+						<Card.Action>
+							<Button variant="outline" size="sm" onclick={() => onsync()} disabled={syncing}>
+								<RefreshCw class={syncing ? 'animate-spin' : ''} />
+								{syncing ? 'Gleicht ab …' : 'Jetzt abgleichen'}
+							</Button>
+						</Card.Action>
+					{/if}
 				</Card.Header>
 				<Card.Content>
 					{#if !receivables.length}
@@ -523,7 +486,7 @@
 
 		<Card.Root size="sm">
 			<Card.Header class="flex flex-row items-center justify-between gap-2">
-				<Card.Title class="text-sm">Letzte Buchungen</Card.Title>
+				<Card.Title>Letzte Buchungen</Card.Title>
 				<Button variant="ghost" size="sm" onclick={() => onopen('transactions')}>
 					Alle Buchungen <ArrowRight />
 				</Button>
@@ -596,7 +559,7 @@
 				disabled={busy}
 				onclick={() => saveSettings(settingsFor?.excluded ?? false, dueOn || null)}
 			>
-				{busy ? 'Speichert …' : 'Speichern'}
+				{busy ? BUSY_SAVE : 'Speichern'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

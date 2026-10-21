@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { core } from '$lib/sdk/server';
+import { core, moduleDb } from '$lib/sdk/server';
 import type { AddressSuggestion, AddressSuggestions } from './schemas';
 import plzData from './data/plz-de.json';
 import { directoryName, splitHouseNumber } from './address-utils';
@@ -60,6 +60,11 @@ export interface AddressHints {
 	postalCode?: string;
 	/** Bereits gewähltes Land (`DE` → OpenPLZ) */
 	country?: string;
+	/**
+	 * Anschriften vorhandener Mitglieder vorschlagen (Standard ja). Aus für Gruppenleitungen: sie dürfen
+	 * Anschriften von Mitgliedern außerhalb ihrer Gruppen nicht sehen.
+	 */
+	includeMembers?: boolean;
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
@@ -149,7 +154,7 @@ const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 async function localAddresses(q: string): Promise<AddressSuggestion[]> {
 	const pattern = `${likeEscape(q.trim())}%`;
 	try {
-		const rows = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		const rows = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const r = await tx.execute(sql`
 				SELECT street, postal_code, city, country, count(*)::int AS n
 				FROM members
@@ -173,7 +178,7 @@ async function homeRegion(): Promise<string | null> {
 	if (region && Date.now() - region.at < REGION_TTL_MS) return region.prefix;
 	let prefix: string | null;
 	try {
-		prefix = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		prefix = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const r = await tx.execute(sql`
 				SELECT left(postal_code, 2) AS p, count(*)::int AS n
 				FROM members
@@ -334,7 +339,7 @@ export async function suggestAddresses(
 		core.settings.get(PHOTON_SETTING).then(baseUrl)
 	]);
 	// Nacheinander: PGlite (Tests/Demo) hat nur eine Sitzung; Mitglieder-Anschriften immer frisch
-	const local = await localAddresses(query);
+	const local = hints.includeMembers === false ? [] : await localAddresses(query);
 	const { name, number } = splitHouseNumber(query);
 	const typed = str(hints.postalCode);
 	const useDirectory = country === 'DE' && !!openBase;

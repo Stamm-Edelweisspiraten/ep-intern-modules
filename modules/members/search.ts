@@ -4,15 +4,16 @@
  * `members.group.view`. Keine sensiblen Felder (Geburtsdatum, Kontakte, Gesundheit) in den Treffern.
  */
 import { sql } from 'drizzle-orm';
-import { core, type ModuleSearchProvider, type SearchHit, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	moduleDb,
+	type ModuleSearchProvider,
+	type Row,
+	rowsOf,
+	type SearchHit,
+	type Tx
+} from '$lib/sdk/server';
 import { GROUP_TYPE_LABELS, MODULE_ID, STAGE_LABELS, type GroupType, type Stage } from './schemas';
-
-type Row = Record<string, unknown>;
-
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	const res = (await tx.execute(query)) as unknown as { rows: Row[] };
-	return res.rows;
-}
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -22,7 +23,7 @@ function memberTitle(r: Row): string {
 }
 
 async function searchMembers(tx: Tx, p: string, limit: number): Promise<SearchHit[]> {
-	const found = await rows(
+	const found = await rowsOf(
 		tx,
 		sql`SELECT m.id, m.first_name, m.last_name, m.scout_name, m.stage,
 				(m.exit_date IS NOT NULL AND m.exit_date <= CURRENT_DATE) AS has_left,
@@ -53,7 +54,7 @@ async function searchMembers(tx: Tx, p: string, limit: number): Promise<SearchHi
 }
 
 async function searchGroups(tx: Tx, p: string, limit: number): Promise<SearchHit[]> {
-	const found = await rows(
+	const found = await rowsOf(
 		tx,
 		sql`SELECT g.id, g.name, g.type,
 				(SELECT count(*)::int FROM member_groups mg WHERE mg.group_id = g.id) AS member_count
@@ -80,7 +81,7 @@ export const membersSearch: ModuleSearchProvider = {
 		const members = core.permissions.has(ctx, 'members.member.view');
 		const groups = core.permissions.has(ctx, 'members.group.view');
 		const p = like(query);
-		const { m, g } = await core.database.forModule(MODULE_ID).transaction(async (tx) => ({
+		const { m, g } = await moduleDb(MODULE_ID).transaction(async (tx) => ({
 			m: members ? await searchMembers(tx, p, limit) : [],
 			g: groups ? await searchGroups(tx, p, limit) : []
 		}));

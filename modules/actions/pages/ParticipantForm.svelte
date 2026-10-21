@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -7,7 +8,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, BUSY_SAVE } from '$lib/components/layout';
 	import {
 		DIETS,
 		DIET_LABELS,
@@ -21,15 +22,18 @@
 		open = $bindable(false),
 		actionId,
 		participant = null,
+		healthVisible = true,
 		onsaved
 	}: {
 		open?: boolean;
 		actionId: string;
 		participant?: Participant | null;
+		/** Gesundheitsfelder zeigen (Sonderrecht `members.data.export`); sonst bleiben sie beim Speichern unverändert */
+		healthVisible?: boolean;
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayBerlin();
 
 	let name = $state('');
 	let groupLabel = $state('');
@@ -185,7 +189,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title
 				>{participant ? 'Teilnehmende*n bearbeiten' : 'Teilnehmende*n hinzufügen'}</Dialog.Title
@@ -273,45 +277,53 @@
 				/>
 			</FormField>
 
-			<FormField label="Ernährung" id="p-diet" error={fieldErrors.diet}>
-				<SelectField
-					id="p-diet"
-					label="Ernährung"
-					emptyLabel="Keine Angabe"
-					options={dietOptions}
-					bind:value={diet}
-					invalid={!!fieldErrors.diet}
-				/>
-			</FormField>
-			<FormField
-				label="Allergien / Unverträglichkeiten"
-				id="p-allergies"
-				error={fieldErrors.allergies}
-			>
-				<Textarea
+			{#if !healthVisible}
+				<p class="text-sm text-muted-foreground">
+					Ernährung, Allergien und Sonstiges sind Gesundheitsdaten. Sie sind nur mit dem Recht für
+					Datenblätter und Teilnehmendenlisten (members.data.export) sichtbar und bleiben beim
+					Speichern unverändert.
+				</p>
+			{:else}
+				<FormField label="Ernährung" id="p-diet" error={fieldErrors.diet}>
+					<SelectField
+						id="p-diet"
+						label="Ernährung"
+						emptyLabel="Keine Angabe"
+						options={dietOptions}
+						bind:value={diet}
+						invalid={!!fieldErrors.diet}
+					/>
+				</FormField>
+				<FormField
+					label="Allergien / Unverträglichkeiten"
 					id="p-allergies"
-					bind:value={allergies}
-					rows={3}
-					maxlength={1000}
-					aria-invalid={!!fieldErrors.allergies}
-					aria-describedby={fieldErrors.allergies ? 'p-allergies-error' : undefined}
-				/>
-			</FormField>
-			<FormField label="Sonstiges" id="p-notes" error={fieldErrors.notes}>
-				<Textarea
-					id="p-notes"
-					bind:value={notes}
-					rows={3}
-					maxlength={2000}
-					aria-invalid={!!fieldErrors.notes}
-					aria-describedby={fieldErrors.notes ? 'p-notes-error' : undefined}
-				/>
-			</FormField>
+					error={fieldErrors.allergies}
+				>
+					<Textarea
+						id="p-allergies"
+						bind:value={allergies}
+						rows={3}
+						maxlength={1000}
+						aria-invalid={!!fieldErrors.allergies}
+						aria-describedby={fieldErrors.allergies ? 'p-allergies-error' : undefined}
+					/>
+				</FormField>
+				<FormField label="Sonstiges" id="p-notes" error={fieldErrors.notes}>
+					<Textarea
+						id="p-notes"
+						bind:value={notes}
+						rows={3}
+						maxlength={2000}
+						aria-invalid={!!fieldErrors.notes}
+						aria-describedby={fieldErrors.notes ? 'p-notes-error' : undefined}
+					/>
+				</FormField>
+			{/if}
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichere …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

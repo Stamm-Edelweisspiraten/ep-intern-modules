@@ -26,7 +26,8 @@
 		FormField,
 		MobileActionBar,
 		PageHeader,
-		PdfExportDialog
+		PdfExportDialog,
+		BUSY_SAVE
 	} from '$lib/components/layout';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { downloadPdf } from './download';
@@ -595,7 +596,7 @@
 </div>
 
 <Dialog.Root bind:open={formOpen}>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>{editing ? 'Gruppe bearbeiten' : 'Gruppe anlegen'}</Dialog.Title>
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
@@ -861,11 +862,11 @@
 			</Tabs.Root>
 
 			{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (formOpen = false)}>
 					Abbrechen
 				</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichere …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

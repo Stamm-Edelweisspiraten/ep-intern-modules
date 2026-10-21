@@ -9,18 +9,22 @@ import {
 	core,
 	describePrincipals,
 	errors,
-	principalKeysFor,
-	searchPrincipals,
-	validatePrincipals,
+	loadObjectShares,
 	type PrincipalInfo,
+	principalKeysFor,
 	type PrincipalType,
+	replaceObjectShares,
 	type RequestContext,
-	type Tx
+	requireShareCapability,
+	searchPrincipals,
+	type Tx,
+	validatePrincipals
 } from '$lib/sdk/server';
-import { accessForMany, canManageAll, requireNode, type NodeAccess } from './access';
-import { ancestorsOf, mdb, rowsOf, type NodeRow } from './db';
+import { accessForMany, canManageAll, NODE_SHARES, requireNode, type NodeAccess } from './access';
+import { ancestorsOf, mdb, type NodeRow } from './db';
 import {
 	MODULE_ID,
+	PERMISSIONS,
 	type NodeShare,
 	type NodeShares,
 	type ShareInput,
@@ -50,22 +54,8 @@ export async function keysFor(ctx: RequestContext): Promise<string[]> {
 
 /** Freigaben mehrerer Knoten (in der Transaktion), stabil sortiert */
 async function sharesOf(tx: Tx, nodeIds: readonly string[]): Promise<ShareRow[]> {
-	if (nodeIds.length === 0) return [];
-	const rows = await rowsOf(
-		tx,
-		sql`SELECT node_id, principal_type, principal_id, level FROM node_shares
-			WHERE node_id IN (${sql.join(
-				nodeIds.map((id) => sql`${id}`),
-				sql`, `
-			)})
-			ORDER BY created_at, principal_type, principal_id`
-	);
-	return rows.map((r) => ({
-		nodeId: String(r.node_id),
-		type: String(r.principal_type) as PrincipalType,
-		id: String(r.principal_id),
-		level: String(r.level) === 'edit' ? 'edit' : 'read'
-	}));
+	const rows = await loadObjectShares(tx, NODE_SHARES, nodeIds);
+	return rows.map(({ objectId, type, id, level }) => ({ nodeId: objectId, type, id, level }));
 }
 
 /**
@@ -176,14 +166,7 @@ export async function putShares(
 	// 3. Liste ersetzen (Zugriff erneut prüfen, falls sich zwischenzeitlich etwas geändert hat)
 	const raw = await mdb().transaction(async (tx) => {
 		assertCanManageShares(ctx, await requireNode(tx, ctx, nodeId, keys, 'edit'));
-		await tx.execute(sql`DELETE FROM node_shares WHERE node_id = ${nodeId}`);
-		for (const s of shares) {
-			await tx.execute(
-				sql`INSERT INTO node_shares (node_id, principal_type, principal_id, level, created_by)
-					VALUES (${nodeId}, ${s.type}, ${s.id}, ${s.level}, ${ctx.userId})
-					ON CONFLICT (node_id, principal_type, principal_id) DO UPDATE SET level = EXCLUDED.level`
-			);
-		}
+		await replaceObjectShares(tx, ctx, NODE_SHARES, nodeId, shares);
 		await tx.execute(sql`UPDATE nodes SET updated_at = now() WHERE id = ${nodeId}`);
 		return loadRawShares(tx, ctx, nodeId, keys);
 	});
@@ -194,7 +177,15 @@ export async function putShares(
 	return describeRaw(ctx, raw);
 }
 
-/** GET `/principals?q=`: Freigabe-Ziele (everyoneLabel „Stamm“) */
+/**
+ * GET `/principals?q=`: Freigabe-Ziele (everyoneLabel „Stamm“). Nur wer Freigaben verwalten kann
+ * (`manage-all` oder Eigentümer*in mindestens eines Knotens außerhalb des Papierkorbs), sonst 403.
+ */
 export async function searchShareTargets(ctx: RequestContext, q: string): Promise<PrincipalInfo[]> {
+	await requireShareCapability(ctx, MODULE_ID, {
+		anyPermission: [PERMISSIONS.manageAll],
+		canShareSql: (userId) =>
+			sql`SELECT 1 FROM nodes WHERE owner_id = ${userId} AND deleted_at IS NULL`
+	});
 	return searchPrincipals(ctx, MODULE_ID, q, { everyoneLabel: EVERYONE_LABEL });
 }

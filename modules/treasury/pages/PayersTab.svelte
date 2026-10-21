@@ -159,7 +159,7 @@
 				<Card.Root>
 					<Card.Header class="flex flex-row items-start gap-2 space-y-0">
 						<div class="min-w-0 flex-1">
-							<Card.Title class="truncate text-base">
+							<Card.Title class="truncate">
 								{#if onfamily}
 									<button
 										type="button"

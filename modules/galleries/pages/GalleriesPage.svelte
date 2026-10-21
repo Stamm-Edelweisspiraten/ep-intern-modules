@@ -10,7 +10,13 @@
 	import { Button } from '$lib/components/ui/button';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, PageHeader, Pagination, SearchInput } from '$lib/components/layout';
+	import {
+		EmptyState,
+		PageHeader,
+		Pagination,
+		SearchInput,
+		PageTitle
+	} from '$lib/components/layout';
 	import {
 		VISIBILITIES,
 		VISIBILITY_LABELS,
@@ -109,7 +115,7 @@
 	}
 </script>
 
-<svelte:head><title>Galerien</title></svelte:head>
+<PageTitle title="Galerien" />
 
 <PageHeader
 	title="Galerien"

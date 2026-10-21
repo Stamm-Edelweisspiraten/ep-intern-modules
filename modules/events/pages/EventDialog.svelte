@@ -6,7 +6,8 @@
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -32,6 +33,7 @@
 		COLOR_PRESETS,
 		MAX_TAG_LENGTH,
 		MAX_TAGS,
+		PUBLISH_PERMISSION,
 		SHARE_LEVELS,
 		SHARE_LEVEL_LABELS,
 		STAMM_GROUP_ID,
@@ -45,6 +47,7 @@
 		type OccurrenceOverride,
 		type RecurrenceRule
 	} from '../schemas';
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { formatEventDate, formatEventRange, isAllDay } from '../format';
 	import { addDays, daysBetween, isoWeekday, nextWeekday } from '../recurrence';
 	import RecurrenceField from './RecurrenceField.svelte';
@@ -86,6 +89,9 @@
 	let current = $state<DialogMode>('create');
 	/** Zuletzt geladener bzw. gespeicherter Stand (für Ansicht und „Abbrechen“) */
 	let loaded = $state<EventDetail | null>(null);
+	// Veröffentlichen braucht ein eigenes Recht (#67, 01b-06); bereits veröffentlichte Termine dürfen zurückgenommen werden
+	const canPublish = $derived(can((page.data.permissions ?? []) as string[], PUBLISH_PERMISSION));
+	const publishLocked = $derived(!canPublish && !(loaded?.onWebsite ?? false));
 
 	let title = $state('');
 	let description = $state('');
@@ -162,7 +168,9 @@
 			const wd = g?.meetingWeekday;
 			if (!g || !wd || wd < 1 || wd > 7) continue;
 			const time = g.meetingTime?.slice(0, 5);
-			const when = [WEEKDAY_ADVERBS[wd - 1], time].filter(Boolean).join(' ');
+			const end = time ? g.meetingEndTime?.slice(0, 5) : undefined;
+			const span = time && end && end > time ? `${time}–${end}` : time;
+			const when = [WEEKDAY_ADVERBS[wd - 1], span].filter(Boolean).join(' ');
 			const place = g.meetingPlace?.trim();
 			out.push({ group: g, weekday: wd, text: place ? `${when}, ${place}` : when });
 		}
@@ -460,13 +468,6 @@
 		return err instanceof Error && err.message ? err.message : fallback;
 	}
 
-	/** Heute in lokaler Zeit (`JJJJ-MM-TT`) */
-	function localToday(): string {
-		const d = new Date();
-		const p = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-	}
-
 	const blank = (v: string | null | undefined) => {
 		const t = (v ?? '').trim();
 		return t ? t : null;
@@ -703,7 +704,7 @@
 		if (!location.trim() && g.meetingPlace?.trim()) location = g.meetingPlace.trim();
 		const validStart = !!startsOn && isRealDate(startsOn);
 		if (!validStart || isoWeekday(startsOn) !== weekday) {
-			const next = nextWeekday(validStart ? startsOn : localToday(), weekday);
+			const next = nextWeekday(validStart ? startsOn : todayBerlin(), weekday);
 			if (endsOn && validStart) {
 				try {
 					endsOn = addDays(endsOn, daysBetween(startsOn, next));
@@ -715,6 +716,12 @@
 				endsTime = '';
 			}
 			startsOn = next;
+		}
+		// Ende der Gruppenstunde (members, Migration 0010): am selben Tag vorbelegen
+		const end = g.meetingEndTime?.slice(0, 5);
+		if (time && end && end > time && (!endsOn || endsOn === startsOn)) {
+			endsOn = startsOn;
+			endsTime = end;
 		}
 	}
 
@@ -1363,6 +1370,7 @@
 								<Checkbox
 									id={ids.onWebsite}
 									checked={onWebsite}
+									disabled={publishLocked}
 									onCheckedChange={(v) => (onWebsite = v === true)}
 									aria-describedby="{ids.onWebsite}-hint"
 									class="mt-0.5"
@@ -1371,6 +1379,9 @@
 									<Label for={ids.onWebsite}>Auf der Stammeswebsite anzeigen</Label>
 									<p id="{ids.onWebsite}-hint" class="text-xs text-muted-foreground">
 										Für alle im Internet sichtbar (Titel, Beschreibung, Ort, Zeit, Tags, Gruppen).
+										{#if publishLocked}
+											Veröffentlichen darf nur, wer das Recht dazu hat.
+										{/if}
 									</p>
 								</div>
 							</div>

@@ -277,7 +277,7 @@
 
 		{#if !server.fee}
 			<div
-				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm"
 				role="status"
 			>
 				<span>

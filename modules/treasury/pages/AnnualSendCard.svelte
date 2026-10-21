@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Send from '@lucide/svelte/icons/send';
@@ -7,7 +8,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
-	import { ConfirmDialog, FormField } from '$lib/components/layout';
+	import { ConfirmDialog, FormField, BUSY_SEND } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { AnnualPreview, AnnualRun, AnnualSendResult } from '../schemas';
 	import {
@@ -97,11 +98,50 @@
 		}
 	}
 
+	/** Hintergrundversand (#24): Server antwortet sofort (202), Fortschritt per Abfrage des Laufs */
+	const POLL_MS = 1500;
+	const sending = $derived(!!run.lastResult?.sending);
+	let polling = $state(false);
+	let alive = true;
+	$effect(() => () => (alive = false));
+
+	/** Fragt den Lauf ab, bis der Versand fertig ist; Rückgabe = Endergebnis (oder `null`) */
+	async function waitForSend(): Promise<AnnualSendResult | null> {
+		polling = true;
+		try {
+			while (alive) {
+				await new Promise((r) => setTimeout(r, POLL_MS));
+				if (!alive) break;
+				try {
+					const updated = await apiFetch<AnnualRun>(`${BASE}/annual-fees/${run.id}`);
+					onrun(updated);
+					if (!updated.lastResult?.sending) return updated.lastResult;
+				} catch {
+					// Netzfehler: weiter abfragen
+				}
+			}
+			return null;
+		} finally {
+			polling = false;
+		}
+	}
+
+	// Seite während eines laufenden Versands geöffnet → Fortschritt weiter abfragen
+	$effect(() => {
+		if (sending && !polling) untrack(() => void waitForSend());
+	});
+
 	async function sendRun(path: 'send' | 'catch-up' | 'resend', label: string, fail: string) {
 		busy = true;
 		try {
-			const r = await post<AnnualSendResult>(path);
-			toast.success(`${label}: ${resultText(r)}`);
+			const started = await post<AnnualSendResult | null>(path);
+			if (started?.sending) {
+				toast.info('Versand läuft im Hintergrund …');
+				const done = await waitForSend();
+				if (done) toast.success(`${label}: ${resultText(done)}`);
+			} else if (started) {
+				toast.success(`${label}: ${resultText(started)}`);
+			}
 			await onchanged();
 		} catch (e) {
 			toast.error(errorMessage(e, fail));
@@ -187,7 +227,7 @@
 					<div class="flex flex-wrap items-center gap-2">
 						<Button onclick={() => (sendOpen = true)} disabled={busy || !preview || !invoiceCount}>
 							<Send />
-							{busy ? 'Sendet …' : 'Jetzt senden'}
+							{busy ? BUSY_SEND : 'Jetzt senden'}
 						</Button>
 						{#if preview}
 							<span class="text-xs text-muted-foreground">
@@ -244,9 +284,7 @@
 					{/if}
 				</p>
 				{#if editable}
-					<p class="text-xs text-amber-700 dark:text-amber-400">
-						Änderungen heben die Planung auf.
-					</p>
+					<p class="text-xs text-warning">Änderungen heben die Planung auf.</p>
 				{/if}
 				{#if canManage}
 					<div class="flex flex-wrap gap-2">
@@ -270,7 +308,24 @@
 			</div>
 		{:else}
 			<div class="space-y-3 border-t pt-4">
-				{#if run.lastResult}
+				{#if run.lastResult?.sending}
+					<p class="text-sm" role="status" aria-live="polite">
+						Versand läuft: {run.lastResult.processed ?? 0} von {run.lastResult.total ?? 0}
+						{run.lastResult.total === 1 ? 'Rechnung' : 'Rechnungen'} bearbeitet
+						{#if run.lastResult.mailErrors}
+							· <span class="text-destructive">{run.lastResult.mailErrors} Fehler</span>
+						{/if}
+					</p>
+					<p class="text-xs text-muted-foreground">
+						Du kannst die Seite verlassen – der Versand läuft auf dem Server weiter.
+					</p>
+				{:else if run.lastResult}
+					{#if run.lastResult.interrupted}
+						<p class="text-sm text-warning" role="status">
+							Der letzte Versand wurde unterbrochen. „Versand wiederholen“ schickt die übrigen
+							Rechnungen.
+						</p>
+					{/if}
 					<dl class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
 						<div>
 							<dt class="text-xs text-muted-foreground">Rechnungen</dt>
@@ -296,9 +351,9 @@
 						</div>
 					</dl>
 					<p class="text-xs text-muted-foreground">Ergebnis des letzten Versands.</p>
-					{#if run.lastResult.mailErrors && mayAct}
+					{#if (run.lastResult.mailErrors || run.lastResult.interrupted) && mayAct}
 						<Button variant="outline" onclick={resend} disabled={busy}>
-							{busy ? 'Sendet …' : 'Versand wiederholen'}
+							{busy ? BUSY_SEND : 'Versand wiederholen'}
 						</Button>
 						<p class="text-xs text-muted-foreground">
 							Schickt alle Rechnungen dieses Laufs erneut, die noch nicht zugestellt wurden.
@@ -308,7 +363,7 @@
 				<p class="text-sm">
 					{run.invoiceCount}
 					{run.invoiceCount === 1 ? 'Rechnung' : 'Rechnungen'} aus diesem Lauf.
-					<button type="button" class="text-primary underline" onclick={onopeninvoices}>
+					<button type="button" class="text-link underline" onclick={onopeninvoices}>
 						Zu den Rechnungen
 					</button>
 				</p>
@@ -317,7 +372,7 @@
 						<Button
 							variant="outline"
 							onclick={() => (catchUpOpen = true)}
-							disabled={busy || !preview || !invoiceCount}
+							disabled={busy || sending || !preview || !invoiceCount}
 						>
 							<UserPlus />
 							{busy ? 'Berechnet …' : `Neumitglieder nachberechnen (${preview?.memberCount ?? 0})`}

@@ -3,7 +3,7 @@
  * Gespeichert werden nur Abweichungen vom Standard (sofort).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
 import { mdb, rowsOf, usersByIds, type Row } from './load';
 import {
 	DEFAULT_NOTIFY_MODE,
@@ -87,7 +87,7 @@ async function loadMine(userId: string): Promise<MyNotifications> {
 	return build(userId, raw);
 }
 
-export const notificationEndpoints = [
+export const notificationEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/me/notifications',
@@ -155,4 +155,4 @@ export const notificationEndpoints = [
 			return mine;
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

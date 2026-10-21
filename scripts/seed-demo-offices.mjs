@@ -172,6 +172,9 @@ for (const [email, bio] of bios) {
 	}
 	const r = await call('PUT', `${O}/me/bio`, { bio });
 	console.log(`Beschreibung ${email}:`, r.status);
+	// Demo: Zustimmung zur Anzeige auf der Stammeswebsite (im Echtbetrieb entscheidet jede Person selbst)
+	const w = await call('PUT', `${O}/me/website`, { showOnWebsite: true });
+	console.log(`Website-Zustimmung ${email}:`, w.status);
 }
 
 console.log('Fertig: Ämter unter http://localhost:4300/modules/offices');

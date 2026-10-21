@@ -1,5 +1,5 @@
 /**
- * Export-/Import-Archiv einer Aktion (reine Logik, keine Server-Imports).
+ * Export-/Import-Archiv einer Aktion (reine Logik; nur reine SDK-Helfer für Namen und Magic Bytes).
  *
  * Aufbau des ZIP:
  *   manifest.json   Format, Version, Zähler, Hinweise
@@ -12,6 +12,8 @@
  */
 import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import { z } from 'zod';
+import { safeFileName } from '$lib/sdk/file-names';
+import { detectContentType } from '$lib/sdk/server/file-response';
 import {
 	ACCOUNTING_CATEGORIES,
 	CALC_CATEGORIES,
@@ -58,16 +60,8 @@ export class ArchiveError extends Error {
 
 // --- Namen und Pfade --------------------------------------------------------
 
-/** Dateiname für Storage-Pfade/Archiv: nur `[A-Za-z0-9._-]`, höchstens 100 Zeichen. */
-export function sanitizeName(name: string): string {
-	const cleaned = name
-		.normalize('NFKD')
-		.replace(/[̀-ͯ]/g, '')
-		.replace(/[^A-Za-z0-9._-]+/g, '_')
-		.replace(/^[._]+/, '')
-		.slice(-100);
-	return cleaned || 'beleg';
-}
+/** Dateiname für Storage-Pfade/Archiv: nur `[A-Za-z0-9._-]`, höchstens 100 Zeichen (zentral `safeFileName`). */
+export const sanitizeName = (name: string): string => safeFileName(name, { fallback: 'beleg' });
 
 /** `Sommerlager Nord` -> `sommerlager-nord` (Umlaute transliteriert, max. 40 Zeichen). */
 export function slugify(name: string): string {
@@ -117,24 +111,12 @@ export function assertSafeArchivePath(name: string): void {
 
 export type ReceiptType = (typeof RECEIPT_CONTENT_TYPES)[number];
 
+/** Belegtyp am Inhalt (zentral `detectContentType`); nur PDF/JPEG/PNG/WebP, sonst `null`. */
 export function detectReceiptType(bytes: Uint8Array): ReceiptType | null {
-	const at = (i: number) => bytes[i];
-	if (bytes.length >= 5 && strFromU8(bytes.subarray(0, 5)) === '%PDF-') return 'application/pdf';
-	if (
-		bytes.length >= 8 &&
-		[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => at(i) === b)
-	) {
-		return 'image/png';
-	}
-	if (bytes.length >= 3 && at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg';
-	if (
-		bytes.length >= 12 &&
-		strFromU8(bytes.subarray(0, 4)) === 'RIFF' &&
-		strFromU8(bytes.subarray(8, 12)) === 'WEBP'
-	) {
-		return 'image/webp';
-	}
-	return null;
+	const type = detectContentType(bytes);
+	return (RECEIPT_CONTENT_TYPES as readonly string[]).includes(type ?? '')
+		? (type as ReceiptType)
+		: null;
 }
 
 // --- Zod-Schemas ------------------------------------------------------------
@@ -347,7 +329,9 @@ export const archiveManifestSchema = z.strictObject({
 		entries: cents(0, 100_000),
 		receipts: cents(0, 100_000),
 		payees: cents(0, 100_000),
-		includesBank: z.boolean()
+		includesBank: z.boolean(),
+		/** Gesundheitsdaten enthalten (Export mit `members.data.export`); fehlt bei älteren Archiven */
+		includesHealth: z.boolean().optional()
 	})
 });
 export type ArchiveManifest = z.output<typeof archiveManifestSchema>;
@@ -370,12 +354,44 @@ export function buildArchive(input: {
 
 // --- Lesen ------------------------------------------------------------------
 
+const EOCD_SIGNATURE = 0x06054b50;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+
+/**
+ * Sucht das End-of-Central-Directory und weist ZIP64-Archive ab, bevor fflate sie liest
+ * (präparierte ZIP64-Header können `unzipSync` endlos laufen lassen, Issue #21). Eigene Exporte
+ * sind nie ZIP64 (≤ 2000 Einträge, < 4 GB).
+ */
+export function assertNoZip64(data: Uint8Array): void {
+	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+	// EOCD steht in den letzten 22 + 65 535 (Kommentar) Bytes
+	const min = Math.max(0, data.byteLength - 22 - 0xffff);
+	let eocd = -1;
+	for (let i = data.byteLength - 22; i >= min; i--) {
+		if (view.getUint32(i, true) === EOCD_SIGNATURE) {
+			eocd = i;
+			break;
+		}
+	}
+	if (eocd < 0) throw new ArchiveError('Datei ist kein gültiges ZIP-Archiv');
+	if (eocd >= 20 && view.getUint32(eocd - 20, true) === ZIP64_LOCATOR_SIGNATURE) {
+		throw new ArchiveError('ZIP64-Archive werden nicht unterstützt');
+	}
+	const entries = view.getUint16(eocd + 10, true);
+	const cdSize = view.getUint32(eocd + 12, true);
+	const cdOffset = view.getUint32(eocd + 16, true);
+	if (entries === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {
+		throw new ArchiveError('ZIP64-Archive werden nicht unterstützt');
+	}
+}
+
 /** Entpackt das Archiv unter Einhaltung aller Grenzen; wirft `ArchiveError`. */
 export function unpackArchive(data: Uint8Array): Map<string, Uint8Array> {
 	if (data.byteLength > MAX_ARCHIVE_BYTES) throw new ArchiveError('Archiv ist zu groß');
 	if (data.byteLength < 22 || data[0] !== 0x50 || data[1] !== 0x4b) {
 		throw new ArchiveError('Datei ist kein gültiges ZIP-Archiv');
 	}
+	assertNoZip64(data);
 	const seen = new Set<string>();
 	let count = 0;
 	let total = 0;

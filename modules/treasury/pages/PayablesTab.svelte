@@ -380,7 +380,7 @@
 					{#if p.ibanMasked}
 						<span class="font-mono text-xs">{p.ibanMasked}</span>
 					{:else}
-						<span class="text-xs text-amber-700 dark:text-amber-400">fehlt</span>
+						<span class="text-xs text-warning">fehlt</span>
 					{/if}
 				</Table.Cell>
 				<Table.Cell><StatusBadge payable={p} /></Table.Cell>

@@ -5,8 +5,14 @@
  * zuerst (früheste zuerst), danach vergangene (jüngste zuerst).
  */
 import { sql } from 'drizzle-orm';
-import { core, principalKeysFor, type ModuleSearchProvider, type SearchHit } from '$lib/sdk/server';
-import { rowsOf, visibleEventsFilter } from './access';
+import {
+	moduleDb,
+	type ModuleSearchProvider,
+	principalKeysFor,
+	rowsOf,
+	type SearchHit
+} from '$lib/sdk/server';
+import { visibleEventsFilter } from './access';
 import {
 	EVENT_COLUMNS,
 	EVENT_ORDER,
@@ -35,24 +41,22 @@ export const eventsSearch: ModuleSearchProvider = {
 		const p = like(query);
 		const today = todayBerlin();
 
-		const { rows, exceptions } = await core.database
-			.forModule(MODULE_ID)
-			.transaction(async (tx) => {
-				const raw = await rowsOf(
-					tx,
-					sql`SELECT ${EVENT_COLUMNS} FROM events e
+		const { rows, exceptions } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const raw = await rowsOf(
+				tx,
+				sql`SELECT ${EVENT_COLUMNS} FROM events e
 					WHERE ${visibleEventsFilter(ctx, keys)}
 						AND (e.title ILIKE ${p} OR e.location ILIKE ${p}
 							OR EXISTS (SELECT 1 FROM event_tags t WHERE t.event_id = e.id AND t.tag ILIKE ${p}))
 					ORDER BY ${EVENT_ORDER} LIMIT ${ROW_CAP}`
-				);
-				const rows = await hydrateRows(tx, raw);
-				const exceptions = await loadExceptions(
-					tx,
-					rows.filter((r) => r.recurrence).map((r) => r.id)
-				);
-				return { rows, exceptions };
-			});
+			);
+			const rows = await hydrateRows(tx, raw);
+			const exceptions = await loadExceptions(
+				tx,
+				rows.filter((r) => r.recurrence).map((r) => r.id)
+			);
+			return { rows, exceptions };
+		});
 
 		const picked: OccurrenceRow[] = [];
 		for (const row of rows) {

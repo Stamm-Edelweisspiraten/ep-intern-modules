@@ -366,7 +366,7 @@
 					<p class="font-semibold">Hier darfst du nichts hochladen</p>
 					<p class="text-xs text-muted-foreground">Dir fehlt das Recht zum Bearbeiten.</p>
 				{:else}
-					<Upload class="size-8 text-primary" />
+					<Upload class="size-8 text-link" />
 					<p class="font-semibold">Zum Hochladen loslassen</p>
 					<p class="text-xs text-muted-foreground">Ziel: {targetLabel}</p>
 				{/if}
@@ -447,7 +447,7 @@
 			<div
 				class={[
 					'h-full transition-all',
-					!progress.busy && progress.failed + progress.rejected > 0 ? 'bg-amber-500' : 'bg-primary'
+					!progress.busy && progress.failed + progress.rejected > 0 ? 'bg-warning' : 'bg-primary'
 				]}
 				style="width: {percent}%"
 			></div>
@@ -464,12 +464,9 @@
 						{#if item.status === 'waiting'}
 							<Clock class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						{:else if item.status === 'uploading'}
-							<LoaderCircle class="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+							<LoaderCircle class="size-4 shrink-0 animate-spin text-link" aria-hidden="true" />
 						{:else if item.status === 'done'}
-							<CircleCheck
-								class="size-4 shrink-0 text-green-600 dark:text-green-500"
-								aria-hidden="true"
-							/>
+							<CircleCheck class="size-4 shrink-0 text-success" aria-hidden="true" />
 						{:else}
 							<CircleAlert class="size-4 shrink-0 text-destructive" aria-hidden="true" />
 						{/if}

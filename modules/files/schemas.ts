@@ -3,6 +3,7 @@
  * Wird von Server UND UI genutzt – keine Server-Imports.
  */
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalInfo } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'files';
@@ -227,12 +228,17 @@ export const sharesInput = z
 
 export const principalSearchQuery = z.object({ q: z.string().trim().min(2).max(100) });
 
+/** Echtes Kalenderdatum `YYYY-MM-DD` (z. B. kein 31.02.) */
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
+
 export const linkCreateInput = z
 	.object({
 		/** Ablaufdatum `YYYY-MM-DD` (gültig bis Tagesende) oder `null` = unbegrenzt */
 		expiresOn: z
 			.string()
 			.regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')
+			.refine(isRealDate, 'Ungültiges Datum')
 			.nullable(),
 		password: z
 			.string()

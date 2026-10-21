@@ -16,7 +16,6 @@ import {
 	type Payer,
 	type PayerMember
 } from './schemas';
-import { syncIfStale } from './sync';
 import { decorateTransactions } from './transactions.endpoints';
 
 const TAGS = ['Modul: treasury'];
@@ -60,7 +59,6 @@ export async function loadFamilyAccount(
 	q: FamilyAccountQuery
 ): Promise<FamilyAccount> {
 	const target = await resolveTarget(q);
-	await syncIfStale(ctx);
 
 	let payer: Payer | null = null;
 	let members: PayerMember[];

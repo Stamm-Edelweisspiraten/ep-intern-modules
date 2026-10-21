@@ -192,6 +192,8 @@ for (const g of galleries) {
 			title: g.title,
 			description: g.description,
 			visibility: g.visibility,
+			// Demo: Bestätigung der Website-Einwilligungen (Pflicht beim Veröffentlichen, #27)
+			consentConfirmed: g.visibility === 'public',
 			shares: g.shares,
 			// Termine hängen an der ganzen Galerie
 			eventIds: g.withEvent && eventId ? [eventId] : []

@@ -4,48 +4,32 @@
  * AUSSERHALB offener Modul-Transaktionen aufrufen (PGlite hat eine Sitzung).
  */
 import { sql } from 'drizzle-orm';
-import { core, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	inList as idList,
+	moduleDb,
+	num,
+	rowsOf as rows,
+	str,
+	toIso as iso,
+	toIsoOrNull as isoOrNull,
+	type Row,
+	type Tx
+} from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
 import type { MembersService } from '$lib/modules/members/contract';
 import type { OfficesService } from '$lib/modules/offices/contract';
 import type { TreasuryService } from '$lib/modules/treasury/contract';
 import { MODULE_ID } from './schemas';
 import { formatNumber } from './stock';
 
-export type Row = Record<string, unknown>;
+/** Grundhelfer aus dem SDK (`$lib/sdk/server/db.ts`), unter den im Modul üblichen Namen */
+export { idList, iso, isoOrNull, num, rows, str, type Row };
 
-export const mdb = () => core.database.forModule(MODULE_ID);
+export const mdb = () => moduleDb(MODULE_ID);
 
-export async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
-
-/** pg liefert Date, PGlite Strings */
-export const iso = (v: unknown): string => {
-	const d = v instanceof Date ? v : new Date(String(v));
-	return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
-};
-export const isoOrNull = (v: unknown): string | null => (v == null ? null : iso(v));
-export const num = (v: unknown): number => Number(v ?? 0);
-export const str = (v: unknown): string | null => (v == null ? null : String(v));
-
-export const idList = (ids: string[]) =>
-	sql.join(
-		ids.map((v) => sql`${v}`),
-		sql`, `
-	);
-
-let todayOverride: string | null = null;
-/** Nur für Tests: festes „heute“ (`YYYY-MM-DD`) */
-export function setOrdersTodayForTests(d: string | null): void {
-	todayOverride = d;
-}
-/** Heutiges Datum in Deutschland */
-export function today(): string {
-	return (
-		todayOverride ??
-		new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
-	);
-}
+/** Heutiges Datum in Deutschland (zentral, Test-Override über `setTodayForTests` aus `$lib/sdk/dates`) */
+export const today = (): string => todayBerlin();
 
 /**
  * Nächste Nummer `<prefix>-JJJJ-NNNN` für `orders` (B) bzw. `supplier_orders` (E), serialisiert per
@@ -72,22 +56,17 @@ export async function nextNumber(
 /** `members` ist harte Abhängigkeit */
 export const membersService = () => core.modules.use<MembersService>('members', MODULE_ID);
 
-/** `null`, wenn die Kasse nicht aktiv ist (oder nicht geladen werden kann) */
-export async function treasuryService(): Promise<TreasuryService | null> {
-	try {
-		return await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
-	} catch {
-		return null;
-	}
+/**
+ * `null`, wenn die Kasse nicht registriert oder nicht aktiv ist. Andere Fehler (z. B. fehlende
+ * `optionalDependencies`-Angabe) sind Programmierfehler und werden bewusst nicht geschluckt (#46).
+ */
+export function treasuryService(): Promise<TreasuryService | null> {
+	return core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
 }
 
-/** `null`, wenn `offices` nicht aktiv ist */
-export async function officesService(): Promise<OfficesService | null> {
-	try {
-		return await core.modules.useOptional<OfficesService>('offices', MODULE_ID);
-	} catch {
-		return null;
-	}
+/** `null`, wenn `offices` nicht registriert oder nicht aktiv ist (Fehler wie bei `treasuryService`) */
+export function officesService(): Promise<OfficesService | null> {
+	return core.modules.useOptional<OfficesService>('offices', MODULE_ID);
 }
 
 /** Namen von Benutzer*innen (für „bestellt von“/„angelegt von“), Unbekannte fehlen */
@@ -98,11 +77,6 @@ export async function userNames(
 	const unique = [...new Set(ids.filter((v): v is string => !!v))];
 	const map = new Map<string, string>();
 	if (!unique.length) return map;
-	// Verzeichnis liefert höchstens 30 je Aufruf
-	for (let i = 0; i < unique.length; i += 30) {
-		const ids = unique.slice(i, i + 30);
-		const list = await core.users.directory(ctx, { ids, limit: ids.length });
-		for (const u of list) map.set(u.id, u.name);
-	}
+	for (const u of (await core.users.byIds(ctx, unique)).values()) map.set(u.id, u.name);
 	return map;
 }

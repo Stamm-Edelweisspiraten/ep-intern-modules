@@ -2,13 +2,13 @@
  * Freigaben an Principals je Knoten und Suche nach Freigabe-Zielen.
  * Zugriff (read/edit), Validierung der Principals und Audit erledigt `shares.service.ts`.
  */
-import { defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { defineEndpoint, PRINCIPAL_SEARCH_RATE_LIMIT, type AnyApiEndpoint } from '$lib/sdk/server';
 import { getShares, putShares, searchShareTargets } from './shares.service';
 import { PERMISSIONS, idParams, principalSearchQuery, sharesInput } from './schemas';
 
 const tags = ['Modul: files'];
 
-export const sharesEndpoints = [
+export const sharesEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/nodes/:id/shares',
@@ -36,10 +36,12 @@ export const sharesEndpoints = [
 		method: 'GET',
 		path: '/principals',
 		summary: 'Freigabe-Ziele suchen (Stamm, Gruppen, Rollen, Mitglieder, Benutzer*innen)',
-		description: 'Suche ab 2 Zeichen.',
+		description:
+			'Suche ab 2 Zeichen. Nur für Personen, die Freigaben verwalten können (`files.file.manage-all` oder Eigentümer*in mindestens eines Knotens), sonst 403. Mitglieder nur mit `members.member.view`, E-Mail-Adressen nur mit `core.users.view`.',
 		tags,
 		permission: PERMISSIONS.view,
+		rateLimit: PRINCIPAL_SEARCH_RATE_LIMIT,
 		query: principalSearchQuery,
 		handler: ({ ctx, query }) => searchShareTargets(ctx, query.q)
 	})
-] as unknown as ApiEndpoint[];
+];

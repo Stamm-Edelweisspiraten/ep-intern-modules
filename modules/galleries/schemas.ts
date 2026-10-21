@@ -7,6 +7,9 @@ import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'galleries';
 
+/** Recht zum Veröffentlichen (Sichtbarkeit „öffentlich“ = Stammeswebsite), #67 01b-06 */
+export const PUBLISH_PERMISSION = 'galleries.gallery.publish';
+
 export const VISIBILITIES = ['private', 'public'] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
 export const VISIBILITY_LABELS: Record<Visibility, string> = {
@@ -92,7 +95,12 @@ export const galleryInput = z
 		visibility: z.enum(VISIBILITIES).default('private'),
 		shares: z.array(shareInput).max(MAX_SHARES).default([]),
 		/** Termine aus `events`, denen die ganze Galerie zugeordnet ist */
-		eventIds: eventIdList.default([])
+		eventIds: eventIdList.default([]),
+		/**
+		 * Bestätigung „für alle erkennbaren Personen liegt eine Website-Einwilligung vor“ – Pflicht,
+		 * wenn die Galerie dadurch öffentlich wird (Neuanlage öffentlich oder Wechsel privat → öffentlich)
+		 */
+		consentConfirmed: z.boolean().optional()
 	})
 	.strict()
 	.superRefine((v, ctx) => {
@@ -239,6 +247,11 @@ export interface GalleryDetail extends GalleryItem {
 	owner: { id: string; name: string; image: string | null } | null;
 	/** Effektives Titelbild (wie `cover.imageId`) */
 	coverImageId: string | null;
+	/**
+	 * Letzte Bestätigung der Einwilligungen beim Veröffentlichen (`by` = `null`, wenn das Konto nicht
+	 * mehr existiert); bleibt nach dem Zurückstellen auf privat als Historie erhalten
+	 */
+	publicConfirmation: { at: string; by: { id: string; name: string } | null } | null;
 	/** `true`, wenn kein Titelbild gesetzt ist (ältestes Bild gilt) */
 	coverIsDefault: boolean;
 	/** Nur bei Bearbeiten-Zugriff, sonst `[]` */

@@ -27,21 +27,43 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 ## Dateien (`src/lib/modules/treasury/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `treasury.*`, Jobs `sync` (stündlich) + `reminders` (täglich), `provides`; Routen `''`, `invoices/:id` |
+| `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `treasury.*`, Jobs `sync` (stündlich), `reminders` (täglich), `annual-fees` (stündlich), `provides`, `search`, `backup` (`treasuryBackup`), `resetAreas`/`resetUsers`, `subjectExport` (**kein** `onUserDeleted`/`onMemberDeleted`); Routen `''`, `invoices/:id`, `accountings/:id`, `settings`; Dashboard-Kacheln `pages/widgets/CashTasksWidget`, `MyInvoicesWidget` |
 | `schemas.ts` | Zod + DTO-Typen + Konstanten (`DEFAULT_CATEGORIES`, `SETTING_KEYS`, Mail-Standardtexte, `MAIL_PLACEHOLDERS`) |
 | `logic.ts` (rein) | Status/Summen, `distribute`, `computeDueOn`, `reminderLevelDue`, `matchMember`, `planSync`, `suggestPayers`, `suggestMatch`, Mail-Variablen, CSV-Export |
 | `csv-import.ts` (rein) | CSV-Parser, `guessMapping` (Sparkasse CSV-CAMT u. a.), Betrag/Datum, Duplikat-Schlüssel |
-| `db.ts` | Tx-Helfer, `today()` (Europe/Berlin, `setTreasuryTodayForTests`), Loader für Konten/Buchungen/Rechnungen, `resolveNames` (Dienste members/actions), `NEEDS_ALLOCATION_SQL`, `nextInvoiceNumber` |
-| `sync.ts` | Abgleich Aktionen → Rechnungen (`syncActions`, `syncIfStale` max. 1×/min) |
+| `db.ts` | Tx-Helfer, `today()` (= `todayBerlin()` aus `$lib/sdk/dates`, Test-Override `setTodayForTests`), Loader für Konten/Buchungen/Rechnungen, `resolveNames` (Dienste members/actions), `NEEDS_ALLOCATION_SQL`, `nextInvoiceNumber` |
+| `sync.ts` | Abgleich Aktionen → Rechnungen: `syncAll` (Job, `POST /sync`), `syncAction(ctx, actionId)` (gezielt), Warteschlange |
 | `allocation.ts` | `replaceAllocations` (Prüfungen, ergänzt Kategorie/Aktion), `loadMatchLines` |
 | `notify.ts` | `notifyPaid`, `runReminderJob`, `sendManualReminders`, `loadBankData` |
-| `service.ts` / `contract.ts` | `TreasuryService.contributionsForAction`, `invoiceForRegistration` für `actions` |
+| `service.ts` / `contract.ts` | `TreasuryService` (`provides`): `contributionsForAction`, `participantPayments`, `invoiceForRegistration`, `bankData`, `actionChanged`, `accountingClosed` für `actions`; Push-Funktionen für `orders` aus `external.ts` |
+| `external.ts` | Push von `orders`: `upsertOrderInvoice`, `upsertOrderPayable`, `cancelOrderPayable`, `invoiceStatus`, `payableStatus` (keine `treasury.*`-Rechteprüfung, außerhalb von Modul-Transaktionen) |
+| `annual-fee.ts` (rein) / `annual-fee.service.ts` / `annual-fee.endpoints.ts` | Jahresbeitrag: Mitgliedschaft am Stichtag, Ebenen, Planung (`annualRef`, `isMemberOn`, `isBillable`, `isLateEntry` …); Läufe anlegen/ändern/planen/versenden/nachholen; `/annual-fees[/:id]` mit Unterpfaden `preview`, `preview.pdf`, `preview-mail`, `schedule`, `unschedule`, `send`, `resend`, `catch-up` |
+| `mail-compose.ts` / `mail-html.ts` (rein) | Kassen-Mails aus Vorlage + Rechnungen + Bankdaten (`composeMail`); HTML-Bausteine (`itemsTable`, `paymentBox`, `templateToHtml`, `escapeHtml`) |
+| `office-notify.ts` | Amt „Kasse“: `payableNotification`, `accountingClosedNotification`, `notifyKasse` (nach der Transaktion, Fehler nur geloggt) |
+| `counterparty.ts` / `payer-learning.ts` | `applyCounterparty` (IBAN der Gegenpartei verschlüsselt + HMAC, Zahler); `learnPayerFromTransaction` (Zahler aus zugeordneten Einnahmen lernen) |
+| `accounts.endpoints.ts` | `/accounts[/:id[/default]]`, `/categories[/:id]`, `/settings` (`loadSettings`) |
+| `transactions.endpoints.ts` | `/transactions[/:id]` inkl. `allocations`, `receipt`, `suggestion`; `/transfers`, `/open-lines`, `/match-preview`; `decorateTransactions`, `allocateAndNotify`, `finishAllocation` |
+| `invoices.endpoints.ts` | `/invoices[/:id]` (cancel, reactivate, mark-paid, remind, send, pdf, `documents/:version/pdf`, `lines/:lineId`), `/payers[/:id]` (+ `iban`, `statement.pdf`, `suggestions`), `/open-items[.csv]`, `/actions[/:id/settings]`, `/action-refs`, `/members`, `/sync`, `/reminders/run`; `loadSummaries`, `loadPayers` |
+| `import.endpoints.ts` | CSV-Import `/import/preview`, `/import`, Vorschläge `/suggestions` (`bulkSuggestions`) |
+| `reports.endpoints.ts` | `/overview`, `/report`, `/report.csv`, `/report.pdf` (`periodReport`, `reportBlocks`) |
+| `history.endpoints.ts` / `history-labels.ts` (rein) | `GET /history` (Verlauf aus dem Audit-Log, `loadHistory`); Klartexte `historyLabel`, `HISTORY_KINDS`, `HISTORY_ACTIONS` (ohne Namen/E-Mail/IBAN) |
+| `family.endpoints.ts` | `GET /family-account` (`loadFamilyAccount`: Rechnungen, Zahlungen, Auszahlungen je Zahler/Mitglied, nur lesend) |
+| `my.endpoints.ts` | `GET /my/invoices` (`loadMyInvoices`, Dashboard, `treasury.own.view`) |
+| `search.ts` | Globale Suche (`treasurySearch`): mit `treasury.cash.view` Rechnungen (Nummer, Empfänger*in, Mitgliedsname) und Zahler; nur mit `treasury.own.view` eigene offene Rechnungen |
+| `subject-export.ts` | Datenauskunft (`subjectExport`): Rechnungen/Posten, Zahlungen, Guthaben, Erinnerungen, Zahler, Auszahlungen der Person; IBAN nur maskiert |
+| `backup.ts` | `treasuryBackup.rehash`: `payers.iban_hash`, `transactions.counterparty_iban_hash` mit dem Ziel-Schlüssel neu berechnen (ohne Quelle → `NULL`, `unrecoverable`) |
+| `reset.ts` | Reset-Bereiche `all` (`rebuild`, alle Dateien), `transactions`, `invoices`, `payables` (`payables/`-Dateien), `annual` (`implies` `treasury:invoices`), `payers`; `resetUsers` leer |
 | `documents.ts` | Rechnungs-Snapshot, PDF aus Snapshot, Fassungen (`invoice_documents`), `sendDocuments`, `refreshSentDocuments` |
 | `payables.ts` | Auszahlungen: `syncPayables` (Quellen aus `actions` + Guthaben), Endpoints, Rückkanal `syncReimbursementStatus` |
 | `bank.ts`, `iban.ts` | IBAN verschlüsseln/HMAC (`core.crypto.forModule('treasury').hash`), Prüfung, Maske `•••• 1234` |
-| `*.endpoints.ts` | `accounts`, `transactions`, `invoices` (inkl. Zahler, offene Posten, Aktionen), `import`, `reports` |
 | `closed-accountings.ts` | Abgeschlossene Abrechnungen: Liste, Detail, Belege, PDF, Ablage |
 | `pages/` | `TreasuryPage` (Bereiche aus `navigation.ts`: Übersicht · Eingänge · Ausgänge · Buchungen · Berichte; `?tab=<bereich>&view=<unteransicht>`, alte Tab-Namen über `resolveLocation`), `IncomeSection` (Offene Posten · Rechnungen · Familien · Jahresbeitrag), `OutgoingSection` (Auszahlungen · Abrechnungen), `FamilySheet` (Familienkonto, aus allen Bereichen per `onfamily`), `StatusBadge`/`FilterChips` (einheitlich in allen Tabellen), `BulkPayDialog`/`BulkActions.ts` (Sammelaktionen), `AccountingPage`, `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
+| `pages/` (weitere) | Tabs `OverviewTab` (+`task-view.ts`), `OpenItemsTab`, `InvoicesTab`, `PayersTab`, `PayablesTab`, `AccountingsTab`, `TransactionsTab`, `ReportsTab`, `AnnualFeeTab` (+`AnnualSteps`, `AnnualChecklist`, `AnnualRatesCard`, `AnnualMessageCard`, `AnnualPreviewCard`, `AnnualRecipientsCard`, `AnnualSendCard`), `SettingsTab`/`TreasurySettingsPage`, Verlauf `HistoryPanel`/`HistoryCard`/`HistorySheet`, `BookingMatchSection`, `PayerCombobox`, `PayableDialog` |
+
+Verweise auf andere Module (Issue #76 10-09): `payer_members.member_id`, `invoice_lines.member_id` (Mitglieder) und Aktions-/Teilnehmenden-IDs
+(Rechnungen aus `actions`) ohne FK. Reset `members:all` impliziert `treasury:payers` + `treasury:annual` (→ `treasury:invoices`), `actions:all`/`participants`
+`treasury:invoices`, `actions:all`/`accounting` `treasury:payables`. Die Kasse hat **kein** `onMemberDeleted`/`onUserDeleted`: Löschen eines Mitglieds lässt
+Zahler-Zuordnungen und Rechnungen stehen (Buchhaltungsdaten); Benutzerverweise (`created_by` …) bleiben ebenfalls.
 
 ## Datenmodell (Migration 0001)
 - `accounts` (kind giro|cash|other, `iban` Klartext – eigenes Vereinskonto, Anfangsbestand + Stichtag, `archived_at`).
@@ -66,7 +88,7 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - **Abgleich** (`planSync`): je Teilnehmende*r mit Beitrag > 0 (Team: `team_fee_cents`) eine Rechnung; Mitglied über
   `member_id` bzw. eindeutigen Namen + Geburtsdatum (Umlaute egal). Betrag/Text geändert → Update (Ermäßigung gekappt);
   entfallen/ausgeschlossen → automatisch storniert; wieder da → reaktiviert (nur automatisch stornierte). Fälligkeit
-  `max(Start − daysBeforeStart, heute + minDays)` bzw. feste Fälligkeit der Aktion. Läuft stündlich, beim Öffnen der Seiten und per `POST /sync`.
+  `max(Start − daysBeforeStart, heute + minDays)` bzw. feste Fälligkeit der Aktion. Läuft stündlich, per `POST /sync` und gezielt je Aktion (siehe „Abgleich ohne Lesepfad“).
 - **Vorschläge** (`suggestMatch`): Rechnungsnummer im Zweck (`R-2026-0001`, `R 2026-1`) → Vor- **und** Nachname (Müller = Mueller)
   inkl. Geschwister derselben Gruppe (Zahler bzw. Nachname) → Thema (Aktions-/Postenname) im Zweck grenzt ein → Nachname der
   Gegenpartei → nur Betrag (niedrig). Sicherheit `high|medium|low`; übernommen wird nur per Klick.
@@ -89,7 +111,7 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
   (kein Klartext); `suggestMatch({ payerId })` bevorzugt die Familie mit dieser IBAN.
 - **Auszahlungen** (`payables`, `payable_payments`): Quellen `manual` (Eingangsrechnung, IBAN verschlüsselt, Beleg),
   `reimbursement` (`ActionsService.listReimbursements`; Betrag = in der Kasse gezahlt + in der Abrechnung offen),
-  `refund` (`listRefundItems`, IBAN über Mitglied → Zahler), `credit` (Guthaben aus Rechnungen). Abgleich in `syncActions`;
+  `refund` (`listRefundItems`, IBAN über Mitglied → Zahler), `credit` (Guthaben aus Rechnungen). Abgleich in `syncAll`/`syncAction`;
   bezahlte nie storniert, Betrag nie unter Gezahltes. `POST /payables/:id/pay` bucht eine Ausgabe; Auslagen werden danach in
   der Abrechnung als ausgezahlt markiert (`markReimbursed`, auch bei abgeschlossener Abrechnung), beim Löschen der Zahlung
   zurückgenommen. `PUT /transactions/:id/payable` ordnet Import-Ausgaben zu. `payables.csv` = Überweisungsliste (IBAN nur mit `bank.view`).
@@ -171,6 +193,14 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 - Versand in Paketen à 25, Fehler werden gezählt (`mailErrors`), nie abgebrochen; `POST …/resend` (manage + `invoice.send`,
   Audit `resent`) schickt alle nicht stornierten Rechnungen ohne zugestellte Fassung erneut (UI „Versand wiederholen“).
   Job versendet nur, wenn der Lauf unter `FOR UPDATE` noch `scheduled` und fällig ist. `PUT` auf geplanten Lauf → zurück auf Entwurf.
+- **Hintergrundversand (#24, 2026-10-21)**: `POST …/send|catch-up|resend` legen die Rechnungen sofort an und antworten **202** mit dem Startstand
+  (`AnnualSendResult` mit `sending: true`, `kind`, `processed`/`total`, `startedAt`/`heartbeatAt`); Mails/PDFs laufen im Hintergrund, Fortschritt je
+  25er-Paket in `annual_fee_runs.last_result` (`GET /annual-fees/:id`), am Ende `sending: false` + Audit. Zweiter Versand desselben Laufs während des
+  Versands → **409** (prozesslokale Sperre `activeSends` + Lebenszeichen unter `FOR UPDATE`); ohne Lebenszeichen seit 10 min gilt der Versand als
+  abgebrochen (`interrupted: true`, „Versand wiederholen“). Der Job versendet weiter synchron. UI `AnnualSendCard` pollt alle 1,5 s.
+  Tests: `waitForAnnualSends()`, `treasury-annual-fee.test.ts` (Hintergrundversand), `tests/unit/annual-send-state.test.ts`.
+- Abgeschlossene Abrechnungen (#68): Liste mit **einem** Kassen-Aufruf (`TreasuryService.contributionsForActions`) und einer Modul-Transaktion;
+  PDF prüft per `ActionsService.isAccountingClosed`. Test `treasury-closed-accountings-perf.test.ts`.
 - Lesen braucht zusätzlich `treasury.cash.view`; E-Mail-Adressen in der Vorschau nur mit `invoice.send`/`invoice.edit`
   (sonst `emails: []`, `emailCount`). Mehr als 999 Mitglieder (inkl. Ausgetretener) → 409 (Grenze von `listMemberContacts`).
   Rate-Limit 30/min auf `preview.pdf`, `send`, `catch-up`, `resend`.
@@ -239,11 +269,11 @@ Anmeldung über Link → Mail mit PDF, Team-Wechsel → genau eine „Geänderte
 Eingangsrechnung + CSV ohne/mit IBAN, Audit ohne IBAN/Mail).
 Integration `tests/integration/treasury.test.ts` (Abgleich, Beitragsänderung, Geschwister-Zahlung + eine Mail, Überzahlung 422,
 Ist statt Soll, Storno → Guthaben, Erinnerungsstufen mit fester Uhr, Barzahlung, Sparkasse-Import + Duplikate, Bericht, Rechte,
-Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTreasuryTodayForTests`, Abgleich: `resetSyncThrottleForTests`.
+Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTodayForTests` (`$lib/sdk/dates`, zentral für alle Module); Abgleich in Tests per `POST /sync` (Lesepfade gleichen nicht ab).
 
 ## Fallen
 - Dienste von `members`/`actions` und `core.mail/pdf/audit` **außerhalb** der Modul-Transaktion (PGlite).
-- `syncIfStale` ist auf 1×/min gedrosselt – in Tests `POST /sync` oder `resetSyncThrottleForTests`.
+- Lesende Endpunkte gleichen **nie** ab. Ändert ein Test Aktionsdaten direkt per SQL, danach `POST /sync`; über die `actions`-API gleicht die Kasse sofort ab.
 - Svelte: In `$effect` keine Funktion aufrufen, die synchron Zustand liest, den sie später setzt (Endlosschleife →
   „Zu viele Anfragen“); `untrack` oder Aufruf in `setTimeout` (siehe `OverviewTab`, `ReportsTab`).
 - Demo: Die Demo-DB hatte zwischenzeitlich echte SMTP-Daten; vor Tests mit Mails `node scripts/setup-demo-mail.mjs` (Mailpit) prüfen.
@@ -281,3 +311,59 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTr
   **verknüpften** Mitglieder (`listLinkedMembers`, ausgetretene fehlen), nur eigene Namen, Verwendungszweck `invoicePurpose`, Bankdaten `loadBankData`
   (`null` ohne Inhaber/IBAN); kein `syncIfStale`. Kacheln `treasury:mine` (Meine offenen Rechnungen) und `treasury:tasks` (Aufgaben aus `/overview`,
   Texte in `pages/task-view.ts` – zusammen mit `OverviewTab.svelte` pflegen). Test `tests/integration/treasury-my.test.ts`.
+
+## Abgleich ohne Lesepfad, Mahnlauf mit Reservierung (2026-10-20, Migration 0008, Issues #12/#57/#58)
+- **GET-Endpunkte sind seiteneffektfrei** (`syncIfStale` entfernt): kein Schreiben, kein Mailversand beim Lesen (Übersicht, Dashboard-Kachel, Rechnungen,
+  Offene Posten, Auszahlungen, Familienkonto, Import-Vorschläge, Buchungen).
+- **Vollabgleich** `syncAll(ctx|null)` nur im stündlichen Job `treasury.sync` und per `POST /sync` („Jetzt abgleichen“, Knopf in der Übersicht und im Menü „Mehr“,
+  Rate-Limit 30/min); setzt `sync_state.last_sync_at` = „Stand des letzten Abgleichs“ (Übersicht). Antwort enthält `documents { invoices, mailsSent, mailErrors }`.
+- **Gezielter Abgleich** `syncAction(ctx, actionId)`: Rechnungen der Aktion (`source_ref LIKE 'action:<id>:%'`), Auszahlungen der Aktion
+  (`syncPayables(members, { actionIds })` – gewünschte und vorhandene Auszahlungen mit demselben Kriterium gefiltert), Versand geänderter Rechnungen der Aktion.
+  Auslöser: `TreasuryService.actionChanged(ctx, actionId)` (wirft nie) – `actions/treasury-sync.ts` umhüllt in `actions/module.ts` **alle schreibenden**
+  `/actions/:id…`-Endpunkte und `/actions/import` (ausgenommen Freigaben, Formular, Belegdateien, Kosten-Link, Kalkulation speichern), nach dem Handler;
+  öffentliche Anmeldung über `invoiceForRegistration` bzw. ohne E-Mail `notifyTreasury(null, id)`; `PUT /actions/:id/settings` der Kasse.
+- **Warteschlange** (#58): alle Abgleiche eines Prozesses laufen nacheinander; ein Lauf liest seine Quellen erst beim Start (sieht also den Commit des Aufrufers).
+  Gleiche noch nicht gestartete Läufe (Art, Aktion, auslösende Person) werden zusammengelegt; Schreibphase zusätzlich unter `pg_advisory_xact_lock(hashtext('treasury.sync'))`.
+  Audit `treasury.sync.completed` mit `scope` (`all|action`), `target` = Aktion, Akteur = Auslöser*in bzw. System.
+- **`refreshSentDocuments(ctx, scope)`**: `string[]` = genau diese Rechnungen; Standard `{ changedSince: 'latest-document', actionId? }` = nur versendete Rechnungen mit
+  `updated_at > letzte Fassung − 5 min`. Prozessweit hintereinandergeschaltet (keine doppelte „Geänderte Rechnung“). Kontakte gesammelt: `resolveNames` lädt
+  `NameMaps.contacts` per `loadContactsByIds` (ein `listMemberContacts`-Aufruf je 1000 IDs), `buildSnapshot` nutzt die Map; `sendDocuments(…, preloaded)` lädt nicht neu.
+- **Mahnlauf** (#57): `claimReminders` reserviert je Rechnung die Stufe **vor** dem Versand (`reminders.status = 'pending'`, unter `pg_advisory_xact_lock(hashtext('treasury.reminders'))`,
+  nur wenn noch keine gleiche/höhere Stufe existiert; automatische Stufen zusätzlich Unique-Index `reminders_auto_level_uq (invoice_id, level) WHERE NOT manual`).
+  Zugestellt → `status = 'sent'`; fehlgeschlagen → Reservierung gelöscht (nächster Lauf versucht erneut); scheitert die Bestätigung, bleibt `pending` (keine Doppelmail).
+  Migration 0008 markiert Alt-Dubletten automatischer Stufen als `manual`. `POST /reminders/run` Rate-Limit 10/min (Job-Claim des Core ist für Module nicht erreichbar; die Reservierung schützt).
+- Grenzen: Änderungen in `members` (Name/Geburtsdatum → Mitgliedszuordnung) und Guthaben aus Kassen-Vorgängen ohne Rechnungsbearbeitung (z. B. Buchung löschen) erscheinen erst
+  mit dem stündlichen Abgleich bzw. „Jetzt abgleichen“. Mehrinstanzbetrieb: Warteschlange ist prozesslokal, die Advisory-Locks gelten instanzübergreifend.
+- Tests: `tests/integration/treasury-sync-readonly.test.ts` (GETs → 0 Mails/keine DB-Änderung, sofortige Wirkung von Aktions-Änderungen, 50 Rechnungen → 1 Kontakt-Aufruf,
+  öffentliche Anmeldung nur eigene Aktion, Anmeldung während laufendem Vollabgleich mit Rechnung, Mahnlauf parallel/SMTP-Fehler/Reservierung).
+
+## Listen in SQL, Belegprüfung, Einstellungen, Tests (2026-10-21, Issues #22/#44/#52/#55/#59/#61)
+- **Kennzahlen je Rechnung in SQL**: `invoiceMetricsSql(where)` (Alias `m`: `due_cents`, `paid_cents`, `open_cents`, `credit_cents`, `cancelled`,
+  `payer_id` über `PAYER_SQL`) – gleiche Regeln wie `invoiceTotals`; `invoiceStatusSql(status, today)` für `open|partial|paid|cancelled|unpaid|overdue`.
+  `GET /invoices`: Filter, Status, Sortierung (Rechnungsdatum ↓, Nummer ↓), `count`, Summen und `LIMIT/OFFSET` in SQL; nur die Seite wird samt Posten
+  geladen und aufgelöst. Mit `search` (Umlaute egal, auch Mitglieds-/Aktionsnamen) schlanke Kandidatenliste ohne Posten, Namen gesammelt.
+  `openStats` (Übersicht/Bericht) per Aggregat; Offene Posten laden nur Rechnungen mit offen/Guthaben; `loadMatchLines` nur offene bzw. die eigene Buchung;
+  Suche (`search.ts`) per `ORDER BY … LIMIT`. Zuordnung Zeilen → Rechnung per `groupBy` (Map) statt `filter`. `resolveNames` lädt Kontakte je 1000 und
+  Aktionsnamen je 200 (keine stillen Kappungen).
+- **Belege** (Buchung, Auszahlung, Bestellungs-Push): Inhalt muss zum Typ passen (`detectReceiptType`, Magic Bytes) → sonst 422.
+- **Einstellungen** `PUT /settings`: `core.settings.setMany(ctx, …)` – atomar, mit dem Kontext der Person (Schreibrecht der Schlüssel = `treasury.settings.manage`).
+  Seite Einstellungen: Ladefehler → `ErrorState` mit „Erneut versuchen“ statt leerer Konten/Kategorien; Formular der Kassen-Einstellungen erscheint nur nach erfolgreichem Laden.
+- **Eindeutige Namen**: Konten/Kategorien über `isUniqueViolation` → 409 mit eigenem Text; `savePayer` fängt `payer_members_member_idx` → 409.
+- `POST /invoices/:id/send` mit unbekannter Rechnung → 404 (vorher 201 ohne Wirkung).
+- Abrechnungs-Detail (`GET /closed-accountings/:id`) liefert `categoryLabels` (aus `ActionsService.accountingCategoryLabels()`); `AccountingPage` importiert nichts mehr aus `actions/schemas`.
+- Tests: `tests/integration/treasury-gaps.test.ts` (Umbuchung, Erlass, Versand, Aktions-Einstellungen, Kategorien/Konten, Belege, CSV/PDF-Exporte, Zahler,
+  Auswahllisten, Auszahlungs-Zuordnung/-Belege, Einstellungen atomar), `tests/unit/treasury-endpoint-coverage.test.ts` (**jeder** Kassen-Endpunkt muss in einem
+  Integrationstest vorkommen oder begründet in `UNTESTED` stehen), `tests/unit/treasury-group-receipt.test.ts`.
+
+## Sicherheit, Integrität, Datenauskunft (2026-10-21, Issues #67/#73/#30)
+- `GET /payables/:id/receipts/:entryId`: bei Auslagen (`reimbursement`) nur Belege aus `listReimbursementReceipts(aktion, person, za)` – Belege anderer
+  Personen derselben Aktion → 404. Alle Datei-Antworten (Buchungs-/Auszahlungsbelege, Abrechnungs-PDFs, Abrechnungsbelege) über `secureFileResponse`.
+- Verlauf (`history.endpoints.ts`): `core.audit.listForModule(ctx, 'treasury', { targets })` (nur Kassen-Einträge, mit Kontext).
+- Migration 0009: verwaiste `invoices.annual_run_id` → NULL, dann FK auf `annual_fee_runs` (`ON DELETE SET NULL`, `NOT VALID` + `VALIDATE`);
+  Indizes `transactions_category_idx`, `transactions_import_batch_idx`, `payables_payer_idx`. `transactions.transfer_id` ist bewusst **kein** FK
+  (gemeinsame Kennung beider Umbuchungsseiten, Löschen entfernt immer beide). Test `tests/integration/treasury-migration-integrity.test.ts`.
+- Best-effort-Fehler (Namen der Ablage) über `logBestEffort`.
+- **Datenauskunft** `subject-export.ts` (`subjectExport` in `module.ts`): Rechnungen mit Posten der Mitglieder der Person (bei Sammelrechnungen **nur**
+  eigene Posten/Jahresbeitrags-Aufschlüsselung), Zahlungen je Posten, offen/Guthaben, Erinnerungen, Fassungen (nur Liste), Zahler (IBAN maskiert,
+  andere Mitglieder nur als Anzahl), Auszahlungen an Mitglied/Zahler. Nie Hash/Chiffrat. Benachrichtigungs-Einstellungen gibt es in der Kasse nicht.
+  Test `tests/integration/privacy-subject-export-treasury.test.ts`.

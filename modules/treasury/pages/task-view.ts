@@ -1,6 +1,6 @@
 /**
  * Texte und Ziele der Kassen-Aufgaben (`Overview.tasks`) – für die Dashboard-Kachel „Aufgaben der Kasse“.
- * Gleiche Formulierungen wie `OverviewTab.svelte` (`taskView`); bei Änderungen beide mitziehen.
+ * Einzige Quelle der Texte: auch `OverviewTab.svelte` nutzt `taskView` (überschreibt nur den Knopf).
  */
 import { formatEuro } from '$lib/components/layout/money';
 import type { OverviewTask } from '../schemas';
@@ -82,5 +82,10 @@ export function taskView(t: OverviewTask): TaskView {
 				action: 'Beitragslauf anlegen',
 				href
 			};
+		default: {
+			// Neue Aufgabenart ohne Text → Typfehler; zur Laufzeit trotzdem nie `undefined`
+			const unknownKind: never = t.kind;
+			return { title: String(unknownKind), hint: '', action: 'Ansehen', href };
+		}
 	}
 }

@@ -9,7 +9,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		MAX_RECEIPT_BYTES,
@@ -313,9 +313,7 @@
 			e.preventDefault();
 			focusFirst();
 		}}
-		class={canMatch
-			? 'max-h-[94vh] overflow-y-auto sm:max-w-[min(72rem,calc(100vw-2rem))]'
-			: 'max-h-[90vh] overflow-y-auto sm:max-w-xl'}
+		class={canMatch ? 'sm:max-w-[min(72rem,calc(100vw-2rem))]' : 'sm:max-w-xl'}
 	>
 		<Dialog.Header>
 			<Dialog.Title>{transaction ? 'Buchung bearbeiten' : 'Neue Buchung'}</Dialog.Title>
@@ -470,7 +468,7 @@
 				{/if}
 			</div>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer class="items-center gap-3 sm:justify-between">
+			<Dialog.Footer sticky class="items-center gap-3 sm:justify-between">
 				{#if canMatch}
 					<div class="flex items-center gap-2">
 						<Checkbox
@@ -496,7 +494,7 @@
 						{keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
 					</Button>
 					<Button type="submit" disabled={busy}>
-						{busy ? 'Speichert …' : canMatch && keepOpen ? 'Speichern & weiter' : 'Speichern'}
+						{busy ? BUSY_SAVE : canMatch && keepOpen ? 'Speichern & weiter' : 'Speichern'}
 					</Button>
 				</div>
 			</Dialog.Footer>

@@ -1,5 +1,6 @@
 /** API-Vertrag des Moduls "actions": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
+import { isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { isValidIban, normalizeIban } from './iban';
 import { formDefinitionSchema } from '$lib/forms/schema';
 import type { FormDefinition } from '$lib/forms/types';
@@ -33,12 +34,8 @@ export const DIET_LABELS: Record<Diet, string> = {
 // --- Hilfsfunktionen --------------------------------------------------------
 
 /** Echtes Kalenderdatum im Format JJJJ-MM-TT? */
-export function isRealDate(iso: string): boolean {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-	if (!m) return false;
-	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-	return d.toISOString().slice(0, 10) === iso;
-}
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
 
 /** Alter in vollen Jahren zum Stichtag; `null` bei ungültigem Datum. */
 export function ageAt(birthIso: string, onIso: string): number | null {
@@ -173,7 +170,7 @@ export const participantInput = z.object({
 	name: text(150),
 	groupLabel: optionalText(150),
 	birthDate: date
-		.refine((v) => v <= new Date().toISOString().slice(0, 10), 'Darf nicht in der Zukunft liegen')
+		.refine((v) => v <= todayBerlin(), 'Darf nicht in der Zukunft liegen')
 		.nullish()
 		.transform((v) => (v ? v : null)),
 	bremenResident: z
@@ -260,9 +257,12 @@ export interface Participant {
 	subsidyEligible: boolean | null;
 	/** Ergebnis nach Regel (Override, Alter zum Aktionsstart, Wohnort) */
 	subsidyEffective: boolean;
+	/** Gesundheitsdaten: nur mit `members.data.export`, sonst `null` (siehe `healthHidden`) */
 	diet: Diet | null;
 	allergies: string | null;
 	notes: string | null;
+	/** `true`, wenn Ernährung/Allergien/Sonstiges mangels Sonderrecht ausgeblendet sind */
+	healthHidden?: boolean;
 	source: 'manual' | 'link';
 	createdAt: string;
 	updatedAt: string;
@@ -603,6 +603,8 @@ export interface CalculationSuggestions {
 // === Phase 3: Anmeldeformular ===============================================
 
 export const FORM_PUBLIC_PREFIX = '/p/actions/anmeldung';
+/** Öffentliche Seite zum Bestätigen einer Anmeldung (Double-Opt-in, Issue #17) */
+export const FORM_CONFIRM_PREFIX = '/p/actions/anmeldung-bestaetigen';
 
 export const DEFAULT_DISCLAIMER_TEMPLATE = `Hiermit melde ich mein Kind verbindlich zu „{{aktion}}“ an und bestätige, dass ich den Beitrag in Höhe von {{beitrag}} schnellstmöglich auf das folgende Konto überweise.
 
@@ -775,6 +777,25 @@ export interface PublicSubmitResult {
 	disclaimer: string;
 	/** Änderungen wurden im Mitgliedsprofil gespeichert (nur bei Anmeldung mit Mitglied) */
 	memberUpdated?: boolean;
+	/**
+	 * Anmeldung ohne Konto: Sie wird erst gültig, wenn die E-Mail-Adresse über den Link in der Mail
+	 * bestätigt ist (Double-Opt-in). `emailSent` meint dann die Bitte um Bestätigung.
+	 */
+	confirmationRequired?: boolean;
+}
+
+/** Body der Bestätigung (leer; der Token steht im Pfad) */
+export const publicConfirmInput = z.object({}).strict();
+
+/** Ergebnis der Bestätigung über den Link aus der Mail */
+export interface PublicConfirmResult {
+	actionName: string;
+	/** Name, wie er gespeichert wurde */
+	name: string;
+	/** Anmeldebestätigung (ggf. mit Rechnung) versendet */
+	emailSent: boolean;
+	/** Gerenderter Disclaimer-Text */
+	disclaimer: string;
 }
 
 // === Phase 4: Abrechnung ====================================================

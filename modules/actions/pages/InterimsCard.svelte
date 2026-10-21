@@ -77,6 +77,7 @@
 </script>
 
 <DataTable
+	mobile="cards"
 	caption="Zwischenabrechnungen"
 	title="Zwischenabrechnungen"
 	description="Festgehaltene Stände der Abrechnung. Jede Zwischenabrechnung steht für sich."

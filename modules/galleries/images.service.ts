@@ -3,20 +3,13 @@
  * Termine hängen an der Galerie (siehe `galleries.service.ts`), nicht an einzelnen Bildern.
  */
 import { sql } from 'drizzle-orm';
-import { errors, type Tx } from '$lib/sdk/server';
-import { rowsOf } from './access';
+import { errors, type Row, rowsOf, toIso, type Tx } from '$lib/sdk/server';
 import { type GalleryImage, type ImageVariant } from './schemas';
-
-type Row = Record<string, unknown>;
 
 /** Spalten für `toGalleryImage` (Alias `i` für `gallery_images`) */
 export const IMAGE_COLUMNS = sql`i.id, i.gallery_id, i.description, i.position, i.original_name,
 	i.content_type, i.width, i.height, i.size_bytes, i.thumb_path, i.web_path, i.full_path,
 	i.uploaded_by, i.created_at`;
-
-function iso(v: unknown): string {
-	return new Date(String(v)).toISOString();
-}
 
 /** Zeile aus `gallery_images` → DTO */
 export function toGalleryImage(row: Row): GalleryImage {
@@ -30,7 +23,7 @@ export function toGalleryImage(row: Row): GalleryImage {
 		originalName: String(row.original_name),
 		position: Number(row.position),
 		uploadedBy: row.uploaded_by == null ? null : String(row.uploaded_by),
-		createdAt: iso(row.created_at)
+		createdAt: toIso(row.created_at)
 	};
 }
 

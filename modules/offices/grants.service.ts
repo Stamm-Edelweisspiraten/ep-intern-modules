@@ -8,13 +8,13 @@ import { core, errors, type RequestContext } from '$lib/sdk/server';
 import { mdb, rolesByIds, rowsOf } from './load';
 import { HOLDER_ROLE_NAME, MODULE_ID } from './schemas';
 
-/** ID der automatischen Inhaber-Rolle oder `null`, wenn sie (noch) nicht existiert */
-export async function holderRoleId(ctx: RequestContext): Promise<string | null> {
-	const found = await core.roles.directory(ctx, { search: HOLDER_ROLE_NAME, limit: 30 });
-	const exact = found.find((r) => r.name === HOLDER_ROLE_NAME);
-	if (exact) return exact.id;
-	const all = await core.roles.directory(ctx, { all: true });
-	return all.find((r) => r.name === HOLDER_ROLE_NAME)?.id ?? null;
+/**
+ * ID der automatischen Inhaber-Rolle oder `null`, wenn sie (noch) nicht existiert. Über die stabile
+ * Standardrollen-Kennung (`default:<Name>`), nie per Namenssuche – sonst könnte eine vorab angelegte,
+ * gleichnamige Rolle die Inhaber-Rechte erhalten (#67, 01a-07).
+ */
+export async function holderRoleId(_ctx?: RequestContext): Promise<string | null> {
+	return core.roles.defaultRoleId(HOLDER_ROLE_NAME);
 }
 
 export interface SyncResult {

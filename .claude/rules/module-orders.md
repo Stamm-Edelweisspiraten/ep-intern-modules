@@ -20,12 +20,16 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 ## Dateien (`src/lib/modules/orders/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (Rechte + Beschreibungen, `defaultRoleGrants` Mitglied/Kämmerer*in, Amts-Vorlage `kaemmerer`), Migrationen, Jobs `sync-treasury` (stündlich) + `deficit-digest` (täglich), Endpoint-Reihenfolge images → articles → stock → supplier → orders |
+| `module.ts` | Manifest (Rechte + Beschreibungen, `defaultRoleGrants` Mitglied/Kämmerer*in, Amts-Vorlage `kaemmerer`), Migrationen, Jobs `sync-treasury` (stündlich) + `deficit-digest` (täglich), Endpoint-Reihenfolge images → articles → stock → supplier → orders; Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport` (kein `onMemberDeleted`) |
+| `ui.ts` | Route `''` → `OrdersPage`; Dashboard-Kacheln `manage` („Bestellungen & Lager“, mit `orders.order.manage` oder `orders.stock.manage`) und `mine` („Meine Bestellungen“), Komponenten in `pages/widgets/` |
+| `search.ts` | Globale Suche (`ordersSearch`): Artikel nach Titel (Katalog-Sichtbarkeit, mit `orders.article.manage` auch inaktive), Bestellungen nach Nummer/Mitgliedsname (eigene bzw. verknüpfte Mitglieder, mit `orders.order.manage` alle) |
+| `user-deleted.ts` | `onUserDeleted`: Daten bleiben, nur Kontoverweise (`created_by`, `uploaded_by`, `ordered_by`) → `NULL` |
+| `subject-export.ts` | Datenauskunft (`subjectExport`), siehe unten |
 | `schemas.ts` | API-Vertrag (Zod + DTOs `Article`, `Order`, `StockRow`, `SupplierOrder` …, Labels, Grenzen, Kassen-Schlüssel `invoiceSourceKey`/`invoiceLineRef`/`payableRef`, `imageUrl`) |
 | `stock.ts` (rein) | `openQty`, `inTransitQty`, `deficit`, `priceRange`, `orderStatus`, `supplierStatus`, `billableCents`, `formatNumber`, `lineDescription` |
-| `db.ts` | `mdb`, `rows`, `today()` (`setOrdersTodayForTests`), `nextNumber` (B-/E-JJJJ-NNNN, Advisory-Lock), Dienste `membersService`, `treasuryService()`/`officesService()` (optional, `null`), `userNames` |
+| `db.ts` | `mdb`, `rows`, `today()` (= `todayBerlin()`, Test-Override `setTodayForTests` aus `$lib/sdk/dates`), `nextNumber` (B-/E-JJJJ-NNNN, Advisory-Lock), Dienste `membersService`, `treasuryService()`/`officesService()` (optional, `null`), `userNames` |
 | `articles.service.ts` / `articles.endpoints.ts` | Artikel laden (Katalog vs. Verwaltung), CRUD, Varianten ersetzen (archivieren statt löschen, wenn verwendet), Reihenfolge |
-| `files.ts` / `images.endpoints.ts` | Bilder wie `galleries` (Systemkontext `orders-files`, `core.images.process` thumb 480 / web 1600 WebP) |
+| `files.ts` / `images.endpoints.ts` | Bilder wie `galleries` (Systemkontext `orders-files`, `core.images.process` thumb 480 / web 1600 WebP; Auslieferung gestreamt, `IMAGE_RATE_LIMIT` 1200/60 s; Löschen per `core.storage.removeMany`, #23/#24) |
 | `orders.service.ts` / `orders.endpoints.ts` | Bestellen, Liste/Detail, Storno, Ausgabe, `/my/members`, `/members`, `/overview` |
 | `stock.endpoints.ts` | Lager (Bestand, Nachfrage, unterwegs, Fehlmenge), Korrektur, Bewegungen |
 | `supplier.endpoints.ts` | Einkauf: Vorschlag, CRUD, Wareneingang, Rest stornieren, abschließen/öffnen, Lieferantenrechnung (multipart) |
@@ -33,7 +37,7 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 | `notify.ts` | Amt `kaemmerer`: `order-created` (nach Bestellung), `stock-deficit` (Tagesjob, nur bei geändertem Stand – `digest_state`) |
 | `reset.ts` | Bereich `all` (alle Tabellen + Bilder, `rebuild`), `resetUsers` |
 | `pages/` | `OrdersPage` (Tabs `?tab=` bestellen · meine · bestellungen · lager · einkauf · artikel je nach Recht), `CatalogTab`/`ArticleCard`/`ArticleDetailDialog`/`CartPanel` (Warenkorb in `sessionStorage`, mobil `MobileActionBar` + Sheet), `MyOrdersTab`, `ArticlesTab`/`ArticleDialog`/`VariantEditor`/`ImageManager`, `OrdersAdminTab`/`OrderCreateDialog`/`HandoutDialog`/`CancelItemsDialog`, `StockTab`/`StockCorrectionDialog`, `SupplierOrdersTab`/`SupplierOrderDialog`/`ReceiveDialog`/`SupplierInvoiceDialog`, Badges `OrderStatusBadge`/`PaymentBadge`/`SupplierStatusBadge`, `helpers.ts`, `admin-helpers.ts` |
-| `migrations/0001_init.sql`, `0002_digest_state.sql` | Schema; Merker der Fehlmengen-Meldung |
+| `migrations/0001_init.sql`, `0002_digest_state.sql`, `0003_fk_indexes.sql` | Schema; Merker der Fehlmengen-Meldung; Indizes `stock_movements.order_item_id`/`supplier_item_id` (#73) |
 
 ## Datenmodell
 - `articles` (`title`, `description`, `notes` intern, `reorder_url`, `active`, `position`, `archived_at`) · `article_variants` (`label` – `''` = ohne Größe,
@@ -45,6 +49,7 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 - `stock_movements` (`delta`, `kind` receipt|handout|correction|return, Bezug auf Position) – Bestand steht in `article_variants.stock`, gleiche Transaktion.
 
 ## Regeln
+- **Positionen** neuer Artikel/Bilder (`MAX(position)+1`) und die Höchstzahlen werden unter `pg_advisory_xact_lock(hashtext('orders:articles'))` bzw. `'orders:article-images:<id>'` vergeben → parallele Anlagen bekommen eindeutige Positionen (#73, 07-12).
 - **Preise sind Snapshots**: Preisänderungen am Artikel ändern bestehende Bestellungen/Rechnungen nicht.
 - **Fehlmenge** je Variante = max(0, offene Nachfrage + Mindestbestand − Bestand − unterwegs). „Bestellvorschlag übernehmen“ legt daraus eine Lieferantenbestellung an.
 - **Lager-Tab** (2026-10-20): eine Zeile je Artikel; Artikel mit Größen zeigen Summen + Größen-Chips (`S: 3`) und lassen sich aufklappen
@@ -96,3 +101,12 @@ Demo: `node scripts/seed-demo-orders.mjs` (nach `seed-demo-modules.mjs`, Bilder 
 - Archivierte Artikel lassen sich nicht wiederherstellen; Lieferant ist Freitext (keine Vorschläge); Storno-Grund wird nicht gespeichert.
 - Zahlungen auf Bestell-Rechnungen bekommen keine eigene Kategorie (z. B. „Material“).
 - Ungeprüft: Beleg-/Bild-Upload mit echtem S3 im Echtbetrieb, echter SMTP-Versand, Fehlmengen-Tagesmail im Echtbetrieb.
+
+## Datenauskunft (#30)
+- `subject-export.ts` (Hook `subjectExport` in `module.ts`): Bestellungen für die Mitglieder der Person (Konto → verknüpfte Mitglieder via `members.resolve`) mit Positionen und Ausgaben/Rücknahmen; vom Konto für andere aufgegebene Bestellungen nur Nummer/Datum (keine Daten Dritter). Rechnungen stehen in der Kasse. Test `tests/integration/privacy-subject-export.test.ts`.
+
+## Verweise auf `members`, Löschen und Reset (Stand 2026-10-21, Issue #76 10-09)
+- `orders.member_id` (Mitglied aus `members`, ohne FK; Name als Snapshot `member_name`): `orders` hat **kein** `onMemberDeleted` – Löschen oder
+  Anonymisieren eines Mitglieds lässt die Bestellungen samt Namens-Snapshot stehen. Reset `members:all` impliziert keinen `orders`-Bereich; `orders:all`
+  (`reset.ts`) hat ebenfalls keine `implies` (Rechnungen/Auszahlungen der Kasse aus Bestellungen bleiben).
+- Benutzerkonten: `onUserDeleted` setzt nur Verweise auf `NULL`.

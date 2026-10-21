@@ -35,9 +35,7 @@
 		<div class="flex items-baseline justify-between gap-2">
 			<span id="{uid}-label" class="text-muted-foreground tabular-nums">{label}</span>
 			{#if state === 'warn'}
-				<span
-					class="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"
-				>
+				<span class="inline-flex items-center gap-1 text-xs font-medium text-warning">
 					<TriangleAlert class="size-3.5" aria-hidden="true" />
 					Fast voll
 				</span>
@@ -55,11 +53,7 @@
 			<div
 				class={cn(
 					'h-full rounded-full transition-[width]',
-					state === 'full'
-						? 'bg-destructive'
-						: state === 'warn'
-							? 'bg-amber-500 dark:bg-amber-400'
-							: 'bg-primary'
+					state === 'full' ? 'bg-destructive' : state === 'warn' ? 'bg-warning' : 'bg-primary'
 				)}
 				style="width: {percent}%"
 			></div>

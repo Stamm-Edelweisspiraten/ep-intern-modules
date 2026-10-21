@@ -10,7 +10,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MoneyInput, toastWithUndo } from '$lib/components/layout';
+	import { MoneyInput, toastWithUndo, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { distribute, normalizeName } from '../logic';
 	import type { AllocationResult, MatchSuggestion, OpenLine, Transaction } from '../schemas';
@@ -177,7 +177,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="max-h-[92vh] overflow-y-auto sm:max-w-2xl"
+		class="sm:max-w-2xl"
 		onkeydown={(e) => {
 			// Strg/Cmd+Enter speichert ebenfalls (Enter allein über das Formular)
 			if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -217,7 +217,7 @@
 							class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm"
 							role="note"
 						>
-							<Sparkles class="size-4 text-primary" aria-hidden="true" />
+							<Sparkles class="size-4 text-link" aria-hidden="true" />
 							<span class="min-w-0 flex-1">
 								<span class="font-medium"
 									>Vorschlag ({confidenceLabel[suggestion.confidence]}):</span
@@ -264,7 +264,7 @@
 						</p>
 					{:else}
 						<ul
-							class="max-h-[45vh] divide-y overflow-y-auto rounded-md border"
+							class="max-h-[45dvh] divide-y overflow-y-auto rounded-md border"
 							aria-label="Offene Posten"
 						>
 							{#each visible as l (l.lineId)}
@@ -320,12 +320,10 @@
 				{/if}
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer class="items-center gap-2">
+			<Dialog.Footer sticky class="items-center gap-2">
 				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy || loading}
-					>{busy ? 'Speichert …' : 'Speichern'}</Button
-				>
+				<Button type="submit" disabled={busy || loading}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

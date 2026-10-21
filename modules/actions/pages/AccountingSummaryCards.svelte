@@ -21,7 +21,7 @@
 		{@render kpi(
 			'Einnahmen',
 			summary.incomeCents,
-			'text-green-700 dark:text-green-400',
+			'text-success',
 			summary.plannedIncomeCents !== null
 				? `geplant ${formatEuro(summary.plannedIncomeCents)}`
 				: undefined
@@ -37,21 +37,19 @@
 		{@render kpi(
 			'Saldo',
 			summary.balanceCents,
-			summary.balanceCents < 0
-				? 'text-red-700 dark:text-red-400'
-				: 'text-green-700 dark:text-green-400'
+			summary.balanceCents < 0 ? 'text-destructive' : 'text-success'
 		)}
 		{@render kpi(
 			'Offene Auslagen',
 			summary.openReimbursementCents,
-			summary.openReimbursementCents > 0 ? 'text-amber-700 dark:text-amber-400' : undefined,
+			summary.openReimbursementCents > 0 ? 'text-warning' : undefined,
 			'noch nicht ausgezahlt'
 		)}
 	</div>
 
 	{#if summary.missingReceipts > 0}
 		<div
-			class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+			class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm"
 			role="status"
 		>
 			<span class="flex items-center gap-2">

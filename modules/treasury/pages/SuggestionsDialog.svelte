@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { BUSY_SAVE } from '$lib/components/layout';
 	import { toast } from 'svelte-sonner';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
@@ -88,7 +89,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+	<Dialog.Content class="sm:max-w-2xl">
 		<Dialog.Header>
 			<Dialog.Title>Zuordnungsvorschläge</Dialog.Title>
 			<Dialog.Description>
@@ -152,7 +153,7 @@
 									Anpassen
 								</Button>
 								<Button size="sm" onclick={() => accept(it)} disabled={!!busy}>
-									{busy === it.s.transactionId ? 'Speichert …' : 'Übernehmen'}
+									{busy === it.s.transactionId ? BUSY_SAVE : 'Übernehmen'}
 								</Button>
 							{/if}
 						</div>
@@ -161,7 +162,7 @@
 			</ul>
 		{/if}
 		{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-		<Dialog.Footer>
+		<Dialog.Footer sticky>
 			<Button variant="outline" onclick={() => (open = false)}>Schließen</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

@@ -3,6 +3,7 @@
  */
 import { ApiClientError } from '$lib/sdk/client';
 import { formatEuro } from '$lib/components/layout/money';
+import { formatDateDe } from '$lib/sdk/dates';
 import { BASE_PATH, MAX_QUANTITY, type Article } from '../schemas';
 
 export const BASE = BASE_PATH;
@@ -16,14 +17,7 @@ export function formatPriceRange(min: number, max: number): string {
 }
 
 /** ISO-Zeitstempel oder `JJJJ-MM-TT` → `TT.MM.JJJJ` */
-export function formatDate(iso: string | null | undefined): string {
-	if (!iso) return '';
-	const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-	if (!m) return iso;
-	if (iso.length === 10) return `${m[3]}.${m[2]}.${m[1]}`;
-	const d = new Date(iso);
-	return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE');
-}
+export const formatDate = (iso: string | null | undefined): string => formatDateDe(iso);
 
 /** Verständlicher Fehlertext aus einem API-Fehler */
 export function errorText(e: unknown, fallback: string): string {

@@ -3,7 +3,7 @@
  * Liste/Detail, Storno (auch teilweise) und Ausgabe aus dem Lager. Übersicht für die Verwaltung.
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint } from '$lib/sdk/server';
+import { core, defineEndpoint, errors, logBestEffort, type ApiEndpoint } from '$lib/sdk/server';
 import {
 	idParams,
 	memberSearchQuery,
@@ -120,7 +120,8 @@ export const ordersEndpoints = [
 						(s) => s.status === 'open' || s.status === 'partial'
 					).length;
 				} catch (e) {
-					console.error('[orders] Zahlstand der Lieferantenrechnungen nicht lesbar:', e);
+					// nie das rohe Fehlerobjekt loggen (SQL-Parameter, #56)
+					logBestEffort('orders.overview.payable-status', e, { ctx });
 				}
 			}
 			return {
@@ -152,7 +153,10 @@ export const ordersEndpoints = [
 			const manage = canManage(ctx);
 			// Mitglied prüfen (Dienst `members`, vor der Transaktion)
 			let memberName: string | null = null;
-			const linked = await linkedMemberOptions(ctx).catch(() => [] as MemberOption[]);
+			const linked = await linkedMemberOptions(ctx).catch((e: unknown) => {
+				logBestEffort('orders.order.linked-members', e, { ctx, target: input.memberId });
+				return [] as MemberOption[];
+			});
 			const own = linked.find((m) => m.id === input.memberId);
 			if (own) {
 				const [m] = await (await membersService()).searchMembers({ ids: [input.memberId] });

@@ -4,7 +4,17 @@
  * `core.*` (außer `core.database`) nie in einer offenen Transaktion aufrufen (PGlite).
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	moduleDb,
+	rowsOf,
+	str,
+	toIso,
+	toIsoOrNull,
+	type RequestContext,
+	type Row,
+	type Tx
+} from '$lib/sdk/server';
 import {
 	DEFAULT_LINK_UPLOAD_MB,
 	DEFAULT_QUOTA_MB,
@@ -16,9 +26,8 @@ import {
 	type UserRef
 } from './schemas';
 
-export type Row = Record<string, unknown>;
-
-export const mdb = () => core.database.forModule(MODULE_ID);
+/** Modul-Datenbank (`moduleDb(MODULE_ID)`) */
+export const mdb = () => moduleDb(MODULE_ID);
 
 /** Systemkontext für Storage-Zugriffe NACH der Objektprüfung (Benutzer brauchen keine Storage-Rechte) */
 export const filesCtx = (): RequestContext => core.auth.systemContext('files-storage');
@@ -54,45 +63,30 @@ export const NODE_COLUMNS: SQL = sql`n.id, n.parent_id, n.kind, n.space, n.owner
 
 /** Schutz gegen Zyklen im Baum (MAX_DEPTH ist deutlich kleiner) */
 const MAX_WALK = 64;
-/** `core.users.directory` liefert höchstens 30 Einträge je Aufruf */
-const DIRECTORY_CHUNK = 30;
 
-export async function rowsOf(tx: Tx, query: SQL): Promise<Row[]> {
-	const res = (await tx.execute(query)) as unknown as { rows: Row[] };
-	return res.rows;
-}
-
-/** pg liefert `Date`, PGlite Strings → immer ISO-String */
-export function toIso(v: unknown): string {
-	if (v instanceof Date) return v.toISOString();
-	return new Date(String(v)).toISOString();
-}
-
-const isoOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : toIso(v));
-const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 const bool = (v: unknown): boolean => v === true || v === 't' || v === 'true' || v === 1;
 
 export function nodeRowOf(r: Row): NodeRow {
 	const size = r.size_bytes;
 	return {
 		id: String(r.id),
-		parentId: strOrNull(r.parent_id),
+		parentId: str(r.parent_id),
 		kind: String(r.kind) as NodeKind,
 		space: String(r.space) as Space,
 		ownerId: String(r.owner_id),
 		name: String(r.name),
-		storagePath: strOrNull(r.storage_path),
-		contentType: strOrNull(r.content_type),
+		storagePath: str(r.storage_path),
+		contentType: str(r.content_type),
 		sizeBytes: size === null || size === undefined ? null : Number(size),
-		thumbPath: strOrNull(r.thumb_path),
-		createdBy: strOrNull(r.created_by),
+		thumbPath: str(r.thumb_path),
+		createdBy: str(r.created_by),
 		createdAt: toIso(r.created_at),
 		updatedAt: toIso(r.updated_at),
-		deletedAt: isoOrNull(r.deleted_at),
-		deletedBy: strOrNull(r.deleted_by),
+		deletedAt: toIsoOrNull(r.deleted_at),
+		deletedBy: str(r.deleted_by),
 		trashRoot: bool(r.trash_root),
-		uploadedByName: strOrNull(r.uploaded_by_name),
-		uploadedViaLink: strOrNull(r.uploaded_via_link)
+		uploadedByName: str(r.uploaded_by_name),
+		uploadedViaLink: str(r.uploaded_via_link)
 	};
 }
 
@@ -174,10 +168,8 @@ export async function userRefs(
 	// `directory` braucht nur eine Anmeldung; Kontexte ohne Benutzer (z. B. Jobs) laufen als System
 	const dirCtx =
 		ctx.userId || ctx.actor.type === 'system' ? ctx : core.auth.systemContext('files-names');
-	for (let i = 0; i < unique.length; i += DIRECTORY_CHUNK) {
-		const chunk = unique.slice(i, i + DIRECTORY_CHUNK);
-		const users = await core.users.directory(dirCtx, { ids: chunk, limit: chunk.length });
-		for (const u of users) map.set(u.id, { id: u.id, name: u.name });
+	for (const u of (await core.users.byIds(dirCtx, unique)).values()) {
+		map.set(u.id, { id: u.id, name: u.name });
 	}
 	for (const id of unique) if (!map.has(id)) map.set(id, { id, name: 'Unbekannt' });
 	return map;

@@ -259,7 +259,7 @@
 		<div
 			class="flex flex-1 flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-background/60 p-6 text-center text-sm text-muted-foreground"
 		>
-			<Sparkles class="size-5 text-primary" aria-hidden="true" />
+			<Sparkles class="size-5 text-link" aria-hidden="true" />
 			<p>
 				Gib einen Betrag ein – die Kasse schlägt dann passende {direction === 'income'
 					? 'Rechnungen'
@@ -281,7 +281,7 @@
 				class="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm"
 				role="note"
 			>
-				<Sparkles class="size-4 shrink-0 text-primary" aria-hidden="true" />
+				<Sparkles class="size-4 shrink-0 text-link" aria-hidden="true" />
 				<span class="min-w-0 flex-1">
 					<span class="font-medium">Vorschlag ({confidenceLabel[suggestionText.confidence]}):</span>
 					{suggestionText.text}
@@ -353,7 +353,7 @@
 									<span class="flex items-center gap-2">
 										<span class="truncate font-medium">{l.description}</span>
 										{#if suggestedIds.has(l.lineId)}
-											<Badge variant="outline" class="shrink-0 border-primary/40 text-primary"
+											<Badge variant="outline" class="shrink-0 border-primary/40 text-link"
 												>Vorschlag</Badge
 											>
 										{/if}
@@ -421,7 +421,7 @@
 									<span class="flex items-center gap-2">
 										<span class="truncate font-medium">{p.recipientName}</span>
 										{#if suggestedIds.has(p.id)}
-											<Badge variant="outline" class="shrink-0 border-primary/40 text-primary"
+											<Badge variant="outline" class="shrink-0 border-primary/40 text-link"
 												>Vorschlag</Badge
 											>
 										{/if}
@@ -442,7 +442,7 @@
 				{#if payableId}
 					{@const p = payables.find((x) => x.id === payableId)}
 					{#if p && p.openCents !== amountCents}
-						<p class="text-xs text-amber-600 dark:text-amber-400">
+						<p class="text-xs text-warning">
 							Offen sind {formatEuro(p.openCents)} – der Betrag weicht ab, angerechnet wird höchstens
 							der offene Betrag.
 						</p>

@@ -39,9 +39,9 @@
 					<span
 						class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold {s.state ===
 						'done'
-							? 'bg-emerald-600 text-white'
+							? 'bg-success text-success-foreground'
 							: s.state === 'warn'
-								? 'bg-amber-500 text-white'
+								? 'bg-warning text-warning-foreground'
 								: i === current
 									? 'bg-primary text-primary-foreground'
 									: 'bg-muted text-muted-foreground'}"

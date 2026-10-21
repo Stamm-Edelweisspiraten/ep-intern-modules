@@ -12,6 +12,7 @@ import {
 	loadRawInvoices,
 	mdb,
 	resolveNames,
+	rows,
 	today,
 	type NameMaps,
 	type RawInvoice
@@ -192,17 +193,68 @@ export interface ReminderRun {
 	withoutAddress: number;
 }
 
-async function sendReminderMails(
+/** Schlüssel für `pg_advisory_xact_lock` der Reservierungsphase */
+const REMINDER_LOCK = sql`hashtext('treasury.reminders')`;
+
+/**
+ * Reserviert je Rechnung die Stufe VOR dem Versand (Zeile `status = 'pending'`). Reserviert wird nur,
+ * wenn die Rechnung unter der Sperre noch keine Erinnerung dieser oder einer höheren Stufe hat;
+ * automatische Stufen schützt zusätzlich der Unique-Index `reminders_auto_level_uq`. Parallele Läufe
+ * bekommen so je Rechnung und Stufe höchstens eine Reservierung. Liefert die reservierten Zeilen-IDs.
+ */
+async function claimReminders(
 	ctx: RequestContext,
 	due: { inv: RawInvoice; level: number }[],
+	manual: boolean
+): Promise<Map<string, string>> {
+	const claims = new Map<string, string>();
+	if (!due.length) return claims;
+	await mdb().transaction(async (tx) => {
+		await tx.execute(sql`SELECT pg_advisory_xact_lock(${REMINDER_LOCK})`);
+		const current = new Map(
+			(
+				await rows(
+					tx,
+					sql`SELECT invoice_id, max(level) AS level FROM reminders
+					WHERE invoice_id IN (${idList(due.map((d) => String(d.inv.row.id)))}) GROUP BY invoice_id`
+				)
+			).map((r) => [String(r.invoice_id), num(r.level)])
+		);
+		for (const d of due) {
+			const invoiceId = String(d.inv.row.id);
+			if ((current.get(invoiceId) ?? 0) >= d.level) continue;
+			const id = crypto.randomUUID();
+			const inserted = await rows(
+				tx,
+				sql`INSERT INTO reminders (id, invoice_id, level, sent_on, recipients, manual, created_by, status)
+				VALUES (${id}, ${invoiceId}, ${d.level}, ${today()}, 0, ${manual}, ${ctx.userId}, 'pending')
+				ON CONFLICT DO NOTHING RETURNING id`
+			);
+			if (inserted.length) claims.set(invoiceId, id);
+		}
+	});
+	return claims;
+}
+
+async function sendReminderMails(
+	ctx: RequestContext,
+	candidates: { inv: RawInvoice; level: number }[],
 	names: NameMaps,
 	manual: boolean
 ): Promise<ReminderRun> {
-	if (!due.length) return { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
+	if (!candidates.length) return { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
+	// Ohne Adresse: keine Reservierung, kein Eintrag (wie bisher)
+	const withAddress = candidates.filter((d) => addressesOf(d.inv, names).length > 0);
+	const withoutAddress = candidates.length - withAddress.length;
+	// 1. Reservieren (nur reservierte Rechnungen werden angeschrieben)
+	const claims = await claimReminders(ctx, withAddress, manual);
+	const due = withAddress.filter((d) => claims.has(String(d.inv.row.id)));
+	if (!due.length) return { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress };
 	const s = await core.settings.getMany([SETTING_KEYS.reminderSubject, SETTING_KEYS.reminderBody]);
 	const bank = await loadBankData();
 	const levelOf = new Map(due.map((d) => [String(d.inv.row.id), d.level]));
 	const items = due.map((d) => ({ inv: d.inv, addresses: addressesOf(d.inv, names) }));
+	// 2. Versenden
 	const stats = await sendGrouped(items, (group) => {
 		const level = Math.max(...group.map((g) => levelOf.get(String(g.row.id)) ?? 1));
 		return composeMail({
@@ -215,23 +267,34 @@ async function sendReminderMails(
 		});
 	});
 	const sent = due.filter((d) => stats.delivered.has(String(d.inv.row.id)));
-	if (sent.length) {
+	const failed = due.filter((d) => !stats.delivered.has(String(d.inv.row.id)));
+	// 3. Bestätigen bzw. Reservierung freigeben (nächster Lauf versucht es erneut). Scheitert diese
+	// Transaktion, bleiben die Reservierungen stehen – die Stufe wird dann nicht doppelt verschickt.
+	try {
 		await mdb().transaction(async (tx) => {
 			for (const d of sent) {
-				const id = String(d.inv.row.id);
+				const invoiceId = String(d.inv.row.id);
 				await tx.execute(
-					sql`INSERT INTO reminders (id, invoice_id, level, sent_on, recipients, manual, created_by)
-					VALUES (${crypto.randomUUID()}, ${id}, ${d.level}, ${today()}, ${stats.recipientsByInvoice.get(id) ?? 0},
-						${manual}, ${ctx.userId})`
+					sql`UPDATE reminders SET status = 'sent', sent_at = now(),
+						recipients = ${stats.recipientsByInvoice.get(invoiceId) ?? 0}
+					WHERE id = ${claims.get(invoiceId)!}`
+				);
+			}
+			if (failed.length) {
+				await tx.execute(
+					sql`DELETE FROM reminders WHERE status = 'pending'
+					AND id IN (${idList(failed.map((d) => claims.get(String(d.inv.row.id))!))})`
 				);
 			}
 		});
+	} catch (e) {
+		console.error('[treasury] Erinnerungen versendet, Protokoll nicht bestätigt:', e);
 	}
 	const result = {
 		invoices: sent.length,
 		mailsSent: stats.sent,
 		mailErrors: stats.failed,
-		withoutAddress: items.filter((i) => i.addresses.length === 0).length
+		withoutAddress
 	};
 	if (sent.length || stats.failed) {
 		await core.audit.logFromContext(ctx, 'treasury.reminder.sent', {

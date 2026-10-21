@@ -2,6 +2,7 @@
  * Kontoauszug-Import (CSV), rein: Parser, Spaltenerkennung (Sparkasse CSV-CAMT und gängige
  * deutsche Exporte), Betrags-/Datumsformate und Duplikat-Schlüssel.
  */
+import { isRealDate } from '$lib/sdk/dates';
 import type { ImportMapping } from './schemas';
 
 /** CSV nach RFC 4180 (Anführungszeichen, doppelte Quotes, Zeilenumbrüche in Feldern). */
@@ -144,8 +145,7 @@ export function parseDate(raw: string, format: ImportMapping['dateFormat']): str
 		if (r[3]!.length === 2) y += 2000;
 	}
 	const iso = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-	const t = new Date(`${iso}T00:00:00Z`);
-	return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === iso ? iso : null;
+	return isRealDate(iso) ? iso : null;
 }
 
 export interface ParsedRow {

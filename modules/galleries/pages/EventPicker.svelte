@@ -139,7 +139,7 @@
 						type="button"
 						{disabled}
 						aria-label={`${ev.title} entfernen`}
-						class="hover:bg-foreground/10 focus-visible:ring-ring/50 inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2"
+						class="hover:bg-foreground/10 focus-visible:ring-ring inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-none focus-visible:ring-2"
 						onclick={() => remove(ev.id)}
 					>
 						<XIcon class="size-3" />
@@ -158,7 +158,7 @@
 			aria-expanded={open}
 			aria-haspopup="listbox"
 			aria-controls={open ? listId : undefined}
-			class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 text-muted-foreground flex min-h-8 w-full items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-sm outline-none focus-visible:ring-3 disabled:pointer-events-none"
+			class="border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring text-muted-foreground flex min-h-8 w-full items-center gap-2 rounded-lg border bg-transparent px-2.5 text-left text-sm outline-none focus-visible:ring-3 disabled:pointer-events-none"
 		>
 			<CalendarPlus class="size-4 shrink-0" />
 			<span class="truncate">{placeholder}</span>

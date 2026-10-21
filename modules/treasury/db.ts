@@ -2,14 +2,30 @@
  * Datenbank-Hilfen und Loader der Kasse. Alles mit `tx` läuft INNERHALB einer Modul-Transaktion;
  * Namensauflösung (`resolveNames`) nutzt die Dienste von `members`/`actions` und läuft DANACH.
  */
-import { sql } from 'drizzle-orm';
-import { core, errors, type Tx } from '$lib/sdk/server';
+import { sql, type SQL } from 'drizzle-orm';
+import {
+	core,
+	errors,
+	inList as idList,
+	moduleDb,
+	num,
+	rowsOf as rows,
+	str,
+	toIso as iso,
+	toIsoOrNull as isoOrNull,
+	type Row,
+	type Tx,
+	type UploadRules
+} from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
 import type { ActionsService } from '$lib/modules/actions/contract';
-import type { MembersService } from '$lib/modules/members/contract';
-import { invoiceTotals, lineOpen, overdueDays } from './logic';
+import type { MemberContact, MembersService } from '$lib/modules/members/contract';
+import { groupBy, invoiceTotals, lineOpen, overdueDays } from './logic';
 import {
 	CONTRIBUTIONS_CATEGORY_ID,
+	MAX_RECEIPT_BYTES,
 	MODULE_ID,
+	RECEIPT_CONTENT_TYPES,
 	type Account,
 	type AccountKind,
 	type InvoiceDetail,
@@ -20,41 +36,21 @@ import {
 	type Transaction
 } from './schemas';
 
-export type Row = Record<string, unknown>;
+/** Grundhelfer aus dem SDK (`$lib/sdk/server/db.ts`), unter den im Modul üblichen Namen */
+export { idList, iso, isoOrNull, num, rows, str, type Row };
 
-export const mdb = () => core.database.forModule(MODULE_ID);
+export const mdb = () => moduleDb(MODULE_ID);
 
-export async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
+/** Upload-Regeln für Belege (Buchungen, Auszahlungen, Bestellungs-Push) */
+export const RECEIPT_UPLOAD = {
+	maxBytes: MAX_RECEIPT_BYTES,
+	allowedTypes: RECEIPT_CONTENT_TYPES,
+	typesLabel: 'PDF, JPEG, PNG oder WebP',
+	fallbackName: 'beleg'
+} satisfies UploadRules;
 
-/** pg liefert Date, PGlite Strings */
-export const iso = (v: unknown): string => {
-	const d = v instanceof Date ? v : new Date(String(v));
-	return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
-};
-export const isoOrNull = (v: unknown): string | null => (v == null ? null : iso(v));
-export const num = (v: unknown): number => Number(v ?? 0);
-export const str = (v: unknown): string | null => (v == null ? null : String(v));
-
-export const idList = (ids: string[]) =>
-	sql.join(
-		ids.map((v) => sql`${v}`),
-		sql`, `
-	);
-
-let todayOverride: string | null = null;
-/** Nur für Tests: festes „heute“ (`YYYY-MM-DD`) */
-export function setTreasuryTodayForTests(d: string | null): void {
-	todayOverride = d;
-}
-/** Heutiges Datum in Deutschland */
-export function today(): string {
-	return (
-		todayOverride ??
-		new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
-	);
-}
+/** Heutiges Datum in Deutschland (zentral, Test-Override über `setTodayForTests` aus `$lib/sdk/dates`) */
+export const today = (): string => todayBerlin();
 
 export const membersService = () => core.modules.use<MembersService>('members', MODULE_ID);
 export const actionsService = () => core.modules.use<ActionsService>('actions', MODULE_ID);
@@ -208,6 +204,58 @@ export interface RawInvoice {
 	lastReminderOn: string | null;
 }
 
+/** Zahler einer Rechnung (Alias `i`): eigener Zahler, sonst Zahler des ersten Mitglieds-Postens */
+export const PAYER_SQL = sql`coalesce(i.payer_id, (SELECT pm.payer_id FROM invoice_lines l
+	JOIN payer_members pm ON pm.member_id = l.member_id
+	WHERE l.invoice_id = i.id ORDER BY l.position LIMIT 1))`;
+
+/**
+ * Kennzahlen je Rechnung in SQL – dieselben Regeln wie `invoiceTotals` (Soll = Σ max(0, Betrag −
+ * Ermäßigung), offen = Σ max(0, Soll − bezahlt), storniert = nichts offen, Guthaben = Bezahltes bzw.
+ * Überzahlung). Liefert eine Unterabfrage mit Alias `m` (Spalten `id, number, issued_on, due_on,
+ * cancelled, source, payer_id, recipient_name, action_id, due_cents, paid_cents, open_cents, credit_cents`).
+ */
+export function invoiceMetricsSql(where: SQL = sql`TRUE`): SQL {
+	return sql`(SELECT i.id, i.number, i.issued_on, i.due_on, (i.cancelled_at IS NOT NULL) AS cancelled,
+		i.source, ${PAYER_SQL} AS payer_id, i.recipient_name, i.action_id,
+		coalesce(sum(greatest(0, l.amount_cents - l.waived_cents)), 0) AS due_cents,
+		coalesce(sum(greatest(0, p.paid)), 0) AS paid_cents,
+		CASE WHEN i.cancelled_at IS NULL
+			THEN coalesce(sum(greatest(0, l.amount_cents - l.waived_cents - p.paid)), 0) ELSE 0 END AS open_cents,
+		CASE WHEN i.cancelled_at IS NULL
+			THEN coalesce(sum(greatest(0, p.paid - greatest(0, l.amount_cents - l.waived_cents))), 0)
+			ELSE coalesce(sum(greatest(0, p.paid)), 0) END AS credit_cents
+	FROM invoices i
+	LEFT JOIN invoice_lines l ON l.invoice_id = i.id
+	LEFT JOIN LATERAL (SELECT coalesce(sum(a.amount_cents), 0) AS paid FROM allocations a WHERE a.line_id = l.id) p
+		ON true
+	WHERE ${where}
+	GROUP BY i.id) m`;
+}
+
+/** Statusfilter auf `invoiceMetricsSql` (Alias `m`), gleiche Bedeutung wie `InvoiceSummary.status`/`overdue` */
+export function invoiceStatusSql(
+	status: 'all' | 'unpaid' | 'overdue' | 'open' | 'partial' | 'paid' | 'cancelled',
+	todayIso: string
+): SQL {
+	switch (status) {
+		case 'cancelled':
+			return sql`m.cancelled`;
+		case 'paid':
+			return sql`NOT m.cancelled AND m.open_cents = 0`;
+		case 'partial':
+			return sql`NOT m.cancelled AND m.open_cents > 0 AND m.paid_cents > 0`;
+		case 'open':
+			return sql`NOT m.cancelled AND m.open_cents > 0 AND m.paid_cents = 0`;
+		case 'unpaid':
+			return sql`NOT m.cancelled AND m.open_cents > 0`;
+		case 'overdue':
+			return sql`NOT m.cancelled AND m.open_cents > 0 AND m.due_on < ${todayIso}`;
+		default:
+			return sql`TRUE`;
+	}
+}
+
 /** Lädt Rechnungen inkl. Posten (mit bezahltem Betrag) und Erinnerungsstand. */
 export async function loadRawInvoices(
 	tx: Tx,
@@ -221,8 +269,7 @@ export async function loadRawInvoices(
 			i.created_at, i.updated_at, i.annual_run_id,
 			(SELECT r.year FROM annual_fee_runs r WHERE r.id = i.annual_run_id) AS annual_year,
 			(SELECT r.pdf_text FROM annual_fee_runs r WHERE r.id = i.annual_run_id) AS annual_pdf_text,
-			coalesce(i.payer_id, (SELECT pm.payer_id FROM invoice_lines l JOIN payer_members pm ON pm.member_id = l.member_id
-				WHERE l.invoice_id = i.id ORDER BY l.position LIMIT 1)) AS payer_id,
+			${PAYER_SQL} AS payer_id,
 			(SELECT max(r.level) FROM reminders r WHERE r.invoice_id = i.id) AS reminder_level,
 			(SELECT count(*)::int FROM invoice_documents d WHERE d.invoice_id = i.id) AS document_count,
 			(SELECT max(r.sent_at) FROM reminders r WHERE r.invoice_id = i.id) AS last_reminder_at,
@@ -244,10 +291,13 @@ export async function loadRawInvoices(
 		sql`SELECT invoice_id, member_id, level, amount_cents FROM annual_fee_items
 		WHERE invoice_id IN (${ids}) ORDER BY position, id`
 	);
+	// Zuordnung per Map (linear statt Rechnungen × Zeilen)
+	const linesBy = groupBy(lines, (l) => String(l.invoice_id));
+	const itemsBy = groupBy(items, (i) => String(i.invoice_id));
 	return list.map((row) => ({
 		row,
-		lines: lines.filter((l) => l.invoice_id === row.id),
-		annualItems: items.filter((i) => i.invoice_id === row.id),
+		lines: linesBy.get(String(row.id)) ?? [],
+		annualItems: itemsBy.get(String(row.id)) ?? [],
 		reminderLevel: num(row.reminder_level),
 		lastReminderAt: isoOrNull(row.last_reminder_at),
 		lastReminderOn: str(row.last_reminder_on)
@@ -261,6 +311,27 @@ export interface NameMaps {
 	memberMailOptOut: Map<string, string[]>;
 	actions: Map<string, string>;
 	payers: Map<string, { name: string; email: string | null }>;
+	/** Vollständige Kontakte (Anschrift, Geburtsdatum) – gesammelt geladen, für Rechnungs-Snapshots */
+	contacts?: Map<string, MemberContact>;
+}
+
+/** Höchstzahl an IDs je `listMemberContacts`-Aufruf (Grenze des Dienstes) */
+export const CONTACT_BATCH = 1000;
+
+/** Kontakte zu vielen Mitglieder-IDs gesammelt laden: ein Aufruf je 1000 IDs (AUSSERHALB der Transaktion). */
+export async function loadContactsByIds(
+	ids: Iterable<string>
+): Promise<Map<string, MemberContact>> {
+	const all = [...new Set(ids)];
+	const out = new Map<string, MemberContact>();
+	if (!all.length) return out;
+	const svc = await membersService();
+	for (let i = 0; i < all.length; i += CONTACT_BATCH) {
+		for (const m of await svc.listMemberContacts({ ids: all.slice(i, i + CONTACT_BATCH) })) {
+			out.set(m.id, m);
+		}
+	}
+	return out;
 }
 
 /** Namen von Mitgliedern/Aktionen auflösen (AUSSERHALB der Transaktion). */
@@ -275,19 +346,28 @@ export async function resolveNames(p: {
 	const memberEmails = new Map<string, string[]>();
 	const memberMailOptOut = new Map<string, string[]>();
 	const actions = new Map<string, string>();
-	if (memberIds.length) {
-		for (const m of await (await membersService()).listMemberContacts({ ids: memberIds })) {
-			members.set(m.id, `${m.firstName} ${m.lastName}`);
-			memberEmails.set(m.id, m.emails);
-			if (m.mailOptOut?.length) memberMailOptOut.set(m.id, m.mailOptOut);
-		}
+	const contacts = await loadContactsByIds(memberIds);
+	for (const m of contacts.values()) {
+		members.set(m.id, `${m.firstName} ${m.lastName}`);
+		memberEmails.set(m.id, m.emails);
+		if (m.mailOptOut?.length) memberMailOptOut.set(m.id, m.mailOptOut);
 	}
 	if (actionIds.length) {
-		for (const a of await (await actionsService()).listActionRefs({ ids: actionIds })) {
-			actions.set(a.id, a.name);
+		// `listActionRefs` liefert höchstens 200 je Aufruf
+		const svc = await actionsService();
+		for (let i = 0; i < actionIds.length; i += 200) {
+			const ids = actionIds.slice(i, i + 200);
+			for (const a of await svc.listActionRefs({ ids, limit: 200 })) actions.set(a.id, a.name);
 		}
 	}
-	return { members, memberEmails, memberMailOptOut, actions, payers: p.payers ?? new Map() };
+	return {
+		members,
+		memberEmails,
+		memberMailOptOut,
+		actions,
+		payers: p.payers ?? new Map(),
+		contacts
+	};
 }
 
 /** Zahler je hinterlegter IBAN (HMAC) – für Zuordnungsvorschläge beim Import */

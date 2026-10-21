@@ -4,9 +4,11 @@
  */
 import { sql } from 'drizzle-orm';
 import { errors, type Tx } from '$lib/sdk/server';
+import { formatEuro } from '$lib/components/layout/money';
 import {
 	collectIds,
 	idList,
+	invoiceMetricsSql,
 	loadPayerNames,
 	loadRawInvoices,
 	mdb,
@@ -79,7 +81,7 @@ export async function replaceAllocations(
 				throw errors.validation([
 					{
 						path: ['allocations'],
-						message: `Für Rechnung ${String(l.number)} sind nur noch ${(open / 100).toFixed(2).replace('.', ',')} € offen`
+						message: `Für Rechnung ${String(l.number)} sind nur noch ${formatEuro(open)} offen`
 					}
 				]);
 			}
@@ -137,7 +139,18 @@ export async function loadMatchLines(transactionId?: string): Promise<{
 	match: MatchLine[];
 }> {
 	const { invoices, payers, own } = await mdb().transaction(async (tx) => ({
-		invoices: await loadRawInvoices(tx, sql`i.cancelled_at IS NULL`),
+		// Nur Rechnungen mit offenem Posten bzw. mit Zuordnung dieser Buchung
+		invoices: await loadRawInvoices(
+			tx,
+			sql`i.cancelled_at IS NULL AND (i.id IN (SELECT m.id FROM ${invoiceMetricsSql(sql`i.cancelled_at IS NULL`)}
+				WHERE m.open_cents > 0)
+				${
+					transactionId
+						? sql`OR EXISTS (SELECT 1 FROM invoice_lines l JOIN allocations a ON a.line_id = l.id
+							WHERE l.invoice_id = i.id AND a.transaction_id = ${transactionId})`
+						: sql``
+				})`
+		),
 		payers: await loadPayerNames(tx),
 		own: transactionId
 			? await rows(

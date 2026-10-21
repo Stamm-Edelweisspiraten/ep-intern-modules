@@ -12,7 +12,13 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ConfirmDialog, DataTable, FormField, toastWithUndo } from '$lib/components/layout';
+	import {
+		ConfirmDialog,
+		DataTable,
+		FormField,
+		toastWithUndo,
+		BUSY_SAVE
+	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type {
 		AllocationResult,
@@ -420,7 +426,7 @@
 					</div>
 				{/if}
 				{#if t.needsAllocation}
-					<div class="mt-1 text-xs text-amber-700 dark:text-amber-400">
+					<div class="mt-1 text-xs text-warning">
 						{formatEuro(t.unallocatedCents)} nicht zugeordnet
 					</div>
 					{#if canInline(t)}
@@ -430,7 +436,7 @@
 								<div
 									class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs"
 								>
-									<Sparkles class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+									<Sparkles class="size-3.5 shrink-0 text-link" aria-hidden="true" />
 									<span class="min-w-0 flex-1" title={s.reason}>
 										<span class="font-medium">→ {s.invoiceNumbers.join(', ')}</span>
 										<span class="text-muted-foreground">
@@ -448,7 +454,7 @@
 												void acceptSuggestion(t, s);
 											}}
 										>
-											{acceptingId === t.id ? 'Speichert …' : 'Übernehmen'}
+											{acceptingId === t.id ? BUSY_SAVE : 'Übernehmen'}
 										</Button>
 										<Button
 											size="xs"
@@ -605,9 +611,7 @@
 		</FormField>
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (linkOpen = false)}>Abbrechen</Button>
-			<Button onclick={saveLink} disabled={linkBusy}
-				>{linkBusy ? 'Speichert …' : 'Speichern'}</Button
-			>
+			<Button onclick={saveLink} disabled={linkBusy}>{linkBusy ? BUSY_SAVE : 'Speichern'}</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

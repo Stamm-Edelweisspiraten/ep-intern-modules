@@ -27,21 +27,26 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 ## Dateien (`src/lib/modules/files/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (3 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0003, `resetAreas`/`resetUsers`, Job `purge-trash` (täglich), Endpoint-Reihenfolge links → meta → trash → shares → upload → nodes (öffentliche/feste Pfade vor `:id`) |
+| `module.ts` | Manifest (3 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0003, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Job `purge-trash` (täglich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → nodes (öffentliche/feste Pfade vor `:id`) |
 | `ui.ts` | Route `''` → `FilesPage`; `publicRoutes` `link/:token` → `PublicLinkPage` |
 | `schemas.ts` | API-Vertrag (Server + UI): `PERMISSIONS`, `SETTING_KEYS`, `ROOT_LABEL` („Dateien“), `SPACES` (nur noch `personal`, intern), `LINK_MODES`/`LINK_MODE_LABELS`/`LINK_MODE_DESCRIPTIONS`, `linkCanView`/`linkCanUpload`, Grenzen (`MAX_NAME` 200, `MAX_DEPTH` 20, `MAX_BULK` 500, `MAX_SHARES` 200, `MAX_LINKS_PER_NODE` 20, `MAX_SEARCH_RESULTS` 100, `MIN_PASSWORD` 8, `MAX_UNLOCK_FAILURES` 10, `LINK_ACCESS_TTL_SEC` 900, `MAX_TEXT_PREVIEW_BYTES` 1 MB, `UPLOAD_CONCURRENCY` 3, `MAX_PUBLIC_UPLOAD_FILES` 10, `MAX_PUBLIC_UPLOAD_BYTES` 30 MB, `MAX_UPLOADER_NAME` 100), Vorschau-Typen, `NEVER_INLINE_TYPES`, `INVISIBLE_CHARS`, Zod (`nodeName`, `listQuery`, `folderCreateInput`, `moveInput`, `uploadFields`, `sharesInput`, `linkCreateInput` mit `mode`, `publicUploadFields`, …), DTOs `FileNode` (`owner`, `own`, `stamm`, `uploadedByName`, `viaLink`), `FolderListing`, `Breadcrumb`, `SearchResult`, `TrashItem`, `NodeShares`, `ShareLink` (`mode`, `url`), `PublicLinkInfo` (`mode`, `upload`), `PublicListing`, `PublicUploadResult`, `FilesMeta` |
 | `db.ts` | `mdb()`, `filesCtx()` (Systemkontext für Storage), `NodeRow`/`nodeRowOf`/`NODE_COLUMNS`, `loadNode(s)`, `ancestorsOf`/`descendantIds` (rekursive CTEs, Zyklenschutz 64), `userRefs` (nach der Tx), `filesSettings()` |
-| `access.ts` | Objektprüfung: `rootAccess` (Eigentümer*in / `manage-all`), `resolveAccess`, `requireNode` (404/403), `requireFolderTarget` (`null` = eigene Wurzel), `accessForMany` (Listen, ein CTE), `sharedWithMeRoots` (Wurzel-Einträge anderer), `visibleNodesFilter` (Suche), `stammSharedSql` (Badge „Stamm“), `canManageAll` |
+| `access.ts` | Objektprüfung: `rootAccess` (Eigentümer*in / `manage-all`), `resolveAccess`, `requireNode` (404/403), `requireFolderTarget` (`null` = eigene Wurzel), `accessForMany` (Listen, ein CTE), `sharedWithMeRoots` (Wurzel-Einträge anderer), `visibleNodesFilter` (Suche), `stammSharedSql` (Badge „Stamm“), `canManageAll`, `NODE_SHARES` (Freigabe-Tabelle für die SDK-Bausteine `shareLevelOn`/`loadObjectShares`/`replaceObjectShares`, #35) |
 | `names.ts` (rein) | `normalizeName` (NFC, unsichtbare Zeichen raus, Leerzeichen, Kürzen mit Endung), `splitExtension`, `uniqueName` („Bild (2).jpg“), `splitRelativePath`, `displayPath` |
 | `nodes.service.ts` / `nodes.endpoints.ts` | Auflisten (Wurzel = eigene + freigegebene), Breadcrumbs, Suche, Ordner anlegen, `ensureFolderPath` (Ordner-Upload), `siblingNames`, Umbenennen, Verschieben (Advisory-Lock, Zyklus-/Tiefenprüfung, Eigentümerwechsel, Kontingent), DTO-Aufbau (`extrasForMany`, `toFileNode`) |
 | `upload.service.ts` | `storeIntoFolder(input)` – gemeinsamer Upload-Ablauf für intern **und** öffentlich (Tx 1 → Storage → Tx 2, `recheck` in beiden Transaktionen, Kontingent der Eigentümer*in, Konflikt `rename`/`replace`, Aufräumen bei Fehlern), `cleanUploaderName`; kein Audit (macht der Aufrufer) |
 | `upload.endpoints.ts` | Interner Upload (Multipart, Vorprüfungen, dann `storeIntoFolder`), Inhalt, Thumbnail |
-| `storage.ts` | `storeContent` (Typ normalisieren/prüfen, Thumbnail 320 px WebP per `core.images.process`), `contentResponse`/`thumbResponse` (Sicherheits-Header), `removeObjects`, `storageLimits`, `quotaUsed`/`assertQuota` |
+| `storage.ts` | `storeContent` (Typ normalisieren/prüfen, Thumbnail 320 px WebP per `core.images.process`), `contentResponse`/`thumbResponse` (Sicherheits-Header, gestreamt über `core.storage.downloadStream`), `removeObjects` (Sammel-Löschung `core.storage.removeMany`: S3 DeleteObjects à 1000, ein Audit `core.storage.files_deleted`; #24), `storageLimits`, `quotaUsed`/`assertQuota` |
 | `shares.service.ts` / `shares.endpoints.ts` | Freigaben lesen (eigene + geerbte) / ersetzen, Principal-Suche (`everyoneLabel` „Stamm“), `keysFor`, `canManageShares`/`assertCanManageShares` |
 | `links.service.ts` / `links.endpoints.ts` | Öffentliche Links: anlegen (mit Art)/auflisten (mit URL)/widerrufen (intern); Info, Freischalten, Ordnerinhalt, Inhalt, **Upload** (öffentlich) |
 | `trash.service.ts` / `trash.endpoints.ts` | Papierkorb: löschen, Liste, wiederherstellen, endgültig löschen, Ablauf-Job `purgeExpired` |
 | `meta.endpoints.ts` | `/meta`: Kontingent, Upload-Grenzen, Papierkorb-Dauer, Fähigkeiten des Aufrufers (`linkCreate`, `manageAll`) |
-| `reset.ts` | Reset-Bereich `all` (`rebuild`, alle Storage-Objekte), `resetUsers` |
+| `reset.ts` | Reset-Bereich `all` (`rebuild`, alle Storage-Objekte, keine `implies`), `resetUsers` (Übernahme fremder Ablagen) |
+| `recent.endpoints.ts` | `GET /recent` („Zuletzt geändert“ fürs Dashboard): eigene + freigegebene Dateien (keine Ordner, kein Papierkorb), neueste zuerst; auch mit `manage-all` keine fremden Ablagen; ohne Audit |
+| `search.ts` | Globale Suche (`filesSearch`) über `searchNodes` (gleiche Sichtbarkeit wie `GET /search`, nie Papierkorb); Dateien verlinken auf ihren Ordner, sonst auf die Wurzel |
+| `backup.ts` | `filesBackup.rehash`: `share_links.token_hash` aus `token_enc` mit dem Ziel-Schlüssel neu berechnen; ohne entschlüsselbares `token_enc` → Link widerrufen (`unrecoverable`) |
+| `user-deleted.ts` | `onUserDeleted`: Ablage der Person **löschen** (nicht übergeben), übrige von ihr angelegte Links widerrufen, `user:`-Freigaben löschen, `created_by`/`deleted_by` → `NULL`; Storage-Objekte nach dem Commit |
+| `subject-export.ts` | Datenauskunft (`subjectExport`): Metadaten der eigenen Ablage (ohne Inhalte/Pfade), Uploads in fremde Ordner, Freigaben an Konto/Mitglieder, eigene Links (ohne Token/Hash) |
 | `pages/FilesPage.svelte` | Eine Seite „Dateien“ (`?folder=<id>`), Knopf **„Papierkorb“** im Seitenkopf (`?view=trash`, zurück per Knopf/Brotkrumen), Brotkrumen (Drop-Ziele), Raster/Liste (Wahl in `localStorage`), Suche, Mehrfachauswahl, `QuotaBar` immer sichtbar; Kontextmenü auf leerer Fläche („Neuer Ordner“, „Dateien hochladen“, „Ordner hochladen“) |
 | `pages/FileList.svelte` | Raster-/Listenansicht, Tastatur (Pfeile, Home/End), internes Ziehen mit `DRAG_MIME`; **Rechtsklick** → `ContextMenu` an der Mausposition mit denselben Aktionen wie das „…“-Menü (gemeinsames Snippet), bei Mehrfachauswahl für die Auswahl; Long-Press auf Touch; fremde Einträge mit Badge „von <Name>“ bzw. „Stamm“ |
 | `pages/UploadDropzone.svelte`, `upload-queue.ts` | Drop-Bereich + Datei-/Ordnerauswahl (`webkitdirectory`, `webkitGetAsEntry`), Warteschlange (Vorprüfung Größe/Typ/Kontingent, 3 parallel, Fortschritt, Fehler) – `upload-queue.ts` rein und getestet |
@@ -119,7 +124,8 @@ eigene Ablage und sehen Freigegebenes).
   vorher normalisiert.
 - **Upload (intern)**: `Content-Length` ist **Pflicht** (fehlt/ungültig → 400; > Max + 1 MB → 413, bevor der Body gelesen wird); Typ gegen die Allowlist
   (Browser-Typ, sonst Endung, sonst `application/octet-stream`; aktive Inhalte nur, wenn ausdrücklich erlaubt). **Kontingent in beiden Transaktionen**
-  von `storeIntoFolder` (Vorprüfung + mit echter Größe; Fehler → hochgeladene Objekte werden entfernt); Papierkorb zählt mit. Das Kontingent gilt je
+  von `storeIntoFolder` (Vorprüfung + mit echter Größe; Fehler → hochgeladene Objekte werden entfernt); Papierkorb zählt mit. `assertQuota` nimmt
+  `pg_advisory_xact_lock(hashtext('files:quota:<owner>'))` (immer als letzte Sperre der Transaktion) → parallele Uploads überschreiten das Kontingent nicht (#72, 06-12). Das Kontingent gilt je
   Eigentümer*in (auch für Uploads anderer in freigegebene Ordner).
 - **Öffentlicher Upload** (`publicUpload` → `storeIntoFolder`):
   - nur bei Link-Art `upload`/`view-upload` auf einem **Ordner** (sonst 403), bei Passwort nur mit gültigem Zugriffstoken `t` (403);
@@ -148,6 +154,11 @@ eigene Ablage und sehen Freigegebenes).
 - **Passwort-Raten**: höchstens **10 Fehlversuche je Link und Stunde**, danach **429** (auch bei richtigem Passwort); Erfolg setzt zurück. Zusätzlich Rate-Limit
   `unlock` 10/600 s je IP.
 - Ungültig / abgelaufen / widerrufen / Knoten im Papierkorb → überall dieselbe 404 „Link nicht verfügbar“. Öffentlicher Zugriff nur im Teilbaum des Links.
+- **Eigentümer*in des Link-Knotens** muss existieren und aktiv sein (`assertOwnerActive` in `links.service.ts`, `core.users.directory` nach der
+  Transaktion) – Links **deaktivierter** oder gelöschter Konten → dieselbe 404 (Info, Freischalten, Inhalt, Ordnerinhalt, Upload).
+- **Konto gelöscht** (`user-deleted.ts`, Hook `onUserDeleted`): Ablage der Person samt Teilbäumen löschen (CASCADE: Links/Freigaben), weitere von ihr
+  angelegte Links widerrufen, Freigaben an `user:<id>` löschen, `created_by`/`deleted_by` → `NULL`; Storage-Objekte nach dem Commit. Keine Übergabe
+  (anders als `resetUsers`).
 - Audit ohne Inhalte/Namen: `files.node.created|uploaded|renamed|moved|trashed|restored|purged`, `files.share.updated` (Anzahl), `files.link.created` (mit `mode`)
   `|revoked`, `files.link.accessed` (höchstens 1× je Link und Stunde, Akteur `system`/„Öffentlicher Link“), `files.link.uploaded` (Anzahl, Bytes).
   Vorschau/Download wird nicht protokolliert.
@@ -165,9 +176,9 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 | PATCH `/nodes/:id` | `{ name }` umbenennen (Konflikt 409 mit Vorschlag) |
 | POST `/nodes/:parent/upload` | multipart `file` + `relativePath?`, `conflict?`; `parent` = Ordner-ID oder `root` (eigene Wurzel); ein Request je Datei |
 | GET `/nodes/:id/content?download=1` | Inhalt mit Sicherheits-Headern (`private, max-age=60`) |
-| GET `/nodes/:id/thumb` | WebP 320 px (`private, max-age=3600`), 404 ohne Thumbnail |
+| GET `/nodes/:id/thumb` | WebP 320 px (`private, max-age=3600`), 404 ohne Thumbnail; eigenes Rate-Limit `IMAGE_RATE_LIMIT` (1200/60 s, #23) |
 | GET / PUT `/nodes/:id/shares` | lesen (read) / Liste ersetzen (`canShare`, ≤ 200, keine Duplikate, unbekannte Ziele 422); Stamm = `{ type: 'everyone', id: '*' }` |
-| GET `/principals?q=` | Freigabe-Ziele (`everyoneLabel` „Stamm“) |
+| GET `/principals?q=` | Freigabe-Ziele (`everyoneLabel` „Stamm“); nur mit `manage-all` oder eigenem Knoten (sonst 403), 60/60 s; Mitglieder nur mit `members.member.view`, E-Mail nur mit `core.users.view` |
 | GET / POST `/nodes/:id/links` | Links auflisten (mit `url`) / anlegen `{ expiresOn, password, mode }` (`canShare` + `files.link.create`; `expiresOn` echtes Datum, nicht vergangen; Upload-Art bei Datei → 422 Pfad `mode`; ≤ 20 aktive je Knoten → 409) |
 | DELETE `/links/:id` | widerrufen (ohne edit 404, edit nur über Freigabe 403) |
 | POST `/nodes/trash` | `{ ids }` in den Papierkorb (edit) |
@@ -233,11 +244,20 @@ Demo: `node scripts/seed-demo-files.mjs` (braucht MinIO).
 - Rate-Limit `content` 300/60 s gilt je IP **über alle Links** plus globaler Bucket (viele Thumbnails können andere Links bremsen).
 - Zugriffstoken `t` steht in der URL (Logs/Verlauf); gültig 15 min.
 - Leere Ordner zählen nicht ins Kontingent.
-- Typ-Allowlist der Core-Storage-Einstellungen ist als Standard in `storage.ts` dupliziert (Module dürfen `$lib/server/*` nicht importieren) – mitpflegen.
-- AVIF und ODF (`odt`/`ods`/`odp`) werden ohne Erweiterung der Allowlist durch Admins abgelehnt.
+- Standard-Allowlist und Endung → Typ stehen **einmal** in `$lib/sdk/content-types.ts` (Core + `files`, 2026-10-21): PDF, Bilder (inkl. AVIF), Text/CSV/
+  Markdown/JSON, ZIP, Word/Excel/PowerPoint inkl. **Vorlagen** (`dot/dotx`, `xlt/xltx`, `pot/potx`, `pps/ppsx`), RTF, OpenDocument inkl. Vorlagen
+  (`ott/ots/otp`). **Makro-Formate** (`docm`, `dotm`, `xlsm` …) bewusst nicht – nur per Einstellung `core.storage.allowedContentTypes`.
 - Ungeprüft: PDF-Einbettung im echten Browser/mobil, echtes S3 bei großen Dateien, öffentlicher Upload mit echtem S3.
 
 ## Dashboard (2026-10-20)
 - `GET /recent?limit=1–20` (Std. 8, `files.file.view`, `recent.endpoints.ts`): eigene und freigegebene **Dateien** (keine Ordner, kein Papierkorb),
   neueste zuerst; `parentId` nur, wenn der Ordner selbst sichtbar ist; `manage-all` sieht hier bewusst **keine** fremden Ablagen.
   Kachel `files:recent`. Test `files-recent.test.ts`.
+
+## Datenauskunft (#30)
+- `subject-export.ts` (Hook `subjectExport` in `module.ts`): Metadaten der eigenen Ablage inkl. Papierkorb (keine Inhalte, keine Speicherpfade), Uploads in fremde Ordner, Freigaben an Konto/Mitglieder, eigene öffentliche Links (Art, Ablauf, `hasPassword`, Zugriffe – **ohne** Token/Hash/`token_enc`). Test `tests/integration/privacy-subject-export.test.ts`.
+
+## Verweise auf `members`, Löschen und Reset (Stand 2026-10-21, Issue #76 10-09)
+- `node_shares` mit `group:`/`member:` (aus `members`, ohne FK): kein `onMemberDeleted`, kein Ereignis beim Löschen einer Gruppe; Reset
+  `members:all` impliziert keinen `files`-Bereich – die Freigaben bleiben stehen und erscheinen als „Unbekannt“ (`describePrincipals`).
+- Benutzerkonten: `onUserDeleted` löscht die Ablage (Recht auf Löschung), `resetUsers` übernimmt sie (siehe `user-deleted.ts`, `reset.ts`).

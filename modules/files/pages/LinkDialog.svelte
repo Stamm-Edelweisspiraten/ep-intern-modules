@@ -34,6 +34,7 @@
 		type LinkMode,
 		type ShareLink
 	} from '../schemas';
+	import { addDays, formatDateDe, todayBerlin } from '$lib/sdk/dates';
 	import { API, errorText, formatDateTime } from './helpers';
 
 	let {
@@ -93,21 +94,11 @@
 	const activeLinks = $derived(links.filter((l) => l.active));
 	const inactiveLinks = $derived(links.filter((l) => !l.active));
 
-	/** Lokales Datum (heute + n Tage) als `YYYY-MM-DD` */
-	function localDate(offsetDays = 0): string {
-		const d = new Date();
-		d.setDate(d.getDate() + offsetDays);
-		const m = String(d.getMonth() + 1).padStart(2, '0');
-		const day = String(d.getDate()).padStart(2, '0');
-		return `${d.getFullYear()}-${m}-${day}`;
-	}
+	/** Heute + n Tage (Europe/Berlin) als `YYYY-MM-DD` */
+	const localDate = (offsetDays = 0): string => addDays(todayBerlin(), offsetDays);
 
 	/** `YYYY-MM-DD` → „TT.MM.JJJJ“ */
-	function formatDate(iso: string | null): string {
-		if (!iso) return '';
-		const [y, m, d] = iso.split('-');
-		return y && m && d ? `${d}.${m}.${y}` : iso;
-	}
+	const formatDate = (iso: string | null): string => formatDateDe(iso);
 
 	function expiresOnValue(): string | null {
 		if (expiry === 'never') return null;
@@ -315,12 +306,7 @@
 					{LINK_MODE_LABELS[l.mode] ?? l.mode}
 				</Badge>
 				{#if status === 'active'}
-					<Badge
-						variant="outline"
-						class="border-green-600/40 text-green-700 dark:border-green-400/40 dark:text-green-400"
-					>
-						Aktiv
-					</Badge>
+					<Badge variant="outline" class="border-success-border text-success">Aktiv</Badge>
 				{:else if status === 'revoked'}
 					<Badge variant="secondary">Widerrufen</Badge>
 				{:else}
@@ -377,7 +363,7 @@
 						</div>
 					</div>
 				{:else}
-					<p class="flex items-start gap-1.5 pt-1 text-xs text-amber-800 dark:text-amber-300">
+					<p class="flex items-start gap-1.5 pt-1 text-xs text-warning">
 						<TriangleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 						Link-Adresse nicht mehr abrufbar – neuen Link erstellen.
 					</p>
@@ -434,7 +420,7 @@
 									type="button"
 									role="radio"
 									aria-checked={mode === m}
-									class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 {mode ===
+									class="flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring {mode ===
 									m
 										? 'border-primary bg-primary/5 ring-1 ring-primary'
 										: ''}"

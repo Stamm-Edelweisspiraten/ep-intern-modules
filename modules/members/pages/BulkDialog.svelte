@@ -6,7 +6,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { STAGES, STAGE_LABELS, type BulkResult, type Group, type Stage } from '../schemas';
+	import { STAGES, STAGE_LABELS, type BulkResult, type GroupRef, type Stage } from '../schemas';
 
 	export type BulkMode = 'add-groups' | 'remove-groups' | 'set-stage' | 'set-consent';
 
@@ -20,7 +20,7 @@
 		open?: boolean;
 		mode: BulkMode;
 		ids: string[];
-		groups: Group[];
+		groups: GroupRef[];
 		ondone: (result: BulkResult) => void;
 	} = $props();
 

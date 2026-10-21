@@ -29,7 +29,7 @@
 {#if error}
 	<p class="text-sm text-destructive" role="alert">{error}</p>
 {:else if !items}
-	<div class="space-y-2" aria-busy="true" aria-label="Lade Verlauf">
+	<div class="space-y-2" aria-busy="true" aria-label="Verlauf lädt …">
 		<Skeleton class="h-8 w-full" />
 		<Skeleton class="h-8 w-full" />
 	</div>

@@ -1,6 +1,16 @@
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, principalKeysFor, type ApiEndpoint } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
+import {
+	type AnyApiEndpoint,
+	core,
+	defineEndpoint,
+	errors,
+	IMAGE_RATE_LIMIT,
+	principalKeysFor,
+	readFormData,
+	rowsOf,
+	takeUpload
+} from '$lib/sdk/server';
+import { requireAccess } from './access';
 import { VARIANT_SPECS, db, fileResponse, filesCtx, removeFiles, variantPath } from './files';
 import {
 	downloadName,
@@ -28,7 +38,7 @@ import {
 
 const tags = ['Modul: galleries'];
 
-export const imagesEndpoints: ApiEndpoint[] = [
+export const imagesEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/galleries/:id/images/bulk',
@@ -73,19 +83,15 @@ export const imagesEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, request }): Promise<GalleryImage> => {
 			const galleryId = params.id;
 			const keys = await principalKeysFor(ctx, MODULE_ID);
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
+			const form = await readFormData(request);
+			// Typ/leer/fehlend → 422, Größe → 413 (#33); den Bildinhalt prüft core.images.process
+			const file = await takeUpload(form, {
+				maxBytes: MAX_IMAGE_BYTES,
+				allowedTypes: IMAGE_CONTENT_TYPES,
+				typesLabel: 'JPEG, PNG, WebP, AVIF oder GIF',
+				detectMissingType: true,
+				sniff: false
 			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const declared = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (declared && !(IMAGE_CONTENT_TYPES as readonly string[]).includes(declared)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (JPEG, PNG, WebP, AVIF oder GIF)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_IMAGE_BYTES) {
-				throw errors.tooLarge('Bild überschreitet das Limit von 25 MB');
-			}
 			const rawDescription = form.get('description');
 			if (rawDescription != null && typeof rawDescription !== 'string') {
 				throw errors.badRequest('Feld "description" muss Text sein');
@@ -103,7 +109,7 @@ export const imagesEndpoints: ApiEndpoint[] = [
 				}
 			});
 
-			const bytes = new Uint8Array(await file.arrayBuffer());
+			const bytes = file.bytes;
 			const processed = await core.images.process(bytes, {
 				variants: VARIANT_SPECS,
 				maxInputBytes: MAX_IMAGE_BYTES
@@ -140,6 +146,10 @@ export const imagesEndpoints: ApiEndpoint[] = [
 			try {
 				row = await db().transaction(async (tx) => {
 					await requireAccess(tx, ctx, galleryId, keys, 'edit');
+					// MAX(position) nur unter Sperre je Galerie (parallele Uploads, #73)
+					await tx.execute(
+						sql`SELECT pg_advisory_xact_lock(hashtext(${'galleries:images:' + galleryId}))`
+					);
 					await tx.execute(
 						sql`INSERT INTO gallery_images (id, gallery_id, description, position, original_name,
 								content_type, width, height, size_bytes, thumb_path, web_path, full_path, uploaded_by)
@@ -229,6 +239,8 @@ export const imagesEndpoints: ApiEndpoint[] = [
 		tags,
 		permission: 'galleries.gallery.view',
 		params: variantParams,
+		// eigenes Kontingent: eine Galerie lädt Hunderte Vorschaubilder (#23)
+		rateLimit: IMAGE_RATE_LIMIT,
 		handler: async ({ ctx, params }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
 			const image = await db().transaction(async (tx) => {
@@ -242,5 +254,5 @@ export const imagesEndpoints: ApiEndpoint[] = [
 					params.variant === 'full' ? downloadName(image.originalName, path) : undefined
 			});
 		}
-	}) as unknown as ApiEndpoint // Enum-Parameter (`variant`) passt nicht zu Record<string, string>
-] as ApiEndpoint[];
+	})
+];

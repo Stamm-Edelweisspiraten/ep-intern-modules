@@ -14,7 +14,13 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Table from '$lib/components/ui/table';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { ConfirmDialog, FormField, NumberStepper } from '$lib/components/layout';
+	import {
+		ConfirmDialog,
+		ErrorState,
+		FormField,
+		NumberStepper,
+		BUSY_SAVE
+	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		ACCOUNT_KIND_LABELS,
@@ -108,13 +114,27 @@
 
 	// --- Einstellungen ---
 	let settings = $state<TreasurySettings | null>(null);
+	let settingsError = $state('');
+	let settingsLoading = $state(false);
 	let saving = $state(false);
 	let errors = $state<Record<string, string>>({});
 
+	/** Ladefehler → kein Formular (Speichern gesperrt), sondern Fehlerzustand mit „Erneut versuchen“ */
+	async function loadSettings() {
+		settingsLoading = true;
+		try {
+			settings = await apiFetch<TreasurySettings>(`${BASE}/settings`);
+			settingsError = '';
+		} catch (err) {
+			settings = null;
+			settingsError = errorMessage(err, 'Kassen-Einstellungen konnten nicht geladen werden');
+		} finally {
+			settingsLoading = false;
+		}
+	}
+
 	$effect(() => {
-		void apiFetch<TreasurySettings>(`${BASE}/settings`)
-			.then((s) => (settings = s))
-			.catch(() => (settings = null));
+		if (perm.settings) void loadSettings();
 	});
 
 	async function saveSettings(e: SubmitEvent) {
@@ -250,6 +270,14 @@
 		</Card.Root>
 	{/if}
 
+	{#if perm.settings && settingsError}
+		<ErrorState
+			title="Kassen-Einstellungen konnten nicht geladen werden"
+			message={settingsError}
+			onretry={loadSettings}
+			busy={settingsLoading}
+		/>
+	{/if}
 	{#if perm.settings && settings}
 		<form class="space-y-6" onsubmit={saveSettings} novalidate>
 			<Card.Root>
@@ -385,7 +413,7 @@
 			</Card.Root>
 			<div class="flex justify-end">
 				<Button type="submit" disabled={saving}
-					>{saving ? 'Speichert …' : 'Einstellungen speichern'}</Button
+					>{saving ? BUSY_SAVE : 'Einstellungen speichern'}</Button
 				>
 			</div>
 		</form>

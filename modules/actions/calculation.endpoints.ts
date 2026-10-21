@@ -1,6 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	type Tx
+} from '$lib/sdk/server';
+import { requireAccess } from './access';
 import { calculate, nightsBetween } from './calculation';
 import { computeSubsidy } from './subsidy';
 import { loadEligibilityParticipants } from './accounting-core';
@@ -23,7 +31,6 @@ import {
 	type LodgingType
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 interface ActionDates {
@@ -172,7 +179,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const loaded = await mdb().transaction(async (tx) => {
+			const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				return loadCalculation(tx, id);
 			});
@@ -195,7 +202,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 			for (const [k, v] of Object.entries(input.checklist ?? {})) {
 				if (validKeys.has(k)) checklist[k] = Boolean(v);
 			}
-			const loaded = await mdb().transaction(async (tx) => {
+			const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await tx.execute(
 					sql`INSERT INTO action_calculations (action_id, participants, team, team_percent, nights,
@@ -249,7 +256,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			return mdb().transaction(async (tx): Promise<CalculationSuggestions> => {
+			return moduleDb(MODULE_ID).transaction(async (tx): Promise<CalculationSuggestions> => {
 				await requireAccess(tx, ctx, id, 'read');
 				const dates = await loadDates(tx, id);
 				const people = await loadEligibilityParticipants(tx, id);
@@ -278,7 +285,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const loaded = await mdb().transaction(async (tx) => {
+			const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				const current = await loadCalculation(tx, id);
 				if (!current.dto.persisted) {
@@ -317,7 +324,7 @@ export const calculationEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const loaded = await mdb().transaction(async (tx) => {
+			const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await tx.execute(
 					sql`UPDATE actions SET fee_cents = NULL, team_fee_cents = NULL, fee_applied_at = NULL,

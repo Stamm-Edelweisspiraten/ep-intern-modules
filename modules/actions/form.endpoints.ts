@@ -1,14 +1,32 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { todayBerlin } from '$lib/sdk/dates';
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	isUniqueViolation,
+	logBestEffort,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	toIsoOrNull,
+	type Tx
+} from '$lib/sdk/server';
 import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
 import type { FormDefinition, FormValues } from '$lib/forms/types';
 import type { LinkedMemberData, MembersService } from '$lib/modules/members/contract';
 import type { TreasuryService } from '$lib/modules/treasury/contract';
-import { requireAccess, rowsOf } from './access';
+import { requireAccess } from './access';
+import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
+import { notifyTreasury } from './treasury-sync';
+import { canSeeHealth, healthColumns, readHealth } from './health';
+import { globalPrivacyUrl, purgeMailCounters, takeMailQuota } from './public-mail';
 import {
+	OPTIN_VALID_DAYS,
 	STATUS_CONFLICT_MESSAGES,
 	buildConfirmationMail,
+	buildOptInMail,
 	buildDefaultFormDefinition,
 	computeFormStatus,
 	identityValues,
@@ -28,12 +46,14 @@ import {
 import {
 	DEFAULT_DISCLAIMER_TEMPLATE,
 	DIET_LABELS,
+	FORM_CONFIRM_PREFIX,
 	FORM_PUBLIC_PREFIX,
 	MODULE_ID,
 	PARTICIPANT_ROLE_LABELS,
 	STANDARD_FORM_KEYS as K,
 	formConfigInput,
 	idParams,
+	publicConfirmInput,
 	publicSubmitInput,
 	publicTokenParams,
 	type AppliedFee,
@@ -41,13 +61,13 @@ import {
 	type FormConfig,
 	type FormConfigInput,
 	type ParticipantRole,
+	type PublicConfirmResult,
 	type PublicForm,
 	type PublicMemberOption,
 	type PublicSubmitInput,
 	type PublicSubmitResult
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 const SETTING_KEYS = [
@@ -59,7 +79,6 @@ const SETTING_KEYS = [
 ];
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
-const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
 const newToken = () => randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 
 // --- Laden ------------------------------------------------------------------
@@ -122,16 +141,16 @@ async function loadAction(tx: Tx, id: string): Promise<ActionRow> {
 		endsOn: str(a.ends_on),
 		feeCents: a.fee_cents == null ? null : Number(a.fee_cents),
 		teamFeeCents: a.team_fee_cents == null ? null : Number(a.team_fee_cents),
-		feeAppliedAt: iso(a.fee_applied_at)
+		feeAppliedAt: toIsoOrNull(a.fee_applied_at)
 	};
 }
 
 function toFormRow(r: Record<string, unknown>): FormRow {
 	return {
-		token: String(r.token),
+		token: storedToken(r) ?? '',
 		enabled: Boolean(r.enabled),
-		opensAt: iso(r.opens_at),
-		closesAt: iso(r.closes_at),
+		opensAt: toIsoOrNull(r.opens_at),
+		closesAt: toIsoOrNull(r.closes_at),
 		maxParticipants: r.max_participants == null ? null : Number(r.max_participants),
 		intro: str(r.intro),
 		disclaimerTemplate: String(r.disclaimer_template ?? ''),
@@ -169,7 +188,8 @@ async function readSettings() {
 	try {
 		const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
 		treasuryBank = treasury ? await treasury.bankData() : null;
-	} catch {
+	} catch (e) {
+		logBestEffort('actions.form.treasury-bank-data', e);
 		treasuryBank = null;
 	}
 	return {
@@ -182,6 +202,9 @@ async function readSettings() {
 }
 
 type BankSettings = Awaited<ReturnType<typeof readSettings>>;
+
+const PRIVACY_URL_REQUIRED =
+	'Für ein aktives Anmeldeformular ist ein Link zur Datenschutzerklärung Pflicht.';
 
 const disclaimerFor = (a: ActionRow, template: string, bank: BankSettings) =>
 	renderDisclaimer(template, { aktion: a.name, feeCents: a.feeCents, ...bank });
@@ -206,8 +229,8 @@ function toConfig(l: Loaded, bank: BankSettings): FormConfig {
 	};
 	return {
 		persisted: !!f,
-		token: f?.token ?? null,
-		publicPath: f ? `${FORM_PUBLIC_PREFIX}/${f.token}` : null,
+		token: f?.token || null,
+		publicPath: f?.token ? `${FORM_PUBLIC_PREFIX}/${f.token}` : null,
 		...base,
 		intro: f?.intro ?? null,
 		disclaimerTemplate: template,
@@ -227,7 +250,7 @@ async function configFor(
 	need: 'read' | 'edit',
 	mutate?: (tx: Tx) => Promise<void>
 ) {
-	const loaded = await mdb().transaction(async (tx) => {
+	const loaded = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		await requireAccess(tx, ctx, id, need);
 		if (mutate) await mutate(tx);
 		return loadById(tx, id);
@@ -243,7 +266,7 @@ async function loadByToken(
 	tx: Tx,
 	token: string
 ): Promise<(Loaded & { form: FormRow; id: string }) | null> {
-	const [row] = await rowsOf(tx, sql`SELECT * FROM action_forms WHERE token = ${token}`);
+	const [row] = await rowsOf(tx, sql`SELECT * FROM action_forms WHERE ${tokenMatchSql(token)}`);
 	if (!row || !row.enabled) return null;
 	const id = String(row.action_id);
 	const action = await loadAction(tx, id);
@@ -254,13 +277,15 @@ function toPublicForm(
 	l: Loaded & { form: FormRow },
 	bank: BankSettings,
 	viewer: PublicForm['viewer'] = null,
-	members: PublicMemberOption[] = []
+	members: PublicMemberOption[] = [],
+	fallbackPrivacyUrl: string | null = null
 ): PublicForm {
 	const disclaimer = disclaimerFor(
 		l.action,
 		l.form.disclaimerTemplate || DEFAULT_DISCLAIMER_TEMPLATE,
 		bank
 	);
+	const privacyUrl = l.form.privacyUrl ?? fallbackPrivacyUrl;
 	return {
 		actionName: l.action.name,
 		location: l.action.location,
@@ -270,12 +295,9 @@ function toPublicForm(
 		status: computeFormStatus(l.form, l.participantCount),
 		opensAt: l.form.opensAt,
 		closesAt: l.form.closesAt,
-		definition: toPublicDefinition(l.form.definition, {
-			privacyUrl: l.form.privacyUrl,
-			disclaimer
-		}),
+		definition: toPublicDefinition(l.form.definition, { privacyUrl, disclaimer }),
 		disclaimer,
-		privacyUrl: l.form.privacyUrl,
+		privacyUrl,
 		requireLogin: l.form.requireLogin,
 		viewer,
 		members
@@ -304,7 +326,7 @@ async function memberOptions(
 	if (!ctx.userId) return [];
 	const linked = await (await membersService()).listLinkedMembers(ctx);
 	if (!linked.length) return [];
-	const registered = await mdb().transaction((tx) =>
+	const registered = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT member_id FROM action_participants WHERE action_id = ${actionId}
@@ -324,18 +346,290 @@ async function memberOptions(
 }
 
 const DUPLICATE = 'Für diese Person liegt bereits eine Anmeldung vor.';
+const DAILY_LIMIT =
+	'Über diesen Link sind heute sehr viele Anmeldungen eingegangen. Bitte versuche es morgen erneut oder wende dich an die Leitung.';
+const OPTIN_MAIL_FAILED =
+	'Die Bestätigungs-E-Mail konnte nicht versendet werden. Bitte versuche es später erneut oder wende dich an die Leitung.';
+const CONFIRM_INVALID =
+	'Der Bestätigungslink ist ungültig, abgelaufen oder wurde bereits verwendet.';
 
-function isUniqueViolation(e: unknown): boolean {
-	const err = e as { code?: string; cause?: { code?: string }; message?: string };
-	return (
-		err?.code === '23505' ||
-		err?.cause?.code === '23505' ||
-		/duplicate key|unique constraint/i.test(String(err?.message ?? ''))
+/** Spaltenwerte einer neuen Teilnehmer*in (Anmeldelink; bei Double-Opt-in verschlüsselt zwischengespeichert) */
+interface ParticipantInsert {
+	id: string;
+	name: string;
+	groupLabel: string | null;
+	birthDate: string | null;
+	bremenResident: boolean | null;
+	juleica: boolean;
+	diet: string | null;
+	allergies: string | null;
+	notes: string | null;
+	answers: string;
+	healthAnswers: string | null;
+	consentAt: string;
+	email: string | null;
+	dedupeKey: string | null;
+	memberId: string | null;
+	userId: string | null;
+}
+
+const crypt = () => core.crypto.forModule(MODULE_ID);
+const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+
+async function hasDuplicate(tx: Tx, actionId: string, dedupeKey: string): Promise<boolean> {
+	const dup = await rowsOf(
+		tx,
+		sql`SELECT 1 AS x FROM action_participants WHERE action_id = ${actionId}
+			AND birth_date IS NOT NULL
+			AND lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) || '|' ||
+				to_char(birth_date, 'YYYY-MM-DD') = ${dedupeKey}
+			LIMIT 1`
 	);
+	return dup.length > 0;
+}
+
+/** Plätze und Duplikate unter Sperre der Aktion prüfen (gleichzeitige Anmeldungen serialisiert) */
+async function lockAndCheck(
+	tx: Tx,
+	actionId: string,
+	maxParticipants: number | null,
+	dedupeKey: string | null
+): Promise<void> {
+	await tx.execute(sql`SELECT id FROM actions WHERE id = ${actionId} FOR UPDATE`);
+	const { participantCount } = await counts(tx, actionId);
+	if (maxParticipants != null && participantCount >= maxParticipants) {
+		throw errors.conflict(STATUS_CONFLICT_MESSAGES.full);
+	}
+	if (dedupeKey && (await hasDuplicate(tx, actionId, dedupeKey))) {
+		throw errors.conflict(DUPLICATE);
+	}
+}
+
+/** Teilnehmer*in anlegen (mit Plätze-/Duplikatprüfung); `extra` läuft in derselben Transaktion */
+async function insertParticipant(
+	actionId: string,
+	maxParticipants: number | null,
+	p: ParticipantInsert,
+	extra?: (tx: Tx) => Promise<void>
+): Promise<void> {
+	try {
+		await moduleDb(MODULE_ID).transaction(async (tx) => {
+			await lockAndCheck(tx, actionId, maxParticipants, p.dedupeKey);
+			await tx.execute(
+				sql`INSERT INTO action_participants (id, action_id, name, group_label, birth_date,
+						bremen_resident, role, juleica, diet, allergies, notes, answers, source,
+						consent_accepted_at, contact_email, dedupe_key, member_id, user_id, health_answers)
+					VALUES (${p.id}, ${actionId}, ${p.name}, ${p.groupLabel}, ${p.birthDate},
+						${p.bremenResident}, 'participant', ${p.juleica}, ${p.diet}, ${p.allergies}, ${p.notes},
+						${p.answers}::jsonb, 'link', ${p.consentAt}, ${p.email}, ${p.dedupeKey},
+						${p.memberId}, ${p.userId}, ${p.healthAnswers})`
+			);
+			if (extra) await extra(tx);
+		});
+	} catch (e) {
+		if (isUniqueViolation(e)) throw errors.conflict(DUPLICATE);
+		throw e;
+	}
+}
+
+/**
+ * Anmeldebestätigung nach dem Anlegen (an bestätigte bzw. aus dem Konto/Mitglied stammende
+ * Adressen). Kasse aktiv: Rechnung als PDF anhängen. Ohne Adresse: Kasse nur abgleichen.
+ */
+async function sendConfirmation(
+	actionId: string,
+	action: ActionRow,
+	p: ParticipantInsert,
+	disclaimer: string
+): Promise<boolean> {
+	if (!p.email) {
+		await notifyTreasury(null, actionId);
+		return false;
+	}
+	let invoice: Awaited<ReturnType<TreasuryService['invoiceForRegistration']>> = null;
+	try {
+		const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
+		invoice = treasury ? await treasury.invoiceForRegistration(actionId, p.id) : null;
+	} catch (e) {
+		logBestEffort('actions.form.registration-invoice', e, { target: actionId });
+	}
+	try {
+		const mail = buildConfirmationMail({
+			actionName: action.name,
+			name: p.name,
+			groupLabel: p.groupLabel,
+			birthDate: p.birthDate,
+			disclaimer,
+			invoice
+		});
+		await core.mail.send({
+			to: p.email,
+			...mail,
+			...(invoice
+				? {
+						attachments: [
+							{ filename: invoice.filename, contentType: invoice.contentType, data: invoice.data }
+						]
+					}
+				: {})
+		});
+		return true;
+	} catch (e) {
+		logBestEffort('actions.form.confirmation-mail', e, { target: actionId });
+		return false;
+	}
+}
+
+async function auditPublic(
+	ctx: RequestContext,
+	action: string,
+	target: string,
+	metadata: Record<string, unknown>
+): Promise<void> {
+	try {
+		await core.audit.log({
+			action,
+			actor: { type: 'system', id: 'public-form', name: 'Anmeldeformular' },
+			target,
+			ip: ctx.ip,
+			requestId: ctx.requestId,
+			metadata
+		});
+	} catch (e) {
+		// Audit-Fehler dürfen die Anmeldung nicht verwerfen
+		logBestEffort('actions.form.audit', e, { ctx, target });
+	}
+}
+
+/**
+ * Anmeldung ohne Konto (Double-Opt-in, Issue #17): Angaben verschlüsselt zwischenspeichern und nur
+ * eine Bitte um Bestätigung ohne Formularinhalte an die angegebene Adresse senden. Teilnehmer*in,
+ * Rechnung und Anmeldebestätigung entstehen erst mit der Bestätigung (`confirmRegistration`).
+ */
+async function submitPending(
+	ctx: RequestContext,
+	loaded: Loaded & { form: FormRow; id: string },
+	p: ParticipantInsert,
+	disclaimer: string
+): Promise<PublicSubmitResult> {
+	if (!p.email) throw errors.validation({ [K.email]: 'Bitte eine E-Mail-Adresse angeben' });
+	const token = randomBytes(32).toString('hex');
+	const pendingId = randomUUID();
+	const payload = crypt().encrypt(JSON.stringify(p));
+	await moduleDb(MODULE_ID).transaction(async (tx) => {
+		await lockAndCheck(tx, loaded.id, loaded.form.maxParticipants, p.dedupeKey);
+		if (!(await takeMailQuota(tx, loaded.id, 'registration-optin'))) {
+			throw errors.conflict(DAILY_LIMIT);
+		}
+		await tx.execute(
+			sql`INSERT INTO pending_registrations (id, action_id, token_hash, payload, dedupe_key, expires_at)
+				VALUES (${pendingId}, ${loaded.id}, ${hashToken(token)}, ${payload}, ${p.dedupeKey},
+					now() + (${OPTIN_VALID_DAYS} * interval '1 day'))`
+		);
+	});
+	try {
+		await core.mail.send({
+			to: p.email,
+			...buildOptInMail({
+				actionName: loaded.action.name,
+				startsOn: loaded.action.startsOn,
+				endsOn: loaded.action.endsOn,
+				confirmUrl: `${core.app.origin()}${FORM_CONFIRM_PREFIX}/${token}`
+			})
+		});
+	} catch (e) {
+		logBestEffort('actions.form.optin-mail', e, { ctx, target: loaded.id });
+		// Ohne Mail lässt sich die Anmeldung nie bestätigen → verwerfen und ehrlich melden
+		await moduleDb(MODULE_ID)
+			.transaction((tx) =>
+				tx.execute(sql`DELETE FROM pending_registrations WHERE id = ${pendingId}`)
+			)
+			.catch((err) => logBestEffort('actions.form.pending-drop', err, { ctx, target: pendingId }));
+		throw errors.unavailable(OPTIN_MAIL_FAILED);
+	}
+	await auditPublic(ctx, 'actions.registration.pending', pendingId, {
+		actionId: loaded.id,
+		pendingId
+	});
+	return { name: p.name, emailSent: true, disclaimer, confirmationRequired: true };
+}
+
+/** Bestätigung über den Link aus der Mail: Teilnehmer*in anlegen, dann Anmeldebestätigung senden */
+async function confirmRegistration(
+	ctx: RequestContext,
+	token: string
+): Promise<PublicConfirmResult> {
+	const found = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const [r] = await rowsOf(
+			tx,
+			sql`SELECT p.id, p.action_id, p.payload, f.max_participants, f.disclaimer_template
+				FROM pending_registrations p LEFT JOIN action_forms f ON f.action_id = p.action_id
+				WHERE p.token_hash = ${hashToken(token)} AND p.expires_at > now()`
+		);
+		if (!r) return null;
+		return {
+			pendingId: String(r.id),
+			actionId: String(r.action_id),
+			payload: String(r.payload),
+			maxParticipants: r.max_participants == null ? null : Number(r.max_participants),
+			template: String(r.disclaimer_template ?? ''),
+			action: await loadAction(tx, String(r.action_id))
+		};
+	});
+	if (!found) throw errors.notFound(CONFIRM_INVALID);
+	const drop = () =>
+		moduleDb(MODULE_ID)
+			.transaction((tx) =>
+				tx.execute(sql`DELETE FROM pending_registrations WHERE id = ${found.pendingId}`)
+			)
+			.catch((err) =>
+				logBestEffort('actions.form.pending-drop', err, { ctx, target: found.pendingId })
+			);
+	let p: ParticipantInsert;
+	try {
+		p = JSON.parse(crypt().decrypt(found.payload)) as ParticipantInsert;
+	} catch {
+		await drop();
+		throw errors.notFound(CONFIRM_INVALID);
+	}
+	try {
+		await insertParticipant(found.actionId, found.maxParticipants, p, async (tx) => {
+			await tx.execute(sql`DELETE FROM pending_registrations WHERE id = ${found.pendingId}`);
+		});
+	} catch (e) {
+		// Voll oder bereits angemeldet: Bestätigung kann nie mehr gelingen → Zwischenstand löschen
+		if ((e as { status?: number }).status === 409) await drop();
+		throw e;
+	}
+	const disclaimer = disclaimerFor(
+		found.action,
+		found.template || DEFAULT_DISCLAIMER_TEMPLATE,
+		await readSettings()
+	);
+	const emailSent = await sendConfirmation(found.actionId, found.action, p, disclaimer);
+	await auditPublic(ctx, 'actions.registration.submitted', p.id, {
+		actionId: found.actionId,
+		participantId: p.id,
+		emailSent,
+		memberLinked: false,
+		confirmed: true
+	});
+	return { actionName: found.action.name, name: p.name, emailSent, disclaimer };
+}
+
+/** Abgelaufene unbestätigte Anmeldungen und alte Mail-Zähler löschen (stündlicher Job) */
+export async function purgeExpiredRegistrations(): Promise<{ deleted: number }> {
+	return moduleDb(MODULE_ID).transaction(async (tx) => {
+		const res = (await tx.execute(
+			sql`DELETE FROM pending_registrations WHERE expires_at <= now() RETURNING id`
+		)) as unknown as { rows: unknown[] };
+		await purgeMailCounters(tx);
+		return { deleted: res.rows.length };
+	});
 }
 
 async function submit(ctx: RequestContext, token: string, input: PublicSubmitInput) {
-	const loaded = await mdb().transaction((tx) => loadByToken(tx, token));
+	const loaded = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token));
 	if (!loaded) throw errors.notFound(NOT_AVAILABLE);
 	const bank = await readSettings();
 	const { form, action } = loaded;
@@ -351,7 +645,8 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 		const fake: PublicSubmitResult = {
 			name: typeof n === 'string' ? n.trim().slice(0, 150) : '',
 			emailSent: true,
-			disclaimer
+			disclaimer,
+			...(input.memberId ? {} : { confirmationRequired: true })
 		};
 		return fake;
 	}
@@ -387,52 +682,42 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 	const has = (key: string) => def.fields.some((f) => f.key === key);
 	if (has(K.name) && !m.name) errs[K.name] = 'Bitte einen Namen angeben';
 	if (has(K.birthDate) && m.birthDate) {
-		const today = new Date().toISOString().slice(0, 10);
+		const today = todayBerlin();
 		if (!isPlausibleBirthDate(m.birthDate, today))
 			errs[K.birthDate] = 'Bitte ein gültiges Geburtsdatum angeben';
 	}
-	if (has(K.privacy) && values[K.privacy] !== true) errs[K.privacy] = 'Bitte zustimmen';
-	if (has(K.disclaimer) && values[K.disclaimer] !== true) errs[K.disclaimer] = 'Bitte zustimmen';
+	// Datenschutz-Einwilligung und Disclaimer sind immer Pflicht (nicht abschaltbar, Issue #28)
+	if (values[K.privacy] !== true) errs[K.privacy] = 'Bitte zustimmen';
+	if (values[K.disclaimer] !== true) errs[K.disclaimer] = 'Bitte zustimmen';
 	if (Object.keys(errs).length) throw errors.validation(errs);
-	const consent = has(K.privacy) || has(K.disclaimer);
 
 	const dedupeKey = m.birthDate ? normalizeDedupeKey(m.name, m.birthDate) : null;
-	const participantId = randomUUID();
+	// Gesundheitsdaten verschlüsselt, gesundheitsbezogene Antworten getrennt (`health.ts`)
+	const h = healthColumns(m, def.fields);
+	const p: ParticipantInsert = {
+		id: randomUUID(),
+		name: m.name,
+		groupLabel: m.groupLabel,
+		birthDate: m.birthDate,
+		bremenResident: m.bremenResident,
+		juleica: member?.custom.juleica === true,
+		diet: h.diet,
+		allergies: h.allergies,
+		notes: h.notes,
+		answers: h.answers,
+		healthAnswers: h.healthAnswers,
+		consentAt: new Date().toISOString(),
+		email: m.email,
+		dedupeKey,
+		memberId: member?.id ?? null,
+		userId: member ? ctx.userId : null
+	};
 
-	try {
-		await mdb().transaction(async (tx) => {
-			// Serialisiert gleichzeitige Anmeldungen derselben Aktion (Plätze + Duplikate)
-			await tx.execute(sql`SELECT id FROM actions WHERE id = ${loaded.id} FOR UPDATE`);
-			const { participantCount } = await counts(tx, loaded.id);
-			if (form.maxParticipants != null && participantCount >= form.maxParticipants) {
-				throw errors.conflict(STATUS_CONFLICT_MESSAGES.full);
-			}
-			if (dedupeKey) {
-				const dup = await rowsOf(
-					tx,
-					sql`SELECT 1 AS x FROM action_participants WHERE action_id = ${loaded.id}
-						AND birth_date IS NOT NULL
-						AND lower(regexp_replace(btrim(name), '\\s+', ' ', 'g')) || '|' ||
-							to_char(birth_date, 'YYYY-MM-DD') = ${dedupeKey}
-						LIMIT 1`
-				);
-				if (dup.length) throw errors.conflict(DUPLICATE);
-			}
-			await tx.execute(
-				sql`INSERT INTO action_participants (id, action_id, name, group_label, birth_date,
-						bremen_resident, role, juleica, diet, allergies, notes, answers, source,
-						consent_accepted_at, contact_email, dedupe_key, member_id, user_id)
-					VALUES (${participantId}, ${loaded.id}, ${m.name}, ${m.groupLabel}, ${m.birthDate},
-						${m.bremenResident}, 'participant', ${member?.custom.juleica === true}, ${m.diet}, ${m.allergies}, ${m.notes},
-						${JSON.stringify(m.answers)}::jsonb, 'link',
-						${consent ? new Date().toISOString() : null}, ${m.email}, ${dedupeKey},
-						${member?.id ?? null}, ${member ? ctx.userId : null})`
-			);
-		});
-	} catch (e) {
-		if (isUniqueViolation(e)) throw errors.conflict(DUPLICATE);
-		throw e;
-	}
+	// Ohne Konto/Mitglied: unbestätigte Adresse → Double-Opt-in (keine Rechnung, kein Freitext)
+	if (!member) return submitPending(ctx, loaded, p, disclaimer);
+
+	await insertParticipant(loaded.id, form.maxParticipants, p);
+	const participantId = p.id;
 
 	// Core-/Modul-Dienste erst nach der Transaktion
 	let memberUpdated: boolean | undefined;
@@ -447,57 +732,19 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 				? await svc.updateMemberFields(ctx, member.id, updates)
 				: [];
 			memberUpdated = changed.length > 0;
-		} catch {
+		} catch (e) {
+			logBestEffort('actions.form.member-writeback', e, { ctx, target: member.id });
 			memberUpdated = false;
 		}
 	}
-	let emailSent = false;
-	if (m.email) {
-		// Kasse aktiv: Rechnung als PDF an die Bestätigung hängen (Fehler verhindern die Mail nicht)
-		let invoice: Awaited<ReturnType<TreasuryService['invoiceForRegistration']>> = null;
-		try {
-			const treasury = await core.modules.useOptional<TreasuryService>('treasury', MODULE_ID);
-			invoice = treasury ? await treasury.invoiceForRegistration(loaded.id, participantId) : null;
-		} catch (e) {
-			console.error('[actions] Rechnung zur Anmeldung nicht erstellt:', e);
-		}
-		try {
-			const mail = buildConfirmationMail({
-				actionName: action.name,
-				name: m.name,
-				groupLabel: m.groupLabel,
-				birthDate: m.birthDate,
-				disclaimer,
-				invoice
-			});
-			await core.mail.send({
-				to: m.email,
-				...mail,
-				...(invoice
-					? {
-							attachments: [
-								{ filename: invoice.filename, contentType: invoice.contentType, data: invoice.data }
-							]
-						}
-					: {})
-			});
-			emailSent = true;
-		} catch {
-			emailSent = false;
-		}
-	}
-	try {
-		await core.audit.log({
-			action: 'actions.registration.submitted',
-			actor: { type: 'system', id: 'public-form', name: 'Anmeldeformular' },
-			target: participantId,
-			ip: ctx.ip,
-			requestId: ctx.requestId,
-			metadata: { actionId: loaded.id, participantId, emailSent, memberLinked: !!member }
-		});
-	} catch {
-		/* Audit-Fehler dürfen die Anmeldung nicht verwerfen */
-	}
+	// Adresse aus Mitglied/Konto: Anmeldebestätigung (ggf. mit Rechnung) direkt
+	const emailSent = await sendConfirmation(loaded.id, action, p, disclaimer);
+	await auditPublic(ctx, 'actions.registration.submitted', participantId, {
+		actionId: loaded.id,
+		participantId,
+		emailSent,
+		memberLinked: true
+	});
 	const result: PublicSubmitResult = { name: m.name, emailSent, disclaimer, memberUpdated };
 	return result;
 }
@@ -518,6 +765,8 @@ const CSV_COLUMNS: CsvColumn[] = [
 	{ key: 'source', label: 'Quelle' },
 	{ key: 'createdAt', label: 'Angemeldet am' }
 ];
+
+const CSV_HEALTH_KEYS = new Set(['diet', 'allergies', 'notes']);
 
 const yesNo = (v: unknown) => (v == null ? '' : v ? 'Ja' : 'Nein');
 
@@ -543,12 +792,17 @@ export const formEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const input = body as FormConfigInput;
 			const definition = mergeStandardFields(input.definition);
+			// Aktives Formular nur mit Datenschutzhinweis (eigener Link oder globale Einstellung)
+			if (input.enabled && !input.privacyUrl && !(await globalPrivacyUrl())) {
+				throw errors.validation({ privacyUrl: PRIVACY_URL_REQUIRED }, PRIVACY_URL_REQUIRED);
+			}
+			const fresh = linkTokenValues(newToken());
 			const config = await configFor(ctx, id, 'edit', async (tx) => {
 				await tx.execute(
-					sql`INSERT INTO action_forms (action_id, token, enabled, opens_at, closes_at,
+					sql`INSERT INTO action_forms (action_id, token_hash, token_enc, enabled, opens_at, closes_at,
 							max_participants, definition, intro, disclaimer_template, privacy_url,
 							require_login, updated_by, updated_at)
-						VALUES (${id}, ${newToken()}, ${input.enabled}, ${input.opensAt}, ${input.closesAt},
+						VALUES (${id}, ${fresh.hash}, ${fresh.enc}, ${input.enabled}, ${input.opensAt}, ${input.closesAt},
 							${input.maxParticipants}, ${JSON.stringify(definition)}::jsonb, ${input.intro},
 							${input.disclaimerTemplate}, ${input.privacyUrl}, ${input.requireLogin}, ${ctx.userId}, now())
 						ON CONFLICT (action_id) DO UPDATE SET enabled = EXCLUDED.enabled,
@@ -580,9 +834,11 @@ export const formEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
+			const fresh = linkTokenValues(newToken());
 			const config = await configFor(ctx, id, 'edit', async (tx) => {
 				const res = (await tx.execute(
-					sql`UPDATE action_forms SET token = ${newToken()}, updated_by = ${ctx.userId},
+					sql`UPDATE action_forms SET token = NULL, token_hash = ${fresh.hash},
+							token_enc = ${fresh.enc}, updated_by = ${ctx.userId},
 							updated_at = now() WHERE action_id = ${id} RETURNING action_id`
 				)) as unknown as { rows: unknown[] };
 				if (!res.rows.length)
@@ -603,7 +859,7 @@ export const formEndpoints: ApiEndpoint[] = [
 		permission: 'actions.action.view',
 		params: idParams,
 		handler: async ({ ctx, params }) => {
-			await mdb().transaction((tx) =>
+			await moduleDb(MODULE_ID).transaction((tx) =>
 				requireAccess(tx, ctx, (params as { id: string }).id, 'edit')
 			);
 			return { fields: await (await membersService()).listFieldDefinitions() };
@@ -618,7 +874,9 @@ export const formEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const { name, rows } = await mdb().transaction(async (tx) => {
+			// Gesundheitsspalten nur mit Sonderrecht (sonst fehlen sie ganz)
+			const withHealth = canSeeHealth(ctx);
+			const { name, rows } = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const action = await loadAction(tx, id);
 				const list = await rowsOf(
@@ -630,26 +888,36 @@ export const formEndpoints: ApiEndpoint[] = [
 				);
 				return { name: action.name, rows: list };
 			});
+			const columns = withHealth
+				? CSV_COLUMNS
+				: CSV_COLUMNS.filter((c) => !CSV_HEALTH_KEYS.has(c.key));
 			const csv = toCsv(
-				rows.map((r) => ({
-					name: r.name,
-					group: r.group_label,
-					birthDate: r.birth_date,
-					bremen: yesNo(r.bremen_resident),
-					role: PARTICIPANT_ROLE_LABELS[String(r.role) as ParticipantRole] ?? String(r.role),
-					juleica: yesNo(r.juleica),
-					diet: r.diet ? (DIET_LABELS[String(r.diet) as Diet] ?? String(r.diet)) : '',
-					allergies: r.allergies,
-					notes: r.notes,
-					email: r.contact_email,
-					source: String(r.source) === 'link' ? 'Link' : 'Manuell',
-					createdAt: iso(r.created_at)?.slice(0, 16).replace('T', ' ')
-				})),
-				CSV_COLUMNS
+				rows.map((r) => {
+					const h = withHealth ? readHealth(r) : null;
+					return {
+						name: r.name,
+						group: r.group_label,
+						birthDate: r.birth_date,
+						bremen: yesNo(r.bremen_resident),
+						role: PARTICIPANT_ROLE_LABELS[String(r.role) as ParticipantRole] ?? String(r.role),
+						juleica: yesNo(r.juleica),
+						...(h
+							? {
+									diet: h.diet ? (DIET_LABELS[h.diet as Diet] ?? h.diet) : '',
+									allergies: h.allergies,
+									notes: h.notes
+								}
+							: {}),
+						email: r.contact_email,
+						source: String(r.source) === 'link' ? 'Link' : 'Manuell',
+						createdAt: toIsoOrNull(r.created_at)?.slice(0, 16).replace('T', ' ')
+					};
+				}),
+				columns
 			);
 			await core.audit.logFromContext(ctx, 'actions.participants.exported', {
 				target: id,
-				metadata: { actionId: id, count: rows.length }
+				metadata: { actionId: id, count: rows.length, withHealth }
 			});
 			return new Response(csv, {
 				status: 200,
@@ -672,11 +940,11 @@ export const formEndpoints: ApiEndpoint[] = [
 		params: publicTokenParams,
 		handler: async ({ ctx, params }) => {
 			const { token } = params as { token: string };
-			const loaded = await mdb().transaction((tx) => loadByToken(tx, token));
+			const loaded = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token));
 			if (!loaded) throw errors.notFound(NOT_AVAILABLE);
 			const viewer = ctx.userId ? { name: ctx.actor.name } : null;
 			const members = await memberOptions(ctx, loaded.id, loaded.form.definition);
-			return toPublicForm(loaded, await readSettings(), viewer, members);
+			return toPublicForm(loaded, await readSettings(), viewer, members, await globalPrivacyUrl());
 		}
 	} as ApiEndpoint,
 	{
@@ -691,5 +959,18 @@ export const formEndpoints: ApiEndpoint[] = [
 		body: publicSubmitInput,
 		handler: async ({ ctx, params, body }) =>
 			submit(ctx, (params as { token: string }).token, body as PublicSubmitInput)
+	} as ApiEndpoint,
+	{
+		method: 'POST',
+		path: '/public/registrations/:token/confirm',
+		summary: 'Anmeldung über den Link aus der Bestätigungs-E-Mail bestätigen',
+		tags: TAGS,
+		permission: null,
+		public: true,
+		rateLimit: { limit: 10, windowSec: 600 },
+		params: publicTokenParams,
+		body: publicConfirmInput,
+		handler: async ({ ctx, params }) =>
+			confirmRegistration(ctx, (params as { token: string }).token)
 	} as ApiEndpoint
 ];

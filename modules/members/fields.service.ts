@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	type Row,
+	rowsOf,
+	type Tx
+} from '$lib/sdk/server';
 import {
 	formDefinitionSchema,
 	validateFormValues,
@@ -22,19 +30,12 @@ import {
 	type MemberFieldDef
 } from './schemas';
 
-type Row = Record<string, unknown>;
-const mdb = () => core.database.forModule(MODULE_ID);
-
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
-
 const parseJson = <T>(v: unknown): T => (typeof v === 'string' ? JSON.parse(v) : (v as T));
 
 // --- Definitionen -------------------------------------------------------------
 
 export async function loadFieldDefs(tx: Tx): Promise<MemberFieldDef[]> {
-	const found = await rows(
+	const found = await rowsOf(
 		tx,
 		sql`SELECT key, active, preset, definition FROM member_field_defs ORDER BY position, key`
 	);
@@ -46,7 +47,8 @@ export async function loadFieldDefs(tx: Tx): Promise<MemberFieldDef[]> {
 	}));
 }
 
-export const listFieldDefs = (): Promise<MemberFieldDef[]> => mdb().transaction(loadFieldDefs);
+export const listFieldDefs = (): Promise<MemberFieldDef[]> =>
+	moduleDb(MODULE_ID).transaction(loadFieldDefs);
 
 export async function listFieldDefinitions(): Promise<MemberFieldDefinition[]> {
 	return (await listFieldDefs())
@@ -92,7 +94,7 @@ export async function putFieldDefs(
 	}
 	if (fields.length > MEMBER_FIELDS_MAX) throw errors.validation({ fields: 'Zu viele Felder' });
 
-	const result = await mdb().transaction(async (tx) => {
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const current = await loadFieldDefs(tx);
 		for (const d of current.filter((c) => c.preset)) {
 			const next = fields.find((f) => f.key === d.key)!;
@@ -176,7 +178,7 @@ export function mergeCustom(
 // --- Dienst für abhängige Module (Aktionen) ---------------------------------
 
 async function linkedRows(tx: Tx, userId: string, memberId?: string): Promise<Row[]> {
-	return rows(
+	return rowsOf(
 		tx,
 		memberId
 			? sql`SELECT m.id, m.first_name, m.last_name, m.scout_name, to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date,
@@ -197,7 +199,7 @@ export async function loadMailOptOut(
 ): Promise<Map<string, MailCategory[]>> {
 	const out = new Map<string, MailCategory[]>();
 	if (!memberIds.length) return out;
-	const found = await rows(
+	const found = await rowsOf(
 		tx,
 		sql`SELECT member_id, category FROM member_mail_prefs
 			WHERE enabled = false AND member_id IN (${sql.join(
@@ -218,16 +220,16 @@ async function toLinked(tx: Tx, list: Row[]): Promise<LinkedMemberData[]> {
 		list.map((r) => sql`${r.id as string}`),
 		sql`, `
 	);
-	const groups = await rows(
+	const groups = await rowsOf(
 		tx,
 		sql`SELECT mg.member_id, g.id, g.name FROM member_groups mg JOIN groups g ON g.id = mg.group_id
 			WHERE mg.member_id IN (${ids}) ORDER BY g.name`
 	);
-	const emails = await rows(
+	const emails = await rowsOf(
 		tx,
 		sql`SELECT member_id, name, value FROM member_emails WHERE member_id IN (${ids}) ORDER BY position, id`
 	);
-	const phones = await rows(
+	const phones = await rowsOf(
 		tx,
 		sql`SELECT member_id, name, value FROM member_phones WHERE member_id IN (${ids}) ORDER BY position, id`
 	);
@@ -275,7 +277,7 @@ async function memberContacts(
 			? sql`(m.first_name ILIKE ${p} OR m.last_name ILIKE ${p} OR m.scout_name ILIKE ${p}
 				OR (m.first_name || ' ' || m.last_name) ILIKE ${p})`
 			: sql`TRUE`;
-	const list = await rows(
+	const list = await rowsOf(
 		tx,
 		sql`SELECT m.id, m.first_name, m.last_name, to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date,
 			m.street, m.postal_code, m.city,
@@ -285,7 +287,7 @@ async function memberContacts(
 			ORDER BY m.last_name, m.first_name, m.id LIMIT ${limit}`
 	);
 	if (!list.length) return [];
-	const emails = await rows(
+	const emails = await rowsOf(
 		tx,
 		sql`SELECT member_id, value FROM member_emails WHERE member_id IN (${sql.join(
 			list.map((r) => sql`${r.id as string}`),
@@ -325,22 +327,28 @@ async function memberContacts(
  */
 export const membersService: Omit<
 	MembersService,
-	'listMemberSheets' | 'listGroups' | 'principalIdsForUser' | 'searchMembers'
+	| 'listMemberSheets'
+	| 'listGroups'
+	| 'principalIdsForUser'
+	| 'searchMembers'
+	| 'searchMemberPrincipals'
 > = {
 	listMemberContacts(query) {
-		return mdb().transaction((tx) => memberContacts(tx, query));
+		return moduleDb(MODULE_ID).transaction((tx) => memberContacts(tx, query));
 	},
 
 	async listLinkedMembers(ctx) {
 		if (!ctx.userId) throw errors.unauthenticated();
 		const userId = ctx.userId;
-		return mdb().transaction(async (tx) => toLinked(tx, await linkedRows(tx, userId)));
+		return moduleDb(MODULE_ID).transaction(async (tx) =>
+			toLinked(tx, await linkedRows(tx, userId))
+		);
 	},
 
 	async getLinkedMember(ctx, memberId) {
 		if (!ctx.userId) throw errors.unauthenticated();
 		const userId = ctx.userId;
-		const found = await mdb().transaction(async (tx) =>
+		const found = await moduleDb(MODULE_ID).transaction(async (tx) =>
 			toLinked(tx, await linkedRows(tx, userId, memberId))
 		);
 		if (!found[0]) throw errors.notFound('Mitglied nicht gefunden');
@@ -350,8 +358,8 @@ export const membersService: Omit<
 	async updateMemberFields(ctx, memberId, values) {
 		if (!ctx.userId) throw errors.unauthenticated();
 		const userId = ctx.userId;
-		const changed = await mdb().transaction(async (tx) => {
-			const link = await rows(
+		const changed = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const link = await rowsOf(
 				tx,
 				sql`SELECT m.custom FROM member_user_links l JOIN members m ON m.id = l.member_id
 					WHERE l.user_id = ${userId} AND l.member_id = ${memberId} FOR UPDATE OF m`

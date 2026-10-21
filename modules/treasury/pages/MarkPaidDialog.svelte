@@ -8,7 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, toastWithUndo } from '$lib/components/layout';
+	import { FormField, MoneyInput, toastWithUndo, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		markPaidInput,
@@ -195,7 +195,7 @@
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || !accountOptions.length}>
-					{busy ? 'Speichert …' : 'Zahlung buchen'}
+					{busy ? BUSY_SAVE : 'Zahlung buchen'}
 				</Button>
 			</Dialog.Footer>
 		</form>

@@ -1,4 +1,7 @@
 import type { PdfBlock } from '$lib/sdk/types';
+import { todayBerlin } from '$lib/sdk/dates';
+import { csvCents, csvDocument } from '$lib/sdk/csv';
+import { formatEuro } from '$lib/components/layout/money';
 import { appliedAutoIncome } from './auto-income';
 import {
 	ACCOUNTING_CATEGORY_LABELS,
@@ -149,40 +152,22 @@ export function payeeTotals(entries: SummaryEntry[]): Map<string, PayeeTotals> {
 	return map;
 }
 
-/** `123450` -> `1234,50` (ohne Tausenderpunkt). */
-function plainAmount(value: number): string {
-	const c = Math.max(0, cents(value));
-	return `${Math.floor(c / 100)},${String(c % 100).padStart(2, '0')}`;
-}
-
-function csvCell(value: string): string {
-	let v = String(value ?? '');
-	if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
-	if (/[";\r\n]/.test(v)) v = `"${v.replace(/"/g, '""')}"`;
-	return v;
-}
-
-/** CSV der Auszahlungsliste (UTF-8-BOM, `;`, CRLF, Formel-Schutz). */
+/** CSV der Auszahlungsliste (zentral `$lib/sdk/csv`: UTF-8-BOM, `;`, CRLF, Formel-Schutz; Betrag „1234,50“). */
 export function toPayoutCsv(rows: PayoutRow[]): string {
-	const lines = [['Name', 'IBAN', 'BIC', 'Betrag', 'Verwendungszweck', 'Anzahl Belege'].join(';')];
-	for (const r of rows ?? []) {
-		lines.push(
-			[
-				csvCell(r.name),
-				csvCell(r.iban),
-				csvCell(r.bic ?? ''),
-				plainAmount(r.amountCents),
-				csvCell(r.purpose),
-				String(Math.max(0, cents(r.entryCount)))
-			].join(';')
-		);
-	}
-	return '﻿' + lines.join('\r\n') + '\r\n';
+	return csvDocument(
+		['Name', 'IBAN', 'BIC', 'Betrag', 'Verwendungszweck', 'Anzahl Belege'],
+		(rows ?? []).map((r) => [
+			r.name,
+			r.iban,
+			r.bic ?? '',
+			csvCents(Math.max(0, cents(r.amountCents))),
+			r.purpose,
+			Math.max(0, cents(r.entryCount))
+		])
+	);
 }
 
-const euro = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-const money = (value: number | null): string =>
-	value === null ? '–' : euro.format(cents(value) / 100);
+const money = (value: number | null): string => (value === null ? '–' : formatEuro(cents(value)));
 
 function germanDate(iso: string | null | undefined): string {
 	const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '');
@@ -194,7 +179,7 @@ function stichtag(iso: string): string {
 	if (!iso.includes('T')) return germanDate(iso);
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return germanDate(iso);
-	return germanDate(new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(d));
+	return germanDate(todayBerlin(d));
 }
 
 const categoryLabel = (c: string): string =>

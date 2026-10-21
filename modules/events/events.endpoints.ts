@@ -1,15 +1,17 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
+	type ApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
+	moduleDb,
 	principalKeysFor,
-	validatePrincipals,
-	type ApiEndpoint,
 	type RequestContext,
-	type Tx
+	rowsOf,
+	type Tx,
+	validatePrincipals
 } from '$lib/sdk/server';
-import { accessForMany, requireAccess, rowsOf, visibleEventsFilter } from './access';
+import { accessForMany, loadShares, requireAccess, visibleEventsFilter } from './access';
 import {
 	EVENT_COLUMNS,
 	EVENT_ORDER,
@@ -22,7 +24,6 @@ import {
 	insertEvent,
 	loadEventRow,
 	loadExceptions,
-	loadShares,
 	resolveDetailOccurrence,
 	seriesDates,
 	seriesInfo,
@@ -38,6 +39,7 @@ import { addDays, isOccurrence } from './recurrence';
 import {
 	MAX_OCCURRENCES,
 	MODULE_ID,
+	PUBLISH_PERMISSION,
 	OPEN_WINDOW_DAYS,
 	detailQuery,
 	eventInput,
@@ -50,7 +52,6 @@ import {
 } from './schemas';
 
 const tags = ['Modul: events'];
-const mdb = () => core.database.forModule(MODULE_ID);
 
 /**
  * Höchstzahl Kandidaten-Zeilen je Listenabfrage. Einmalige Termine und Serien werden gemeinsam
@@ -155,7 +156,7 @@ export const eventEndpoints = [
 			}
 			const where = sql.join(conds, sql` AND `);
 
-			const { rows, exceptions, access } = await mdb().transaction(async (tx) => {
+			const { rows, exceptions, access } = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const raw = await rowsOf(
 					tx,
 					sql`SELECT ${EVENT_COLUMNS} FROM events e WHERE ${where}
@@ -197,7 +198,7 @@ export const eventEndpoints = [
 		body: occurrenceInput,
 		handler: async ({ ctx, params, body }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const row = await requireOccurrence(tx, ctx, params.id, params.date, keys);
 				validateOverride(seriesDates(row), params.date, body.override);
 				await upsertException(tx, ctx, params.id, params.date, body.cancelled, body.override);
@@ -224,7 +225,7 @@ export const eventEndpoints = [
 		params: occurrenceParams,
 		handler: async ({ ctx, params }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireOccurrence(tx, ctx, params.id, params.date, keys);
 				await deleteException(tx, params.id, params.date);
 				return loadDetailData(tx, ctx, params.id, keys, params.date);
@@ -247,7 +248,7 @@ export const eventEndpoints = [
 		query: detailQuery,
 		handler: async ({ ctx, params, query }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
-			const data = await mdb().transaction((tx) =>
+			const data = await moduleDb(MODULE_ID).transaction((tx) =>
 				loadDetailData(tx, ctx, params.id, keys, query.occurrence)
 			);
 			return detailOf(ctx, data);
@@ -263,13 +264,15 @@ export const eventEndpoints = [
 		body: eventInput,
 		handler: async ({ ctx, body }) => {
 			await core.permissions.require(ctx, 'events.event.view');
+			// Veröffentlichen ist ein eigenes Recht (#67, 01b-06)
+			if (body.onWebsite) await core.permissions.require(ctx, PUBLISH_PERMISSION);
 			const ownerId = ctx.userId;
 			if (!ownerId) throw errors.badRequest('Termine können nur von Benutzern angelegt werden');
 			await validatePrincipals(ctx, MODULE_ID, body.shares);
 			await validateGroupIds(ctx, body.groupIds);
 
 			const id = crypto.randomUUID();
-			const row = await mdb().transaction(async (tx) => {
+			const row = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await insertEvent(tx, ctx, id, ownerId, body);
 				return loadEventRow(tx, id);
 			});
@@ -291,6 +294,9 @@ export const eventEndpoints = [
 					shares: body.shares.length
 				}
 			});
+			if (body.onWebsite) {
+				await core.audit.logFromContext(ctx, 'events.event.published', { target: id });
+			}
 			return detail;
 		}
 	}),
@@ -307,17 +313,24 @@ export const eventEndpoints = [
 			const keys = await principalKeysFor(ctx, MODULE_ID);
 			// Zugriff zuerst (Fremde → 404 vor jeder Validierung); gespeicherte Freigaben/Gruppen
 			// gelten als gültig, auch wenn ihr Anbieter (members) inzwischen deaktiviert ist.
-			const stored = await mdb().transaction(async (tx) => {
+			const stored = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
 				const current = await loadEventRow(tx, params.id);
-				return { shares: await loadShares(tx, params.id), groupIds: current?.groupIds ?? [] };
+				return {
+					shares: await loadShares(tx, params.id),
+					groupIds: current?.groupIds ?? [],
+					onWebsite: current?.onWebsite ?? false
+				};
 			});
+			// Wechsel auf „öffentlich“ nur mit eigenem Recht (#67, 01b-06); Zurücknehmen darf jede*r mit edit
+			const publishing = body.onWebsite && !stored.onWebsite;
+			if (publishing) await core.permissions.require(ctx, PUBLISH_PERMISSION);
 			await validatePrincipals(ctx, MODULE_ID, body.shares, {
 				keep: new Set(stored.shares.map((s) => `${s.type}:${s.id}`))
 			});
 			await validateGroupIds(ctx, body.groupIds, new Set(stored.groupIds));
 
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
 				// entfernt auch Ausnahmen, die kein Vorkommen mehr sind
 				await updateEvent(tx, ctx, params.id, body);
@@ -334,6 +347,13 @@ export const eventEndpoints = [
 					shares: body.shares.length
 				}
 			});
+			if (body.onWebsite !== stored.onWebsite) {
+				await core.audit.logFromContext(
+					ctx,
+					publishing ? 'events.event.published' : 'events.event.unpublished',
+					{ target: params.id }
+				);
+			}
 			return detail;
 		}
 	}),
@@ -347,7 +367,7 @@ export const eventEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
 				await tx.execute(sql`DELETE FROM events WHERE id = ${params.id}`);
 			});

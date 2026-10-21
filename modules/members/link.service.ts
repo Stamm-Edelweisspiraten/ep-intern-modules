@@ -3,8 +3,11 @@ import {
 	core,
 	errors,
 	isCoreError,
+	moduleDb,
 	type PdfGenerateInput,
 	type RequestContext,
+	type Row,
+	rowsOf,
 	type Tx
 } from '$lib/sdk/server';
 import {
@@ -18,10 +21,14 @@ import {
 	recipientLines
 } from './link';
 import { loadMailOptOut, membersService } from './fields.service';
+import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
+import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import {
 	LINK_DEFAULT_ROLE,
 	LINK_LOCK_MINUTES,
 	LINK_MAX_FAILED_ATTEMPTS,
+	LINK_MAX_USES_DEFAULT,
+	LINK_MAX_USES_SETTING,
 	MODULE_ID,
 	SENSITIVE_FIELD_KEYS,
 	type ContactEntry,
@@ -33,18 +40,23 @@ import {
 	type PublicLinkInfo
 } from './schemas';
 
-type Row = Record<string, unknown>;
-const mdb = () => core.database.forModule(MODULE_ID);
 const crypt = () => core.crypto.forModule(MODULE_ID);
 
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
 /** pg liefert Date, PGlite Strings */
 const toDate = (v: unknown): Date => (v instanceof Date ? v : new Date(String(v)));
 
 export const LINK_NOT_AVAILABLE = 'Dieser Link ist nicht mehr gültig.';
 export const LINK_CODE_REJECTED = 'Der Code ist ungültig oder vorübergehend gesperrt.';
+
+/** Einstellung „Konten je Code“ (1–10, Standard 2); ungültige Werte → Standard. Vor Transaktionen lesen. */
+export async function linkMaxUses(): Promise<number> {
+	const v = Number(await core.settings.get(LINK_MAX_USES_SETTING));
+	return Number.isInteger(v) && v >= 1 && v <= 10 ? v : LINK_MAX_USES_DEFAULT;
+}
+
+/** Höchstzahl eines Codes: beim Erzeugen gespeichert, ältere Codes → aktuelle Einstellung. */
+const maxUsesOf = (row: Row, fallback: number): number =>
+	row.max_uses == null ? fallback : Number(row.max_uses);
 
 // --- Code und Brief (angemeldet) ---------------------------------------------
 
@@ -53,6 +65,8 @@ export interface LinkCode {
 	code: string;
 	expiresAt: Date;
 	created: boolean;
+	/** Wie viele Konten sich mit dem Code verknüpfen lassen */
+	maxUses: number;
 }
 
 /**
@@ -64,39 +78,52 @@ export async function ensureLinkCode(
 	memberId: string,
 	opts: { regenerate?: boolean } = {}
 ): Promise<LinkCode> {
-	const result = await mdb().transaction(async (tx) => {
-		const m = await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
+	const maxUses = await linkMaxUses();
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const m = await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
 		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
 		const cur = (
-			await rows(
+			await rowsOf(
 				tx,
-				sql`SELECT token, code_enc, expires_at FROM member_link_codes WHERE member_id = ${memberId}`
+				sql`SELECT token, token_enc, code_enc, expires_at, use_count, max_uses FROM member_link_codes WHERE member_id = ${memberId}`
 			)
 		)[0];
-		if (cur && !opts.regenerate && toDate(cur.expires_at).getTime() > Date.now()) {
+		const curToken = cur ? storedToken(cur) : null;
+		// Verbrauchte Codes (Höchstzahl erreicht) werden wie abgelaufene ersetzt; nicht entschlüsselbare ebenso
+		if (
+			cur &&
+			curToken &&
+			!opts.regenerate &&
+			toDate(cur.expires_at).getTime() > Date.now() &&
+			Number(cur.use_count) < maxUsesOf(cur, maxUses)
+		) {
 			return {
-				token: cur.token as string,
+				token: curToken,
 				code: crypt().decrypt(cur.code_enc as string),
 				expiresAt: toDate(cur.expires_at),
-				created: false
+				created: false,
+				maxUses: maxUsesOf(cur, maxUses)
 			};
 		}
 		const token = generateLinkToken();
+		const stored = linkTokenValues(token);
 		const code = generateLinkCode();
 		const expiresAt = linkExpiry();
 		await tx.execute(
-			sql`INSERT INTO member_link_codes (member_id, token, code_enc, expires_at, created_by)
-				VALUES (${memberId}, ${token}, ${crypt().encrypt(code)}, ${expiresAt.toISOString()}, ${ctx.userId})
-				ON CONFLICT (member_id) DO UPDATE SET token = EXCLUDED.token, code_enc = EXCLUDED.code_enc,
+			sql`INSERT INTO member_link_codes (member_id, token_hash, token_enc, code_enc, expires_at, created_by, use_count, max_uses)
+				VALUES (${memberId}, ${stored.hash}, ${stored.enc}, ${crypt().encrypt(code)}, ${expiresAt.toISOString()}, ${ctx.userId}, 0, ${maxUses})
+				ON CONFLICT (member_id) DO UPDATE SET token = NULL, token_hash = EXCLUDED.token_hash,
+					token_enc = EXCLUDED.token_enc, code_enc = EXCLUDED.code_enc,
 					expires_at = EXCLUDED.expires_at, failed_attempts = 0, locked_until = NULL,
+					use_count = 0, max_uses = EXCLUDED.max_uses,
 					created_at = now(), created_by = EXCLUDED.created_by`
 		);
-		return { token, code, expiresAt, created: true };
+		return { token, code, expiresAt, created: true, maxUses };
 	});
 	if (result.created) {
 		await core.audit.logFromContext(ctx, 'members.link.code_created', {
 			target: memberId,
-			metadata: { memberId, regenerate: Boolean(opts.regenerate) }
+			metadata: { memberId, regenerate: Boolean(opts.regenerate), maxUses: result.maxUses }
 		});
 	}
 	return result;
@@ -110,12 +137,12 @@ export async function buildLinkLetters(
 	ctx: RequestContext,
 	ids: string[]
 ): Promise<{ buffer: Uint8Array; fileName: string }> {
-	const members = await mdb().transaction(async (tx) => {
+	const members = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const idList = sql.join(
 			ids.map((i) => sql`${i}`),
 			sql`, `
 		);
-		const found = await rows(
+		const found = await rowsOf(
 			tx,
 			sql`SELECT id, first_name, last_name, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
 				street, postal_code, city, country FROM members WHERE id IN (${idList})`
@@ -187,7 +214,9 @@ export async function buildLinkLetters(
 						...(adult
 							? []
 							: [
-									'Mehrere Personen (z. B. beide Elternteile) können den Code nutzen, jede mit einem eigenen Konto.'
+									link.maxUses > 1
+										? `Bis zu ${link.maxUses} Personen (z. B. beide Elternteile) können den Code nutzen, jede mit einem eigenen Konto. Bereits verknüpfte Konten werden bei jeder weiteren Verknüpfung per E-Mail informiert.`
+										: 'Der Code kann für ein Konto genutzt werden.'
 								]),
 						'Bitte geben Sie den Code nicht an Dritte weiter.'
 					]
@@ -210,25 +239,31 @@ export async function buildLinkLetters(
 // --- Verknüpfungen verwalten -------------------------------------------------
 
 export async function listMemberLinks(ctx: RequestContext, memberId: string): Promise<MemberLinks> {
-	const { links, code } = await mdb().transaction(async (tx) => {
-		const m = await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
+	const fallbackMax = await linkMaxUses();
+	const { links, code } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const m = await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
 		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
 		return {
-			links: await rows(
+			links: await rowsOf(
 				tx,
-				sql`SELECT user_id, relation, created_at FROM member_user_links
+				sql`SELECT user_id, relation, is_self, created_at FROM member_user_links
 					WHERE member_id = ${memberId} ORDER BY created_at, user_id`
 			),
 			code: (
-				await rows(
+				await rowsOf(
 					tx,
-					sql`SELECT expires_at, locked_until FROM member_link_codes WHERE member_id = ${memberId}`
+					sql`SELECT expires_at, locked_until, use_count, max_uses FROM member_link_codes WHERE member_id = ${memberId}`
 				)
 			)[0]
 		};
 	});
 	const dir = links.length
-		? await core.users.directory(ctx, { ids: links.map((l) => l.user_id as string), limit: 30 })
+		? await core.users.directory(ctx, {
+				ids: links.map((l) => l.user_id as string),
+				limit: 30,
+				// Endpunkt verlangt members.link.view: Adresse identifiziert das verknüpfte Konto
+				includeEmail: true
+			})
 		: [];
 	const users: LinkedUser[] = links.map((l) => {
 		const u = dir.find((d) => d.id === l.user_id);
@@ -237,6 +272,7 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 			name: u?.name ?? 'Unbekannt (Konto deaktiviert)',
 			email: u?.email ?? null,
 			relation: (l.relation as string | null) ?? null,
+			self: l.is_self === true || l.is_self === 't',
 			linkedAt: toDate(l.created_at).toISOString()
 		};
 	});
@@ -247,7 +283,10 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 			? {
 					expiresAt: toDate(code.expires_at).toISOString(),
 					expired: toDate(code.expires_at).getTime() <= now,
-					locked: code.locked_until != null && toDate(code.locked_until).getTime() > now
+					locked: code.locked_until != null && toDate(code.locked_until).getTime() > now,
+					uses: Number(code.use_count),
+					maxUses: maxUsesOf(code, fallbackMax),
+					exhausted: Number(code.use_count) >= maxUsesOf(code, fallbackMax)
 				}
 			: null
 	};
@@ -270,10 +309,10 @@ export async function linkUserManually(
 			'Konto nicht gefunden oder deaktiviert'
 		);
 	}
-	await mdb().transaction(async (tx) => {
-		const m = await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
+	await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const m = await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
 		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
-		const inserted = await rows(
+		const inserted = await rowsOf(
 			tx,
 			sql`INSERT INTO member_user_links (member_id, user_id, relation, created_by)
 				VALUES (${memberId}, ${user.id}, ${input.relation}, ${ctx.userId ?? ctx.actor.id})
@@ -294,24 +333,78 @@ export async function unlinkUser(
 	memberId: string,
 	userId: string
 ): Promise<void> {
-	const removed = await mdb().transaction((tx) =>
-		rows(
+	const removed = await moduleDb(MODULE_ID).transaction((tx) =>
+		rowsOf(
 			tx,
 			sql`DELETE FROM member_user_links WHERE member_id = ${memberId} AND user_id = ${userId} RETURNING user_id`
 		)
 	);
 	if (!removed.length) throw errors.notFound('Verknüpfung nicht gefunden');
+	await syncLeaderGrantsAfterChange(ctx);
 	await core.audit.logFromContext(ctx, 'members.link.removed', {
 		target: memberId,
 		metadata: { memberId, userId }
 	});
 }
 
+/**
+ * Verknüpftes Konto als **eigenes Konto** des Mitglieds markieren (oder die Markierung lösen). Nur
+ * eigene Konten erhalten bei einer Gruppenleitung die Rolle „Gruppenleitung“ – Eltern nicht. Je Konto
+ * und je Mitglied höchstens eine Markierung (409). Leitet das Mitglied eine Gruppe, braucht die
+ * handelnde Person alle Rechte der Rolle (403).
+ */
+export async function setLinkSelf(
+	ctx: RequestContext,
+	memberId: string,
+	userId: string,
+	self: boolean
+): Promise<MemberLinks> {
+	if (self) await assertCanGrantLeader(ctx, [memberId], 'becomesSelf');
+	const changed = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const link = await rowsOf(
+			tx,
+			sql`SELECT is_self FROM member_user_links
+				WHERE member_id = ${memberId} AND user_id = ${userId} FOR UPDATE`
+		);
+		if (!link.length) throw errors.notFound('Verknüpfung nicht gefunden');
+		const before = link[0]!.is_self === true || link[0]!.is_self === 't';
+		if (before === self) return false;
+		if (self) {
+			const taken = await rowsOf(
+				tx,
+				sql`SELECT member_id, user_id FROM member_user_links
+					WHERE is_self AND (user_id = ${userId} OR member_id = ${memberId})`
+			);
+			if (taken.some((t) => t.user_id === userId)) {
+				throw errors.conflict(
+					'Dieses Konto ist bereits als eigenes Konto eines anderen Mitglieds markiert'
+				);
+			}
+			if (taken.length) {
+				throw errors.conflict('Für dieses Mitglied ist bereits ein anderes eigenes Konto markiert');
+			}
+		}
+		await tx.execute(
+			sql`UPDATE member_user_links SET is_self = ${self}
+				WHERE member_id = ${memberId} AND user_id = ${userId}`
+		);
+		return true;
+	});
+	if (changed) {
+		await syncLeaderGrantsAfterChange(ctx);
+		await core.audit.logFromContext(ctx, 'members.link.self-changed', {
+			target: memberId,
+			metadata: { memberId, userId, self }
+		});
+	}
+	return listMemberLinks(ctx, memberId);
+}
+
 export async function myMembers(ctx: RequestContext): Promise<MyMember[]> {
 	if (!ctx.userId) throw errors.unauthenticated();
 	const userId = ctx.userId;
-	const found = await mdb().transaction((tx) =>
-		rows(
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
+		rowsOf(
 			tx,
 			sql`SELECT m.id, l.relation FROM member_user_links l JOIN members m ON m.id = l.member_id
 				WHERE l.user_id = ${userId} ORDER BY m.last_name, m.first_name, m.id`
@@ -365,18 +458,18 @@ export async function updateLinkedContacts(
 ): Promise<{ phones: ContactEntry[]; emails: ContactEntry[] }> {
 	if (!ctx.userId) throw errors.unauthenticated();
 	const userId = ctx.userId;
-	const counts = await mdb().transaction(async (tx) => {
-		const link = await rows(
+	const counts = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const link = await rowsOf(
 			tx,
 			sql`SELECT m.id, m.first_name FROM member_user_links l JOIN members m ON m.id = l.member_id
 				WHERE l.user_id = ${userId} AND l.member_id = ${memberId} FOR UPDATE OF m`
 		);
 		if (!link[0]) throw errors.notFound('Mitglied nicht gefunden');
-		const oldPhones = await rows(
+		const oldPhones = await rowsOf(
 			tx,
 			sql`SELECT value FROM member_phones WHERE member_id = ${memberId}`
 		);
-		const oldEmails = await rows(
+		const oldEmails = await rowsOf(
 			tx,
 			sql`SELECT value FROM member_emails WHERE member_id = ${memberId}`
 		);
@@ -461,14 +554,14 @@ export async function setMailPref(
 ): Promise<{ mailOptOut: MailCategory[] }> {
 	if (own && !ctx.userId) throw errors.unauthenticated();
 	const userId = ctx.userId;
-	const result = await mdb().transaction(async (tx) => {
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const found = own
-			? await rows(
+			? await rowsOf(
 					tx,
 					sql`SELECT m.id FROM member_user_links l JOIN members m ON m.id = l.member_id
 						WHERE l.user_id = ${userId} AND l.member_id = ${memberId} FOR UPDATE OF m`
 				)
-			: await rows(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
+			: await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
 		if (!found[0]) throw errors.notFound('Mitglied nicht gefunden');
 		if (enabled) {
 			await tx.execute(
@@ -493,25 +586,28 @@ export async function setMailPref(
 
 // --- Öffentlicher Ablauf (Link + Code) --------------------------------------
 
-async function loadByToken(tx: Tx, token: string, lock = false) {
-	const found = await rows(
+/** Code zum Token; abgelaufen oder verbraucht (Höchstzahl erreicht) → `null` („nicht mehr gültig“). */
+async function loadByToken(tx: Tx, token: string, maxUses: number, lock = false) {
+	const found = await rowsOf(
 		tx,
 		lock
 			? sql`SELECT c.member_id, c.code_enc, c.expires_at, c.failed_attempts, c.locked_until,
-					m.first_name, m.last_name
+					c.use_count, c.max_uses, m.first_name, m.last_name
 				FROM member_link_codes c JOIN members m ON m.id = c.member_id
-				WHERE c.token = ${token} FOR UPDATE OF c`
-			: sql`SELECT c.member_id, c.expires_at, m.first_name, m.last_name
-				FROM member_link_codes c JOIN members m ON m.id = c.member_id WHERE c.token = ${token}`
+				WHERE ${tokenMatchSql(token)} FOR UPDATE OF c`
+			: sql`SELECT c.member_id, c.expires_at, c.use_count, c.max_uses, m.first_name, m.last_name
+				FROM member_link_codes c JOIN members m ON m.id = c.member_id WHERE ${tokenMatchSql(token)}`
 	);
 	const r = found[0];
 	if (!r || toDate(r.expires_at).getTime() <= Date.now()) return null;
+	if (Number(r.use_count) >= maxUsesOf(r, maxUses)) return null;
 	return r;
 }
 
 /** Öffentliche Basisinfo zum Link (nur Vorname, nichts weiter). */
 export async function publicLinkInfo(ctx: RequestContext, token: string): Promise<PublicLinkInfo> {
-	const r = await mdb().transaction((tx) => loadByToken(tx, token));
+	const maxUses = await linkMaxUses();
+	const r = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token, maxUses));
 	if (!r) throw errors.notFound(LINK_NOT_AVAILABLE);
 	return {
 		memberFirstName: r.first_name as string,
@@ -523,25 +619,43 @@ export async function publicLinkInfo(ctx: RequestContext, token: string): Promis
  * Prüft den Code gegen den Link. Falsche Eingaben zählen je Mitglied; nach
  * `LINK_MAX_FAILED_ATTEMPTS` ist der Code `LINK_LOCK_MINUTES` Minuten gesperrt. Der Zähler wird
  * VOR dem Werfen committet (Fehler außerhalb der Transaktion).
+ *
+ * Bei Erfolg wird eine Nutzung verbraucht (`use_count + 1`, unter Zeilensperre) – außer das Konto
+ * `userId` ist schon verknüpft (wiederholtes Einlösen bleibt idempotent). Ist die Höchstzahl
+ * erreicht, gilt der Link als nicht mehr gültig (neuer Brief nötig).
  */
 async function verifyCode(
 	token: string,
-	code: string
-): Promise<{ memberId: string; firstName: string }> {
-	const outcome = await mdb().transaction(async (tx) => {
-		const r = await loadByToken(tx, token, true);
+	code: string,
+	userId: string | null
+): Promise<{ memberId: string; firstName: string; consumed: boolean }> {
+	const maxUses = await linkMaxUses();
+	const outcome = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const r = await loadByToken(tx, token, maxUses, true);
 		if (!r) return { status: 'unavailable' as const };
 		if (r.locked_until != null && toDate(r.locked_until).getTime() > Date.now()) {
 			return { status: 'rejected' as const };
 		}
 		const memberId = r.member_id as string;
 		if (codesMatch(crypt().decrypt(r.code_enc as string), code)) {
-			if (Number(r.failed_attempts) > 0 || r.locked_until != null) {
-				await tx.execute(
-					sql`UPDATE member_link_codes SET failed_attempts = 0, locked_until = NULL WHERE member_id = ${memberId}`
-				);
-			}
-			return { status: 'ok' as const, memberId, firstName: r.first_name as string };
+			const already = userId
+				? (
+						await rowsOf(
+							tx,
+							sql`SELECT 1 FROM member_user_links WHERE member_id = ${memberId} AND user_id = ${userId}`
+						)
+					).length > 0
+				: false;
+			await tx.execute(
+				sql`UPDATE member_link_codes SET failed_attempts = 0, locked_until = NULL,
+					use_count = use_count + ${already ? 0 : 1} WHERE member_id = ${memberId}`
+			);
+			return {
+				status: 'ok' as const,
+				memberId,
+				firstName: r.first_name as string,
+				consumed: !already
+			};
 		}
 		const failed = Number(r.failed_attempts) + 1;
 		if (failed >= LINK_MAX_FAILED_ATTEMPTS) {
@@ -558,11 +672,66 @@ async function verifyCode(
 	});
 	if (outcome.status === 'unavailable') throw errors.notFound(LINK_NOT_AVAILABLE);
 	if (outcome.status === 'rejected') throw errors.forbidden(LINK_CODE_REJECTED);
-	return { memberId: outcome.memberId, firstName: outcome.firstName };
+	return { memberId: outcome.memberId, firstName: outcome.firstName, consumed: outcome.consumed };
+}
+
+/** Verbrauchte Nutzung zurückgeben (Registrierung scheiterte nach erfolgreicher Code-Prüfung). */
+async function releaseUse(memberId: string): Promise<void> {
+	await moduleDb(MODULE_ID).transaction((tx) =>
+		tx.execute(
+			sql`UPDATE member_link_codes SET use_count = GREATEST(use_count - 1, 0) WHERE member_id = ${memberId}`
+		)
+	);
+}
+
+/** Konten, die außer `exceptUserId` mit dem Mitglied verknüpft sind. */
+async function otherLinkedUserIds(memberId: string, exceptUserId: string): Promise<string[]> {
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT user_id FROM member_user_links WHERE member_id = ${memberId} AND user_id <> ${exceptUserId}`
+		)
+	);
+	return found.map((r) => String(r.user_id));
+}
+
+/**
+ * Hinweis an alle bisher verknüpften Konten, dass ein weiteres Konto verknüpft wurde (nur Vorname,
+ * keine Daten des neuen Kontos). Nach der Transaktion; Mailfehler brechen die Verknüpfung nie ab.
+ * Liefert die Zahl der informierten Konten.
+ */
+async function notifyLinkedAccounts(
+	memberId: string,
+	firstName: string,
+	newUserId: string
+): Promise<number> {
+	const others = await otherLinkedUserIds(memberId, newUserId);
+	if (!others.length) return 0;
+	const sys = core.auth.systemContext('members-link');
+	const users = await core.users.directory(sys, { ids: others, limit: 30, includeEmail: true });
+	const systemName = String((await core.settings.get('core.system.name')) ?? 'EP Intern');
+	let sent = 0;
+	for (const u of users) {
+		if (!u.email) continue;
+		try {
+			await core.mail.send({
+				to: u.email,
+				subject: `${systemName}: Weiteres Konto mit ${firstName} verknüpft`,
+				text: `Hallo ${u.name},\n\nüber den Verknüpfungsbrief wurde soeben ein weiteres Konto mit ${firstName} verknüpft. Dieses Konto kann Kontakte und weitere Angaben von ${firstName} sehen und ändern.\n\nWar das nicht abgesprochen, melde dich bitte umgehend bei der Stammesleitung, damit die Verknüpfung gelöst und ein neuer Brief erstellt wird.`
+			});
+			sent++;
+		} catch (err) {
+			console.error(
+				'[members] Hinweis zur neuen Verknüpfung fehlgeschlagen:',
+				(err as Error)?.message
+			);
+		}
+	}
+	return sent;
 }
 
 async function addLink(memberId: string, userId: string, relation: string | null, by: string) {
-	await mdb().transaction((tx) =>
+	await moduleDb(MODULE_ID).transaction((tx) =>
 		tx.execute(
 			sql`INSERT INTO member_user_links (member_id, user_id, relation, created_by)
 				VALUES (${memberId}, ${userId}, ${relation}, ${by})
@@ -579,11 +748,12 @@ export async function claimLink(
 	input: { code: string; relation: string | null }
 ): Promise<{ memberFirstName: string }> {
 	if (!ctx.userId) throw errors.unauthenticated('Bitte melde dich zuerst an.');
-	const { memberId, firstName } = await verifyCode(token, input.code);
+	const { memberId, firstName, consumed } = await verifyCode(token, input.code, ctx.userId);
 	await addLink(memberId, ctx.userId, input.relation, ctx.userId);
+	const notified = consumed ? await notifyLinkedAccounts(memberId, firstName, ctx.userId) : 0;
 	await core.audit.logFromContext(ctx, 'members.link.created', {
 		target: memberId,
-		metadata: { memberId }
+		metadata: { memberId, viaCode: true, repeated: !consumed, notified }
 	});
 	return { memberFirstName: firstName };
 }
@@ -594,9 +764,11 @@ export async function registerWithLink(
 	token: string,
 	input: { code: string; name: string; email: string; password: string; relation: string | null }
 ): Promise<{ memberFirstName: string }> {
-	const { memberId, firstName } = await verifyCode(token, input.code);
+	const { memberId, firstName } = await verifyCode(token, input.code, null);
 	let userId: string;
 	try {
+		// Konto mit `emailVerified = false` + Bestätigungslink: Anmeldung (und damit jeder Zugriff über
+		// die Verknüpfung) erst nach Bestätigung der Adresse
 		userId = await core.users.registerWithRole({
 			name: input.name,
 			email: input.email,
@@ -604,6 +776,7 @@ export async function registerWithLink(
 			roleName: LINK_DEFAULT_ROLE
 		});
 	} catch (e) {
+		await releaseUse(memberId);
 		if (isCoreError(e) && e.status === 409) {
 			throw errors.conflict(
 				'Mit dieser E-Mail-Adresse gibt es bereits ein Konto. Bitte melde dich an und verknüpfe dein Konto dann mit dem Code.'
@@ -612,13 +785,14 @@ export async function registerWithLink(
 		throw e;
 	}
 	await addLink(memberId, userId, input.relation, userId);
+	const notified = await notifyLinkedAccounts(memberId, firstName, userId);
 	await core.audit.log({
 		action: 'members.link.registered',
 		actor: { type: 'system', id: 'public-link', name: 'Verknüpfungslink' },
 		target: memberId,
 		ip: ctx.ip,
 		requestId: ctx.requestId,
-		metadata: { memberId, userId }
+		metadata: { memberId, userId, notified, emailVerificationPending: true }
 	});
 	return { memberFirstName: firstName };
 }

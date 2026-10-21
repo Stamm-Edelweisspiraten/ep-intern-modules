@@ -7,6 +7,8 @@ import {
 	core,
 	defineEndpoint,
 	errors,
+	readFormData,
+	takeUpload,
 	type ApiEndpoint,
 	type RequestContext,
 	type Tx
@@ -489,31 +491,24 @@ export const supplierEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params, request }): Promise<SupplierOrder> => {
 			const { id } = params as { id: string };
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
-			});
+			const form = await readFormData(request);
 			const fields: Record<string, string> = {};
 			for (const key of ['amountCents', 'recipientName', 'iban', 'bic', 'dueOn', 'note']) {
 				const v = form.get(key);
 				if (typeof v === 'string') fields[key] = v;
 			}
 			const input = supplierInvoiceInput.parse(fields);
-			let receipt: { bytes: Uint8Array; contentType: string; name: string } | null = null;
-			const file = form.get('file');
-			if (file instanceof File && file.size > 0) {
-				const contentType = (file.type || '').split(';')[0]!.trim().toLowerCase();
-				if (!(RECEIPT_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-					throw errors.validation([
-						{ path: ['file'], message: 'Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)' }
-					]);
-				}
-				if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei überschreitet 10 MB');
-				receipt = {
-					bytes: new Uint8Array(await file.arrayBuffer()),
-					contentType,
-					name: file.name?.trim() || 'lieferantenrechnung'
-				};
-			}
+			// Beleg optional (leeres Dateifeld = keiner); Typ, Größe und Inhalt einheitlich geprüft (#33)
+			const upload = await takeUpload(form, {
+				required: false,
+				maxBytes: MAX_RECEIPT_BYTES,
+				allowedTypes: RECEIPT_CONTENT_TYPES,
+				typesLabel: 'PDF, JPEG, PNG oder WebP',
+				fallbackName: 'lieferantenrechnung'
+			});
+			const receipt = upload
+				? { bytes: upload.bytes, contentType: upload.contentType, name: upload.name }
+				: null;
 			await mdb().transaction((tx) => loadOr404(tx, id));
 			const { payableId, ref } = await pushPayable(
 				ctx,

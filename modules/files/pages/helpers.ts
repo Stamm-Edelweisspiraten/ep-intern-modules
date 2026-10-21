@@ -9,6 +9,7 @@ import FileText from '@lucide/svelte/icons/file-text';
 import Folder from '@lucide/svelte/icons/folder';
 import Presentation from '@lucide/svelte/icons/presentation';
 import { ApiClientError } from '$lib/sdk/client';
+import { formatDateTimeDe } from '$lib/sdk/dates';
 import {
 	BASE_PATH,
 	PREVIEW_IMAGE_TYPES,
@@ -58,12 +59,23 @@ export function iconFor(kind: NodeKind, contentType: string | null | undefined) 
 		t === 'application/pdf' ||
 		t.startsWith('text/') ||
 		t.includes('wordprocessingml') ||
-		t === 'application/msword'
+		t === 'application/msword' ||
+		t === 'application/rtf' ||
+		t.startsWith('application/vnd.oasis.opendocument.text')
 	)
 		return FileText;
-	if (t.includes('spreadsheetml') || t === 'application/vnd.ms-excel' || t === 'text/csv')
+	if (
+		t.includes('spreadsheetml') ||
+		t === 'application/vnd.ms-excel' ||
+		t.startsWith('application/vnd.oasis.opendocument.spreadsheet')
+	)
 		return FileSpreadsheet;
-	if (t.includes('presentationml') || t === 'application/vnd.ms-powerpoint') return Presentation;
+	if (
+		t.includes('presentationml') ||
+		t === 'application/vnd.ms-powerpoint' ||
+		t.startsWith('application/vnd.oasis.opendocument.presentation')
+	)
+		return Presentation;
 	if (t === 'application/zip') return FileArchive;
 	return File;
 }
@@ -80,13 +92,8 @@ export function thumbUrl(node: Pick<FileNode, 'id' | 'hasThumb' | 'updatedAt'>):
 }
 
 /** ISO-Zeitstempel → „19.10.2026, 14:05“ */
-export function formatDateTime(iso: string | null | undefined): string {
-	if (!iso) return '';
-	const d = new Date(iso);
-	return Number.isNaN(d.getTime())
-		? iso
-		: d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-}
+export const formatDateTime = (iso: string | null | undefined): string =>
+	formatDateTimeDe(iso, iso ?? '');
 
 /** Verständlicher Fehlertext aus einem API-Fehler */
 export function errorText(e: unknown, fallback: string): string {

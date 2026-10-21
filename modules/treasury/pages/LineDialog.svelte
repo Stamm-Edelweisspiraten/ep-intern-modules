@@ -5,7 +5,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput } from '$lib/components/layout';
+	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import type { InvoiceLine } from '../schemas';
 	import { BASE, fieldErrorsFrom } from './helpers';
@@ -114,7 +114,7 @@
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

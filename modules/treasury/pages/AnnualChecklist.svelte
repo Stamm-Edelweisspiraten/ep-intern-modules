@@ -70,13 +70,10 @@
 				{#each items as it, i (i)}
 					<li class="flex items-start gap-2">
 						{#if it.level === 'ok'}
-							<CircleCheck
-								class="mt-0.5 size-4 shrink-0 text-emerald-600"
-								aria-label="In Ordnung"
-							/>
+							<CircleCheck class="mt-0.5 size-4 shrink-0 text-success" aria-label="In Ordnung" />
 						{:else if it.level === 'warn'}
 							<TriangleAlert
-								class="mt-0.5 size-4 shrink-0 text-amber-600"
+								class="mt-0.5 size-4 shrink-0 text-warning"
 								aria-label="Bitte prüfen"
 							/>
 						{:else}

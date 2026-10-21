@@ -2,37 +2,29 @@
  * Lese-Hilfen des Moduls `offices`: Rohdaten in der Transaktion laden (`loadOffices`) und danach –
  * außerhalb der Transaktion – Namen von Rollen und Personen über den Core auflösen (`buildOffices`).
  */
-import { sql, type SQL } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { sql } from 'drizzle-orm';
+import {
+	core,
+	errors,
+	inList,
+	moduleDb,
+	rowsOf,
+	str as textOrNull,
+	toIso as iso,
+	type RequestContext,
+	type Row,
+	type Tx
+} from '$lib/sdk/server';
 import { registeredTemplates } from './templates';
 import { MODULE_ID, type Office, type OfficeEmail, type OfficeNotificationInfo } from './schemas';
 
-export type Row = Record<string, unknown>;
+/** Grundhelfer aus dem SDK (`$lib/sdk/server/db.ts`), unter den im Modul üblichen Namen */
+export { inList, iso, rowsOf, textOrNull, type Row };
 
 /** Höchstzahl je Verzeichnis-Aufruf (`core.users.directory` / `core.roles.directory` liefern max. 30) */
 const DIRECTORY_CHUNK = 30;
 
-export const mdb = () => core.database.forModule(MODULE_ID);
-
-export async function rowsOf(tx: Tx, query: SQL): Promise<Row[]> {
-	const res = (await tx.execute(query)) as unknown as { rows: Row[] };
-	return res.rows;
-}
-
-export function iso(v: unknown): string {
-	return new Date(String(v)).toISOString();
-}
-
-export function textOrNull(v: unknown): string | null {
-	return v === null || v === undefined ? null : String(v);
-}
-
-export function inList(ids: readonly string[]): SQL {
-	return sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-}
+export const mdb = () => moduleDb(MODULE_ID);
 
 export interface HolderData {
 	userId: string;
@@ -59,11 +51,13 @@ export interface OfficesData {
 	offices: OfficeData[];
 	/** Persönliche Beschreibungen der Inhaber*innen (`user_id` → Text) */
 	bios: Map<string, string | null>;
+	/** Inhaber*innen mit Zustimmung zur Anzeige auf der Stammeswebsite (Opt-in) */
+	websiteOptIn: Set<string>;
 }
 
 /** Ämter (alle oder die angegebenen IDs) mit E-Mails, Rollen, Inhaber*innen und Beschreibungen */
 export async function loadOffices(tx: Tx, ids?: readonly string[]): Promise<OfficesData> {
-	if (ids && ids.length === 0) return { offices: [], bios: new Map() };
+	if (ids && ids.length === 0) return { offices: [], bios: new Map(), websiteOptIn: new Set() };
 	const filter = ids ? sql`WHERE id IN (${inList(ids)})` : sql``;
 	const officeRows = await rowsOf(
 		tx,
@@ -71,7 +65,7 @@ export async function loadOffices(tx: Tx, ids?: readonly string[]): Promise<Offi
 			FROM offices
 			${filter} ORDER BY position, name, id`
 	);
-	if (officeRows.length === 0) return { offices: [], bios: new Map() };
+	if (officeRows.length === 0) return { offices: [], bios: new Map(), websiteOptIn: new Set() };
 	const officeIds = officeRows.map((r) => String(r.id));
 	const where = sql`office_id IN (${inList(officeIds)})`;
 	const [emailRows, roleRows, holderRows] = [
@@ -92,12 +86,17 @@ export async function loadOffices(tx: Tx, ids?: readonly string[]): Promise<Offi
 	];
 	const userIds = [...new Set(holderRows.map((r) => String(r.user_id)))];
 	const bios = new Map<string, string | null>();
+	const websiteOptIn = new Set<string>();
 	if (userIds.length) {
 		const bioRows = await rowsOf(
 			tx,
-			sql`SELECT user_id, bio FROM holder_profiles WHERE user_id IN (${inList(userIds)})`
+			sql`SELECT user_id, bio, show_on_website FROM holder_profiles
+				WHERE user_id IN (${inList(userIds)})`
 		);
-		for (const r of bioRows) bios.set(String(r.user_id), textOrNull(r.bio));
+		for (const r of bioRows) {
+			bios.set(String(r.user_id), textOrNull(r.bio));
+			if (r.show_on_website === true) websiteOptIn.add(String(r.user_id));
+		}
 	}
 
 	const offices = officeRows.map((r): OfficeData => ({
@@ -128,7 +127,7 @@ export async function loadOffices(tx: Tx, ids?: readonly string[]): Promise<Offi
 			since: textOrNull(r.since)
 		});
 	}
-	return { offices, bios };
+	return { offices, bios, websiteOptIn };
 }
 
 /** Ein Amt laden oder 404 */
@@ -151,17 +150,14 @@ export interface DirectoryUserInfo {
 	image: string | null;
 }
 
-/** Aktive Benutzer zu den IDs (über `core.users.directory`, gestückelt) */
+/** Aktive Benutzer zu den IDs (über `core.users.byIds`) */
 export async function usersByIds(
 	ctx: RequestContext,
 	ids: readonly string[]
 ): Promise<Map<string, DirectoryUserInfo>> {
 	const map = new Map<string, DirectoryUserInfo>();
-	for (const part of chunks([...new Set(ids)])) {
-		const found = await core.users.directory(ctx, { ids: part, limit: DIRECTORY_CHUNK });
-		for (const u of found) {
-			map.set(u.id, { id: u.id, name: u.name, email: u.email, image: u.image ?? null });
-		}
+	for (const u of (await core.users.byIds(ctx, ids)).values()) {
+		map.set(u.id, { id: u.id, name: u.name, email: u.email, image: u.image ?? null });
 	}
 	return map;
 }
