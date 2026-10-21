@@ -86,6 +86,14 @@ export interface MemberSheetData {
 	custom: Record<string, FormValue>;
 }
 
+/** Von einem Konto geleitete Gruppe (für Absender des Moduls `messages`) */
+export interface LedGroupRef {
+	id: string;
+	name: string;
+	/** Kontakt-E-Mail der Gruppe (Website-Steckbrief) oder `null` */
+	email: string | null;
+}
+
 /** Gruppe für Auswahl/Freigaben anderer Module (Vertrag im SDK, siehe `PrincipalGroupRef`) */
 export type MemberGroupRef = PrincipalGroupRef;
 
@@ -130,6 +138,20 @@ export interface MembersService extends PrincipalProvider {
 		search?: string;
 		limit?: number;
 	}): Promise<MemberContact[]>;
+	/**
+	 * Aktuelle (nicht ausgetretene, nicht anonymisierte) Mitglieder je Gruppe, ohne Rechteprüfung – der
+	 * Aufrufer prüft seine Rechte. Höchstens 50 Gruppen; Schlüssel = alle übergebenen Gruppen-IDs.
+	 */
+	listGroupMemberIds(groupIds: string[]): Promise<Record<string, string[]>>;
+	/** Gruppen, die das Konto über sein eigenes, aktives Mitglied leitet (leer ohne Konto/Leitung) */
+	listLedGroups(ctx: import('$lib/sdk/types').RequestContext): Promise<LedGroupRef[]>;
+	/**
+	 * Vor- und Nachname des als **eigenes Konto** verknüpften Mitglieds (`is_self`, nur von der Verwaltung
+	 * gesetzt) oder `null`. Eltern-Verknüpfungen zählen nie.
+	 */
+	getOwnMemberName(
+		ctx: import('$lib/sdk/types').RequestContext
+	): Promise<{ firstName: string; lastName: string } | null>;
 	/** Aktive Zusatzfelder (für den Formular-Builder anderer Module) */
 	listFieldDefinitions(): Promise<MemberFieldDefinition[]>;
 	/**

@@ -5,6 +5,7 @@
 	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
 	import FileDown from '@lucide/svelte/icons/file-down';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -99,10 +100,30 @@
 
 	// --- Sammelaktionen ---------------------------------------------------------
 	let selected = $state<string[]>([]);
+	// E-Mail an Mitglieder: nur mit aktivem Modul „Nachrichten“ (Recht existiert nur dann)
+	const canMail = $derived(can(permissions, 'messages.message.send'));
+	/** Namen der gesehenen Mitglieder, damit die Nachricht die Auswahl auch seitenübergreifend benennen kann */
+	const nameCache = new Map<string, string>();
+	$effect(() => {
+		for (const m of items) nameCache.set(m.id, `${m.firstName} ${m.lastName}`.trim());
+	});
+	function composeForSelection() {
+		try {
+			sessionStorage.setItem(
+				'messages:compose',
+				JSON.stringify({
+					members: selected.map((id) => ({ id, name: nameCache.get(id) ?? 'Mitglied' }))
+				})
+			);
+		} catch {
+			// ohne Speicher startet die Nachricht ohne Vorauswahl
+		}
+		location.assign('/modules/messages/new');
+	}
 	let bulkOpen = $state(false);
 	let bulkMode = $state<BulkMode>('add-groups');
 	let bulkDeleteOpen = $state(false);
-	const showSelect = $derived(canBulkEdit || canDelete || canLinkManage || canExport);
+	const showSelect = $derived(canBulkEdit || canDelete || canLinkManage || canExport || canMail);
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
@@ -436,6 +457,11 @@
 					<Button size="sm" variant="outline" disabled={sheetsBusy} onclick={openSheets}>
 						<FileDown />
 						{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederliste (PDF)'}
+					</Button>
+				{/if}
+				{#if canMail}
+					<Button size="sm" variant="outline" onclick={composeForSelection}>
+						<Mail /> E-Mail senden
 					</Button>
 				{/if}
 				{#if canDelete}

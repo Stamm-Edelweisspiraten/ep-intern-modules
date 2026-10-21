@@ -7,6 +7,7 @@ import { onUserDeleted } from './user-deleted';
 import { addressEndpoints } from './address.endpoints';
 import { fieldEndpoints } from './fields.endpoints';
 import { membersService } from './fields.service';
+import { messagingService } from './messaging.service';
 import { documentEndpoints } from './documents.endpoints';
 import { groupEndpoints } from './groups.endpoints';
 import { groupImageEndpoints } from './group-image.endpoints';
@@ -157,7 +158,8 @@ export default defineModule({
 	provides: {
 		...membersService,
 		listMemberSheets,
-		...principalsService
+		...principalsService,
+		...messagingService
 	} satisfies MembersService & PrincipalProvider,
 	settings: [
 		{

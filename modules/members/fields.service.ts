@@ -332,6 +332,9 @@ export const membersService: Omit<
 	| 'principalIdsForUser'
 	| 'searchMembers'
 	| 'searchMemberPrincipals'
+	| 'listGroupMemberIds'
+	| 'listLedGroups'
+	| 'getOwnMemberName'
 > = {
 	listMemberContacts(query) {
 		return moduleDb(MODULE_ID).transaction((tx) => memberContacts(tx, query));

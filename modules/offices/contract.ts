@@ -30,7 +30,16 @@ export interface NotifyResult {
 	skipped: number;
 }
 
+/** Amt des Kontos mit seinen Funktions-Adressen (für Absender des Moduls `messages`) */
+export interface OwnOfficeEmails {
+	officeId: string;
+	officeName: string;
+	emails: { label: string | null; email: string }[];
+}
+
 export interface OfficesService {
+	/** Ämter, bei denen `ctx.userId` Inhaber*in ist, mit Adressen (nur Ämter mit mindestens einer Adresse) */
+	listOwnOfficeEmails(ctx: RequestContext): Promise<OwnOfficeEmails[]>;
 	/**
 	 * Benachrichtigt die Inhaber*innen der Vorlagen-Ämter. Mehrere Ereignisse eines Aufrufs gehen je
 	 * Person als **eine** Mail raus (Modus „sofort“) bzw. in die Tageszusammenfassung („täglich“).

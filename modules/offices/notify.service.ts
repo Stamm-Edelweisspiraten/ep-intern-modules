@@ -6,7 +6,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { core, type RequestContext } from '$lib/sdk/server';
-import type { NotifyResult, OfficeNotification, OfficesService } from './contract';
+import type { NotifyResult, OfficeNotification, OfficesService, OwnOfficeEmails } from './contract';
 import { inList, mdb, rowsOf, textOrNull, usersByIds, type DirectoryUserInfo } from './load';
 import { DEFAULT_NOTIFY_MODE, NOTIFY_MODES, type NotifyMode } from './schemas';
 import { registeredTemplates } from './templates';
@@ -459,4 +459,29 @@ async function auditDigest(ctx: RequestContext, result: DigestResult): Promise<v
 	});
 }
 
-export const officesService: OfficesService = { notify };
+/** Ämter des Kontos mit Funktions-Adressen (für Absender des Moduls `messages`); ohne Konto leer */
+async function listOwnOfficeEmails(ctx: RequestContext): Promise<OwnOfficeEmails[]> {
+	if (!ctx.userId) return [];
+	const userId = ctx.userId;
+	const rows = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT o.id, o.name, e.label, e.email
+				FROM office_holders h
+				JOIN offices o ON o.id = h.office_id
+				JOIN office_emails e ON e.office_id = o.id
+				WHERE h.user_id = ${userId}
+				ORDER BY o.position, o.name, e.position, e.id`
+		)
+	);
+	const byOffice = new Map<string, OwnOfficeEmails>();
+	for (const r of rows) {
+		const id = String(r.id);
+		const entry = byOffice.get(id) ?? { officeId: id, officeName: String(r.name), emails: [] };
+		entry.emails.push({ label: textOrNull(r.label), email: String(r.email) });
+		byOffice.set(id, entry);
+	}
+	return [...byOffice.values()];
+}
+
+export const officesService: OfficesService = { notify, listOwnOfficeEmails };
