@@ -9,10 +9,12 @@ import {
 	PERM_SEND,
 	PERM_SETTINGS,
 	PERM_VIEW_ALL,
+	LAYOUTS,
 	REPLY_TO_MODES,
 	SETTING_KEYS
 } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_layout.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -41,7 +43,10 @@ export default defineModule({
 			}
 		]
 	},
-	migrations: [{ name: '0001_init', sql: m0001 }],
+	migrations: [
+		{ name: '0001_init', sql: m0001 },
+		{ name: '0002_layout', sql: m0002 }
+	],
 	settings: [
 		{
 			key: SETTING_KEYS.domain,
@@ -71,6 +76,14 @@ export default defineModule({
 				'„account“ = E-Mail-Adresse des eigenen Kontos, „sender“ = die gewählte Absenderadresse. Im Formular änderbar.',
 			schema: z.enum(REPLY_TO_MODES),
 			default: 'account'
+		},
+		{
+			key: SETTING_KEYS.layout,
+			label: 'Nachrichten: Standard-Aussehen',
+			description:
+				'„stamm“ = Stamm-Layout mit Kopf, Signatur und Fußzeile, „plain“ = einfache Mail wie aus einem Mailprogramm (wenig Spam-Punkte). Beim Senden wählbar.',
+			schema: z.enum(LAYOUTS),
+			default: 'stamm'
 		},
 		{
 			key: SETTING_KEYS.maxRecipients,

@@ -43,6 +43,8 @@ const mdb = () => moduleDb(MODULE_ID);
 /** Gleichzeitige Mails je Nachricht und Größe eines Blocks */
 const CONCURRENCY = 3;
 const BATCH = 9;
+/** Pause zwischen zwei Gruppen paralleler Mails */
+const SEND_PAUSE_MS = process.env.VITEST ? 0 : 250;
 /** Beanspruchte, aber nie abgeschlossene Empfänger gelten nach so vielen Minuten als hängend */
 const STALE_MINUTES = 10;
 
@@ -129,6 +131,7 @@ export async function getMessage(ctx: RequestContext, id: string): Promise<Messa
 	return {
 		...summaryOf(data.m, names),
 		bodyHtml: String(data.m.body_html),
+		layout: data.m.layout === 'plain' ? 'plain' : 'stamm',
 		replyTo: data.m.reply_to == null ? null : String(data.m.reply_to),
 		attachments: data.attachments.map((a): MessageAttachmentInfo => ({
 			id: String(a.id),
@@ -179,6 +182,7 @@ export async function createMessage(
 		throw errors.validation([{ path: ['bodyHtml'], message: 'Der Text ist zu lang' }]);
 	}
 	const settings = await loadSettings();
+	const layout = input.layout ?? settings.layout;
 	const replyTo =
 		input.replyTo ?? (settings.replyTo === 'sender' ? sender.address : await accountEmail(ctx));
 
@@ -201,9 +205,9 @@ export async function createMessage(
 		await mdb().transaction(async (tx) => {
 			await tx.execute(
 				sql`INSERT INTO messages (id, subject, body_html, body_text, sender_address, sender_name,
-						reply_to, created_by, total)
+						reply_to, created_by, total, layout)
 					VALUES (${id}, ${input.subject}, ${bodyHtml}, ${bodyText}, ${sender.address}, ${sender.name},
-						${replyTo}, ${ctx.userId ?? null}, ${resolved.recipients.length})`
+						${replyTo}, ${ctx.userId ?? null}, ${resolved.recipients.length}, ${layout})`
 			);
 			for (const r of resolved.recipients) {
 				await tx.execute(
@@ -315,6 +319,12 @@ async function markRecipient(id: string, ok: boolean, error?: string): Promise<v
 }
 
 /** Kurze, unkritische Fehlermeldung (keine Zugangsdaten, max. 200 Zeichen, eine Zeile) */
+/** Schlankes HTML-Dokument für „Einfach“: kein Layout, keine Farben/Bilder, Schrift des Mailprogramms */
+function plainDocument(fragment: string): string {
+	return `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head><body>${fragment}</body></html>`;
+}
+
 function errorText(e: unknown): string {
 	const raw = e instanceof Error ? e.message : String(e);
 	return raw.replace(/\s+/g, ' ').trim().slice(0, 200) || 'Versand fehlgeschlagen';
@@ -344,10 +354,17 @@ async function deliver(ctx: RequestContext, id: string): Promise<void> {
 			data: data.buffer
 		});
 	}
+	const plain = m.layout === 'plain';
+	const org = await core.settings.getMany(['core.organization.email']);
+	const unsubscribe =
+		String(org['core.organization.email'] ?? '').trim() || String(m.reply_to ?? '');
 	const base = {
 		subject: String(m.subject),
 		text: String(m.body_text),
-		html: String(m.body_html),
+		// Einfach: schlankes HTML ohne Layout/Bilder, nur Absätze, Listen und Links
+		html: plain ? plainDocument(String(m.body_html)) : String(m.body_html),
+		layout: !plain,
+		...(unsubscribe ? { unsubscribe } : {}),
 		from: String(m.sender_address),
 		...(m.sender_name ? { fromName: String(m.sender_name) } : {}),
 		...(m.reply_to ? { replyTo: String(m.reply_to) } : {}),
@@ -358,6 +375,8 @@ async function deliver(ctx: RequestContext, id: string): Promise<void> {
 		const batch = await claimBatch(id);
 		if (!batch.length) break;
 		for (let i = 0; i < batch.length; i += CONCURRENCY) {
+			// kleine Pause zwischen den Mails, damit Mailserver-Limits und Spam-Filter nicht anschlagen
+			if (i > 0) await new Promise((r) => setTimeout(r, SEND_PAUSE_MS));
 			await Promise.all(
 				batch.slice(i, i + CONCURRENCY).map(async (r) => {
 					try {

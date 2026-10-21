@@ -15,6 +15,7 @@ export const SETTING_KEYS = {
 	domain: 'messages.domain',
 	personalEnabled: 'messages.personal.enabled',
 	replyTo: 'messages.replyTo.default',
+	layout: 'messages.layout.default',
 	maxRecipients: 'messages.maxRecipients'
 } as const;
 
@@ -23,6 +24,13 @@ export type ReplyToMode = (typeof REPLY_TO_MODES)[number];
 export const REPLY_TO_LABELS: Record<ReplyToMode, string> = {
 	account: 'E-Mail-Adresse des eigenen Kontos',
 	sender: 'Absenderadresse'
+};
+
+export const LAYOUTS = ['stamm', 'plain'] as const;
+export type MessageLayout = (typeof LAYOUTS)[number];
+export const LAYOUT_LABELS: Record<MessageLayout, string> = {
+	stamm: 'Stamm-Layout (Kopf, Signatur, Fußzeile)',
+	plain: 'Einfach (wie aus dem Mailprogramm)'
 };
 
 export const MAX_RECIPIENTS_DEFAULT = 500;
@@ -63,6 +71,8 @@ export const sendInput = recipientsInput.extend({
 		.union([z.literal(''), emailAddress])
 		.optional()
 		.transform((v) => (v ? v : null)),
+	/** Aussehen; fehlt es, gilt die Einstellung `messages.layout.default` */
+	layout: z.enum(LAYOUTS).optional(),
 	subject: z
 		.string()
 		.trim()
@@ -104,6 +114,10 @@ export interface SendersResponse {
 	replyToDefault: ReplyToMode;
 	/** Warum es keine persönliche Adresse gibt (z. B. Domain fehlt), sonst `null` */
 	personalHint: string | null;
+	/** Standard für „Aussehen“ aus den Einstellungen */
+	layoutDefault: MessageLayout;
+	/** Hinweis zur Zustellbarkeit (z. B. Absender-Domain ≠ Mailserver-Domain), sonst `null` */
+	deliverabilityHint: string | null;
 }
 
 export interface ResolvedRecipient {
@@ -168,6 +182,7 @@ export interface MessageRecipientInfo {
 
 export interface MessageDetail extends MessageSummary {
 	bodyHtml: string;
+	layout: MessageLayout;
 	replyTo: string | null;
 	attachments: MessageAttachmentInfo[];
 	recipients: MessageRecipientInfo[];

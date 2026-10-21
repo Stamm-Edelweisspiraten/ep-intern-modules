@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
@@ -32,25 +33,32 @@
 	let loadError = $state('');
 	let retrying = $state(false);
 
+	let inFlight = false;
 	async function load() {
+		if (inFlight) return;
+		inFlight = true;
 		try {
 			message = await apiFetch<MessageDetail>(`${BASE}/messages/${params.id}`);
 			loadError = '';
 		} catch (e) {
 			loadError = errorText(e, 'Die Nachricht konnte nicht geladen werden.');
 		} finally {
+			inFlight = false;
 			loading = false;
 		}
 	}
 	$effect(() => {
 		void params.id;
-		void load();
+		untrack(() => void load());
 	});
 
-	// Solange gesendet wird, regelmäßig neu laden
+	// Solange gesendet wird, regelmäßig neu laden (sichtbarer Tab, ohne Überlappung)
+	const sending = $derived(message?.status === 'sending');
 	$effect(() => {
-		if (message?.status !== 'sending') return;
-		const t = setInterval(() => void load(), 3000);
+		if (!sending) return;
+		const t = setInterval(() => {
+			if (!document.hidden) untrack(() => void load());
+		}, 3000);
 		return () => clearInterval(t);
 	});
 

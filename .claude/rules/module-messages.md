@@ -52,6 +52,23 @@ Kontos, `sender` = Absenderadresse; im Formular änderbar), `messages.maxRecipie
 | GET `/messages/:id` | send | Detail mit Empfängerstatus; fremd ohne `view-all` → 404 |
 | POST `/messages/:id/retry` | send | fehlgeschlagene Empfänger erneut; 409 bei laufendem Versand/ohne Fehler/entfernten Anhängen |
 
+## Aussehen und Zustellbarkeit (Spam-Wert)
+- **Aussehen** je Nachricht (`layout`, Migration 0002, Standard aus `messages.layout.default`): `stamm` = Stamm-Layout (Kopf, Signatur, Fußzeile, Logo als CID-Anhang),
+  `plain` = einfache Mail wie aus einem Mailprogramm (`layout: false`: kein Kopf/Bild/Signatur, nur Text + schlankes HTML ohne Tabellen/Farben).
+- **Immer multipart/alternative** (Text + HTML); Logo/Wappen mit `alt`-Text, `<title>` im Layout; keine Tracking-Pixel, keine externen Bilder.
+- **Header** (`core/mail.ts`): `Message-ID` mit der **Domain der Absenderadresse**, `Reply-To`, `List-Unsubscribe: <mailto:Stamm-Adresse>` (`core.mail.sendMessage` `unsubscribe`),
+  kein `Precedence: bulk`. Versand mit kurzer Pause (250 ms) zwischen den Mails.
+- **Betreff-Hinweis** im Formular bei Großbuchstaben oder mehr als zwei `!`/`?`.
+- **Absender-Domain ≠ Mailserver-Domain** (`core.smtp.from`): `SendersResponse.deliverabilityHint` weist auf SPF/DKIM/DMARC hin – ohne diese landen Mails eher im Spam
+  oder werden abgelehnt. Checkliste: SPF (Mailserver autorisiert), DKIM-Signatur für die Absender-Domain, DMARC-Eintrag, rDNS/Reverse-DNS des Servers, Server darf als
+  `vorname.nachname@domain` senden (Alias/Catch-all), neue Domains langsam „aufwärmen“. Der echte Spam-Wert hängt am Mailserver/DNS und ist nur mit einer Testmail an einen Spam-Checker messbar.
+
+## Oberfläche (`ComposePage`)
+Ein Eingabefeld „An“ (Combobox mit Trefferliste getrennt nach Gruppen/Mitgliedern, Pfeiltasten/Enter/Backspace); gewählte Empfänger als Chips darunter: **Gruppen in
+Gruppenfarbe**, **Mitglieder grau**. Darunter Anzahl Adressen/Mitglieder, ohne Adresse, ausgetreten, einzelne Mitglieder ausschließbar. Danach Absender, Antwortadresse,
+Aussehen, Betreff, Editor, Anhänge. Seiten laden **ohne** reaktive Lesezugriffe im `$effect` (`untrack`), Polling nur bei laufendem Versand und sichtbarem Tab –
+sonst Endlosschleife → 429 (Regression, E2E `tests/e2e/messages.spec.ts`).
+
 ## Ablauf und Regeln
 - `createMessage`: Absender prüfen → Empfänger auflösen (Adressen immer serverseitig, Duplikate unabhängig von Groß-/Kleinschreibung zusammengefasst, Geschwister mit
   gleicher Adresse bekommen **eine** Mail) → Text bereinigen → Anhänge in den Storage (`messages/<id>/<uuid>-<name>`) → eine Transaktion → Audit `messages.message.created`

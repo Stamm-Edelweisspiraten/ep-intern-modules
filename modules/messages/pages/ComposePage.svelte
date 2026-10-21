@@ -8,10 +8,10 @@
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
+	import { contrastTextColor } from '$lib/components/ui/color-picker/color';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
-	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { RichTextEditor } from '$lib/components/ui/rich-text-editor';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import {
@@ -23,6 +23,9 @@
 		PageTitle
 	} from '$lib/components/layout';
 	import {
+		LAYOUTS,
+		LAYOUT_LABELS,
+		type MessageLayout,
 		MAX_FILES,
 		MAX_FILE_BYTES,
 		MAX_TOTAL_BYTES,
@@ -39,9 +42,10 @@
 	);
 
 	interface GroupOption {
-		value: string;
-		label: string;
-		description?: string;
+		id: string;
+		name: string;
+		/** #rrggbb oder null */
+		color: string | null;
 	}
 	interface PickedMember {
 		id: string;
@@ -54,6 +58,7 @@
 	let loadError = $state('');
 
 	let senderKey = $state<string | null>(null);
+	let layout = $state<MessageLayout>('stamm');
 	let replyTo = $state('');
 	let subject = $state('');
 	let bodyHtml = $state('');
@@ -72,11 +77,14 @@
 		try {
 			const [s, g] = await Promise.all([
 				apiFetch<SendersResponse>(`${BASE}/senders`),
-				apiFetch<{ id: string; name: string }[]>(`${membersBase}/groups`).catch(() => [])
+				apiFetch<{ id: string; name: string; color: string | null }[]>(
+					`${membersBase}/groups`
+				).catch(() => [])
 			]);
 			senders = s;
-			groups = g.map((x) => ({ value: x.id, label: x.name }));
+			groups = g.map((x) => ({ id: x.id, name: x.name, color: x.color ?? null }));
 			senderKey = s.senders[0]?.key ?? null;
+			layout = s.layoutDefault;
 			applyPreset();
 			loadError = '';
 		} catch (e) {
@@ -159,17 +167,40 @@
 		return () => clearTimeout(timer);
 	});
 
-	// --- Einzelne Mitglieder suchen ------------------------------------------------------------
+	// --- Ein Eingabefeld für Gruppen und Mitglieder ---------------------------------------------
 	let search = $state('');
-	let results = $state<PickedMember[]>([]);
+	let focused = $state(false);
+	let memberResults = $state<PickedMember[]>([]);
+	let activeIndex = $state(0);
 	let searchTimer: ReturnType<typeof setTimeout> | undefined;
 	let searchSeq = 0;
+
+	type Option =
+		| { kind: 'group'; id: string; label: string; color: string | null }
+		| { kind: 'member'; id: string; label: string };
+
+	const fold = (v: string) =>
+		v.toLocaleLowerCase('de').replace(/ß/g, 'ss').normalize('NFD').replace(/\p{M}/gu, '');
+
+	const options = $derived.by<Option[]>(() => {
+		const q = fold(search.trim());
+		const groupHits = groups
+			.filter((g) => !groupIds.includes(g.id) && (!q || fold(g.name).includes(q)))
+			.map((g): Option => ({ kind: 'group', id: g.id, label: g.name, color: g.color }));
+		const memberHits = memberResults.map((m): Option => ({
+			kind: 'member',
+			id: m.id,
+			label: m.name
+		}));
+		return [...groupHits, ...memberHits];
+	});
+	const open = $derived(focused && options.length > 0);
 
 	$effect(() => {
 		const q = search.trim();
 		clearTimeout(searchTimer);
 		if (q.length < 2) {
-			results = [];
+			memberResults = [];
 			return;
 		}
 		const seq = ++searchSeq;
@@ -179,28 +210,56 @@
 					items: { id: string; firstName: string; lastName: string }[];
 				}>(`${membersBase}/members?search=${encodeURIComponent(q)}&limit=8`);
 				if (seq === searchSeq) {
-					results = res.items
+					memberResults = res.items
 						.filter((m) => !members.some((x) => x.id === m.id))
 						.map((m) => ({ id: m.id, name: `${m.firstName} ${m.lastName}`.trim() }));
 				}
 			} catch {
-				if (seq === searchSeq) results = [];
+				if (seq === searchSeq) memberResults = [];
 			}
 		}, 250);
 		return () => clearTimeout(searchTimer);
 	});
+	// Treffer ändern sich: Auswahl zurück an den Anfang
+	$effect(() => {
+		void options.length;
+		activeIndex = 0;
+	});
 
-	function addMember(m: PickedMember) {
-		members = [...members, m];
+	function choose(o: Option) {
+		if (o.kind === 'group') groupIds = [...groupIds, o.id];
+		else members = [...members, { id: o.id, name: o.label }];
 		search = '';
-		results = [];
+		memberResults = [];
 	}
 	function removeMember(id: string) {
 		members = members.filter((m) => m.id !== id);
 	}
+	function removeGroup(id: string) {
+		groupIds = groupIds.filter((g) => g !== id);
+	}
 	function excludeMember(id: string) {
 		excluded = [...excluded, id];
 	}
+	function onKey(e: KeyboardEvent) {
+		if (e.key === 'ArrowDown' && options.length) {
+			e.preventDefault();
+			activeIndex = (activeIndex + 1) % options.length;
+		} else if (e.key === 'ArrowUp' && options.length) {
+			e.preventDefault();
+			activeIndex = (activeIndex - 1 + options.length) % options.length;
+		} else if (e.key === 'Enter' && open) {
+			e.preventDefault();
+			const o = options[activeIndex];
+			if (o) choose(o);
+		} else if (e.key === 'Escape') {
+			focused = false;
+		} else if (e.key === 'Backspace' && !search) {
+			if (members.length) removeMember(members[members.length - 1]!.id);
+			else if (groupIds.length) removeGroup(groupIds[groupIds.length - 1]!);
+		}
+	}
+	const groupById = (id: string) => groups.find((g) => g.id === id);
 
 	// --- Anhänge ---------------------------------------------------------------------------------
 	let fileError = $state('');
@@ -228,6 +287,22 @@
 	);
 
 	// --- Senden ---------------------------------------------------------------------------------
+	const layoutOptions = LAYOUTS.map((l) => ({ value: l, label: LAYOUT_LABELS[l] }));
+
+	/** Betreff, der Spam-Filter eher auslöst: Großbuchstaben, viele Ausrufezeichen, Reizwörter */
+	const subjectHint = $derived.by(() => {
+		const t = subject.trim();
+		if (!t) return '';
+		const letters = t.replace(/[^\p{L}]/gu, '');
+		if (letters.length >= 6 && letters === letters.toUpperCase()) {
+			return 'Ein Betreff in Großbuchstaben landet eher im Spam – besser normal schreiben.';
+		}
+		if ((t.match(/[!?]/g) ?? []).length > 2) {
+			return 'Viele Ausrufe- oder Fragezeichen im Betreff erhöhen den Spam-Wert.';
+		}
+		return '';
+	});
+
 	const bodyEmpty = $derived(!bodyHtml.replace(/<[^>]*>/g, '').trim());
 
 	function validate(): boolean {
@@ -256,6 +331,7 @@
 				'data',
 				JSON.stringify({
 					senderKey,
+					layout,
 					replyTo: replyTo.trim(),
 					subject: subject.trim(),
 					bodyHtml,
@@ -310,56 +386,114 @@
 		<Card.Root>
 			<Card.Header><Card.Title level={2}>Empfänger</Card.Title></Card.Header>
 			<Card.Content class="space-y-4">
-				<FormField label="Gruppen" id="m-groups" error={errors.recipients}>
-					<MultiSelect
-						id="m-groups"
-						label="Gruppen"
-						options={groups}
-						bind:value={groupIds}
-						placeholder="Gruppen wählen …"
-						searchPlaceholder="Gruppe suchen …"
-						emptyText="Keine Gruppen gefunden"
-					/>
-				</FormField>
-				<FormField label="Einzelne Mitglieder" id="m-search" hint="Name eingeben (ab 2 Zeichen)">
-					<Input
-						id="m-search"
-						bind:value={search}
-						placeholder="Mitglied suchen …"
-						autocomplete="off"
-					/>
-				</FormField>
-				{#if results.length}
-					<ul class="divide-y rounded-md border" aria-label="Suchergebnisse">
-						{#each results as r (r.id)}
-							<li class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
-								<span>{r.name}</span>
-								<Button type="button" size="sm" variant="outline" onclick={() => addMember(r)}>
-									Hinzufügen
-								</Button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-				{#if members.length}
-					<ul class="flex flex-wrap gap-2" aria-label="Ausgewählte Mitglieder">
-						{#each members as m (m.id)}
-							<li>
-								<Badge variant="secondary" class="gap-1">
-									{m.name}
-									<button
-										type="button"
-										class="focus-ring rounded-sm"
-										aria-label={`${m.name} entfernen`}
-										onclick={() => removeMember(m.id)}
+				<div class="space-y-2">
+					<FormField
+						label="An"
+						id="m-to"
+						error={errors.recipients}
+						hint="Gruppe oder Name eingeben und mit Enter übernehmen"
+					>
+						<div class="relative">
+							<Input
+								id="m-to"
+								role="combobox"
+								aria-expanded={open}
+								aria-controls="m-to-list"
+								aria-autocomplete="list"
+								aria-activedescendant={open ? `m-to-opt-${activeIndex}` : undefined}
+								bind:value={search}
+								placeholder="Gruppe oder Mitglied suchen …"
+								autocomplete="off"
+								onfocus={() => (focused = true)}
+								onblur={() => setTimeout(() => (focused = false), 120)}
+								onkeydown={onKey}
+							/>
+							{#if open}
+								<ul
+									id="m-to-list"
+									role="listbox"
+									aria-label="Vorschläge"
+									class="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+								>
+									{#each options as o, i (o.kind + o.id)}
+										{#if i === 0 || options[i - 1]!.kind !== o.kind}
+											<li
+												role="presentation"
+												class="px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground"
+											>
+												{o.kind === 'group' ? 'Gruppen' : 'Mitglieder'}
+											</li>
+										{/if}
+										<li
+											id={`m-to-opt-${i}`}
+											role="option"
+											aria-selected={i === activeIndex}
+											class="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm {i ===
+											activeIndex
+												? 'bg-muted'
+												: ''}"
+											onmousedown={(e) => {
+												e.preventDefault();
+												choose(o);
+											}}
+											onmouseenter={() => (activeIndex = i)}
+										>
+											{#if o.kind === 'group'}
+												<span
+													class="size-3 shrink-0 rounded-full border"
+													style:background-color={o.color ?? 'transparent'}
+													aria-hidden="true"
+												></span>
+											{/if}
+											{o.label}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+					</FormField>
+					{#if groupIds.length || members.length}
+						<ul class="flex flex-wrap gap-2" aria-label="Empfänger">
+							{#each groupIds as gid (gid)}
+								{@const g = groupById(gid)}
+								<li>
+									<Badge
+										variant="outline"
+										class="gap-1"
+										style={g?.color
+											? `background-color:${g.color};color:${contrastTextColor(g.color)};border-color:${g.color}`
+											: ''}
 									>
-										<X class="size-3" />
-									</button>
-								</Badge>
-							</li>
-						{/each}
-					</ul>
-				{/if}
+										{g?.name ?? 'Gruppe'}
+										<button
+											type="button"
+											class="focus-ring rounded-sm"
+											aria-label={`Gruppe ${g?.name ?? ''} entfernen`}
+											onclick={() => removeGroup(gid)}
+										>
+											<X class="size-3" />
+										</button>
+									</Badge>
+								</li>
+							{/each}
+							{#each members as m (m.id)}
+								<li>
+									<Badge variant="secondary" class="gap-1">
+										{m.name}
+										<button
+											type="button"
+											class="focus-ring rounded-sm"
+											aria-label={`${m.name} entfernen`}
+											onclick={() => removeMember(m.id)}
+										>
+											<X class="size-3" />
+										</button>
+									</Badge>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</div>
 
 				<div aria-live="polite" class="space-y-2 text-sm">
 					{#if previewBusy && !preview}
@@ -450,6 +584,24 @@
 						autocomplete="off"
 					/>
 				</FormField>
+				<FormField
+					label="Aussehen"
+					id="m-layout"
+					hint="Einfach sieht aus wie eine Mail aus dem Mailprogramm und hat den geringsten Spam-Wert"
+				>
+					<SelectField
+						id="m-layout"
+						label="Aussehen"
+						options={layoutOptions}
+						value={layout}
+						onchange={(v) => (layout = (v as MessageLayout) ?? 'stamm')}
+					/>
+				</FormField>
+				{#if senders.deliverabilityHint}
+					<p class="text-xs text-warning sm:col-span-2" role="note">
+						{senders.deliverabilityHint}
+					</p>
+				{/if}
 				{#if senders.personalHint}
 					<p class="text-xs text-muted-foreground sm:col-span-2">{senders.personalHint}</p>
 				{/if}
@@ -459,7 +611,13 @@
 		<Card.Root>
 			<Card.Header><Card.Title level={2}>Nachricht</Card.Title></Card.Header>
 			<Card.Content class="space-y-4">
-				<FormField label="Betreff" id="m-subject" error={errors.subject} required>
+				<FormField
+					label="Betreff"
+					id="m-subject"
+					error={errors.subject}
+					hint={subjectHint || undefined}
+					required
+				>
 					<Input id="m-subject" bind:value={subject} maxlength={200} autocomplete="off" />
 				</FormField>
 				<div class="space-y-1.5">

@@ -88,6 +88,7 @@ export const messageEndpoints: AnyApiEndpoint[] = [
 		summary: 'Verlauf der gesendeten Nachrichten (eigene, mit view-all alle)',
 		tags,
 		permission: PERM_SEND,
+		rateLimit: { limit: 240, windowSec: 60 },
 		query: listQuery,
 		handler: ({ ctx, query }) => listMessages(ctx, query)
 	}),
@@ -125,6 +126,7 @@ export const messageEndpoints: AnyApiEndpoint[] = [
 		summary: 'Nachricht mit Empfängerstatus',
 		tags,
 		permission: PERM_SEND,
+		rateLimit: { limit: 240, windowSec: 60 },
 		params: idParams,
 		handler: ({ ctx, params }) => getMessage(ctx, params.id)
 	}),

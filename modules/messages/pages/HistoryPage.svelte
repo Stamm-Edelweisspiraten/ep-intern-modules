@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { apiFetch } from '$lib/sdk/client';
@@ -16,11 +17,17 @@
 	let loading = $state(true);
 	let error = $state('');
 
-	async function load() {
-		loading = items.length === 0;
+	/** Läuft eine Anfrage? Verhindert überlappende Aufrufe (Neuladen, Polling) */
+	let inFlight = false;
+
+	/** Lädt die Seite `at`; liest selbst keinen reaktiven Zustand (sonst Endlosschleife im `$effect`) */
+	async function load(at: number, silent = false) {
+		if (inFlight) return;
+		inFlight = true;
+		if (!silent) loading = true;
 		try {
 			const res = await apiFetch<{ items: MessageSummary[]; total: number }>(
-				`${BASE}/messages?limit=${PAGE_SIZE}&offset=${offset}`
+				`${BASE}/messages?limit=${PAGE_SIZE}&offset=${at}`
 			);
 			items = res.items;
 			total = res.total;
@@ -28,18 +35,24 @@
 		} catch (e) {
 			error = errorText(e, 'Der Verlauf konnte nicht geladen werden.');
 		} finally {
+			inFlight = false;
 			loading = false;
 		}
 	}
+
+	// Nur ein Seitenwechsel lädt neu – der Aufruf selbst ist von der Verfolgung ausgenommen
 	$effect(() => {
-		void offset;
-		void load();
+		const at = offset;
+		untrack(() => void load(at));
 	});
 
-	// Laufende Versände aktualisieren sich selbst
+	// Laufende Versände aktualisieren sich selbst (nur im sichtbaren Tab, ohne Überlappung)
+	const anySending = $derived(items.some((m) => m.status === 'sending'));
 	$effect(() => {
-		if (!items.some((m) => m.status === 'sending')) return;
-		const t = setInterval(() => void load(), 4000);
+		if (!anySending) return;
+		const t = setInterval(() => {
+			if (!document.hidden) untrack(() => void load(offset, true));
+		}, 4000);
 		return () => clearInterval(t);
 	});
 
@@ -67,7 +80,7 @@
 		caption="Gesendete Nachrichten"
 		{loading}
 		{error}
-		onretry={load}
+		onretry={() => load(offset)}
 		empty={items.length === 0}
 		emptyTitle="Noch keine Nachrichten gesendet."
 	>

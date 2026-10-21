@@ -16,8 +16,10 @@ import {
 	MAX_RECIPIENTS_DEFAULT,
 	MAX_RECIPIENTS_LIMIT,
 	MODULE_ID,
+	LAYOUTS,
 	REPLY_TO_MODES,
 	SETTING_KEYS,
+	type MessageLayout,
 	type ReplyToMode,
 	type Sender,
 	type SendersResponse
@@ -27,6 +29,7 @@ export interface MessageSettings {
 	domain: string;
 	personalEnabled: boolean;
 	replyTo: ReplyToMode;
+	layout: MessageLayout;
 	maxRecipients: number;
 }
 
@@ -42,6 +45,9 @@ export async function loadSettings(): Promise<MessageSettings> {
 		replyTo: (REPLY_TO_MODES as readonly string[]).includes(replyTo)
 			? (replyTo as ReplyToMode)
 			: 'account',
+		layout: (LAYOUTS as readonly string[]).includes(String(s[SETTING_KEYS.layout]))
+			? (s[SETTING_KEYS.layout] as MessageLayout)
+			: 'stamm',
 		maxRecipients:
 			Number.isInteger(max) && max >= 1
 				? Math.min(max, MAX_RECIPIENTS_LIMIT)
@@ -95,6 +101,27 @@ async function personalSender(
 	};
 }
 
+/** Domain einer Adresse (nach dem letzten @), klein geschrieben */
+const domainOf = (address: string) => address.split('@').pop()?.trim().toLowerCase() ?? '';
+
+/**
+ * Hinweis, wenn Absenderadressen eine andere Domain haben als der Mailserver (`core.smtp.from`): Dann
+ * müssen SPF/DKIM/DMARC für die Absender-Domain stimmen, sonst landen Mails eher im Spam.
+ */
+async function deliverabilityHint(
+	settings: MessageSettings,
+	senders: Sender[]
+): Promise<string | null> {
+	const smtp = await core.settings.getMany(['core.smtp.from']);
+	const smtpDomain = domainOf(String(smtp['core.smtp.from'] ?? '').replace(/^.*<|>.*$/g, ''));
+	if (!smtpDomain) return null;
+	const other = [...new Set(senders.map((s) => domainOf(s.address)))].filter(
+		(d) => d && d !== smtpDomain
+	);
+	if (!other.length) return null;
+	return `Absenderadressen mit der Domain ${other.join(', ')} weichen vom Mailserver (${smtpDomain}) ab. Damit die Mails nicht im Spam landen, müssen SPF, DKIM und DMARC für diese Domain eingerichtet sein und der Mailserver das Senden als diese Adressen erlauben.`;
+}
+
 /** Alle Absender, die `ctx` verwenden darf (persönlich zuerst) */
 export async function listSenders(ctx: RequestContext): Promise<SendersResponse> {
 	const settings = await loadSettings();
@@ -144,7 +171,9 @@ export async function listSenders(ctx: RequestContext): Promise<SendersResponse>
 		senders,
 		accountEmail: await accountEmail(ctx),
 		replyToDefault: settings.replyTo,
-		personalHint: personal.hint
+		personalHint: personal.hint,
+		layoutDefault: settings.layout,
+		deliverabilityHint: await deliverabilityHint(settings, senders)
 	};
 }
 
