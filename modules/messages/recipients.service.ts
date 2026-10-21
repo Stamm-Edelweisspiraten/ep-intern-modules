@@ -1,9 +1,10 @@
 /**
- * Empfänger auflösen: ausgewählte Mitglieder und/oder Gruppen → eindeutige E-Mail-Adressen.
+ * Empfänger auflösen: ausgewählte Mitglieder, Gruppen und frei eingegebene Adressen → eindeutige E-Mail-Adressen.
  *
  * Bereich: Wer `members.member.view` hat, darf alle Mitglieder (Gruppen zusätzlich `members.group.view`).
  * Gruppenleitungen (`members.led-member.view`) nur die Mitglieder ihrer eigenen Gruppen; alles andere → 404.
- * Der Server löst Adressen immer selbst auf – Adressen aus dem Browser werden nie übernommen.
+ * Mitgliederadressen löst der Server immer selbst auf; aus dem Browser kommen nur ausdrücklich frei
+ * eingegebene Adressen (`addresses`, ohne Mitgliedsbezug).
  */
 import { core, errors, type RequestContext } from '$lib/sdk/server';
 import type { MembersService } from '$lib/modules/members/contract';
@@ -62,20 +63,14 @@ export async function resolveRecipients(
 	input: RecipientsInput
 ): Promise<RecipientsResult> {
 	const settings = await loadSettings();
-	const ids = await memberIdsInScope(ctx, input);
-	const empty: RecipientsResult = {
-		recipients: [],
-		members: 0,
-		withoutEmail: [],
-		exited: 0,
-		maxRecipients: settings.maxRecipients
-	};
-	if (!ids.length) return empty;
+	// Nur Adressen: keine Mitgliederrechte nötig (freie Adressen darf jede*r mit Senderecht anschreiben)
+	const ids =
+		input.memberIds.length || input.groupIds.length ? await memberIdsInScope(ctx, input) : [];
 
-	const members = await membersService();
+	const members = ids.length ? await membersService() : null;
 	const today = todayBerlin();
 	const contacts = [];
-	for (let i = 0; i < ids.length; i += 1000) {
+	for (let i = 0; members && i < ids.length; i += 1000) {
 		contacts.push(
 			...(await members.listMemberContacts({ ids: ids.slice(i, i + 1000), limit: 1000 }))
 		);
@@ -100,11 +95,18 @@ export async function resolveRecipients(
 		withAddress++;
 		for (const address of addresses) rows.push({ memberId: c.id, name, address });
 	}
+	// Freie Adressen zuletzt: gehört eine schon zu einem Mitglied, bleibt dessen Zeile (mit Namen)
+	const memberCount = dedupeAddresses(rows).length;
+	for (const address of input.addresses.map(normalizeAddress).filter(Boolean)) {
+		rows.push({ memberId: null, name: null, address });
+	}
+	const recipients = dedupeAddresses(rows);
 	return {
-		recipients: dedupeAddresses(rows),
+		recipients,
 		members: withAddress,
 		withoutEmail,
 		exited,
+		external: recipients.length - memberCount,
 		maxRecipients: settings.maxRecipients
 	};
 }

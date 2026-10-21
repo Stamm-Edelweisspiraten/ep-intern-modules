@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Send from '@lucide/svelte/icons/send';
 	import X from '@lucide/svelte/icons/x';
@@ -14,6 +16,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { RichTextEditor } from '$lib/components/ui/rich-text-editor';
 	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		BUSY_SEND,
 		ConfirmDialog,
@@ -23,13 +26,16 @@
 		PageTitle
 	} from '$lib/components/layout';
 	import {
+		emailAddress,
 		LAYOUTS,
 		LAYOUT_LABELS,
 		type MessageLayout,
+		MAX_ADDRESSES,
 		MAX_FILES,
 		MAX_FILE_BYTES,
 		MAX_TOTAL_BYTES,
 		type MessageDetail,
+		type MessagePreview,
 		type RecipientsResult,
 		type SendersResponse
 	} from '../schemas';
@@ -64,6 +70,8 @@
 	let bodyHtml = $state('');
 	let groupIds = $state<string[]>([]);
 	let members = $state<PickedMember[]>([]);
+	/** Frei eingegebene Adressen (klein geschrieben) */
+	let addresses = $state<string[]>([]);
 	let excluded = $state<string[]>([]);
 	let files = $state<File[]>([]);
 
@@ -135,10 +143,11 @@
 		const body = {
 			groupIds: [...groupIds],
 			memberIds: members.map((m) => m.id),
-			excludeMemberIds: [...excluded]
+			excludeMemberIds: [...excluded],
+			addresses: [...addresses]
 		};
 		clearTimeout(timer);
-		if (!body.groupIds.length && !body.memberIds.length) {
+		if (!body.groupIds.length && !body.memberIds.length && !body.addresses.length) {
 			preview = null;
 			previewError = '';
 			return;
@@ -176,14 +185,67 @@
 	let searchSeq = 0;
 
 	type Option =
+		| { kind: 'address'; id: string; label: string }
 		| { kind: 'group'; id: string; label: string; color: string | null }
 		| { kind: 'member'; id: string; label: string };
+
+	const OPTION_HEADINGS: Record<Option['kind'], string> = {
+		address: 'E-Mail-Adresse',
+		group: 'Gruppen',
+		member: 'Mitglieder'
+	};
+
+	/** Gültige, normalisierte Adresse oder `null` (gleiche Regel wie der Server) */
+	function asAddress(v: string): string | null {
+		const r = emailAddress.safeParse(v.trim().replace(/^<|>$/g, ''));
+		return r.success ? r.data : null;
+	}
+	function addAddresses(list: string[]): boolean {
+		const next = [...addresses];
+		for (const a of list) {
+			if (next.length >= MAX_ADDRESSES) {
+				toast.error(`Höchstens ${MAX_ADDRESSES} einzelne Adressen`);
+				break;
+			}
+			if (!next.includes(a)) next.push(a);
+		}
+		const changed = next.length !== addresses.length;
+		addresses = next;
+		return changed;
+	}
+	/** Getippte Adresse übernehmen (Enter, Komma, Semikolon, Verlassen des Felds) */
+	function commitTypedAddress(): boolean {
+		const a = asAddress(search);
+		if (!a) return false;
+		addAddresses([a]);
+		search = '';
+		memberResults = [];
+		return true;
+	}
+	/** Mehrere eingefügte Adressen (z. B. aus einer Mail-Liste) auf einmal übernehmen */
+	function onPaste(e: ClipboardEvent) {
+		const text = e.clipboardData?.getData('text') ?? '';
+		const parts = text.split(/[\s,;]+/).filter(Boolean);
+		if (parts.length < 2) return;
+		const valid = parts.map(asAddress).filter((a): a is string => !!a);
+		if (!valid.length) return;
+		e.preventDefault();
+		addAddresses(valid);
+		const rest = parts.filter((p) => !asAddress(p));
+		search = rest.join(' ');
+		if (rest.length) toast.warning(`Keine gültige Adresse: ${rest.join(', ')}`);
+	}
 
 	const fold = (v: string) =>
 		v.toLocaleLowerCase('de').replace(/ß/g, 'ss').normalize('NFD').replace(/\p{M}/gu, '');
 
 	const options = $derived.by<Option[]>(() => {
 		const q = fold(search.trim());
+		const typed = asAddress(search);
+		const addressHit: Option[] =
+			typed && !addresses.includes(typed)
+				? [{ kind: 'address', id: typed, label: `„${typed}“ hinzufügen` }]
+				: [];
 		const groupHits = groups
 			.filter((g) => !groupIds.includes(g.id) && (!q || fold(g.name).includes(q)))
 			.map((g): Option => ({ kind: 'group', id: g.id, label: g.name, color: g.color }));
@@ -192,14 +254,15 @@
 			id: m.id,
 			label: m.name
 		}));
-		return [...groupHits, ...memberHits];
+		return [...addressHit, ...groupHits, ...memberHits];
 	});
 	const open = $derived(focused && options.length > 0);
 
 	$effect(() => {
 		const q = search.trim();
 		clearTimeout(searchTimer);
-		if (q.length < 2) {
+		// Adressen (mit @) suchen keine Mitglieder
+		if (q.length < 2 || q.includes('@')) {
 			memberResults = [];
 			return;
 		}
@@ -227,7 +290,8 @@
 	});
 
 	function choose(o: Option) {
-		if (o.kind === 'group') groupIds = [...groupIds, o.id];
+		if (o.kind === 'address') addAddresses([o.id]);
+		else if (o.kind === 'group') groupIds = [...groupIds, o.id];
 		else members = [...members, { id: o.id, name: o.label }];
 		search = '';
 		memberResults = [];
@@ -237,6 +301,9 @@
 	}
 	function removeGroup(id: string) {
 		groupIds = groupIds.filter((g) => g !== id);
+	}
+	function removeAddress(address: string) {
+		addresses = addresses.filter((a) => a !== address);
 	}
 	function excludeMember(id: string) {
 		excluded = [...excluded, id];
@@ -252,10 +319,16 @@
 			e.preventDefault();
 			const o = options[activeIndex];
 			if (o) choose(o);
+		} else if ((e.key === ',' || e.key === ';') && commitTypedAddress()) {
+			e.preventDefault();
+		} else if (e.key === 'Enter' && search.trim()) {
+			e.preventDefault();
+			commitTypedAddress();
 		} else if (e.key === 'Escape') {
 			focused = false;
 		} else if (e.key === 'Backspace' && !search) {
-			if (members.length) removeMember(members[members.length - 1]!.id);
+			if (addresses.length) removeAddress(addresses[addresses.length - 1]!);
+			else if (members.length) removeMember(members[members.length - 1]!.id);
 			else if (groupIds.length) removeGroup(groupIds[groupIds.length - 1]!);
 		}
 	}
@@ -305,6 +378,50 @@
 
 	const bodyEmpty = $derived(!bodyHtml.replace(/<[^>]*>/g, '').trim());
 
+	// --- Vorschau (Reiter in „Nachricht“) --------------------------------------------------------
+	let messageTab = $state<'write' | 'preview'>('write');
+	let mailPreview = $state<MessagePreview | null>(null);
+	let mailPreviewError = $state('');
+	let mailPreviewTimer: ReturnType<typeof setTimeout> | undefined;
+	let mailPreviewSeq = 0;
+
+	// Nur bei geöffnetem Reiter und nach kurzer Pause neu rendern lassen (Server bereinigt wie beim Senden)
+	$effect(() => {
+		if (messageTab !== 'preview') return;
+		const body = { senderKey: senderKey ?? undefined, layout, subject, bodyHtml };
+		clearTimeout(mailPreviewTimer);
+		const seq = ++mailPreviewSeq;
+		mailPreviewTimer = setTimeout(
+			async () => {
+				try {
+					const res = await apiFetch<MessagePreview>(`${BASE}/preview`, {
+						method: 'POST',
+						body: JSON.stringify(body)
+					});
+					if (seq === mailPreviewSeq) {
+						mailPreview = res;
+						mailPreviewError = '';
+					}
+				} catch (e) {
+					if (seq === mailPreviewSeq) {
+						mailPreviewError = errorText(e, 'Die Vorschau konnte nicht erstellt werden.');
+					}
+				}
+			},
+			// untrack: das Ergebnis selbst darf den Effekt nicht erneut auslösen (Endlosschleife → 429)
+			untrack(() => mailPreview) ? 400 : 0
+		);
+		return () => clearTimeout(mailPreviewTimer);
+	});
+
+	const previewTo = $derived.by(() => {
+		const list = preview?.recipients ?? [];
+		const first = list[0];
+		if (!first) return 'Noch keine Empfänger';
+		const label = first.name ? `${first.name} <${first.address}>` : first.address;
+		return list.length > 1 ? `${label} und ${list.length - 1} weitere (je eigene Mail)` : label;
+	});
+
 	function validate(): boolean {
 		const e: Record<string, string> = {};
 		if (!senderKey) e.senderKey = 'Bitte einen Absender wählen';
@@ -320,6 +437,8 @@
 	function askSend() {
 		formError = '';
 		if (validate()) confirmOpen = true;
+		// Fehler im Text sichtbar machen, auch wenn gerade die Vorschau offen ist
+		else if (errors.subject || errors.bodyHtml) messageTab = 'write';
 	}
 
 	async function send() {
@@ -337,7 +456,8 @@
 					bodyHtml,
 					groupIds,
 					memberIds: members.map((m) => m.id),
-					excludeMemberIds: excluded
+					excludeMemberIds: excluded,
+					addresses
 				})
 			);
 			for (const f of files) form.append('files', f);
@@ -367,7 +487,7 @@
 	</a>
 	<PageHeader
 		title="Neue Nachricht"
-		description="E-Mail an Mitglieder oder Gruppen. Jede Person bekommt ihre eigene Mail – die Empfänger sehen einander nicht."
+		description="E-Mail an Mitglieder, Gruppen oder einzelne Adressen. Jede Person bekommt ihre eigene Mail – die Empfänger sehen einander nicht."
 	/>
 
 	{#if loading}
@@ -383,7 +503,8 @@
 			</AlertDescription>
 		</Alert>
 	{:else if senders}
-		<Card.Root>
+		<!-- overflow-visible: die Trefferliste darf über die Karte hinausragen -->
+		<Card.Root class="overflow-visible">
 			<Card.Header><Card.Title level={2}>Empfänger</Card.Title></Card.Header>
 			<Card.Content class="space-y-4">
 				<div class="space-y-2">
@@ -391,7 +512,7 @@
 						label="An"
 						id="m-to"
 						error={errors.recipients}
-						hint="Gruppe oder Name eingeben und mit Enter übernehmen"
+						hint="Gruppe, Name oder E-Mail-Adresse eingeben und mit Enter übernehmen – mehrere Adressen lassen sich auch einfügen"
 					>
 						<div class="relative">
 							<Input
@@ -402,11 +523,16 @@
 								aria-autocomplete="list"
 								aria-activedescendant={open ? `m-to-opt-${activeIndex}` : undefined}
 								bind:value={search}
-								placeholder="Gruppe oder Mitglied suchen …"
+								placeholder="Gruppe, Mitglied oder E-Mail-Adresse …"
 								autocomplete="off"
 								onfocus={() => (focused = true)}
-								onblur={() => setTimeout(() => (focused = false), 120)}
+								onblur={() =>
+									setTimeout(() => {
+										focused = false;
+										commitTypedAddress();
+									}, 120)}
 								onkeydown={onKey}
+								onpaste={onPaste}
 							/>
 							{#if open}
 								<ul
@@ -421,7 +547,7 @@
 												role="presentation"
 												class="px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground"
 											>
-												{o.kind === 'group' ? 'Gruppen' : 'Mitglieder'}
+												{OPTION_HEADINGS[o.kind]}
 											</li>
 										{/if}
 										<li
@@ -438,7 +564,9 @@
 											}}
 											onmouseenter={() => (activeIndex = i)}
 										>
-											{#if o.kind === 'group'}
+											{#if o.kind === 'address'}
+												<Mail class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+											{:else if o.kind === 'group'}
 												<span
 													class="size-3 shrink-0 rounded-full border"
 													style:background-color={o.color ?? 'transparent'}
@@ -452,7 +580,7 @@
 							{/if}
 						</div>
 					</FormField>
-					{#if groupIds.length || members.length}
+					{#if groupIds.length || members.length || addresses.length}
 						<ul class="flex flex-wrap gap-2" aria-label="Empfänger">
 							{#each groupIds as gid (gid)}
 								{@const g = groupById(gid)}
@@ -491,6 +619,22 @@
 									</Badge>
 								</li>
 							{/each}
+							{#each addresses as a (a)}
+								<li>
+									<Badge variant="outline" class="gap-1">
+										<Mail class="size-3" aria-hidden="true" />
+										{a}
+										<button
+											type="button"
+											class="focus-ring rounded-sm"
+											aria-label={`${a} entfernen`}
+											onclick={() => removeAddress(a)}
+										>
+											<X class="size-3" />
+										</button>
+									</Badge>
+								</li>
+							{/each}
 						</ul>
 					{/if}
 				</div>
@@ -502,8 +646,13 @@
 						<p class="text-destructive" role="alert">{previewError}</p>
 					{:else if preview}
 						<p>
-							<strong>{preview.recipients.length}</strong> Adressen von
-							<strong>{preview.members}</strong> Mitgliedern
+							<strong>{preview.recipients.length}</strong> Adressen
+							{#if preview.members}von <strong>{preview.members}</strong> Mitgliedern{/if}
+							{#if preview.external}
+								{preview.members ? '+' : '–'}
+								<strong>{preview.external}</strong>
+								{preview.external === 1 ? 'einzelne Adresse' : 'einzelne Adressen'}
+							{/if}
 							{#if preview.recipients.length > 0}
 								<button
 									type="button"
@@ -531,14 +680,27 @@
 							<ul class="max-h-56 divide-y overflow-auto rounded-md border">
 								{#each preview.recipients as r (r.address)}
 									<li class="flex items-center justify-between gap-2 px-3 py-1">
-										<span class="min-w-0 truncate">{r.name} · {r.address}</span>
-										<button
-											type="button"
-											class="shrink-0 text-xs text-muted-foreground underline"
-											onclick={() => excludeMember(r.memberId)}
-										>
-											Mitglied ausschließen
-										</button>
+										<span class="min-w-0 truncate">
+											{r.name ? `${r.name} · ${r.address}` : r.address}
+										</span>
+										{#if r.memberId}
+											{@const memberId = r.memberId}
+											<button
+												type="button"
+												class="shrink-0 text-xs text-muted-foreground underline"
+												onclick={() => excludeMember(memberId)}
+											>
+												Mitglied ausschließen
+											</button>
+										{:else}
+											<button
+												type="button"
+												class="shrink-0 text-xs text-muted-foreground underline"
+												onclick={() => removeAddress(r.address)}
+											>
+												Entfernen
+											</button>
+										{/if}
 									</li>
 								{/each}
 							</ul>
@@ -611,83 +773,135 @@
 		<Card.Root>
 			<Card.Header><Card.Title level={2}>Nachricht</Card.Title></Card.Header>
 			<Card.Content class="space-y-4">
-				<FormField
-					label="Betreff"
-					id="m-subject"
-					error={errors.subject}
-					hint={subjectHint || undefined}
-					required
+				<Tabs.Root
+					value={messageTab}
+					onValueChange={(v) => (messageTab = v === 'preview' ? 'preview' : 'write')}
 				>
-					<Input id="m-subject" bind:value={subject} maxlength={200} autocomplete="off" />
-				</FormField>
-				<div class="space-y-1.5">
-					<span class="text-sm font-medium" id="m-body-label">Text</span>
-					<RichTextEditor
-						id="m-body"
-						label="Nachrichtentext"
-						bind:value={bodyHtml}
-						invalid={!!errors.bodyHtml}
-						describedby={errors.bodyHtml ? 'm-body-error' : undefined}
-						placeholder="Liebe Eltern, liebe Pfadfinder*innen …"
-						minHeight="16rem"
-					/>
-					{#if errors.bodyHtml}
-						<p id="m-body-error" class="text-xs text-destructive" role="alert">
-							{errors.bodyHtml}
-						</p>
-					{/if}
-				</div>
+					<Tabs.List variant="line" aria-label="Ansicht der Nachricht">
+						<Tabs.Trigger value="write">Schreiben</Tabs.Trigger>
+						<Tabs.Trigger value="preview">Vorschau</Tabs.Trigger>
+					</Tabs.List>
+				</Tabs.Root>
 
-				<div class="space-y-2">
-					<div class="flex flex-wrap items-center gap-3">
-						<label
-							class="focus-within:ring-ring inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted focus-within:ring-2"
+				{#if messageTab === 'preview'}
+					<div class="space-y-3">
+						<dl
+							class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md border bg-muted/40 px-3 py-2 text-sm"
 						>
-							<Paperclip class="size-4" />
-							Dateien anhängen
-							<input
-								type="file"
-								multiple
-								class="sr-only"
-								aria-label="Dateien anhängen"
-								onchange={(e) => {
-									addFiles(e.currentTarget.files);
-									e.currentTarget.value = '';
-								}}
-							/>
-						</label>
-						<span class="text-xs text-muted-foreground">
-							Bis zu {MAX_FILES} Dateien, je {formatSize(MAX_FILE_BYTES)}, zusammen {formatSize(
-								MAX_TOTAL_BYTES
-							)} (PDF, Bilder, Office, Text, ZIP)
-						</span>
+							<dt class="text-muted-foreground">Von</dt>
+							<dd class="min-w-0 break-words">{mailPreview?.from ?? chosenSender?.label ?? '–'}</dd>
+							<dt class="text-muted-foreground">An</dt>
+							<dd class="min-w-0 break-words">{previewTo}</dd>
+							<dt class="text-muted-foreground">Antwort an</dt>
+							<dd class="min-w-0 break-words">{replyTo.trim() || replyToPlaceholder || '–'}</dd>
+							<dt class="text-muted-foreground">Betreff</dt>
+							<dd class="min-w-0 font-medium break-words">
+								{subject.trim() || '(kein Betreff)'}
+							</dd>
+							{#if files.length}
+								<dt class="text-muted-foreground">Anhänge</dt>
+								<dd class="min-w-0 break-words">{files.map((f) => f.name).join(', ')}</dd>
+							{/if}
+						</dl>
+						{#if mailPreviewError}
+							<p class="text-sm text-destructive" role="alert">{mailPreviewError}</p>
+						{:else if !mailPreview}
+							<LoadingState label="Vorschau wird erstellt …" rows={3} />
+						{:else}
+							<!-- Mail-HTML ohne Skripte; Links öffnen in einem neuen Tab -->
+							<iframe
+								title="Vorschau der E-Mail"
+								srcdoc={mailPreview.html}
+								sandbox="allow-popups allow-popups-to-escape-sandbox"
+								class="h-[36rem] w-full rounded-md border bg-white"
+							></iframe>
+							<p class="text-xs text-muted-foreground">
+								So sieht die Mail ungefähr aus – jedes Mailprogramm stellt sie etwas anders dar.
+							</p>
+						{/if}
 					</div>
-					{#if fileError}<p class="text-xs text-destructive" role="alert">{fileError}</p>{/if}
-					{#if files.length}
-						<ul class="divide-y rounded-md border" aria-label="Anhänge">
-							{#each files as f, i (f.name + i)}
-								<li class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
-									<span class="min-w-0 truncate">{f.name}</span>
-									<span class="flex shrink-0 items-center gap-2">
-										<span class="text-xs text-muted-foreground tabular-nums">
-											{formatSize(f.size)}
+				{/if}
+
+				<!-- Bleibt beim Wechsel zur Vorschau eingehängt (Editor-Zustand, Datei-Auswahl) -->
+				<div class="space-y-4" hidden={messageTab !== 'write'}>
+					<FormField
+						label="Betreff"
+						id="m-subject"
+						error={errors.subject}
+						hint={subjectHint || undefined}
+						required
+					>
+						<Input id="m-subject" bind:value={subject} maxlength={200} autocomplete="off" />
+					</FormField>
+					<div class="space-y-1.5">
+						<span class="text-sm font-medium" id="m-body-label">Text</span>
+						<RichTextEditor
+							id="m-body"
+							label="Nachrichtentext"
+							bind:value={bodyHtml}
+							invalid={!!errors.bodyHtml}
+							describedby={errors.bodyHtml ? 'm-body-error' : undefined}
+							placeholder="Liebe Eltern, liebe Pfadfinder*innen …"
+							minHeight="16rem"
+						/>
+						{#if errors.bodyHtml}
+							<p id="m-body-error" class="text-xs text-destructive" role="alert">
+								{errors.bodyHtml}
+							</p>
+						{/if}
+					</div>
+
+					<div class="space-y-2">
+						<div class="flex flex-wrap items-center gap-3">
+							<label
+								class="focus-within:ring-ring inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted focus-within:ring-2"
+							>
+								<Paperclip class="size-4" />
+								Dateien anhängen
+								<input
+									type="file"
+									multiple
+									class="sr-only"
+									aria-label="Dateien anhängen"
+									onchange={(e) => {
+										addFiles(e.currentTarget.files);
+										e.currentTarget.value = '';
+									}}
+								/>
+							</label>
+							<span class="text-xs text-muted-foreground">
+								Bis zu {MAX_FILES} Dateien, je {formatSize(MAX_FILE_BYTES)}, zusammen {formatSize(
+									MAX_TOTAL_BYTES
+								)} (PDF, Bilder, Office, Text, ZIP)
+							</span>
+						</div>
+						{#if fileError}<p class="text-xs text-destructive" role="alert">{fileError}</p>{/if}
+						{#if files.length}
+							<ul class="divide-y rounded-md border" aria-label="Anhänge">
+								{#each files as f, i (f.name + i)}
+									<li class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
+										<span class="min-w-0 truncate">{f.name}</span>
+										<span class="flex shrink-0 items-center gap-2">
+											<span class="text-xs text-muted-foreground tabular-nums">
+												{formatSize(f.size)}
+											</span>
+											<button
+												type="button"
+												class="focus-ring rounded-sm"
+												aria-label={`${f.name} entfernen`}
+												onclick={() => (files = files.filter((_, j) => j !== i))}
+											>
+												<X class="size-4" />
+											</button>
 										</span>
-										<button
-											type="button"
-											class="focus-ring rounded-sm"
-											aria-label={`${f.name} entfernen`}
-											onclick={() => (files = files.filter((_, j) => j !== i))}
-										>
-											<X class="size-4" />
-										</button>
-									</span>
-								</li>
-							{/each}
-						</ul>
-						<p class="text-xs text-muted-foreground tabular-nums">
-							Gesamt {formatSize(totalBytes)}
-						</p>
-					{/if}
+									</li>
+								{/each}
+							</ul>
+							<p class="text-xs text-muted-foreground tabular-nums">
+								Gesamt {formatSize(totalBytes)}
+							</p>
+						{/if}
+					</div>
 				</div>
 			</Card.Content>
 		</Card.Root>

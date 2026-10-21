@@ -1,6 +1,6 @@
 /**
  * Endpoints des Moduls `messages` (`/api/v1/modules/messages/…`):
- * Absender und Empfänger vorab prüfen, Nachricht senden (multipart mit Anhängen), Verlauf, Wiederholen.
+ * Absender und Empfänger vorab prüfen, Vorschau, Nachricht senden (multipart mit Anhängen), Verlauf, Wiederholen.
  * Feste Pfade (`/senders`, `/recipients/resolve`) vor den Parameter-Pfaden.
  */
 import {
@@ -11,7 +11,13 @@ import {
 	type AnyApiEndpoint
 } from '$lib/sdk/server';
 import { DEFAULT_ALLOWED_CONTENT_TYPES, EXTENSION_CONTENT_TYPES } from '$lib/sdk/content-types';
-import { createMessage, getMessage, listMessages, retryMessage } from './delivery.service';
+import {
+	createMessage,
+	getMessage,
+	listMessages,
+	previewMessage,
+	retryMessage
+} from './delivery.service';
 import { resolveRecipients } from './recipients.service';
 import { listSenders } from './sender.service';
 import {
@@ -21,6 +27,7 @@ import {
 	PERM_SEND,
 	idParams,
 	listQuery,
+	previewInput,
 	recipientsInput,
 	sendInput
 } from './schemas';
@@ -81,6 +88,16 @@ export const messageEndpoints: AnyApiEndpoint[] = [
 		rateLimit: { limit: 60, windowSec: 60 },
 		body: recipientsInput,
 		handler: ({ ctx, body }) => resolveRecipients(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/preview',
+		summary: 'Vorschau der Mail (bereinigter Text im gewählten Layout), ohne zu senden',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: { limit: 60, windowSec: 60 },
+		body: previewInput,
+		handler: ({ ctx, body }) => previewMessage(ctx, body)
 	}),
 	defineEndpoint({
 		method: 'GET',

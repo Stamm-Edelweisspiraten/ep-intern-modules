@@ -42,13 +42,20 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 export const MAX_MEMBER_IDS = 1000;
 export const MAX_GROUP_IDS = 50;
+/** Frei eingegebene Adressen (ohne Mitglied) je Nachricht */
+export const MAX_ADDRESSES = 100;
 
 /** Nachrichten älter als so viele Tage werden gelöscht; Anhänge schon nach `ATTACHMENT_DAYS` */
 export const RETENTION_DAYS = 365;
 export const ATTACHMENT_DAYS = 30;
 
 const id = z.string().trim().min(1).max(100);
-const emailAddress = z.string().trim().toLowerCase().max(254).email('Ungültige E-Mail-Adresse');
+export const emailAddress = z
+	.string()
+	.trim()
+	.toLowerCase()
+	.max(254)
+	.email('Ungültige E-Mail-Adresse');
 
 // --- Eingaben -------------------------------------------------------------------------------
 
@@ -59,7 +66,12 @@ export const recipientsInput = z.object({
 	memberIds: z.array(id).max(MAX_MEMBER_IDS).default([]),
 	groupIds: z.array(id).max(MAX_GROUP_IDS).default([]),
 	/** Mitglieder, die trotz Gruppenauswahl nicht angeschrieben werden */
-	excludeMemberIds: z.array(id).max(MAX_MEMBER_IDS).default([])
+	excludeMemberIds: z.array(id).max(MAX_MEMBER_IDS).default([]),
+	/** Frei eingegebene E-Mail-Adressen (ohne Mitglied) */
+	addresses: z
+		.array(emailAddress)
+		.max(MAX_ADDRESSES, `Höchstens ${MAX_ADDRESSES} einzelne Adressen`)
+		.default([])
 });
 export type RecipientsInput = z.infer<typeof recipientsInput>;
 
@@ -85,6 +97,18 @@ export const sendInput = recipientsInput.extend({
 		.max(MAX_BODY_HTML * 2, 'Der Text ist zu lang')
 });
 export type SendInput = z.infer<typeof sendInput>;
+
+/** Vorschau: wie `sendInput`, aber Betreff und Text dürfen noch leer sein */
+export const previewInput = z.object({
+	senderKey: z.string().trim().min(1).max(200).optional(),
+	layout: z.enum(LAYOUTS).optional(),
+	subject: z.string().max(MAX_SUBJECT).default(''),
+	bodyHtml: z
+		.string()
+		.max(MAX_BODY_HTML * 2, 'Der Text ist zu lang')
+		.default('')
+});
+export type PreviewInput = z.infer<typeof previewInput>;
 
 export const listQuery = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(30),
@@ -121,8 +145,9 @@ export interface SendersResponse {
 }
 
 export interface ResolvedRecipient {
-	memberId: string;
-	name: string;
+	/** `null` bei frei eingegebener Adresse */
+	memberId: string | null;
+	name: string | null;
 	address: string;
 }
 
@@ -134,7 +159,17 @@ export interface RecipientsResult {
 	withoutEmail: { id: string; name: string }[];
 	/** Ausgetretene Mitglieder, die übersprungen wurden */
 	exited: number;
+	/** Frei eingegebene Adressen, die nicht schon zu einem gewählten Mitglied gehören */
+	external: number;
 	maxRecipients: number;
+}
+
+export interface MessagePreview {
+	/** Vollständiges HTML-Dokument der Mail (Bilder als `data:`-URLs) */
+	html: string;
+	subject: string;
+	/** „Name <adresse>“ des gewählten Absenders oder `null` */
+	from: string | null;
 }
 
 export type MessageStatus = 'sending' | 'done' | 'partial' | 'failed';

@@ -40,6 +40,12 @@ export function sanitizeBody(html: string): string {
 	}).trim();
 }
 
+/** Schlankes HTML-Dokument für „Einfach“: kein Layout, keine Farben/Bilder, Schrift des Mailprogramms */
+export function plainDocument(fragment: string): string {
+	return `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head><body>${fragment}</body></html>`;
+}
+
 const ENTITIES: Record<string, string> = {
 	'&amp;': '&',
 	'&lt;': '<',

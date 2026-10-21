@@ -20,7 +20,7 @@ import {
 	userLabel,
 	type RequestContext
 } from '$lib/sdk/server';
-import { htmlToText, sanitizeBody } from './html';
+import { htmlToText, plainDocument, sanitizeBody } from './html';
 import { resolveRecipients } from './recipients.service';
 import { accountEmail, loadSettings, requireSender } from './sender.service';
 import {
@@ -31,9 +31,11 @@ import {
 	RETENTION_DAYS,
 	type MessageAttachmentInfo,
 	type MessageDetail,
+	type MessagePreview,
 	type MessageRecipientInfo,
 	type MessageStatus,
 	type MessageSummary,
+	type PreviewInput,
 	type RecipientStatus,
 	type SendInput
 } from './schemas';
@@ -234,6 +236,30 @@ export async function createMessage(
 	return getMessage(ctx, id);
 }
 
+/**
+ * Vorschau: dieselbe Bereinigung und dasselbe Layout wie beim Versand, aber nichts wird gespeichert
+ * oder gesendet. Der Absender wird wie beim Senden geprüft (fremder Schlüssel → 403).
+ */
+export async function previewMessage(
+	ctx: RequestContext,
+	input: PreviewInput
+): Promise<MessagePreview> {
+	const sender = input.senderKey ? await requireSender(ctx, input.senderKey) : null;
+	const layout = input.layout ?? (await loadSettings()).layout;
+	const bodyHtml = sanitizeBody(input.bodyHtml);
+	const plain = layout === 'plain';
+	const html = await core.mail.preview({
+		text: htmlToText(bodyHtml),
+		html: plain ? plainDocument(bodyHtml) : bodyHtml,
+		layout: !plain
+	});
+	return {
+		html,
+		subject: input.subject.trim(),
+		from: sender ? (sender.name ? `${sender.name} <${sender.address}>` : sender.address) : null
+	};
+}
+
 /** Fehlgeschlagene Empfänger erneut versuchen (nur eigene Nachricht bzw. mit `view-all`) */
 export async function retryMessage(ctx: RequestContext, id: string): Promise<MessageDetail> {
 	const current = await getMessage(ctx, id); // 404 für Fremde
@@ -319,12 +345,6 @@ async function markRecipient(id: string, ok: boolean, error?: string): Promise<v
 }
 
 /** Kurze, unkritische Fehlermeldung (keine Zugangsdaten, max. 200 Zeichen, eine Zeile) */
-/** Schlankes HTML-Dokument für „Einfach“: kein Layout, keine Farben/Bilder, Schrift des Mailprogramms */
-function plainDocument(fragment: string): string {
-	return `<!DOCTYPE html>
-<html lang="de"><head><meta charset="utf-8"></head><body>${fragment}</body></html>`;
-}
-
 function errorText(e: unknown): string {
 	const raw = e instanceof Error ? e.message : String(e);
 	return raw.replace(/\s+/g, ' ').trim().slice(0, 200) || 'Versand fehlgeschlagen';
