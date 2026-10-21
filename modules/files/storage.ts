@@ -4,6 +4,7 @@
  * Storage-Aufrufe nur AUSSERHALB offener Transaktionen (Ausnahme: `quotaUsed`/`assertQuota` sind reine SQL-Helfer).
  */
 import { sql } from 'drizzle-orm';
+import { DEFAULT_ALLOWED_CONTENT_TYPES, EXTENSION_CONTENT_TYPES } from '$lib/sdk/content-types';
 import { contentDisposition, core, errors, isCoreError, rowsOf, type Tx } from '$lib/sdk/server';
 import { filesCtx } from './db';
 import {
@@ -21,57 +22,10 @@ export interface StoredContent {
 	sizeBytes: number;
 }
 
-/**
- * Kopie von `DEFAULT_ALLOWED_CONTENT_TYPES` aus `src/lib/server/core/storage/index.ts`
- * (Module dürfen `$lib/server/*` nicht importieren). Bei Änderungen dort mitpflegen.
- */
-const DEFAULT_ALLOWED_CONTENT_TYPES = [
-	'application/pdf',
-	'image/png',
-	'image/jpeg',
-	'image/gif',
-	'image/webp',
-	'text/plain',
-	'text/csv',
-	'text/markdown',
-	'application/json',
-	'application/zip',
-	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-	'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-	'application/msword',
-	'application/vnd.ms-excel',
-	'application/vnd.ms-powerpoint'
-];
-
 /** Aktive Inhalte: wie im Core nur zulässig, wenn ausdrücklich in der Allowlist genannt */
 const ACTIVE_CONTENT_TYPES = new Set<string>(NEVER_INLINE_TYPES);
 
 const OCTET = 'application/octet-stream';
-
-const EXTENSION_TYPES: Record<string, string> = {
-	pdf: 'application/pdf',
-	png: 'image/png',
-	jpg: 'image/jpeg',
-	jpeg: 'image/jpeg',
-	gif: 'image/gif',
-	webp: 'image/webp',
-	avif: 'image/avif',
-	txt: 'text/plain',
-	csv: 'text/csv',
-	md: 'text/markdown',
-	json: 'application/json',
-	zip: 'application/zip',
-	docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-	xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-	pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-	doc: 'application/msword',
-	xls: 'application/vnd.ms-excel',
-	ppt: 'application/vnd.ms-powerpoint',
-	odt: 'application/vnd.oasis.opendocument.text',
-	ods: 'application/vnd.oasis.opendocument.spreadsheet',
-	odp: 'application/vnd.oasis.opendocument.presentation'
-};
 
 const THUMB_SPEC = { name: 'thumb', maxEdge: 320, format: 'webp', quality: 75 } as const;
 
@@ -89,7 +43,7 @@ function normalizeType(ct: string | null, name: string): string {
 	if (t && t !== OCTET) return t;
 	const dot = name.lastIndexOf('.');
 	const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
-	return EXTENSION_TYPES[ext] ?? OCTET;
+	return EXTENSION_CONTENT_TYPES[ext] ?? OCTET;
 }
 
 function typeAllowed(ct: string, allowed: readonly string[]): boolean {

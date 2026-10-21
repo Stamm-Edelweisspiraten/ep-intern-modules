@@ -59,12 +59,23 @@ export function iconFor(kind: NodeKind, contentType: string | null | undefined) 
 		t === 'application/pdf' ||
 		t.startsWith('text/') ||
 		t.includes('wordprocessingml') ||
-		t === 'application/msword'
+		t === 'application/msword' ||
+		t === 'application/rtf' ||
+		t.startsWith('application/vnd.oasis.opendocument.text')
 	)
 		return FileText;
-	if (t.includes('spreadsheetml') || t === 'application/vnd.ms-excel' || t === 'text/csv')
+	if (
+		t.includes('spreadsheetml') ||
+		t === 'application/vnd.ms-excel' ||
+		t.startsWith('application/vnd.oasis.opendocument.spreadsheet')
+	)
 		return FileSpreadsheet;
-	if (t.includes('presentationml') || t === 'application/vnd.ms-powerpoint') return Presentation;
+	if (
+		t.includes('presentationml') ||
+		t === 'application/vnd.ms-powerpoint' ||
+		t.startsWith('application/vnd.oasis.opendocument.presentation')
+	)
+		return Presentation;
 	if (t === 'application/zip') return FileArchive;
 	return File;
 }

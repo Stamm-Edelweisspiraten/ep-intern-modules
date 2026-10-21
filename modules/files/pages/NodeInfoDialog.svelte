@@ -45,6 +45,16 @@
 		'application/vnd.oasis.opendocument.text': 'OpenDocument-Text',
 		'application/vnd.oasis.opendocument.spreadsheet': 'OpenDocument-Tabelle',
 		'application/vnd.oasis.opendocument.presentation': 'OpenDocument-Präsentation',
+		'application/vnd.openxmlformats-officedocument.wordprocessingml.template': 'Word-Vorlage',
+		'application/vnd.openxmlformats-officedocument.spreadsheetml.template': 'Excel-Vorlage',
+		'application/vnd.openxmlformats-officedocument.presentationml.template': 'PowerPoint-Vorlage',
+		'application/vnd.openxmlformats-officedocument.presentationml.slideshow':
+			'PowerPoint-Bildschirmpräsentation',
+		'application/vnd.oasis.opendocument.text-template': 'OpenDocument-Textvorlage',
+		'application/vnd.oasis.opendocument.spreadsheet-template': 'OpenDocument-Tabellenvorlage',
+		'application/vnd.oasis.opendocument.presentation-template': 'OpenDocument-Präsentationsvorlage',
+		'application/rtf': 'RTF-Dokument',
+		'text/rtf': 'RTF-Dokument',
 		'audio/mpeg': 'MP3-Audio',
 		'video/mp4': 'MP4-Video'
 	};

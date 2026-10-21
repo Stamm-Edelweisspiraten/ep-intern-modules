@@ -244,8 +244,9 @@ Demo: `node scripts/seed-demo-files.mjs` (braucht MinIO).
 - Rate-Limit `content` 300/60 s gilt je IP **über alle Links** plus globaler Bucket (viele Thumbnails können andere Links bremsen).
 - Zugriffstoken `t` steht in der URL (Logs/Verlauf); gültig 15 min.
 - Leere Ordner zählen nicht ins Kontingent.
-- Typ-Allowlist der Core-Storage-Einstellungen ist als Standard in `storage.ts` dupliziert (Module dürfen `$lib/server/*` nicht importieren) – mitpflegen.
-- AVIF und ODF (`odt`/`ods`/`odp`) werden ohne Erweiterung der Allowlist durch Admins abgelehnt.
+- Standard-Allowlist und Endung → Typ stehen **einmal** in `$lib/sdk/content-types.ts` (Core + `files`, 2026-10-21): PDF, Bilder (inkl. AVIF), Text/CSV/
+  Markdown/JSON, ZIP, Word/Excel/PowerPoint inkl. **Vorlagen** (`dot/dotx`, `xlt/xltx`, `pot/potx`, `pps/ppsx`), RTF, OpenDocument inkl. Vorlagen
+  (`ott/ots/otp`). **Makro-Formate** (`docm`, `dotm`, `xlsm` …) bewusst nicht – nur per Einstellung `core.storage.allowedContentTypes`.
 - Ungeprüft: PDF-Einbettung im echten Browser/mobil, echtes S3 bei großen Dateien, öffentlicher Upload mit echtem S3.
 
 ## Dashboard (2026-10-20)
