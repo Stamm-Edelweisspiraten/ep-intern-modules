@@ -11,6 +11,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { core, moduleDb, type RequestContext, rowsOf, type Tx } from '$lib/sdk/server';
+import { syncLeaderGrantsAfterChange } from './leader.service';
 import { removeMemberFiles } from './members.service';
 import { MODULE_ID } from './schemas';
 
@@ -164,6 +165,7 @@ export async function anonymizeMembers(
 		return { done, skipped, paths };
 	});
 	await removeMemberFiles(ctx, paths);
+	if (done.length) await syncLeaderGrantsAfterChange(ctx);
 	const failed = done.length
 		? await core.modules.memberDeleted(MODULE_ID, { memberIds: done, reason: 'anonymized' })
 		: [];

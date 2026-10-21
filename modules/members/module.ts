@@ -16,11 +16,21 @@ import { listMemberSheets } from './sheets.service';
 import { principalsService } from './principals.service';
 import { sheetEndpoints } from './sheets.endpoints';
 import { memberEndpoints } from './members.endpoints';
+import { ledEndpoints } from './led.endpoints';
+import { syncLeaderGrants } from './leader.service';
 import { websiteEndpoints } from './website.endpoints';
 import { retentionEndpoints } from './retention.endpoints';
 import { DEFAULT_RETENTION_YEARS, RETENTION_SETTING } from './retention.service';
 import { subjectExport } from './subject-export';
-import { LINK_DEFAULT_ROLE, LINK_MAX_USES_DEFAULT, LINK_MAX_USES_SETTING } from './schemas';
+import {
+	LEADER_ROLE_NAME,
+	LED_EDIT,
+	LED_EXPORT,
+	LED_VIEW,
+	LINK_DEFAULT_ROLE,
+	LINK_MAX_USES_DEFAULT,
+	LINK_MAX_USES_SETTING
+} from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_members_v2.sql?raw';
 import m0003 from './migrations/0003_user_links.sql?raw';
@@ -34,19 +44,37 @@ import m0011 from './migrations/0011_stage_jungpfadfinder.sql?raw';
 import m0012 from './migrations/0012_link_code_uses.sql?raw';
 import m0013 from './migrations/0013_privacy.sql?raw';
 import m0014 from './migrations/0014_link_token_hash_constraints.sql?raw';
+import m0015 from './migrations/0015_leader_self_link.sql?raw';
 import { hashStoredLinkTokens, membersBackup } from './link-tokens';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.10.0',
+		version: '1.11.0',
 		dependencies: [],
-		/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
-		defaultRoleGrants: { [LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'] },
+		defaultRoleGrants: {
+			/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
+			[LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'],
+			/**
+			 * Rolle „Gruppenleitung“ (automatisch über `user_role_grant`, siehe `leader.service.ts`): Mitglieder
+			 * der eigenen Gruppen ansehen, bearbeiten, Dokumente verwalten, PDF-Listen erzeugen
+			 */
+			[LEADER_ROLE_NAME]: [
+				LED_VIEW,
+				LED_EDIT,
+				LED_EXPORT,
+				'members.storage.read',
+				'members.storage.write',
+				'members.storage.delete'
+			]
+		},
 		permissions: [
 			'members.own.view',
 			'members.own.edit',
+			LED_VIEW,
+			LED_EDIT,
+			LED_EXPORT,
 			'members.member.view',
 			'members.member.edit',
 			'members.member.delete',
@@ -66,6 +94,12 @@ export default defineModule({
 			'members.own.view': 'Eigene verknüpfte Mitglieder im Profil ansehen',
 			'members.own.edit':
 				'Eigene verknüpfte Mitglieder bearbeiten: Kontakte, Zusatzfelder, Benachrichtigungen',
+			[LED_VIEW]:
+				'Gruppenleitung: Mitglieder der Gruppen ansehen, die man selbst leitet (inkl. Dokumente und Zusatzfelder)',
+			[LED_EDIT]:
+				'Gruppenleitung: Mitglieder der eigenen Gruppen bearbeiten und Dokumente verwalten (ohne Gruppenzuordnung und Mitgliedschaftsdaten)',
+			[LED_EXPORT]:
+				'Gruppenleitung: Mitgliedsdaten-PDF der eigenen Gruppen erzeugen (enthält Kontakt- und Gesundheitsdaten)',
 			'members.member.view': 'Mitglieder ansehen, inkl. Dokumente herunterladen',
 			'members.member.edit': 'Mitglieder anlegen und bearbeiten, Dokumente verwalten',
 			'members.member.delete': 'Mitglieder löschen',
@@ -88,7 +122,8 @@ export default defineModule({
 				label: 'Mitglieder',
 				icon: 'users',
 				path: '/modules/members',
-				permission: 'members.member.view',
+				// Gruppenleitungen sehen dieselbe Seite, eingeschränkt auf ihre Gruppen
+				anyPermission: ['members.member.view', LED_VIEW],
 				group: 'Stamm',
 				groupIcon: 'users'
 			},
@@ -171,7 +206,8 @@ export default defineModule({
 		{ name: '0011_stage_jungpfadfinder', sql: m0011 },
 		{ name: '0012_link_code_uses', sql: m0012 },
 		{ name: '0013_privacy', sql: m0013 },
-		{ name: '0014_link_token_hash_constraints', sql: m0014 }
+		{ name: '0014_link_token_hash_constraints', sql: m0014 },
+		{ name: '0015_leader_self_link', sql: m0015 }
 	],
 	search: membersSearch,
 	jobs: [
@@ -180,6 +216,15 @@ export default defineModule({
 			summary: 'Vorhandene Gruppenbilder bereinigen (EXIF/GPS entfernen, WebP)',
 			schedule: 'hourly',
 			run: reprocessGroupImages
+		},
+		{
+			id: 'sync-leader-grants',
+			summary: 'Rolle „Gruppenleitung“ abgleichen (eigene Konten der Gruppenleitungen, Austritte)',
+			schedule: 'hourly',
+			run: async () => {
+				const { users } = await syncLeaderGrants();
+				return `${users} Konten mit Rolle „${LEADER_ROLE_NAME}“`;
+			}
 		},
 		{
 			id: 'hash-link-tokens',
@@ -193,6 +238,7 @@ export default defineModule({
 	],
 	onEnable: async () => {
 		await hashStoredLinkTokens();
+		await syncLeaderGrants();
 	},
 	/** Datensicherung: `token_hash` der Verknüpfungscodes mit dem Schlüssel des Zielservers neu berechnen */
 	backup: membersBackup,
@@ -206,6 +252,8 @@ export default defineModule({
 		// Vor `memberEndpoints`: `GET /members/sheet-columns` darf nicht von `/members/:id` abgefangen werden
 		...sheetEndpoints,
 		...memberEndpoints,
+		// Gruppenleitung (`/led/…`, eigene Rechte `members.led-member.*`, Bereich = geleitete Gruppen)
+		...ledEndpoints,
 		...addressEndpoints,
 		...fieldEndpoints,
 		...linkEndpoints,

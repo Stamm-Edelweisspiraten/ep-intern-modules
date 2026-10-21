@@ -30,11 +30,14 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import {
 		BULK_MAX_IDS,
+		LED_EDIT,
+		LED_EXPORT,
+		LED_VIEW,
 		STAGES,
 		STAGE_LABELS,
 		ageFromBirthDate,
 		type BulkResult,
-		type Group,
+		type GroupRef,
 		type Member,
 		type MemberList
 	} from '../schemas';
@@ -46,11 +49,19 @@
 	const PAGE_SIZE = 20;
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
-	const canEdit = $derived(can(permissions, 'members.member.edit'));
-	const canDelete = $derived(can(permissions, 'members.member.delete'));
-	const canLinkView = $derived(can(permissions, 'members.link.view'));
-	const canLinkManage = $derived(can(permissions, 'members.link.manage'));
-	const canExport = $derived(can(permissions, 'members.data.export'));
+	/**
+	 * Gruppenleitung ohne Zugriff auf alle Mitglieder: dieselbe Seite, aber nur die Mitglieder der
+	 * selbst geleiteten Gruppen (`/led/…`), ohne Anlegen, Löschen, Sammeländerungen und Verknüpfungen.
+	 */
+	const ledMode = $derived(!can(permissions, 'members.member.view') && can(permissions, LED_VIEW));
+	const apiBase = $derived(ledMode ? '/modules/members/led' : '/modules/members');
+	const canEdit = $derived(can(permissions, ledMode ? LED_EDIT : 'members.member.edit'));
+	const canCreate = $derived(!ledMode && canEdit);
+	const canBulkEdit = $derived(!ledMode && canEdit);
+	const canDelete = $derived(!ledMode && can(permissions, 'members.member.delete'));
+	const canLinkView = $derived(!ledMode && can(permissions, 'members.link.view'));
+	const canLinkManage = $derived(!ledMode && can(permissions, 'members.link.manage'));
+	const canExport = $derived(can(permissions, ledMode ? LED_EXPORT : 'members.data.export'));
 	const canUpload = $derived(can(permissions, 'members.storage.write'));
 	const canRemoveDoc = $derived(can(permissions, 'members.storage.delete'));
 
@@ -68,7 +79,9 @@
 
 	let items = $state<Member[]>([]);
 	let total = $state(0);
-	let groups = $state<Group[]>([]);
+	let groups = $state<GroupRef[]>([]);
+	/** Gruppenleitung: Gruppen geladen (für den Hinweis „Du leitest keine Gruppe“) */
+	let groupsLoaded = $state(false);
 	let loading = $state(true);
 	let loadError = $state('');
 	let reloadTick = $state(0);
@@ -89,7 +102,7 @@
 	let bulkOpen = $state(false);
 	let bulkMode = $state<BulkMode>('add-groups');
 	let bulkDeleteOpen = $state(false);
-	const showSelect = $derived(canEdit || canDelete || canLinkManage || canExport);
+	const showSelect = $derived(canBulkEdit || canDelete || canLinkManage || canExport);
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
@@ -153,7 +166,7 @@
 		sheetsOpen = true;
 		if (sheetCatalog) return;
 		try {
-			sheetCatalog = await apiFetch<ListCatalog>('/modules/members/members/sheet-columns');
+			sheetCatalog = await apiFetch<ListCatalog>(`${apiBase}/members/sheet-columns`);
 		} catch (e) {
 			sheetCatalogError = e instanceof Error ? e.message : 'Spalten konnten nicht geladen werden';
 			toast.error(sheetCatalogError);
@@ -165,7 +178,7 @@
 		sheetsBusy = true;
 		try {
 			await downloadPdf(
-				'/api/v1/modules/members/members/sheets.pdf',
+				`/api/v1${apiBase}/members/sheets.pdf`,
 				{ method: 'POST', body: JSON.stringify({ ids: selected, selection }) },
 				'Mitgliederliste.pdf'
 			);
@@ -209,8 +222,11 @@
 	}
 
 	function loadGroups() {
-		apiFetch<Group[]>('/modules/members/groups')
-			.then((g) => (groups = g))
+		apiFetch<GroupRef[]>(`${apiBase}/groups`)
+			.then((g) => {
+				groups = g;
+				groupsLoaded = true;
+			})
 			.catch(() => {});
 	}
 
@@ -227,7 +243,7 @@
 		q.set('status', status);
 		let stale = false;
 		loading = true;
-		apiFetch<MemberList>(`/modules/members/members?${q}`)
+		apiFetch<MemberList>(`${apiBase}/members?${q}`)
 			.then((r) => {
 				if (stale) return;
 				items = r.items;
@@ -286,7 +302,7 @@
 	$effect(() => {
 		const id = openId;
 		if (!id) return;
-		apiFetch<Member>(`/modules/members/members/${encodeURIComponent(id)}`)
+		apiFetch<Member>(`${apiBase}/members/${encodeURIComponent(id)}`)
 			.then((m) => openView(m))
 			.catch(() => toast.error('Mitglied nicht gefunden'))
 			.finally(() => {
@@ -334,9 +350,14 @@
 
 <svelte:head><title>Mitglieder</title></svelte:head>
 
-<PageHeader title="Mitglieder" description="Mitglieder des Stammes verwalten.">
+<PageHeader
+	title={ledMode ? 'Mitglieder meiner Gruppen' : 'Mitglieder'}
+	description={ledMode
+		? `Mitglieder der Gruppen, die du leitest${groups.length ? `: ${groups.map((g) => g.name).join(', ')}` : ''}.`
+		: 'Mitglieder des Stammes verwalten.'}
+>
 	{#snippet actions()}
-		{#if canEdit}
+		{#if canCreate}
 			<Button onclick={openCreate}><UserPlus /> Mitglied anlegen</Button>
 		{/if}
 	{/snippet}
@@ -349,10 +370,16 @@
 		{loading}
 		error={loadError}
 		empty={!items.length}
-		emptyTitle="Keine Mitglieder gefunden"
-		emptyDescription={search || stage || groupId || status !== 'active'
-			? 'Passe Suche oder Filter an.'
-			: 'Es wurden noch keine Mitglieder angelegt.'}
+		emptyTitle={ledMode && groupsLoaded && !groups.length
+			? 'Du leitest derzeit keine Gruppe'
+			: 'Keine Mitglieder gefunden'}
+		emptyDescription={ledMode && groupsLoaded && !groups.length
+			? 'Hier erscheinen die Mitglieder, sobald du als Leitung einer Gruppe eingetragen bist und dein Konto in der Mitgliederverwaltung als eigenes Konto deines Mitglieds markiert ist.'
+			: search || stage || groupId || status !== 'active'
+				? 'Passe Suche oder Filter an.'
+				: ledMode
+					? 'Deinen Gruppen sind noch keine Mitglieder zugeordnet.'
+					: 'Es wurden noch keine Mitglieder angelegt.'}
 	>
 		{#snippet toolbar()}
 			<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
@@ -385,7 +412,7 @@
 				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
 			>
 				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
-				{#if canEdit}
+				{#if canBulkEdit}
 					<Button size="sm" variant="outline" onclick={() => openBulk('add-groups')}>
 						Zu Gruppen hinzufügen
 					</Button>
@@ -573,6 +600,8 @@
 	{canRemoveDoc}
 	{canEdit}
 	{canLinkView}
+	{apiBase}
+	restricted={ledMode}
 	linkCount={formLinkCount}
 	onlinks={(m) => openLinks(m)}
 	onsaved={() => {

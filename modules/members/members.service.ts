@@ -12,6 +12,7 @@ import {
 	type Tx
 } from '$lib/sdk/server';
 import { mergeCustom, validateCustomValues } from './fields.service';
+import { assertMemberInScope, inScopeSql, syncLeaderGrantsAfterChange } from './leader.service';
 import {
 	MODULE_ID,
 	type BulkInput,
@@ -167,23 +168,34 @@ export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]>
 	return ids.map((i) => found.find((m) => m.id === i)).filter((m): m is Member => !!m);
 }
 
-/** Lädt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
-export async function getMember(id: string): Promise<Member> {
-	const m = await moduleDb(MODULE_ID).transaction((tx) => loadMember(tx, id));
+/**
+ * Lädt ein Member-DTO in eigener Modul-Transaktion; wirft 404. Mit `scope` (Gruppen-IDs einer
+ * Gruppenleitung) nur Mitglieder dieser Gruppen, sonst ebenfalls 404.
+ */
+export async function getMember(id: string, scope?: readonly string[]): Promise<Member> {
+	const m = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		if (scope) await assertMemberInScope(tx, id, scope);
+		return loadMember(tx, id);
+	});
 	if (!m) throw errors.notFound('Mitglied nicht gefunden');
 	return m;
 }
 
-export async function listMembers(query: {
-	search?: string;
-	stage?: Stage;
-	groupId?: string;
-	status?: 'active' | 'left' | 'all';
-	limit: number;
-	offset: number;
-}): Promise<MemberList> {
+/** Mitgliederliste; mit `scope` (Gruppen-IDs einer Gruppenleitung) nur Mitglieder dieser Gruppen */
+export async function listMembers(
+	query: {
+		search?: string;
+		stage?: Stage;
+		groupId?: string;
+		status?: 'active' | 'left' | 'all';
+		limit: number;
+		offset: number;
+	},
+	scope?: readonly string[]
+): Promise<MemberList> {
 	return moduleDb(MODULE_ID).transaction(async (tx) => {
 		const conds = [sql`TRUE`];
+		if (scope) conds.push(inScopeSql('m', scope));
 		if (query.search) {
 			const p = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;
 			conds.push(
@@ -277,19 +289,48 @@ export async function createMember(ctx: RequestContext, input: MemberInput): Pro
 	return member;
 }
 
+/**
+ * Mitglied ändern. Mit `scope` (Gruppenleitung): nur Mitglieder der geleiteten Gruppen (sonst 404);
+ * Gruppenzuordnung und Mitgliedschaftsdaten (Eintritt, Austritt, Zweitmitglied, Beitragsebenen –
+ * maßgeblich für Kasse und Jahresbeitrag) bleiben unverändert, gleich was übergeben wird.
+ */
 export async function updateMember(
 	ctx: RequestContext,
 	id: string,
-	input: MemberInput
+	given: MemberInput,
+	opts: { scope?: readonly string[] } = {}
 ): Promise<Member> {
+	let exitChanged = false;
 	const member = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const exists = await rowsOf(
 			tx,
-			sql`SELECT id, custom FROM members WHERE id = ${id} FOR UPDATE`
+			sql`SELECT id, custom, to_char(entry_date, 'YYYY-MM-DD') AS entry_date,
+				to_char(exit_date, 'YYYY-MM-DD') AS exit_date, secondary_member,
+				array_to_string(fee_levels, ',') AS fee_levels
+				FROM members WHERE id = ${id} FOR UPDATE`
 		);
 		if (!exists.length) throw errors.notFound('Mitglied nicht gefunden');
+		const row = exists[0]!;
+		let input = given;
+		if (opts.scope) {
+			await assertMemberInScope(tx, id, opts.scope);
+			const current = await rowsOf(
+				tx,
+				sql`SELECT group_id FROM member_groups WHERE member_id = ${id} ORDER BY group_id`
+			);
+			const secondaryMember = Boolean(row.secondary_member);
+			input = {
+				...given,
+				groupIds: current.map((r) => String(r.group_id)),
+				entryDate: (row.entry_date as string | null) ?? null,
+				exitDate: (row.exit_date as string | null) ?? null,
+				secondaryMember,
+				feeLevels: secondaryMember ? parseFeeLevels(row.fee_levels) : [...FEE_LEVELS]
+			};
+		}
+		exitChanged = ((row.exit_date as string | null) ?? null) !== input.exitDate;
 		const groupIds = await checkGroups(tx, input.groupIds);
-		const stored = exists[0]!.custom;
+		const stored = row.custom;
 		const custom = mergeCustom(
 			(typeof stored === 'string' ? JSON.parse(stored) : (stored ?? {})) as Member['custom'],
 			await validateCustomValues(tx, input.custom)
@@ -310,9 +351,12 @@ export async function updateMember(
 		return (await loadMember(tx, id))!;
 	});
 	await core.audit.logFromContext(ctx, 'members.member.updated', {
-		target: id
+		target: id,
 		// Keine Klarnamen im unveränderlichen Audit (#26): die ID in `target` genügt
+		...(opts.scope ? { metadata: { asGroupLeader: true } } : {})
 	});
+	// Austritt einer Leitung entzieht die Rolle „Gruppenleitung“ (Bereich wirkt ohnehin sofort)
+	if (exitChanged) await syncLeaderGrantsAfterChange(ctx);
 	return member;
 }
 
@@ -477,6 +521,7 @@ export async function deleteMember(ctx: RequestContext, id: string): Promise<voi
 		};
 	});
 	await removeMemberFiles(ctx, paths);
+	await syncLeaderGrantsAfterChange(ctx);
 	// Kopien in anderen Modulen aufräumen (z. B. `actions`: verknüpfte Teilnehmende anonymisieren)
 	await core.modules.memberDeleted(MODULE_ID, { memberIds: [id], reason: 'deleted' });
 	// Ohne Namen: gelöschte Personen sollen über das Audit nicht namentlich auffindbar bleiben (#26)

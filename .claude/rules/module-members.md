@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.9.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.11.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -25,7 +25,8 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `reset.ts` | Reset-Bereiche `all` (alle Tabellen + Dokumente/Gruppenbilder, `rebuild`, `implies` `treasury:payers` + `treasury:annual`) und `links` (Konto-Verknüpfungen + Codes); `unlinkUsers` (gemeinsam mit `onUserDeleted`), `resetUsers` |
 | `user-deleted.ts` | `onUserDeleted`: Konto-Verknüpfungen lösen, `created_by`/`updated_by` → `NULL`; Mitglieder bleiben |
 | `schemas.ts` | Zod (`memberInput`, `groupInput`, Query, Params), DTO-Typen, `STAGES`, `ageFromBirthDate`, `isRealDate`, `normalizeHexColor`, Upload-Limits |
-| `members.service.ts` | `listMembers/getMember/createMember/updateMember/deleteMember`, `hydrate` (Telefone/E-Mails/Gruppen), Audit |
+| `members.service.ts` | `listMembers/getMember/createMember/updateMember/deleteMember`, `hydrate` (Telefone/E-Mails/Gruppen), Audit; `listMembers`/`getMember`/`updateMember` mit optionalem `scope` (Gruppenleitung) |
+| `leader.service.ts` / `led.endpoints.ts` | Gruppenleitung: `ledGroupIds` (Bereich je Aufruf), `inScopeSql`/`assertMemberInScope`, `syncLeaderGrants` (Rolle „Gruppenleitung“), `assertCanGrantLeader`; Endpunkte `/led/…` – siehe „Gruppenleitung“ |
 | `members.endpoints.ts` | CRUD `/members` |
 | `groups.endpoints.ts` | CRUD `/groups` inkl. Leiter, Namens-Eindeutigkeit |
 | `$lib/pdf-lists` (`compose.ts`, `member-columns.ts`, rein, gemeinsam mit `actions`) / `sheets.service.ts` / `sheets.endpoints.ts` | Mitgliedsdaten-PDF: Spalten-Katalog + Zeilen, `composeListBlocks`, Formatierer (`formatDateDe`, `ageOn`, `formatFieldValue`), Erzeugung für Mitglieder bzw. je Gruppe, Katalog-Endpoint, Dienst `listMemberSheets` |
@@ -36,7 +37,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `pages/` (weitere) | `FieldsPage` (Zusatzfelder, `FormBuilder`), `BulkDialog`, `LinksDialog`, öffentlich `LinkAccount`, `AddressFields` (+`countries.ts`), Profil `ProfileMembers`/`ProfileMemberCard`/`ProfileMailPrefs` (+`profile-shared.ts`), `download.ts`, Kachel `widgets/MyMembersWidget` |
 | `retention.service.ts`, `retention.endpoints.ts`, `pages/RetentionPage.svelte` | Löschfrist nach Austritt: Vorschlagsliste, Sammel-Anonymisieren (#30) |
 | `subject-export.ts` | Beitrag zur Datenauskunft (`subjectExport`: `findSubjects`, `resolve`, `run`) |
-| `migrations/0001_init.sql` … `0014_link_token_hash_constraints.sql` | Schema (0007 unbenutzt) |
+| `migrations/0001_init.sql` … `0015_leader_self_link.sql` | Schema (0007 unbenutzt) |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),
@@ -69,11 +70,48 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `members.member.view` / `.edit` / `.delete` | Mitglieder lesen (auch Dokument-Download) / anlegen+ändern+Dokumente hoch/löschen / löschen |
 | `members.group.view` / `.edit` / `.delete` | Gruppen lesen (auch Bild) / anlegen+ändern+Bild / löschen |
 | `members.link.view` / `.manage` | verknüpfte Konten + Codestatus sehen / Code erzeugen, Briefe (PDF), Konten per Hand verknüpfen, Verknüpfung lösen |
+| `members.led-member.view` / `.edit` / `.export` | **Gruppenleitung** (2026-10-21): Mitglieder der selbst geleiteten Gruppen ansehen (inkl. Dokumente, Zusatzfelder) / bearbeiten + Dokumente verwalten (ohne Gruppen und Mitgliedschaftsdaten) / Mitgliedsdaten-PDF der eigenen Gruppen. `.edit`/`.export` setzen `.view` voraus. Wirken **nur** auf den Bereich `ledGroupIds`; vergeben über die automatische Rolle „Gruppenleitung“ |
 | `members.own.view` / `.edit` | Eigene (verknüpfte) Mitglieder sehen / Kontakte, Zusatzfelder, Mail-Einstellungen ändern (`.edit` setzt `.view` voraus, Handler prüfen beides); Manifest `defaultRoleGrants` vergibt beide an die Rolle „Mitglied“ |
 | `members.data.export` | Mitgliedsdaten-PDF (inkl. Telefone, Gesundheits-Zusatzfelder) erzeugen – auch `GET /actions/:id/participants.pdf`; zusätzlich `members.member.view` (+ `members.group.view` bei Gruppen) |
 | `members.storage.read` / `.write` / `.delete` | Core-Storage-Rechte (Upload braucht `.write`, Entfernen `.delete`); in der UI `canUpload`/`canRemoveDoc` |
 
-Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix).
+Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Ausnahme Gruppenleitung (Bereich = geleitete Gruppen).
+
+### Gruppenleitung (Migration 0015, v1.11.0, 2026-10-21)
+- **Wer**: Konten, deren **eigenes Mitglied** eine Gruppe leitet (`group_leaders`), nicht ausgetreten (kein Austritt oder Austritt nach heute, `todayBerlin()`) und nicht
+  anonymisiert. „Eigenes Konto“ = Verknüpfung mit `member_user_links.is_self` (Migr. 0015, Unique je Konto und je Mitglied). **Nur die Verwaltung**
+  setzt es (`PUT /members/:id/links/:userId { self }`, `members.link.manage`, Schalter mit Personensymbol im `LinksDialog`, Badge „Eigenes Konto“);
+  Brief-Code/Registrierung und manuelles Verknüpfen setzen es **nie** – sonst bekämen Eltern einer jugendlichen Leitung Zugriff auf die ganze Gruppe.
+- **Rechte**: automatische Rolle **„Gruppenleitung“** (`LEADER_ROLE_NAME`, `defaultRoleGrants`: `members.led-member.view|edit|export` +
+  `members.storage.read|write|delete`) über `core.roles.replaceModuleGrants('members', …)` (`user_role_grant`, nur bei aktivem Modul). `syncLeaderGrants`
+  nach Gruppe anlegen/ändern/löschen, Mitglied ändern (Austritt geändert)/löschen/anonymisieren, Verknüpfung lösen, „eigenes Konto“ ändern,
+  `onUserDeleted` (afterCommit), `onEnable` und stündlich per Job `members.sync-leader-grants` (Austritt erreicht). Der **Bereich** (`ledGroupIds`) wird je
+  Aufruf frisch bestimmt – Austritt/Leitungswechsel wirken sofort, auch wenn die Rolle erst nach dem Abgleich verschwindet.
+- **Rechteausweitung** (`assertCanGrantLeader` → `core.roles.assertCanGrant`, 403): Wer ein Mitglied mit eigenem Konto **neu als Leitung** einträgt
+  (POST/PUT `/groups`) oder bei einer aktiven Leitung „eigenes Konto“ setzt, braucht alle Rechte der Rolle „Gruppenleitung“ (Administrator*innen ja;
+  eine Rolle „Mitgliederverwaltung“ braucht dafür zusätzlich `members.led-member.*` + `members.storage.*`). Entfernen prüft nichts.
+- **Endpunkte** (`led.endpoints.ts`, nach `memberEndpoints` registriert; fremdes Mitglied/fremde Gruppe → **404**):
+
+  | Methode + Pfad | Recht | Besonderheiten |
+  |---|---|---|
+  | GET `/led/groups` | led-member.view | geleitete Gruppen als `GroupRef[]` |
+  | GET `/led/members`, `/led/members/:id` | led-member.view | wie `/members`, nur Mitglieder mit ≥ 1 geleiteten Gruppe (auch wenn zusätzlich in fremden Gruppen; deren Namen sind sichtbar) |
+  | PUT `/led/members/:id` | led-member.edit (+ view) | `memberInput`; **Gruppen, Eintritt, Austritt, Zweitmitglied, Beitragsebenen bleiben unverändert** (Server ignoriert sie). Audit `members.member.updated` mit `{ asGroupLeader: true }` |
+  | POST/GET/DELETE `/led/members/:id/documents/:kind` | edit/view/edit | gleiche Logik wie `/members/…/documents` (`uploadDocument`/`downloadDocument`/`deleteDocument` mit `scope`); Bereich wird **vor** dem Lesen des Uploads geprüft |
+  | GET `/led/fields` | led-member.view | Zusatzfelder (auch Gesundheitsfelder – Entscheidung des Nutzers) |
+  | GET `/led/members/sheet-columns`, POST `/led/members/sheets.pdf`, POST `/led/groups/sheets.pdf` | led-member.export (+ view) | alle IDs im Bereich, sonst 404 (nichts erzeugt) |
+  | GET `/led/address/suggest`, `/led/address/places` | led-member.edit | **ohne** Mitglieder-Anschriften (`includeMembers: false`), nur Verzeichnis/Photon |
+
+  Kein Anlegen, Löschen, Sammeländern, Verknüpfen; keine globale Suche (Befehlspalette findet für Gruppenleitungen keine Mitglieder).
+- **UI**: Navigationseintrag „Mitglieder“ mit `anyPermission: ['members.member.view', 'members.led-member.view']` (Core-Erweiterung). `MembersPage` schaltet
+  ohne `members.member.view` in den Gruppenleitungs-Modus (`ledMode`, `apiBase = /modules/members/led`): Titel „Mitglieder meiner Gruppen“, Gruppenfilter =
+  eigene Gruppen, Sammelleiste nur „Mitgliederliste (PDF)“, leerer Zustand „Du leitest derzeit keine Gruppe“ mit Hinweis aufs eigene Konto. `MemberForm`
+  mit `apiBase` + `restricted`: Reiter Mitgliedschaft zeigt Gruppen als Badges, Eintritt/Austritt/Zweitmitglied gesperrt (Hinweis), Stand bleibt änderbar.
+  `AddressFields` mit `apiBase` (Cache-Schlüssel enthält ihn).
+- Tests `tests/integration/members-leaders.test.ts` (Rolle nur mit eigenem Konto, Eltern nie, Zugriffsmatrix, gesperrte Felder, Dokumente mit Fake-Storage,
+  PDFs, Adressen ohne Mitglieder-Anschriften, Rolle weg bei Leitungswechsel/Austritt/Job/Lösen/Kontolöschung, Rechteausweitung 403, Navigation).
+- Offen: Gruppenleitung kann keine Mitglieder anlegen/löschen (Entscheidung des Nutzers); kein Hinweis in der Gruppenliste, welche Leitung ein eigenes
+  Konto hat; Verwaltungsrollen ohne `led-member.*` können Leitungen mit eigenem Konto nicht mehr eintragen (403, gewollt).
 
 ## API (`/api/v1/modules/members/…`, Session oder API-Key, nicht öffentlich)
 | Methode + Pfad | Recht | Besonderheiten |
@@ -152,6 +190,7 @@ erfolgreicher Code-Prüfung (z. B. 409), wird die Nutzung zurückgegeben.
 | POST `/members/:id/link-code` | link.manage | neuer Code + Token, Zähler/Sperre zurück |
 | POST `/members/:id/links` | link.manage | **Konto per Hand verknüpfen** (ohne Brief/Code, 2026-10-19): `{ userId, relation? }` strikt → `MemberLinks`; nur aktive Konten (sonst 422 `userId`), schon verknüpft 409, Mitglied unbekannt 404; Rollen bleiben unverändert; Audit `members.link.created` mit `manual: true` |
 | GET `/link-users?search=` | link.manage | aktive Konten zum Verknüpfen (`core.users.directory`, ab 2 Zeichen, ≤ 30) → `LinkUserRef[]` |
+| PUT `/members/:id/links/:userId` | link.manage | `{ self }` → `MemberLinks`: als **eigenes Konto** des Mitglieds markieren/lösen (Gruppenleitung, siehe oben); 404 ohne Verknüpfung, 409 wenn Konto/Mitglied schon ein eigenes hat, 403 bei Rechteausweitung; Audit `members.link.self-changed` |
 | DELETE `/members/:id/links/:userId` | link.manage | Verknüpfung lösen (404 wenn nicht vorhanden) |
 | GET `/members/:id/link-letter.pdf`, POST `/members/link-letters.pdf` `{ids ≤ 100}` | link.manage | PDF bzw. ein zusammengeführtes PDF (Reihenfolge = ids; unbekannte ID → 404); rohe Response → Status 200 |
 | GET `/my/members` | own.view | eigene Mitglieder, siehe „Eigene Mitglieder im Profil“ |

@@ -4,6 +4,7 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Search from '@lucide/svelte/icons/search';
 	import Unlink from '@lucide/svelte/icons/unlink';
+	import UserCheck from '@lucide/svelte/icons/user-check';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
@@ -156,6 +157,28 @@
 		}
 	}
 
+	/** Eigenes Konto des Mitglieds (nicht z. B. Elternteil) – nur das zählt für die Gruppenleitung */
+	async function toggleSelf(u: LinkedUser) {
+		if (!member || busy) return;
+		busy = true;
+		try {
+			links = await apiFetch<MemberLinks>(
+				`/modules/members/members/${member.id}/links/${encodeURIComponent(u.id)}`,
+				{ method: 'PUT', body: JSON.stringify({ self: !u.self }) }
+			);
+			toast.success(
+				u.self
+					? `${u.name} ist nicht mehr als eigenes Konto markiert`
+					: `${u.name} als eigenes Konto markiert`
+			);
+			onchanged();
+		} catch (e) {
+			toast.error(e instanceof ApiClientError ? e.message : 'Ändern fehlgeschlagen');
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function confirmRemove() {
 		if (!member || !removeUser) return;
 		try {
@@ -195,21 +218,37 @@
 								<p class="truncate text-sm font-medium">
 									{u.name}
 									{#if u.relation}<Badge variant="secondary" class="ml-1">{u.relation}</Badge>{/if}
+									{#if u.self}<Badge variant="info" class="ml-1">Eigenes Konto</Badge>{/if}
 								</p>
 								<p class="truncate text-xs text-muted-foreground">
 									{u.email ?? '–'} · verknüpft am {fmt(u.linkedAt)}
 								</p>
 							</div>
 							{#if canManage}
-								<Button
-									size="icon"
-									variant="outline"
-									aria-label={`Verknüpfung mit ${u.name} lösen`}
-									onclick={() => {
-										removeUser = u;
-										removeOpen = true;
-									}}><Unlink /></Button
-								>
+								<div class="flex shrink-0 gap-2">
+									<Button
+										size="icon"
+										variant={u.self ? 'secondary' : 'outline'}
+										aria-pressed={u.self}
+										disabled={busy}
+										aria-label={u.self
+											? `${u.name}: Markierung „eigenes Konto“ entfernen`
+											: `${u.name} als eigenes Konto des Mitglieds markieren`}
+										title={u.self
+											? 'Eigenes Konto des Mitglieds – Markierung entfernen'
+											: 'Als eigenes Konto des Mitglieds markieren (nicht Eltern)'}
+										onclick={() => toggleSelf(u)}><UserCheck /></Button
+									>
+									<Button
+										size="icon"
+										variant="outline"
+										aria-label={`Verknüpfung mit ${u.name} lösen`}
+										onclick={() => {
+											removeUser = u;
+											removeOpen = true;
+										}}><Unlink /></Button
+									>
+								</div>
 							{/if}
 						</li>
 					{/each}
@@ -217,6 +256,13 @@
 			{:else}
 				<p class="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
 					Noch kein Konto verknüpft.
+				</p>
+			{/if}
+			{#if canManage && links.users.length}
+				<p class="text-xs text-muted-foreground">
+					„Eigenes Konto“ (Personensymbol) = das Konto gehört dem Mitglied selbst, nicht z. B. den
+					Eltern. Leitet das Mitglied eine Gruppe, bekommt nur dieses Konto die Rolle
+					„Gruppenleitung“.
 				</p>
 			{/if}
 

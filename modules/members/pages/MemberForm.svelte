@@ -43,7 +43,7 @@
 		STAGE_LABELS,
 		type DocumentKind,
 		type FeeLevel,
-		type Group,
+		type GroupRef,
 		type ContactEntry,
 		type Member,
 		type MemberFormInput,
@@ -61,12 +61,14 @@
 		canEdit = false,
 		canLinkView = false,
 		linkCount = 0,
+		apiBase = '/modules/members',
+		restricted = false,
 		onlinks,
 		onsaved
 	}: {
 		open?: boolean;
 		member?: Member | null;
-		groups: Group[];
+		groups: GroupRef[];
 		canUpload: boolean;
 		canRemoveDoc: boolean;
 		/** Tab beim Öffnen (Standard „Person“) */
@@ -76,13 +78,17 @@
 		canEdit?: boolean;
 		canLinkView?: boolean;
 		linkCount?: number;
+		/** API-Basis; Gruppenleitungen arbeiten über `/modules/members/led` */
+		apiBase?: string;
+		/** Gruppenleitung: Gruppen und Mitgliedschaftsdaten gesperrt (ändert die Mitgliederverwaltung) */
+		restricted?: boolean;
 		onlinks?: (m: Member) => void;
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
 	const viewing = $derived(readonly && !!member);
 
-	const base = '/api/v1/modules/members/members';
+	const base = $derived(`/api/v1${apiBase}/members`);
 	const accept = DOCUMENT_CONTENT_TYPES.join(',');
 	const maxMb = MAX_DOCUMENT_BYTES / 1024 / 1024;
 	const hasGroups = $derived(groups.length > 0);
@@ -214,7 +220,7 @@
 		const seq = ++customLoad;
 		try {
 			const r = await apiFetch<{ fields: { active: boolean; field: FieldDefinition }[] }>(
-				'/modules/members/fields'
+				`${apiBase}/fields`
 			);
 			if (seq !== customLoad) return;
 			customFields = r.fields.filter((d) => d.active).map((d) => d.field);
@@ -229,7 +235,7 @@
 	async function uploadDoc(id: string, kind: DocumentKind, file: File) {
 		const fd = new FormData();
 		fd.append('file', file);
-		await apiFetch<{ name: string }>(`/modules/members/members/${id}/documents/${kind}`, {
+		await apiFetch<{ name: string }>(`${apiBase}/members/${id}/documents/${kind}`, {
 			method: 'POST',
 			body: fd
 		});
@@ -246,7 +252,7 @@
 	async function removeDoc(kind: DocumentKind) {
 		if (!member) return;
 		try {
-			await apiFetch(`/modules/members/members/${member.id}/documents/${kind}`, {
+			await apiFetch(`${apiBase}/members/${member.id}/documents/${kind}`, {
 				method: 'DELETE'
 			});
 			docNames[kind] = null;
@@ -444,7 +450,7 @@
 		busy = true;
 		try {
 			const saved = member
-				? await apiFetch<Member>(`/modules/members/members/${member.id}`, {
+				? await apiFetch<Member>(`${apiBase}/members/${member.id}`, {
 						method: 'PUT',
 						body: JSON.stringify(body)
 					})
@@ -645,6 +651,7 @@
 								bind:city
 								bind:country
 								errors={fieldErrors}
+								{apiBase}
 							/>
 						</Tabs.Content>
 
@@ -687,85 +694,100 @@
 								/>
 							</FormField>
 
-							<div class="space-y-1.5">
-								{#if viewing}
-									<p class="text-sm font-medium">Gruppen</p>
-									<div
-										id="m-groups"
-										class="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-muted/40 px-2 py-1 text-sm"
-									>
-										{#each member?.groups ?? [] as g (g.id)}
-											<ColorBadge color={g.color}>{g.name}</ColorBadge>
-										{:else}
-											<span class="text-muted-foreground">Keine Gruppe</span>
-										{/each}
-									</div>
-								{:else if hasGroups}
-									<MultiSelect
-										id="m-groups"
-										label="Gruppen"
-										options={groupOptions}
-										bind:value={groupIds}
-										placeholder="Gruppen auswählen (optional)"
-										searchPlaceholder="Gruppe suchen …"
-										emptyText="Keine Gruppe gefunden."
-										invalid={!!fieldErrors.groupIds}
-									/>
-								{:else}
-									<p class="text-sm font-medium">Gruppen</p>
-									<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
-								{/if}
-								{#if fieldErrors.groupIds}
-									<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
-								{/if}
-							</div>
-
-							<div class="grid gap-4 sm:grid-cols-2">
-								{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
-								{@render dateInput('m-exit', 'exitDate', 'Austritt')}
-							</div>
-							<p class="-mt-2 text-xs text-muted-foreground" hidden={viewing}>
-								Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter
-								„Ausgetreten“.
-							</p>
-
-							<div class="space-y-3 rounded-md border p-3">
-								<div class="flex items-center justify-between gap-4">
-									<label for="m-secondary" class="space-y-0.5">
-										<span class="block text-sm font-medium">Zweitmitglied</span>
-										<span class="block text-xs text-muted-foreground">
-											Hauptmitgliedschaft in einem anderen Stamm.
-										</span>
-									</label>
-									<Switch id="m-secondary" bind:checked={secondaryMember} />
-								</div>
-								{#if secondaryMember}
-									<fieldset class="space-y-2">
-										<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
-										<div class="flex flex-wrap gap-x-5 gap-y-2">
-											{#each FEE_LEVELS as level (level)}
-												<div class="flex items-center gap-2">
-													<Checkbox
-														id={`m-fee-${level}`}
-														checked={feeLevels.includes(level)}
-														aria-invalid={!!fieldErrors.feeLevels}
-														onCheckedChange={(v) => toggleLevel(level, v === true)}
-													/>
-													<label for={`m-fee-${level}`} class="text-sm">
-														{FEE_LEVEL_LABELS[level]}
-													</label>
-												</div>
+							{#if restricted && !viewing}
+								<p class="text-xs text-muted-foreground">
+									Gruppen und Mitgliedschaftsdaten ändert die Mitgliederverwaltung.
+								</p>
+							{/if}
+							<!-- Gruppenleitung: Gruppen und Mitgliedschaftsdaten gesperrt (Server ignoriert sie ebenfalls) -->
+							<fieldset
+								disabled={restricted && !viewing}
+								class={[
+									'min-w-0 space-y-4',
+									restricted &&
+										'[&_:disabled]:cursor-default [&_:disabled]:opacity-100 [&_input:disabled]:bg-muted/40 [&_label]:opacity-100'
+								]}
+							>
+								<div class="space-y-1.5">
+									{#if viewing || restricted}
+										<p class="text-sm font-medium">Gruppen</p>
+										<div
+											id="m-groups"
+											class="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-muted/40 px-2 py-1 text-sm"
+										>
+											{#each member?.groups ?? [] as g (g.id)}
+												<ColorBadge color={g.color}>{g.name}</ColorBadge>
+											{:else}
+												<span class="text-muted-foreground">Keine Gruppe</span>
 											{/each}
 										</div>
-										<p class="text-xs text-muted-foreground">
-											Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
-										</p>
-										{#if fieldErrors.feeLevels}
-											<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
-										{/if}
-									</fieldset>
-								{/if}
-							</div>
+									{:else if hasGroups}
+										<MultiSelect
+											id="m-groups"
+											label="Gruppen"
+											options={groupOptions}
+											bind:value={groupIds}
+											placeholder="Gruppen auswählen (optional)"
+											searchPlaceholder="Gruppe suchen …"
+											emptyText="Keine Gruppe gefunden."
+											invalid={!!fieldErrors.groupIds}
+										/>
+									{:else}
+										<p class="text-sm font-medium">Gruppen</p>
+										<p class="text-sm text-muted-foreground">Noch keine Gruppen vorhanden.</p>
+									{/if}
+									{#if fieldErrors.groupIds}
+										<p role="alert" class="text-xs text-destructive">{fieldErrors.groupIds}</p>
+									{/if}
+								</div>
+
+								<div class="grid gap-4 sm:grid-cols-2">
+									{@render dateInput('m-entry', 'entryDate', 'Eintritt')}
+									{@render dateInput('m-exit', 'exitDate', 'Austritt')}
+								</div>
+								<p class="-mt-2 text-xs text-muted-foreground" hidden={viewing || restricted}>
+									Mit erreichtem Austrittsdatum erscheint das Mitglied nur noch im Filter
+									„Ausgetreten“.
+								</p>
+
+								<div class="space-y-3 rounded-md border p-3">
+									<div class="flex items-center justify-between gap-4">
+										<label for="m-secondary" class="space-y-0.5">
+											<span class="block text-sm font-medium">Zweitmitglied</span>
+											<span class="block text-xs text-muted-foreground">
+												Hauptmitgliedschaft in einem anderen Stamm.
+											</span>
+										</label>
+										<Switch id="m-secondary" bind:checked={secondaryMember} />
+									</div>
+									{#if secondaryMember}
+										<fieldset class="space-y-2">
+											<legend class="text-sm font-medium">Beitrag bei uns zahlen für</legend>
+											<div class="flex flex-wrap gap-x-5 gap-y-2">
+												{#each FEE_LEVELS as level (level)}
+													<div class="flex items-center gap-2">
+														<Checkbox
+															id={`m-fee-${level}`}
+															checked={feeLevels.includes(level)}
+															aria-invalid={!!fieldErrors.feeLevels}
+															onCheckedChange={(v) => toggleLevel(level, v === true)}
+														/>
+														<label for={`m-fee-${level}`} class="text-sm">
+															{FEE_LEVEL_LABELS[level]}
+														</label>
+													</div>
+												{/each}
+											</div>
+											<p class="text-xs text-muted-foreground">
+												Nur angehakte Ebenen werden im Jahresbeitrag berechnet.
+											</p>
+											{#if fieldErrors.feeLevels}
+												<p role="alert" class="text-xs text-destructive">{fieldErrors.feeLevels}</p>
+											{/if}
+										</fieldset>
+									{/if}
+								</div>
+							</fieldset>
 						</Tabs.Content>
 
 						{#if visibleCustomFields.length}

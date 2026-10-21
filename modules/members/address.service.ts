@@ -60,6 +60,11 @@ export interface AddressHints {
 	postalCode?: string;
 	/** Bereits gewähltes Land (`DE` → OpenPLZ) */
 	country?: string;
+	/**
+	 * Anschriften vorhandener Mitglieder vorschlagen (Standard ja). Aus für Gruppenleitungen: sie dürfen
+	 * Anschriften von Mitgliedern außerhalb ihrer Gruppen nicht sehen.
+	 */
+	includeMembers?: boolean;
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
@@ -334,7 +339,7 @@ export async function suggestAddresses(
 		core.settings.get(PHOTON_SETTING).then(baseUrl)
 	]);
 	// Nacheinander: PGlite (Tests/Demo) hat nur eine Sitzung; Mitglieder-Anschriften immer frisch
-	const local = await localAddresses(query);
+	const local = hints.includeMembers === false ? [] : await localAddresses(query);
 	const { name, number } = splitHouseNumber(query);
 	const typed = str(hints.postalCode);
 	const useDirectory = country === 'DE' && !!openBase;

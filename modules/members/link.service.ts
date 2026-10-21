@@ -21,6 +21,7 @@ import {
 	recipientLines
 } from './link';
 import { loadMailOptOut, membersService } from './fields.service';
+import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
 import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import {
 	LINK_DEFAULT_ROLE,
@@ -245,7 +246,7 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 		return {
 			links: await rowsOf(
 				tx,
-				sql`SELECT user_id, relation, created_at FROM member_user_links
+				sql`SELECT user_id, relation, is_self, created_at FROM member_user_links
 					WHERE member_id = ${memberId} ORDER BY created_at, user_id`
 			),
 			code: (
@@ -271,6 +272,7 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 			name: u?.name ?? 'Unbekannt (Konto deaktiviert)',
 			email: u?.email ?? null,
 			relation: (l.relation as string | null) ?? null,
+			self: l.is_self === true || l.is_self === 't',
 			linkedAt: toDate(l.created_at).toISOString()
 		};
 	});
@@ -338,10 +340,64 @@ export async function unlinkUser(
 		)
 	);
 	if (!removed.length) throw errors.notFound('Verknüpfung nicht gefunden');
+	await syncLeaderGrantsAfterChange(ctx);
 	await core.audit.logFromContext(ctx, 'members.link.removed', {
 		target: memberId,
 		metadata: { memberId, userId }
 	});
+}
+
+/**
+ * Verknüpftes Konto als **eigenes Konto** des Mitglieds markieren (oder die Markierung lösen). Nur
+ * eigene Konten erhalten bei einer Gruppenleitung die Rolle „Gruppenleitung“ – Eltern nicht. Je Konto
+ * und je Mitglied höchstens eine Markierung (409). Leitet das Mitglied eine Gruppe, braucht die
+ * handelnde Person alle Rechte der Rolle (403).
+ */
+export async function setLinkSelf(
+	ctx: RequestContext,
+	memberId: string,
+	userId: string,
+	self: boolean
+): Promise<MemberLinks> {
+	if (self) await assertCanGrantLeader(ctx, [memberId], 'becomesSelf');
+	const changed = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const link = await rowsOf(
+			tx,
+			sql`SELECT is_self FROM member_user_links
+				WHERE member_id = ${memberId} AND user_id = ${userId} FOR UPDATE`
+		);
+		if (!link.length) throw errors.notFound('Verknüpfung nicht gefunden');
+		const before = link[0]!.is_self === true || link[0]!.is_self === 't';
+		if (before === self) return false;
+		if (self) {
+			const taken = await rowsOf(
+				tx,
+				sql`SELECT member_id, user_id FROM member_user_links
+					WHERE is_self AND (user_id = ${userId} OR member_id = ${memberId})`
+			);
+			if (taken.some((t) => t.user_id === userId)) {
+				throw errors.conflict(
+					'Dieses Konto ist bereits als eigenes Konto eines anderen Mitglieds markiert'
+				);
+			}
+			if (taken.length) {
+				throw errors.conflict('Für dieses Mitglied ist bereits ein anderes eigenes Konto markiert');
+			}
+		}
+		await tx.execute(
+			sql`UPDATE member_user_links SET is_self = ${self}
+				WHERE member_id = ${memberId} AND user_id = ${userId}`
+		);
+		return true;
+	});
+	if (changed) {
+		await syncLeaderGrantsAfterChange(ctx);
+		await core.audit.logFromContext(ctx, 'members.link.self-changed', {
+			target: memberId,
+			metadata: { memberId, userId, self }
+		});
+	}
+	return listMemberLinks(ctx, memberId);
 }
 
 export async function myMembers(ctx: RequestContext): Promise<MyMember[]> {

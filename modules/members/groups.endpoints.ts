@@ -7,6 +7,7 @@ import {
 	isUniqueViolation,
 	moduleDb,
 	resultRows,
+	type RequestContext,
 	type Row,
 	toIso,
 	type Tx
@@ -20,6 +21,7 @@ import {
 	type GroupWebsite,
 	type MemberRef
 } from './schemas';
+import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
 
 const MODULE = 'members';
 
@@ -160,7 +162,26 @@ async function replaceLeaders(tx: Tx, groupId: string, leaderIds: string[]): Pro
 	}
 }
 
-async function save(id: string | null, input: GroupInput): Promise<Group> {
+/** Neu hinzukommende Leitungen (gegenüber dem gespeicherten Stand) */
+async function addedLeaders(id: string | null, leaderIds: string[]): Promise<string[]> {
+	if (!id) return [...new Set(leaderIds)];
+	const current = await moduleDb(MODULE).transaction(async (tx) =>
+		resultRows(
+			await tx.execute(sql`SELECT member_id FROM group_leaders WHERE group_id = ${id}`)
+		).map((r) => String(r.member_id))
+	);
+	return [...new Set(leaderIds)].filter((m) => !current.includes(m));
+}
+
+async function save(ctx: RequestContext, id: string | null, input: GroupInput): Promise<Group> {
+	// Neue Leitung mit eigenem Konto erhält die Rolle „Gruppenleitung“ → Rechteprüfung vorab (403)
+	await assertCanGrantLeader(ctx, await addedLeaders(id, input.leaderIds), 'becomesLeader');
+	const group = await saveGroup(id, input);
+	await syncLeaderGrantsAfterChange(ctx);
+	return group;
+}
+
+async function saveGroup(id: string | null, input: GroupInput): Promise<Group> {
 	try {
 		return await moduleDb(MODULE).transaction(async (tx) => {
 			if (id) await requireGroup(tx, id);
@@ -234,7 +255,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 		permission: 'members.group.edit',
 		body: groupInput,
 		handler: async ({ ctx, body }) => {
-			const group = await save(null, body as GroupInput);
+			const group = await save(ctx, null, body as GroupInput);
 			await core.audit.logFromContext(ctx, 'members.group.created', {
 				target: group.id,
 				metadata: auditMeta(group, body as GroupInput)
@@ -251,7 +272,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		body: groupInput,
 		handler: async ({ ctx, params, body }) => {
-			const group = await save((params as { id: string }).id, body as GroupInput);
+			const group = await save(ctx, (params as { id: string }).id, body as GroupInput);
 			await core.audit.logFromContext(ctx, 'members.group.updated', {
 				target: group.id,
 				metadata: auditMeta(group, body as GroupInput)
@@ -284,6 +305,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 			if (imagePath) {
 				await core.storage.remove(ctx, { module: MODULE, path: imagePath }).catch(() => undefined);
 			}
+			await syncLeaderGrantsAfterChange(ctx);
 			await core.audit.logFromContext(ctx, 'members.group.deleted', {
 				target: id,
 				metadata: { name }

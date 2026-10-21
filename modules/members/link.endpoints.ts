@@ -11,6 +11,7 @@ import {
 	myMembers,
 	publicLinkInfo,
 	registerWithLink,
+	setLinkSelf,
 	setMailPref,
 	unlinkUser,
 	updateLinkedContacts
@@ -21,6 +22,7 @@ import {
 	linkLettersInput,
 	linkManualInput,
 	linkRegisterInput,
+	linkSelfInput,
 	linkTokenParams,
 	linkUserParams,
 	linkUserSearchQuery,
@@ -90,6 +92,16 @@ export const linkEndpoints: ApiEndpoint[] = [
 			});
 			return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
 		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/members/:id/links/:userId',
+		summary: 'Verknüpftes Konto als eigenes Konto des Mitglieds markieren (für die Gruppenleitung)',
+		tags,
+		permission: 'members.link.manage',
+		params: linkUserParams,
+		body: linkSelfInput,
+		handler: ({ ctx, params, body }) => setLinkSelf(ctx, params.id, params.userId, body.self)
 	}),
 	defineEndpoint({
 		method: 'DELETE',

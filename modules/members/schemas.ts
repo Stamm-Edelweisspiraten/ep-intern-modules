@@ -610,6 +610,15 @@ export const LINK_LETTERS_MAX_IDS = 100;
 /** Rolle, die per Verknüpfungscode angelegte Konten erhalten (wird ohne Rechte angelegt) */
 export const LINK_DEFAULT_ROLE = 'Mitglied';
 
+// --- Gruppenleitung ----------------------------------------------------------
+
+/** Automatische Rolle für Konten, deren eigenes Mitglied eine Gruppe leitet (`user_role_grant`) */
+export const LEADER_ROLE_NAME = 'Gruppenleitung';
+/** Rechte für die Mitglieder der selbst geleiteten Gruppen (wirken nur auf diese Gruppen) */
+export const LED_VIEW = 'members.led-member.view';
+export const LED_EDIT = 'members.led-member.edit';
+export const LED_EXPORT = 'members.led-member.export';
+
 const linkCode = z
 	.string()
 	.trim()
@@ -633,6 +642,8 @@ export const linkManualInput = z
 		relation: linkRelation
 	})
 	.strict();
+/** Verknüpftes Konto als eigenes Konto des Mitglieds markieren (nur Verwaltung, nie über den Code) */
+export const linkSelfInput = z.object({ self: z.boolean() }).strict();
 /** Kontosuche für das manuelle Verknüpfen (ab 2 Zeichen) */
 export const linkUserSearchQuery = z.object({ search: z.string().trim().max(100).default('') });
 export const linkRegisterInput = z
@@ -685,6 +696,8 @@ export interface LinkedUser {
 	name: string;
 	email: string | null;
 	relation: string | null;
+	/** Eigenes Konto des Mitglieds (zählt für die Rolle „Gruppenleitung“), nicht z. B. ein Elternteil */
+	self: boolean;
 	linkedAt: string;
 }
 /** Treffer der Kontosuche (`GET /link-users`) */
