@@ -4,6 +4,7 @@ import { listRuns } from './annual-fee.service';
 import type { PdfBlock } from '$lib/sdk/types';
 import {
 	NEEDS_ALLOCATION_SQL,
+	invoiceMetricsSql,
 	actionsService,
 	loadAccounts,
 	loadTransactionsWhere,
@@ -12,10 +13,12 @@ import {
 	rows,
 	today
 } from './db';
-import { loadSummaries } from './invoices.endpoints';
+
 import { loadBankData } from './notify';
 import { listPayables } from './payables';
-import { centsToCsv, csvDocument, formatDateDe } from './logic';
+import { formatEuro } from '$lib/components/layout/money';
+import { csvCents, csvDocument } from '$lib/sdk/csv';
+import { formatDateDe } from './logic';
 import {
 	reportQuery,
 	type Overview,
@@ -25,18 +28,29 @@ import {
 	type ReportRow
 } from './schemas';
 import { decorateTransactions } from './transactions.endpoints';
-import { syncIfStale } from './sync';
 
 const TAGS = ['Modul: treasury'];
 
+/** Offene Forderungen per Aggregat in SQL (keine Rechnungen samt Posten laden) */
 async function openStats() {
-	const { summaries } = await loadSummaries();
+	const t = today();
+	const [r] = await mdb().transaction((tx) =>
+		rows(
+			tx,
+			sql`SELECT coalesce(sum(m.open_cents), 0) AS open,
+				coalesce(sum(m.open_cents) FILTER (WHERE m.open_cents > 0 AND m.due_on < ${t}), 0) AS overdue,
+				count(*) FILTER (WHERE m.open_cents > 0 AND m.due_on < ${t}) AS overdue_count,
+				coalesce(sum(m.credit_cents), 0) AS credit,
+				count(*) FILTER (WHERE m.open_cents > 0) AS open_count
+			FROM ${invoiceMetricsSql()}`
+		)
+	);
 	return {
-		openCents: summaries.reduce((s, i) => s + i.openCents, 0),
-		overdueCents: summaries.reduce((s, i) => s + (i.overdue ? i.openCents : 0), 0),
-		overdueCount: summaries.filter((i) => i.overdue).length,
-		creditCents: summaries.reduce((s, i) => s + i.creditCents, 0),
-		invoiceCount: summaries.filter((i) => i.openCents > 0).length
+		openCents: num(r?.open),
+		overdueCents: num(r?.overdue),
+		overdueCount: num(r?.overdue_count),
+		creditCents: num(r?.credit),
+		invoiceCount: num(r?.open_count)
 	};
 }
 
@@ -82,7 +96,6 @@ async function annualTask(ctx: RequestContext): Promise<OverviewTask | null> {
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const;
 
 async function overview(ctx: RequestContext): Promise<Overview> {
-	await syncIfStale(ctx);
 	const data = await mdb().transaction(async (tx) => {
 		const accounts = await loadAccounts(tx);
 		const [u] = await rows(
@@ -261,7 +274,7 @@ export async function periodReport(q: ReportQuery): Promise<PeriodReport> {
 	};
 }
 
-const eur = (c: number) => `${centsToCsv(c)} €`;
+const eur = formatEuro;
 
 export function reportBlocks(r: PeriodReport): PdfBlock[] {
 	const sum = (rows: ReportRow[], k: 'incomeCents' | 'expenseCents') =>
@@ -421,7 +434,7 @@ export const reportEndpoints = [
 				list.map((t) => [
 					formatDateDe(t.bookedOn),
 					t.accountName,
-					centsToCsv(t.amountCents),
+					csvCents(t.amountCents),
 					t.counterparty,
 					t.purpose,
 					t.category?.name ?? '',

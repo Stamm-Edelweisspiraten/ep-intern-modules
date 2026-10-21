@@ -285,7 +285,7 @@
 				aria-valuenow={percent}
 			>
 				<div
-					class={['h-full transition-all', retryable.length ? 'bg-amber-500' : 'bg-primary']}
+					class={['h-full transition-all', retryable.length ? 'bg-warning' : 'bg-primary']}
 					style="width: {percent}%"
 				></div>
 			</div>
@@ -295,9 +295,9 @@
 						{#if item.status === 'waiting'}
 							<Clock class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						{:else if item.status === 'uploading'}
-							<LoaderCircle class="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+							<LoaderCircle class="size-4 shrink-0 animate-spin text-link" aria-hidden="true" />
 						{:else if item.status === 'done'}
-							<CircleCheck class="size-4 shrink-0 text-green-600" aria-hidden="true" />
+							<CircleCheck class="size-4 shrink-0 text-success" aria-hidden="true" />
 						{:else}
 							<CircleAlert class="size-4 shrink-0 text-destructive" aria-hidden="true" />
 						{/if}

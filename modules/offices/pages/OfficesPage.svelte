@@ -307,7 +307,7 @@
 			{#each offices as o (o.id)}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title class="text-base">{o.name}</Card.Title>
+						<Card.Title>{o.name}</Card.Title>
 						{#if o.source}
 							<Card.Description>
 								<Badge
@@ -362,7 +362,7 @@
 										{/if}
 										<a
 											href={mailHref(m.email)}
-											class="min-w-0 truncate text-primary underline-offset-4 hover:underline"
+											class="min-w-0 truncate text-link underline-offset-4 hover:underline"
 										>
 											{m.email}
 										</a>

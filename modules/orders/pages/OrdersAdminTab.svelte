@@ -197,7 +197,7 @@
 	{/if}
 	{#if overview && !overview.treasuryActive}
 		<p
-			class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300"
+			class="flex items-start gap-2 rounded-md border border-warning-border bg-warning-muted p-3 text-sm text-warning"
 		>
 			<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
 			Das Modul Kasse ist nicht aktiv. Rechnungen an Mitglieder und Lieferantenrechnungen werden erst

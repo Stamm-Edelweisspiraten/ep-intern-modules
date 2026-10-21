@@ -5,26 +5,39 @@
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	rowsOf
+} from '$lib/sdk/server';
 import type { FieldDefinition, FormValue } from '$lib/forms';
-import type { ListCatalog, ListColumn, ListRow, ListSection, ListSelection } from '$lib/pdf-lists';
-import type { MemberSheetData, MembersService } from '$lib/modules/members/contract';
 import {
 	ageOn,
 	composeListBlocks,
 	formatDateDe,
 	formatFieldValue,
+	listSelectionInput,
 	listTemplateInput,
-	todayIso
-} from '$lib/modules/members/member-list';
-import { listSelectionInput } from '$lib/modules/members/schemas';
+	todayIso,
+	type ListCatalog,
+	type ListColumn,
+	type ListRow,
+	type ListSection,
+	type ListSelection
+} from '$lib/pdf-lists';
 import {
 	buildMemberCatalog,
 	buildPresets,
 	fieldColumnKey,
 	rowFromMember
-} from '$lib/modules/members/sheet-columns';
-import { requireAccess, rowsOf } from './access';
+} from '$lib/pdf-lists/member-columns';
+import type { MemberSheetData, MembersService } from '$lib/modules/members/contract';
+import { requireAccess } from './access';
+import { canSeeHealth, readHealth } from './health';
+import { formatEuro } from '$lib/components/layout/money';
 import { safeFilename } from './form-support';
 import {
 	DIET_LABELS,
@@ -35,9 +48,7 @@ import {
 	type ParticipantRole
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
-const EXPORT_PERMISSION = 'members.data.export';
 
 const parseJson = <T>(v: unknown, fallback: T): T => {
 	if (v == null) return fallback;
@@ -90,7 +101,7 @@ function answerNotes(
 /** Werte zusammenführen: leere entfallen, gleiche nur einmal, getrennt durch Zeilenumbruch */
 const merge = (...values: string[]): string =>
 	[...new Set(values.filter((v) => v.trim()))].join('\n');
-const euro = (cents: number) => `${(cents / 100).toFixed(2).replace('.', ',')} €`;
+const euro = formatEuro;
 
 async function loadMembersService(): Promise<MembersService> {
 	return core.modules.use<MembersService>('members', MODULE_ID);
@@ -106,7 +117,7 @@ interface Loaded {
 
 /** Zugriff (404 für fremde Aktion), dann das Sonderrecht (403); Daten nur innerhalb der Transaktion */
 async function loadAction(ctx: RequestContext, id: string): Promise<Loaded> {
-	const data = await mdb().transaction(async (tx) => {
+	const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		await requireAccess(tx, ctx, id, 'read');
 		const [action] = await rowsOf(
 			tx,
@@ -115,7 +126,7 @@ async function loadAction(ctx: RequestContext, id: string): Promise<Loaded> {
 		const participants = await rowsOf(
 			tx,
 			sql`SELECT id, name, group_label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, role,
-					juleica, diet, allergies, notes, contact_email, answers, member_id
+					juleica, diet, allergies, notes, contact_email, answers, health_answers, member_id
 				FROM action_participants WHERE action_id = ${id}
 				ORDER BY (role = 'team'), lower(name), id`
 		);
@@ -125,13 +136,18 @@ async function loadAction(ctx: RequestContext, id: string): Promise<Loaded> {
 		);
 		return { action, participants, definition: form?.definition };
 	});
-	if (!core.permissions.has(ctx, EXPORT_PERMISSION)) {
+	// Sonderrecht für Gesundheitsdaten (gleiche Prüfung wie CSV/JSON/ZIP, `health.ts`)
+	if (!canSeeHealth(ctx)) {
 		throw errors.forbidden('Keine Berechtigung, Mitgliedsdaten zu exportieren');
 	}
 	const num = (v: unknown) => (v == null ? null : Number(v));
 	return {
 		name: String(data.action?.name ?? 'Aktion'),
-		participants: data.participants,
+		// Gesundheitsfelder entschlüsseln, gesundheitsbezogene Antworten wieder zusammenführen
+		participants: data.participants.map((p) => {
+			const h = readHealth(p);
+			return { ...p, diet: h.diet, allergies: h.allergies, notes: h.notes, answers: h.answers };
+		}),
 		formFields: parseJson<{ fields?: FieldDefinition[] }>(data.definition, {}).fields ?? [],
 		feeCents: num(data.action?.fee_cents),
 		teamFeeCents: num(data.action?.team_fee_cents)
@@ -273,8 +289,8 @@ export const participantSheetEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			await mdb().transaction((tx) => requireAccess(tx, ctx, id, 'read'));
-			if (!core.permissions.has(ctx, EXPORT_PERMISSION)) {
+			await moduleDb(MODULE_ID).transaction((tx) => requireAccess(tx, ctx, id, 'read'));
+			if (!canSeeHealth(ctx)) {
 				throw errors.forbidden('Keine Berechtigung, Mitgliedsdaten zu exportieren');
 			}
 			return (await loadCatalog()).catalog;

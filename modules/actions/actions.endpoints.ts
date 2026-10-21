@@ -1,13 +1,18 @@
 import { sql } from 'drizzle-orm';
 import {
+	type ApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
-	type ApiEndpoint,
+	moduleDb,
+	PRINCIPAL_SEARCH_RATE_LIMIT,
 	type RequestContext,
+	requireShareCapability,
+	rowsOf,
+	toIso,
 	type Tx
 } from '$lib/sdk/server';
-import { requireAccess, rowsOf, visibleActionsFilter } from './access';
+import { requireAccess, visibleActionsFilter } from './access';
 import {
 	actionInput,
 	actionListQuery,
@@ -25,9 +30,7 @@ import {
 
 const MODULE = 'actions';
 const tags = ['Aktionen'];
-const mdb = () => core.database.forModule(MODULE);
 
-const iso = (v: unknown): string => new Date(String(v)).toISOString();
 const strOrNull = (v: unknown): string | null => (v == null ? null : String(v));
 
 const COLUMNS = sql`a.id, a.name, a.description, a.location,
@@ -37,14 +40,11 @@ const COLUMNS = sql`a.id, a.name, a.description, a.location,
 		a.fee_cents, a.team_fee_cents, a.fee_applied_at, a.fee_applied_by,
 	(SELECT count(*)::int FROM action_participants p WHERE p.action_id = a.id) AS participant_count`;
 
-/** Löst Benutzer-IDs in Namen/E-Mail auf (in Blöcken, das Verzeichnis liefert max. 30). */
+/** Löst Benutzer-IDs in Namen/E-Mail auf (`core.users.byIds` stückelt selbst). */
 async function resolveUsers(ctx: RequestContext, ids: string[]): Promise<Map<string, UserRef>> {
-	const unique = [...new Set(ids)];
 	const map = new Map<string, UserRef>();
-	for (let i = 0; i < unique.length; i += 30) {
-		const chunk = unique.slice(i, i + 30);
-		const found = await core.users.directory(ctx, { ids: chunk, limit: 30 });
-		for (const u of found) map.set(u.id, { userId: u.id, name: u.name, email: u.email });
+	for (const u of (await core.users.byIds(ctx, ids)).values()) {
+		map.set(u.id, { userId: u.id, name: u.name, email: u.email });
 	}
 	return map;
 }
@@ -123,11 +123,11 @@ async function buildSummaries(ctx: RequestContext, data: SummaryData): Promise<A
 					: {
 							participantCents: Number(r.fee_cents),
 							teamCents: Number(r.team_fee_cents ?? 0),
-							appliedAt: iso(r.fee_applied_at),
+							appliedAt: toIso(r.fee_applied_at),
 							appliedBy: r.fee_applied_by == null ? null : userRef(owners, String(r.fee_applied_by))
 						},
-			createdAt: iso(r.created_at),
-			updatedAt: iso(r.updated_at)
+			createdAt: toIso(r.created_at),
+			updatedAt: toIso(r.updated_at)
 		};
 	});
 }
@@ -149,7 +149,7 @@ async function listActions(
 	ctx: RequestContext,
 	q: { search?: string; limit: number; offset: number }
 ): Promise<ActionList> {
-	const { data, total } = await mdb().transaction(async (tx) => {
+	const { data, total } = await moduleDb(MODULE).transaction(async (tx) => {
 		const visible = visibleActionsFilter(ctx);
 		const term = q.search?.replace(/[%_\\]/g, '');
 		const search = term
@@ -192,7 +192,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		permission: 'actions.action.view',
 		params: idParams,
 		handler: async ({ ctx, params }) => {
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'read');
 				return loadOne(ctx, tx, params.id);
 			});
@@ -209,7 +209,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, body }) => {
 			const ownerId = requireUserId(ctx);
 			const id = crypto.randomUUID();
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE).transaction(async (tx) => {
 				await tx.execute(
 					sql`INSERT INTO actions (id, name, description, location, starts_on, starts_time,
 							ends_on, ends_time, owner_id, is_past)
@@ -235,7 +235,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		body: actionUpdateInput,
 		handler: async ({ ctx, params, body }) => {
-			const data = await mdb().transaction(async (tx) => {
+			const data = await moduleDb(MODULE).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'edit');
 				await tx.execute(
 					sql`UPDATE actions SET name = ${body.name}, description = ${body.description},
@@ -264,7 +264,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		permission: 'actions.action.delete',
 		params: idParams,
 		handler: async ({ ctx, params }) => {
-			const name = await mdb().transaction(async (tx) => {
+			const name = await moduleDb(MODULE).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, params.id, 'edit');
 				if (!access.isOwner && !hasEditAll(ctx)) {
 					throw errors.forbidden('Nur Eigentümer*in darf die Aktion löschen');
@@ -288,7 +288,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		permission: 'actions.action.view',
 		params: idParams,
 		handler: async ({ ctx, params }) => {
-			const { access, ownerId, shareRows } = await mdb().transaction(async (tx) => {
+			const { access, ownerId, shareRows } = await moduleDb(MODULE).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, params.id, 'read');
 				const [action] = await rowsOf(
 					tx,
@@ -319,7 +319,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		params: shareParams,
 		body: shareInput,
 		handler: async ({ ctx, params, body }) => {
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'share');
 				const [action] = await rowsOf(
 					tx,
@@ -333,7 +333,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 			const users = await resolveUsers(ctx, [params.userId]);
 			const target = users.get(params.userId);
 			if (!target) throw errors.validation({ userId: 'Unbekannter oder inaktiver Benutzer' });
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'share');
 				await tx.execute(
 					sql`INSERT INTO action_shares (action_id, user_id, level, created_by)
@@ -358,7 +358,7 @@ export const actionEndpoints: ApiEndpoint[] = [
 		permission: 'actions.action.view',
 		params: shareParams,
 		handler: async ({ ctx, params }) => {
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE).transaction(async (tx) => {
 				const own = !!ctx.userId && ctx.userId === params.userId;
 				await requireAccess(tx, ctx, params.id, own ? 'read' : 'share');
 				await tx.execute(
@@ -376,10 +376,18 @@ export const actionEndpoints: ApiEndpoint[] = [
 		method: 'GET',
 		path: '/users',
 		summary: 'Benutzerverzeichnis für Freigaben durchsuchen',
+		description:
+			'Nur für Personen, die Aktionen teilen können (`actions.action.edit-all` oder Eigentümer*in mindestens einer Aktion), sonst 403. E-Mail-Adressen nur mit `core.users.view` (sonst leer).',
 		tags,
 		permission: 'actions.action.view',
+		rateLimit: PRINCIPAL_SEARCH_RATE_LIMIT,
 		query: userSearchQuery,
-		handler: ({ ctx, query }) =>
-			core.users.directory(ctx, { search: query.search, limit: query.limit })
+		handler: async ({ ctx, query }) => {
+			await requireShareCapability(ctx, MODULE, {
+				anyPermission: ['actions.action.edit-all'],
+				canShareSql: (userId) => sql`SELECT 1 FROM actions WHERE owner_id = ${userId}`
+			});
+			return core.users.directory(ctx, { search: query.search, limit: query.limit });
+		}
 	})
 ] as ApiEndpoint[];

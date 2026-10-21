@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 import { isValidIban, normalizeIban } from './iban';
 
 export const MODULE_ID = 'treasury';
@@ -51,23 +52,6 @@ export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_IMPORT_ROWS = 5000;
 export const MAX_INVOICE_LINES = 50;
 export const MAX_ALLOCATIONS = 100;
-/** Rechnungsnummern `R-JJJJ-NNNN` */
-export const INVOICE_NUMBER_RE = /\bR-(\d{4})-(\d{4,6})\b/gi;
-
-/** Standardkategorien (feste IDs, beim Aktivieren angelegt, umbenennbar) */
-export const DEFAULT_CATEGORIES: { id: string; name: string; kind: CategoryKind }[] = [
-	{ id: 'cat-beitraege', name: 'Teilnehmerbeiträge', kind: 'income' },
-	{ id: 'cat-mitgliedsbeitraege', name: 'Mitgliedsbeiträge', kind: 'income' },
-	{ id: 'cat-zuschuesse', name: 'Zuschüsse', kind: 'income' },
-	{ id: 'cat-spenden', name: 'Spenden', kind: 'income' },
-	{ id: 'cat-material', name: 'Material', kind: 'expense' },
-	{ id: 'cat-fahrt', name: 'Fahrtkosten', kind: 'expense' },
-	{ id: 'cat-unterkunft', name: 'Unterkunft', kind: 'expense' },
-	{ id: 'cat-verpflegung', name: 'Verpflegung', kind: 'expense' },
-	{ id: 'cat-gebuehren', name: 'Bankgebühren', kind: 'expense' },
-	{ id: 'cat-rueckzahlung', name: 'Rückzahlungen', kind: 'expense' },
-	{ id: 'cat-sonstiges', name: 'Sonstiges', kind: 'both' }
-];
 export const CONTRIBUTIONS_CATEGORY_ID = 'cat-beitraege';
 /** Mitgliedsbeiträge (Jahresbeitrag) */
 export const MEMBERSHIP_CATEGORY_ID = 'cat-mitgliedsbeitraege';
@@ -78,10 +62,6 @@ const id = z.uuid('Ungültige ID');
 /** Kategorien haben feste Standard-IDs (`cat-…`) oder UUIDs */
 const categoryId = z.string().regex(/^(cat-[a-z0-9-]{1,40}|[0-9a-f-]{36})$/, 'Ungültige Kategorie');
 
-function isRealDate(v: string): boolean {
-	const d = new Date(`${v}T00:00:00Z`);
-	return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
-}
 export const dateString = z
 	.string('Bitte ein Datum angeben')
 	.regex(/^\d{4}-\d{2}-\d{2}$/, 'Format JJJJ-MM-TT')
@@ -802,11 +782,6 @@ export interface ActionReceivables {
 
 export const IMPORT_PRESETS = ['sparkasse-camt', 'generic'] as const;
 export type ImportPreset = (typeof IMPORT_PRESETS)[number];
-export const IMPORT_PRESET_LABELS: Record<ImportPreset, string> = {
-	'sparkasse-camt': 'Sparkasse / CSV-CAMT',
-	generic: 'Andere Bank (Spalten zuordnen)'
-};
-
 export const importMappingSchema = z.object({
 	delimiter: z.enum([';', ',', '\t']).default(';'),
 	/** Spaltennamen der Kopfzeile */
@@ -1126,6 +1101,22 @@ export interface AnnualSendResult {
 	mailsSent: number;
 	mailErrors: number;
 	withoutAddress: number;
+	/**
+	 * Hintergrundversand (#24): `true`, solange der Versand läuft (`POST …/send|catch-up|resend` → 202,
+	 * UI pollt `GET /annual-fees/:id`). Fehlt bei älteren Ergebnissen.
+	 */
+	sending?: boolean;
+	/** Art des Versands */
+	kind?: 'run' | 'catch-up' | 'resend';
+	/** Fortschritt: bearbeitete / zu versendende Rechnungen */
+	processed?: number;
+	total?: number;
+	/** ISO-Zeitpunkte: Start und letzter Fortschritt (Lebenszeichen) */
+	startedAt?: string;
+	heartbeatAt?: string;
+	finishedAt?: string;
+	/** Versand ohne Lebenszeichen abgebrochen (z. B. Neustart) – Rest per „Versand wiederholen“ */
+	interrupted?: boolean;
 }
 
 /** Vorschau der Mail einer geplanten Rechnung (`GET /annual-fees/:id/preview-mail`) */

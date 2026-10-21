@@ -263,7 +263,7 @@
 				>
 					<div class="flex items-start gap-3">
 						<div
-							class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+							class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-link"
 						>
 							<Tent class="size-5" aria-hidden="true" />
 						</div>

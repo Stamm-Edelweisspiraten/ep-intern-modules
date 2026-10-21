@@ -18,6 +18,7 @@
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import { PageTitle } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
@@ -642,9 +643,9 @@
 </script>
 
 <svelte:head>
-	<title>{title}</title>
 	<meta name="robots" content="noindex,nofollow" />
 </svelte:head>
+<PageTitle {title} />
 
 <svelte:window
 	ondragover={guardWindowDrop}
@@ -667,7 +668,7 @@
 		<Card.Root>
 			<Card.Content class="flex flex-col items-center gap-3 py-10 text-center">
 				<LinkIcon class="size-10 text-muted-foreground" aria-hidden="true" />
-				<h1 class="text-lg font-semibold">Dieser Link ist nicht (mehr) verfügbar.</h1>
+				<h1 class="text-section">Dieser Link ist nicht (mehr) verfügbar.</h1>
 				<p class="max-w-sm text-sm text-muted-foreground">
 					Vielleicht ist er abgelaufen oder wurde zurückgezogen. Bitte wende dich an die Person, die
 					ihn dir geschickt hat.
@@ -697,7 +698,7 @@
 						<LockIcon class="size-5" aria-hidden="true" />
 					</span>
 					<div class="min-w-0">
-						<Card.Title class="text-lg break-words">{info.name}</Card.Title>
+						<Card.Title level={1} class="text-section break-words">{info.name}</Card.Title>
 						<Card.Description>
 							{info.kind === 'folder' ? 'Dieser Ordner' : 'Diese Datei'} ist mit einem Passwort geschützt.
 						</Card.Description>
@@ -756,7 +757,7 @@
 						<img
 							src={hero}
 							alt=""
-							class="mx-auto max-h-[60vh] w-auto object-contain"
+							class="mx-auto max-h-[60dvh] w-auto object-contain"
 							use:watchImage
 						/>
 					</button>
@@ -766,7 +767,7 @@
 					</div>
 				{/if}
 				<Card.Header>
-					<h1 class="text-lg font-semibold break-words">{node.name}</h1>
+					<h1 class="text-section break-words">{node.name}</h1>
 					<p class="text-sm text-muted-foreground tabular-nums">
 						{typeLabel(node)} · {formatBytes(node.sizeBytes)}
 					</p>
@@ -866,7 +867,7 @@
 						</Button>
 					{/if}
 					<div class="min-w-0">
-						<h1 id="folder-title" class="text-2xl font-semibold tracking-tight break-words">
+						<h1 id="folder-title" class="text-title break-words">
 							{currentName}
 						</h1>
 						{#if listState === 'ready' && listing && listing.items.length > 0}
@@ -950,7 +951,7 @@
 											use:watchImage
 										/>
 									{:else if node.kind === 'folder'}
-										<Icon class="size-12 text-primary/80" aria-hidden="true" />
+										<Icon class="size-12 text-link/80" aria-hidden="true" />
 									{:else}
 										<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
 									{/if}
@@ -989,13 +990,13 @@
 		<Card.Header>
 			<div class="flex items-start gap-3">
 				<span
-					class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+					class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-link"
 				>
 					<UploadIcon class="size-5" aria-hidden="true" />
 				</span>
 				<div class="min-w-0">
 					{#if standalone}
-						<h1 id="upload-title" class="text-lg font-semibold break-words">
+						<h1 id="upload-title" class="text-section break-words">
 							Dateien hochladen in „{info?.name}“
 						</h1>
 						<Card.Description>
@@ -1015,10 +1016,7 @@
 			{#if upFinished}
 				<div class="flex flex-col gap-3" role="status">
 					<div class="flex items-center gap-2">
-						<CircleCheckIcon
-							class="size-6 shrink-0 text-green-600 dark:text-green-500"
-							aria-hidden="true"
-						/>
+						<CircleCheckIcon class="size-6 shrink-0 text-success" aria-hidden="true" />
 						<p class="font-semibold">Danke! {filesText(uploaded.length)} hochgeladen</p>
 					</div>
 					<ul class="flex flex-col gap-1 rounded-md border bg-muted/30 p-2 text-sm">
@@ -1099,7 +1097,7 @@
 					aria-describedby="upload-limits"
 				>
 					<UploadIcon
-						class={['size-8', upDrag > 0 ? 'text-primary' : 'text-muted-foreground']}
+						class={['size-8', upDrag > 0 ? 'text-link' : 'text-muted-foreground']}
 						aria-hidden="true"
 					/>
 					<span class="font-medium">
@@ -1176,14 +1174,11 @@
 										<ClockIcon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 									{:else if it.status === 'uploading'}
 										<LoaderCircleIcon
-											class="size-4 shrink-0 animate-spin text-primary"
+											class="size-4 shrink-0 animate-spin text-link"
 											aria-hidden="true"
 										/>
 									{:else if it.status === 'done'}
-										<CircleCheckIcon
-											class="size-4 shrink-0 text-green-600 dark:text-green-500"
-											aria-hidden="true"
-										/>
+										<CircleCheckIcon class="size-4 shrink-0 text-success" aria-hidden="true" />
 									{:else}
 										<CircleAlertIcon class="size-4 shrink-0 text-destructive" aria-hidden="true" />
 									{/if}

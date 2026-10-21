@@ -5,12 +5,19 @@
  * Fassung an dieselben Adressen. Core-Dienste (PDF, Mail, Audit) laufen außerhalb von Transaktionen.
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext } from '$lib/sdk/server';
+import {
+	contentDisposition,
+	core,
+	errors,
+	safeFileName,
+	type RequestContext
+} from '$lib/sdk/server';
 import type { PdfBlock } from '$lib/sdk/types';
 import {
 	collectIds,
 	idList,
 	invoiceAddresses,
+	loadContactsByIds,
 	loadPayerNames,
 	loadRawInvoices,
 	mdb,
@@ -22,15 +29,8 @@ import {
 	type NameMaps,
 	type RawInvoice
 } from './db';
-import {
-	centsToCsv,
-	epcPayload,
-	formatDateDe,
-	groupByAddress,
-	renderTemplate,
-	sanitizeName,
-	type BankData
-} from './logic';
+import { formatEuro } from '$lib/components/layout/money';
+import { epcPayload, formatDateDe, groupByAddress, renderTemplate, type BankData } from './logic';
 import { formatIban } from './iban';
 import { joinNames } from './annual-fee';
 import { composeMail } from './mail-compose';
@@ -108,7 +108,7 @@ export function describeChange(prev: InvoiceSnapshot | null, next: InvoiceSnapsh
 	const parts: string[] = [];
 	if (prev.totalCents !== next.totalCents) {
 		parts.push(
-			`Der Betrag hat sich von ${centsToCsv(prev.totalCents)} € auf ${centsToCsv(next.totalCents)} € geändert.`
+			`Der Betrag hat sich von ${formatEuro(prev.totalCents)} auf ${formatEuro(next.totalCents)} geändert.`
 		);
 	}
 	if (prev.dueOn !== next.dueOn) parts.push(`Neue Zahlungsfrist: ${formatDateDe(next.dueOn)}.`);
@@ -224,12 +224,15 @@ export async function buildSnapshot(
 		)
 	];
 	const contactIds = annual ? memberIds : memberIds.slice(0, 1);
-	const contacts = new Map(
-		(contactIds.length
-			? await (await membersService()).listMemberContacts({ ids: contactIds })
-			: []
-		).map((c) => [c.id, c])
-	);
+	// Kontakte kommen gesammelt aus `resolveNames` (kein Dienstaufruf je Rechnung); nur Fehlende nachladen
+	const known = names.contacts ?? new Map<string, Contact>();
+	const missing = contactIds.filter((id) => !known.has(id));
+	const extra = missing.length ? await loadContactsByIds(missing) : new Map<string, Contact>();
+	const contacts = new Map<string, Contact>();
+	for (const id of contactIds) {
+		const c = known.get(id) ?? extra.get(id);
+		if (c) contacts.set(id, c);
+	}
 	const annualData = annualSnapshot(inv, names, contacts);
 	return {
 		number: String(inv.row.number),
@@ -248,7 +251,7 @@ export async function buildSnapshot(
 	};
 }
 
-const eur = (c: number) => `${centsToCsv(c)} €`;
+const eur = formatEuro;
 
 /** Platzhalter des Jahresbeitrag-Textes (`{jahr} {faellig} {name} {summe} {rechnungen} {mitglieder} {verwendungszweck}`) */
 export function annualVars(s: InvoiceSnapshot, a: AnnualSnapshot): Record<string, string> {
@@ -476,7 +479,7 @@ export async function renderInvoicePdf(
 }
 
 export const pdfFileName = (s: InvoiceSnapshot, version?: number) =>
-	sanitizeName(
+	safeFileName(
 		`${s.cancelled ? 'Storno' : 'Rechnung'}-${s.number}${version && version > 1 ? `-v${version}` : ''}.pdf`
 	);
 
@@ -598,10 +601,15 @@ export async function sendDocuments(
 	ctx: RequestContext,
 	invoiceIds: string[],
 	reason: DocumentReason,
-	overrides: SendOverrides = {}
+	overrides: SendOverrides = {},
+	/** Bereits geladene Rechnungen (spart das erneute Laden inkl. Kontakte) */
+	preloaded?: Loaded[]
 ): Promise<SendResult> {
 	const result: SendResult = { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
-	const loaded = await loadInvoices(invoiceIds);
+	const wanted = new Set(invoiceIds);
+	const loaded = preloaded
+		? preloaded.filter(({ inv }) => wanted.has(String(inv.row.id)))
+		: await loadInvoices(invoiceIds);
 	if (!loaded.length) return result;
 	const bank = await loadBankData();
 	const latest = await latestDocuments(invoiceIds);
@@ -697,22 +705,63 @@ export async function sendDocuments(
 	return result;
 }
 
+/** Welche versendeten Rechnungen `refreshSentDocuments` prüft */
+export type RefreshScope =
+	/** Genau diese Rechnungen (nach einer Bearbeitung) */
+	| string[]
+	/** Nur Rechnungen, die seit ihrer letzten Fassung geändert wurden – alle bzw. einer Aktion */
+	| { changedSince: 'latest-document'; actionId?: string };
+
+/** Spielraum für den Vergleich `updated_at` ↔ letzte Fassung (gleichzeitige Transaktionen) */
+const CHANGE_MARGIN = sql`interval '5 minutes'`;
+
+async function sentInvoiceIds(scope: RefreshScope): Promise<string[]> {
+	if (Array.isArray(scope)) {
+		if (!scope.length) return [];
+		const found = await mdb().transaction((tx) =>
+			rows(
+				tx,
+				sql`SELECT DISTINCT invoice_id FROM invoice_documents
+				WHERE sent_at IS NOT NULL AND invoice_id IN (${idList(scope)})`
+			)
+		);
+		return found.map((r) => String(r.invoice_id));
+	}
+	const action = scope.actionId
+		? sql`AND (i.action_id = ${scope.actionId}
+				OR EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.action_id = ${scope.actionId}))`
+		: sql``;
+	const found = await mdb().transaction((tx) =>
+		rows(
+			tx,
+			sql`SELECT i.id FROM invoices i
+			JOIN (SELECT invoice_id, max(created_at) AS last_doc, bool_or(sent_at IS NOT NULL) AS sent
+				FROM invoice_documents GROUP BY invoice_id) d ON d.invoice_id = i.id
+			WHERE d.sent AND i.updated_at > d.last_doc - ${CHANGE_MARGIN} ${action}`
+		)
+	);
+	return found.map((r) => String(r.id));
+}
+
 /**
  * Prüft Rechnungen mit bereits versendeter Fassung auf Änderungen und verschickt automatisch die
  * neue Fassung („Geänderte Rechnung“ bzw. „Stornierung“). Ohne versendete Fassung passiert nichts.
+ * Läufe sind prozessweit hintereinandergeschaltet, damit parallele Aufrufer dieselbe Änderung nicht
+ * doppelt verschicken. Kontakte werden gesammelt geladen (ein Dienstaufruf je 1000 Mitglieder).
  */
-export async function refreshSentDocuments(
+export function refreshSentDocuments(
 	ctx: RequestContext,
-	invoiceIds?: string[]
+	scope: RefreshScope = { changedSince: 'latest-document' }
 ): Promise<SendResult> {
-	const sentIds = await mdb().transaction((tx) =>
-		rows(
-			tx,
-			sql`SELECT DISTINCT invoice_id FROM invoice_documents WHERE sent_at IS NOT NULL
-				${invoiceIds?.length ? sql`AND invoice_id IN (${idList(invoiceIds)})` : sql``}`
-		)
-	);
-	const ids = sentIds.map((r) => String(r.invoice_id));
+	const run = refreshChain.then(() => refreshNow(ctx, scope));
+	refreshChain = run.catch(() => undefined);
+	return run;
+}
+
+let refreshChain: Promise<unknown> = Promise.resolve();
+
+async function refreshNow(ctx: RequestContext, scope: RefreshScope): Promise<SendResult> {
+	const ids = await sentInvoiceIds(scope);
 	const empty: SendResult = { invoices: 0, mailsSent: 0, mailErrors: 0, withoutAddress: 0 };
 	if (!ids.length) return empty;
 	const loaded = await loadInvoices(ids);
@@ -730,14 +779,19 @@ export async function refreshSentDocuments(
 		if (now.cancelled && prev.snapshot.cancelled) continue;
 		(now.cancelled ? cancelled : changed).push(id);
 	}
-	const a = changed.length ? await sendDocuments(ctx, changed, 'changed') : empty;
-	const b = cancelled.length ? await sendDocuments(ctx, cancelled, 'cancelled') : empty;
+	const a = changed.length ? await sendDocuments(ctx, changed, 'changed', {}, loaded) : empty;
+	const b = cancelled.length ? await sendDocuments(ctx, cancelled, 'cancelled', {}, loaded) : empty;
 	return {
 		invoices: a.invoices + b.invoices,
 		mailsSent: a.mailsSent + b.mailsSent,
 		mailErrors: a.mailErrors + b.mailErrors,
 		withoutAddress: a.withoutAddress + b.withoutAddress
 	};
+}
+
+/** Nur für Tests: wartet, bis alle eingereihten Prüfläufe fertig sind */
+export function documentsIdleForTests(): Promise<unknown> {
+	return refreshChain;
 }
 
 export async function listDocuments(invoiceId: string): Promise<InvoiceDocument[]> {
@@ -905,7 +959,10 @@ export async function payerStatementResponse(
 		status: 200,
 		headers: {
 			'content-type': 'application/pdf',
-			'content-disposition': `inline; filename="${sanitizeName(`Offene-Rechnungen-${String(payer.name)}.pdf`)}"`,
+			'content-disposition': contentDisposition(
+				'inline',
+				`Offene-Rechnungen-${String(payer.name)}.pdf`
+			),
 			'cache-control': 'private, no-store'
 		}
 	});

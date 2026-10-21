@@ -1,7 +1,17 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
 import type { ParticipantPayment, TreasuryService } from '$lib/modules/treasury/contract';
-import { requireAccess, rowsOf } from './access';
+import { requireAccess } from './access';
+import { canSeeHealth, encryptHealthText, readHealthFor } from './health';
 import { effectiveSubsidyEligible } from './subsidy-eligibility';
 import {
 	MODULE_ID,
@@ -9,20 +19,16 @@ import {
 	participantBulkInput,
 	participantInput,
 	participantParams,
-	type Diet,
 	type Participant,
 	type ParticipantBulkInput,
 	type ParticipantInput,
 	type ParticipantRole
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 const COLUMNS = sql`id, action_id, contact_email, name, group_label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
 	bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes, source, created_at, updated_at`;
-
-const iso = (v: unknown): string => new Date(String(v)).toISOString();
 
 /** Zahlstand aus der Kasse; `null`, wenn die Kasse nicht aktiv bzw. nicht erreichbar ist. */
 async function loadPayments(actionId: string): Promise<Map<string, ParticipantPayment> | null> {
@@ -37,7 +43,13 @@ async function loadPayments(actionId: string): Promise<Map<string, ParticipantPa
 }
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 
-function toParticipant(r: Record<string, unknown>, startsOn: string): Participant {
+function toParticipant(
+	r: Record<string, unknown>,
+	startsOn: string,
+	ctx: RequestContext
+): Participant {
+	// Gesundheitsdaten nur mit Sonderrecht (sonst `null` + `healthHidden`), gespeichert verschlüsselt
+	const health = readHealthFor(ctx, r);
 	const birthDate = str(r.birth_date);
 	const bremenResident = r.bremen_resident == null ? null : Boolean(r.bremen_resident);
 	const subsidyEligible = r.subsidy_eligible == null ? null : Boolean(r.subsidy_eligible);
@@ -64,12 +76,13 @@ function toParticipant(r: Record<string, unknown>, startsOn: string): Participan
 			},
 			startsOn
 		),
-		diet: r.diet == null ? null : (String(r.diet) as Diet),
-		allergies: str(r.allergies),
-		notes: str(r.notes),
+		diet: health.diet,
+		allergies: health.allergies,
+		notes: health.notes,
+		...(health.hidden ? { healthHidden: true } : {}),
 		source: String(r.source) === 'link' ? 'link' : 'manual',
-		createdAt: iso(r.created_at),
-		updatedAt: iso(r.updated_at)
+		createdAt: toIso(r.created_at),
+		updatedAt: toIso(r.updated_at)
 	};
 }
 
@@ -81,13 +94,18 @@ async function startsOnOf(tx: Tx, actionId: string): Promise<string> {
 	return String(r?.starts_on ?? '');
 }
 
-async function loadOne(tx: Tx, actionId: string, participantId: string): Promise<Participant> {
+async function loadOne(
+	tx: Tx,
+	ctx: RequestContext,
+	actionId: string,
+	participantId: string
+): Promise<Participant> {
 	const [row] = await rowsOf(
 		tx,
 		sql`SELECT ${COLUMNS} FROM action_participants WHERE id = ${participantId} AND action_id = ${actionId}`
 	);
 	if (!row) throw errors.notFound('Teilnehmer*in nicht gefunden');
-	return toParticipant(row, await startsOnOf(tx, actionId));
+	return toParticipant(row, await startsOnOf(tx, actionId), ctx);
 }
 
 export const participantEndpoints: ApiEndpoint[] = [
@@ -100,7 +118,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const list = await mdb().transaction(async (tx) => {
+			const list = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const rows = await rowsOf(
 					tx,
@@ -108,7 +126,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 						ORDER BY created_at, name`
 				);
 				const startsOn = await startsOnOf(tx, id);
-				return rows.map((r) => toParticipant(r, startsOn));
+				return rows.map((r) => toParticipant(r, startsOn, ctx));
 			});
 			// Kasse erst nach der Transaktion (PGlite: keine verschachtelten Modul-Transaktionen)
 			const payments = await loadPayments(id);
@@ -127,15 +145,15 @@ export const participantEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
 			const input = body as ParticipantInput;
-			const participant = await mdb().transaction(async (tx) => {
+			const participant = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				const pid = crypto.randomUUID();
 				await tx.execute(
 					sql`INSERT INTO action_participants (id, action_id, name, group_label, birth_date,
 							bremen_resident, role, juleica, diet, allergies, notes, source)
 						VALUES (${pid}, ${id}, ${input.name}, ${input.groupLabel}, ${input.birthDate},
-							${input.bremenResident}, ${input.role}, ${input.juleica}, ${input.diet},
-							${input.allergies}, ${input.notes}, 'manual')`
+							${input.bremenResident}, ${input.role}, ${input.juleica}, ${encryptHealthText(input.diet)},
+							${encryptHealthText(input.allergies)}, ${encryptHealthText(input.notes)}, 'manual')`
 				);
 				if (input.subsidyEligible != null) {
 					await tx.execute(
@@ -143,11 +161,12 @@ export const participantEndpoints: ApiEndpoint[] = [
 							WHERE id = ${pid}`
 					);
 				}
-				return loadOne(tx, id, pid);
+				return loadOne(tx, ctx, id, pid);
 			});
 			await core.audit.logFromContext(ctx, 'actions.participant.created', {
 				target: participant.id,
-				metadata: { actionId: id, name: participant.name }
+				// Keine Namen im Audit (Issue #26): die ID in `target` genügt
+				metadata: { actionId: id, role: participant.role }
 			});
 			return participant;
 		}
@@ -167,7 +186,7 @@ export const participantEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const input = body as ParticipantBulkInput;
 			const ids = [...new Set(input.ids)];
-			const updated = await mdb().transaction(async (tx) => {
+			const updated = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				const idList = sql.join(
 					ids.map((v) => sql`${v}`),
@@ -222,14 +241,19 @@ export const participantEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const { id, participantId } = params as { id: string; participantId: string };
 			const input = body as ParticipantInput;
-			const participant = await mdb().transaction(async (tx) => {
+			const participant = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
-				await loadOne(tx, id, participantId);
+				await loadOne(tx, ctx, id, participantId);
+				// Ohne Sonderrecht sieht die Person die Gesundheitsfelder nicht – sie bleiben unverändert
+				const health = canSeeHealth(ctx)
+					? sql`, diet = ${encryptHealthText(input.diet)},
+							allergies = ${encryptHealthText(input.allergies)},
+							notes = ${encryptHealthText(input.notes)}`
+					: sql``;
 				await tx.execute(
 					sql`UPDATE action_participants SET name = ${input.name}, group_label = ${input.groupLabel},
 							birth_date = ${input.birthDate}, bremen_resident = ${input.bremenResident},
-							role = ${input.role}, juleica = ${input.juleica}, diet = ${input.diet},
-							allergies = ${input.allergies}, notes = ${input.notes}, updated_at = now()
+							role = ${input.role}, juleica = ${input.juleica}${health}, updated_at = now()
 						WHERE id = ${participantId} AND action_id = ${id}`
 				);
 				if (input.subsidyEligible !== undefined) {
@@ -238,11 +262,12 @@ export const participantEndpoints: ApiEndpoint[] = [
 							WHERE id = ${participantId} AND action_id = ${id}`
 					);
 				}
-				return loadOne(tx, id, participantId);
+				return loadOne(tx, ctx, id, participantId);
 			});
 			await core.audit.logFromContext(ctx, 'actions.participant.updated', {
 				target: participant.id,
-				metadata: { actionId: id, name: participant.name }
+				// Keine Namen im Audit (Issue #26): die ID in `target` genügt
+				metadata: { actionId: id, role: participant.role }
 			});
 			return participant;
 		}
@@ -256,17 +281,17 @@ export const participantEndpoints: ApiEndpoint[] = [
 		params: participantParams,
 		handler: async ({ ctx, params }) => {
 			const { id, participantId } = params as { id: string; participantId: string };
-			const name = await mdb().transaction(async (tx) => {
+			const role = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
-				const existing = await loadOne(tx, id, participantId);
+				const existing = await loadOne(tx, ctx, id, participantId);
 				await tx.execute(
 					sql`DELETE FROM action_participants WHERE id = ${participantId} AND action_id = ${id}`
 				);
-				return existing.name;
+				return existing.role;
 			});
 			await core.audit.logFromContext(ctx, 'actions.participant.deleted', {
 				target: participantId,
-				metadata: { actionId: id, name }
+				metadata: { actionId: id, role }
 			});
 			return { id: participantId };
 		}

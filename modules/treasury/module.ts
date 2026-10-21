@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
 import { resetAreas, resetUsers } from './reset';
+import { subjectExport } from './subject-export';
 import { treasurySearch } from './search';
 import { treasuryBackup } from './backup';
 import { accountEndpoints } from './accounts.endpoints';
@@ -18,6 +19,8 @@ import m0004 from './migrations/0004_club_expenses.sql?raw';
 import m0005 from './migrations/0005_annual_fees.sql?raw';
 import m0006 from './migrations/0006_annual_fee_items.sql?raw';
 import m0007 from './migrations/0007_orders.sql?raw';
+import m0008 from './migrations/0008_reminder_claims.sql?raw';
+import m0009 from './migrations/0009_integrity_indexes.sql?raw';
 import { runReminderJob } from './notify';
 import { closedAccountingEndpoints } from './closed-accountings';
 import { payableEndpoints, payableReceiptEndpoints } from './payables';
@@ -36,7 +39,8 @@ import {
 	SETTING_KEYS
 } from './schemas';
 import { treasuryService } from './service';
-import { syncActions } from './sync';
+import type { TreasuryService } from './contract';
+import { syncAll } from './sync';
 import { transactionEndpoints } from './transactions.endpoints';
 
 const days = z.number().int().min(0).max(365);
@@ -135,7 +139,7 @@ export default defineModule({
 		]
 	},
 	/** Dienste für `actions` (Vertrag: `contract.ts`) */
-	provides: treasuryService as unknown as Record<string, unknown>,
+	provides: treasuryService satisfies TreasuryService,
 	settings: [
 		{
 			key: SETTING_KEYS.bankHolder,
@@ -268,7 +272,9 @@ export default defineModule({
 		{ name: '0004_club_expenses', sql: m0004 },
 		{ name: '0005_annual_fees', sql: m0005 },
 		{ name: '0006_annual_fee_items', sql: m0006 },
-		{ name: '0007_orders', sql: m0007 }
+		{ name: '0007_orders', sql: m0007 },
+		{ name: '0008_reminder_claims', sql: m0008 },
+		{ name: '0009_integrity_indexes', sql: m0009 }
 	],
 	jobs: [
 		{
@@ -276,7 +282,7 @@ export default defineModule({
 			summary: 'Rechnungen mit Aktionen abgleichen',
 			schedule: 'hourly',
 			run: async (ctx) => {
-				const r = await syncActions(ctx);
+				const r = await syncAll(ctx);
 				return `${r.created} neu, ${r.updated} geändert, ${r.cancelled} storniert, ${r.reactivated} reaktiviert`;
 			}
 		},
@@ -300,6 +306,8 @@ export default defineModule({
 	backup: treasuryBackup,
 	resetUsers,
 	search: treasurySearch,
+	/** Datenauskunft (`/admin/privacy`, #30) */
+	subjectExport,
 	endpoints: [
 		...myEndpoints,
 		...accountEndpoints,

@@ -248,7 +248,7 @@
 
 		<nav
 			aria-label="Zielordner"
-			class="max-h-[50vh] min-h-40 overflow-y-auto rounded-md border p-1"
+			class="max-h-[50dvh] min-h-40 overflow-y-auto rounded-md border p-1"
 		>
 			<ul class="grid gap-0.5">
 				{@render row(null, ROOT_LABEL, 0, true, true)}

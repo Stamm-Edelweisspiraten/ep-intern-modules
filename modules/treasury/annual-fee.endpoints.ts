@@ -21,7 +21,8 @@ import {
 	annualScheduleInput,
 	idParams,
 	type AnnualRunInput,
-	type AnnualRunUpdate
+	type AnnualRunUpdate,
+	type AnnualSendResult
 } from './schemas';
 
 const TAGS = ['Modul: treasury'];
@@ -38,6 +39,16 @@ const requireCashView = (ctx: RequestContext) =>
 	core.permissions.require(ctx, 'treasury.cash.view');
 /** Versand, Planung und Nachberechnung verschicken Rechnungen */
 const requireSend = (ctx: RequestContext) => core.permissions.require(ctx, 'treasury.invoice.send');
+
+/**
+ * Versand läuft im Hintergrund (#24): 202 mit dem Startstand (`sending: true`, Fortschritt
+ * `processed`/`total`); den Verlauf liefert `GET /annual-fees/:id` (`lastResult`).
+ */
+const accepted = (data: AnnualSendResult | null): Response =>
+	new Response(JSON.stringify({ data }), {
+		status: 202,
+		headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+	});
 
 export const annualFeeEndpoints = [
 	{
@@ -141,14 +152,15 @@ export const annualFeeEndpoints = [
 	{
 		method: 'POST',
 		path: '/annual-fees/:id/send',
-		summary: 'Beitragslauf jetzt versenden (Rechnungen anlegen + Mails mit PDF)',
+		summary:
+			'Beitragslauf jetzt versenden (Rechnungen anlegen, Mails mit PDF im Hintergrund → 202, 409 bei laufendem Versand)',
 		tags: TAGS,
 		permission: MANAGE,
 		rateLimit: HEAVY_LIMIT,
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			await requireSend(ctx);
-			return sendRun(ctx, (params as Id).id, 'run');
+			return accepted(await sendRun(ctx, (params as Id).id, 'run', { background: true }));
 		}
 	},
 	{
@@ -162,7 +174,7 @@ export const annualFeeEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			await requireSend(ctx);
-			return resendRun(ctx, (params as Id).id);
+			return accepted(await resendRun(ctx, (params as Id).id, { background: true }));
 		}
 	},
 	{
@@ -200,7 +212,7 @@ export const annualFeeEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			await requireSend(ctx);
-			return sendRun(ctx, (params as Id).id, 'catch-up');
+			return accepted(await sendRun(ctx, (params as Id).id, 'catch-up', { background: true }));
 		}
 	}
 ] as ApiEndpoint[];

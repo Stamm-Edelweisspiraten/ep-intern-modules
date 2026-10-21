@@ -5,8 +5,16 @@
  * Auszahlung frei (`ActionsService.listReimbursements`). Rückzahlung des Überschusses nur beim Abschluss.
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf, type ActionAccess } from './access';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	type Tx
+} from '$lib/sdk/server';
+import { requireAccess, type ActionAccess } from './access';
 import { loadState } from './accounting.endpoints';
 import {
 	assertOpen,
@@ -28,7 +36,6 @@ import {
 	type InterimRevertWarning
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 /** Sperrt die Aktion (serialisiert Nummernvergabe und Rücknahme). */
@@ -67,7 +74,7 @@ export const interimEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const list = await mdb().transaction(async (tx) => {
+			const list = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
 				return loadInterims(tx, id, canManage(ctx, access));
 			});
@@ -91,7 +98,7 @@ export const interimEndpoints = [
 			const input = body as InterimInput;
 			// Kasse (Core-Dienst) vor der Transaktion
 			const treasury = await loadTreasuryContributions(id);
-			const interim = await mdb().transaction(async (tx) => {
+			const interim = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await lockAction(tx, id);
@@ -183,7 +190,7 @@ export const interimEndpoints = [
 		handler: async ({ ctx, params, query }) => {
 			const { id, interimId } = params as { id: string; interimId: string };
 			const { force } = query as { force: boolean };
-			const res = await mdb().transaction(async (tx) => {
+			const res = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'edit');
 				if (!canManage(ctx, access)) {
 					throw errors.forbidden('Nur Eigentümer*in darf eine Zwischenabrechnung zurücknehmen');

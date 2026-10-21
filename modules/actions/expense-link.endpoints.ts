@@ -5,11 +5,27 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
+import { formatEuro } from '$lib/components/layout/money';
+import { formatDateDe } from '$lib/sdk/dates';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	logBestEffort,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	secureFileResponse,
+	toIsoOrNull,
+	type Tx
+} from '$lib/sdk/server';
+import { requireAccess } from './access';
+import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import { assertOpen, closedInfo } from './accounting-core';
 import { detectReceiptType, sanitizeName } from './action-archive';
 import { ibanLast, maskFromLast } from './iban';
+import { neutralizeLinks } from './form-support';
+import { globalPrivacyUrl, takeMailQuota } from './public-mail';
 import {
 	CALC_CATEGORIES,
 	CALC_CATEGORY_LABELS,
@@ -37,7 +53,6 @@ import {
 	type UserRef
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const crypt = () => core.crypto.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
@@ -50,13 +65,11 @@ const STORAGE_DOWN =
 	'Belege können gerade nicht angenommen werden. Bitte versuche es später erneut.';
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
-const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
 const newToken = () => randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
 const systemCtx = () => core.auth.systemContext('expense-link');
 
-const euro = (cents: number) =>
-	(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-const deDate = (d: string) => d.split('-').reverse().join('.');
+const euro = formatEuro;
+const deDate = (d: string) => formatDateDe(d);
 
 // --- Interne Konfiguration ---------------------------------------------------
 
@@ -72,12 +85,13 @@ async function pendingCount(tx: Tx, actionId: string): Promise<number> {
 async function loadConfig(tx: Tx, actionId: string, canEdit: boolean): Promise<ExpenseLinkConfig> {
 	const [link] = await rowsOf(
 		tx,
-		sql`SELECT token, enabled FROM expense_links WHERE action_id = ${actionId}`
+		sql`SELECT token, token_enc, enabled FROM expense_links WHERE action_id = ${actionId}`
 	);
+	const token = link && canEdit ? storedToken(link) : null;
 	return {
 		exists: !!link,
 		enabled: link ? Boolean(link.enabled) : false,
-		publicPath: link && canEdit ? `${EXPENSE_PUBLIC_PREFIX}/${String(link.token)}` : null,
+		publicPath: token ? `${EXPENSE_PUBLIC_PREFIX}/${token}` : null,
 		accountingClosed: !!(await closedInfo(tx, actionId)),
 		pendingCount: await pendingCount(tx, actionId)
 	};
@@ -112,8 +126,8 @@ function mapSubmission(r: Record<string, unknown>, users: Map<string, UserRef>):
 						name: String(r.receipt_name ?? 'Beleg'),
 						contentType: String(r.receipt_content_type ?? 'application/octet-stream')
 					},
-		createdAt: iso(r.created_at) ?? new Date(0).toISOString(),
-		decidedAt: iso(r.decided_at),
+		createdAt: toIsoOrNull(r.created_at) ?? new Date(0).toISOString(),
+		decidedAt: toIsoOrNull(r.decided_at),
 		decidedBy: decidedBy
 			? (users.get(decidedBy) ?? { userId: decidedBy, name: 'Unbekannt', email: null })
 			: null,
@@ -130,10 +144,8 @@ async function resolveUsers(
 ): Promise<Map<string, UserRef>> {
 	const ids = [...new Set(rows.map((r) => str(r.decided_by)).filter((v): v is string => !!v))];
 	const map = new Map<string, UserRef>();
-	for (let i = 0; i < ids.length; i += 30) {
-		const chunk = ids.slice(i, i + 30);
-		const found = await core.users.directory(ctx, { ids: chunk, limit: 30 });
-		for (const u of found) map.set(u.id, { userId: u.id, name: u.name, email: u.email });
+	for (const u of (await core.users.byIds(ctx, ids)).values()) {
+		map.set(u.id, { userId: u.id, name: u.name, email: u.email });
 	}
 	return map;
 }
@@ -183,7 +195,7 @@ async function loadByToken(tx: Tx, token: string, lock = false): Promise<PublicL
 				to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on,
 				(SELECT f.privacy_url FROM action_forms f WHERE f.action_id = l.action_id) AS privacy_url
 			FROM expense_links l JOIN actions a ON a.id = l.action_id
-			WHERE l.token = ${token} ${lock ? sql`FOR UPDATE OF l` : sql``}`
+			WHERE ${tokenMatchSql(token, 'l')} ${lock ? sql`FOR UPDATE OF l` : sql``}`
 	);
 	if (!row || !row.enabled) return null;
 	const actionId = String(row.action_id);
@@ -197,10 +209,15 @@ async function loadByToken(tx: Tx, token: string, lock = false): Promise<PublicL
 	};
 }
 
+/**
+ * Eingangsbestätigung an die (unbestätigte) Adresse aus dem Formular. Enthält bewusst KEINE
+ * Freitexte (Name, Beschreibungen, Notizen), nur Aktionsname, Kategorie, Datum, Betrag und feste
+ * Texte – so lässt sich der Kosten-Link nicht als Mail-Relay nutzen (Issue #17).
+ */
 function confirmationMail(link: PublicLink, input: PublicExpenseBatchInput, totalCents: number) {
 	const many = input.items.length > 1;
 	const lines = [
-		`Hallo ${input.name},`,
+		'Hallo,',
 		'',
 		many
 			? `deine ${input.items.length} Auslagen für „${link.actionName}“ sind bei uns eingegangen:`
@@ -209,7 +226,7 @@ function confirmationMail(link: PublicLink, input: PublicExpenseBatchInput, tota
 	];
 	input.items.forEach((item, i) => {
 		lines.push(
-			`${i + 1}. ${item.description} (${CALC_CATEGORY_LABELS[item.category]}, ${deDate(item.expenseDate)}): ${euro(item.amountCents)}`
+			`${i + 1}. ${CALC_CATEGORY_LABELS[item.category]} vom ${deDate(item.expenseDate)}: ${euro(item.amountCents)}`
 		);
 	});
 	lines.push(
@@ -217,6 +234,8 @@ function confirmationMail(link: PublicLink, input: PublicExpenseBatchInput, tota
 		`Summe: ${euro(totalCents)}`,
 		'',
 		'Wir prüfen deine Angaben und die Belege. Nach der Freigabe wird der Betrag auf das angegebene Konto überwiesen.',
+		'',
+		'Hast du nichts eingereicht? Dann ignoriere diese E-Mail.',
 		'',
 		'Diese E-Mail wurde automatisch erstellt.'
 	);
@@ -244,7 +263,7 @@ async function notifyOwner(
 			'',
 			`über den Kosten-Link von „${link.actionName}“ wurden neue Auslagen eingereicht:`,
 			'',
-			`Eingereicht von: ${submitterName}`,
+			`Eingereicht von: ${neutralizeLinks(submitterName)}`,
 			`Anzahl: ${count}`,
 			`Summe: ${euro(totalCents)}`,
 			'',
@@ -258,7 +277,8 @@ async function notifyOwner(
 			text: lines.join('\n')
 		});
 		return true;
-	} catch {
+	} catch (e) {
+		logBestEffort('actions.expense.owner-mail', e, { target: link.actionId });
 		return false;
 	}
 }
@@ -299,7 +319,9 @@ async function checkReceipts(files: File[], count: number): Promise<CheckedRecei
 
 async function removeAll(paths: string[]): Promise<void> {
 	for (const path of paths) {
-		await core.storage.remove(systemCtx(), { module: MODULE_ID, path }).catch(() => undefined);
+		await core.storage
+			.remove(systemCtx(), { module: MODULE_ID, path })
+			.catch((e) => logBestEffort('actions.expense.receipt-cleanup', e));
 	}
 }
 
@@ -315,7 +337,7 @@ async function submitExpenses(
 		return { batchId: randomUUID(), count, emailSent: !!input.email };
 	}
 
-	const link = await mdb().transaction(async (tx) => {
+	const link = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const l = await loadByToken(tx, token);
 		if (!l) return null;
 		return { ...l, pending: await pendingCount(tx, l.actionId) };
@@ -357,8 +379,9 @@ async function submitExpenses(
 	const ibanEnc = crypt().encrypt(input.iban);
 	const last4 = ibanLast(input.iban);
 	let ownerId: string | null;
+	let quota = { confirm: false, owner: false };
 	try {
-		ownerId = await mdb().transaction(async (tx) => {
+		ownerId = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			// Link sperren: serialisiert parallele Einreichungen (Obergrenze offener Einreichungen)
 			const l = await loadByToken(tx, token, true);
 			if (!l || l.actionId !== link.actionId) throw errors.notFound(NOT_AVAILABLE);
@@ -379,6 +402,11 @@ async function submitExpenses(
 							now() - (${i} * interval '1 millisecond'))`
 				);
 			}
+			// Tageslimit je Link: darüber wird gespeichert, aber keine Mail mehr verschickt
+			quota = {
+				confirm: input.email ? await takeMailQuota(tx, l.actionId, 'expense-confirm') : false,
+				owner: await takeMailQuota(tx, l.actionId, 'expense-owner')
+			};
 			const [a] = await rowsOf(tx, sql`SELECT owner_id FROM actions WHERE id = ${l.actionId}`);
 			return str(a?.owner_id);
 		});
@@ -389,15 +417,18 @@ async function submitExpenses(
 
 	const totalCents = input.items.reduce((s, item) => s + item.amountCents, 0);
 	let emailSent = false;
-	if (input.email) {
+	if (input.email && quota.confirm) {
 		try {
 			await core.mail.send({ to: input.email, ...confirmationMail(link, input, totalCents) });
 			emailSent = true;
-		} catch {
+		} catch (e) {
+			logBestEffort('actions.expense.confirmation-mail', e, { ctx, target: link.actionId });
 			emailSent = false;
 		}
 	}
-	const ownerNotified = await notifyOwner(ownerId, link, input.name, count, totalCents);
+	const ownerNotified = quota.owner
+		? await notifyOwner(ownerId, link, input.name, count, totalCents)
+		: false;
 	try {
 		await core.audit.log({
 			action: 'actions.expense.submitted',
@@ -416,8 +447,9 @@ async function submitExpenses(
 				ownerNotified
 			}
 		});
-	} catch {
-		/* Audit-Fehler dürfen die Einreichung nicht verwerfen */
+	} catch (e) {
+		// Audit-Fehler dürfen die Einreichung nicht verwerfen
+		logBestEffort('actions.expense.audit', e, { ctx, target: link.actionId });
 	}
 	return { batchId, count, emailSent };
 }
@@ -430,7 +462,7 @@ async function accept(
 	submissionId: string,
 	input: ExpenseAcceptInput
 ) {
-	const result = await mdb().transaction(async (tx) => {
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		await requireAccess(tx, ctx, actionId, 'edit');
 		await assertOpen(tx, actionId);
 		const s = await lockSubmission(tx, actionId, submissionId);
@@ -526,7 +558,7 @@ async function reject(
 	submissionId: string,
 	input: { reason: string | null; notify: boolean }
 ) {
-	const result = await mdb().transaction(async (tx) => {
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		await requireAccess(tx, ctx, actionId, 'edit');
 		const s = await lockSubmission(tx, actionId, submissionId);
 		await tx.execute(
@@ -550,7 +582,7 @@ async function reject(
 	if (result.path) {
 		await core.storage
 			.remove(systemCtx(), { module: MODULE_ID, path: result.path })
-			.catch(() => undefined);
+			.catch((e) => logBestEffort('actions.expense.receipt-cleanup', e, { ctx, target: actionId }));
 	}
 	let emailSent = false;
 	if (input.notify && result.email) {
@@ -569,7 +601,8 @@ async function reject(
 				text: lines.join('\n')
 			});
 			emailSent = true;
-		} catch {
+		} catch (e) {
+			logBestEffort('actions.expense.reject-mail', e, { ctx, target: actionId });
 			emailSent = false;
 		}
 	}
@@ -596,7 +629,7 @@ export const expenseLinkEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as IdP).id;
-			return mdb().transaction(async (tx) => {
+			return moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
 				return loadConfig(tx, id, access.level === 'edit');
 			});
@@ -613,11 +646,12 @@ export const expenseLinkEndpoints = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as IdP).id;
 			const { enabled } = body as { enabled: boolean };
-			const config = await mdb().transaction(async (tx) => {
+			const config = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
+				const fresh = linkTokenValues(newToken());
 				await tx.execute(
-					sql`INSERT INTO expense_links (action_id, token, enabled)
-						VALUES (${id}, ${newToken()}, ${enabled})
+					sql`INSERT INTO expense_links (action_id, token_hash, token_enc, enabled)
+						VALUES (${id}, ${fresh.hash}, ${fresh.enc}, ${enabled})
 						ON CONFLICT (action_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()`
 				);
 				return loadConfig(tx, id, true);
@@ -638,11 +672,13 @@ export const expenseLinkEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as IdP).id;
-			const config = await mdb().transaction(async (tx) => {
+			const config = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
+				const fresh = linkTokenValues(newToken());
 				const res = await rowsOf(
 					tx,
-					sql`UPDATE expense_links SET token = ${newToken()}, updated_at = now()
+					sql`UPDATE expense_links SET token = NULL, token_hash = ${fresh.hash},
+						token_enc = ${fresh.enc}, updated_at = now()
 						WHERE action_id = ${id} RETURNING action_id`
 				);
 				if (!res.length) throw errors.notFound('Der Kosten-Link wurde noch nicht angelegt');
@@ -666,7 +702,7 @@ export const expenseLinkEndpoints = [
 		handler: async ({ ctx, params, query }) => {
 			const id = (params as IdP).id;
 			const status = (query as { status?: ExpenseSubmissionStatus }).status;
-			const rows = await mdb().transaction(async (tx) => {
+			const rows = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				return rowsOf(
 					tx,
@@ -688,7 +724,7 @@ export const expenseLinkEndpoints = [
 		params: expenseSubmissionParams,
 		handler: async ({ ctx, params }) => {
 			const { id, submissionId } = params as SubP;
-			const ref = await mdb().transaction(async (tx) => {
+			const ref = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const [r] = await rowsOf(
 					tx,
@@ -705,15 +741,13 @@ export const expenseLinkEndpoints = [
 				path: ref.path
 			});
 			const name = ref.name || file.name || 'beleg';
-			return new Response(buffer as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-length': String(buffer.byteLength),
-					'content-disposition': `attachment; filename="${sanitizeName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			// Gemeinsame gehärtete Antwort (CSP-Sandbox, nosniff, RFC-5987-Name; #67, 01b-11)
+			return secureFileResponse(buffer, {
+				contentType: file.contentType,
+				size: buffer.byteLength,
+				name,
+				download: true,
+				cache: 'private, no-store'
 			});
 		}
 	},
@@ -754,7 +788,7 @@ export const expenseLinkEndpoints = [
 		params: publicTokenParams,
 		handler: async ({ params }) => {
 			const { token } = params as { token: string };
-			const link = await mdb().transaction((tx) => loadByToken(tx, token));
+			const link = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token));
 			if (!link) throw errors.notFound(NOT_AVAILABLE);
 			const result: PublicExpenseLink = {
 				actionName: link.actionName,
@@ -764,7 +798,7 @@ export const expenseLinkEndpoints = [
 					value,
 					label: CALC_CATEGORY_LABELS[value]
 				})),
-				privacyUrl: link.privacyUrl,
+				privacyUrl: link.privacyUrl ?? (await globalPrivacyUrl()),
 				maxReceiptBytes: MAX_RECEIPT_BYTES
 			};
 			return result;

@@ -1,6 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	isUniqueViolation,
+	type ApiEndpoint,
+	type RequestContext,
+	type Tx
+} from '$lib/sdk/server';
 import { replaceAllocations } from './allocation';
 import { decryptIban, storeIban } from './bank';
 import { applyCounterparty } from './counterparty';
@@ -16,6 +23,8 @@ import { formatIban, maskIban } from './iban';
 import {
 	collectIds,
 	idList,
+	invoiceMetricsSql,
+	invoiceStatusSql,
 	loadInvoiceDetailRaw,
 	loadPayerNames,
 	loadRawInvoices,
@@ -23,6 +32,7 @@ import {
 	membersService,
 	nextInvoiceNumber,
 	num,
+	PAYER_SQL,
 	requireAccount,
 	resolveNames,
 	rows,
@@ -34,14 +44,8 @@ import {
 	type NameMaps,
 	type RawInvoice
 } from './db';
-import {
-	centsToCsv,
-	csvDocument,
-	distribute,
-	formatDateDe,
-	normalizeName as normalizeKey,
-	suggestPayers
-} from './logic';
+import { csvCents, csvDocument } from '$lib/sdk/csv';
+import { distribute, formatDateDe, normalizeName as normalizeKey, suggestPayers } from './logic';
 import { notifyPaid, runReminderJob, sendManualReminders } from './notify';
 import {
 	CONTRIBUTIONS_CATEGORY_ID,
@@ -74,7 +78,7 @@ import {
 	type PayerInput,
 	type PayerSuggestion
 } from './schemas';
-import { syncActions, syncIfStale } from './sync';
+import { syncAction, syncAll } from './sync';
 
 const TAGS = ['Modul: treasury'];
 const VIEW = 'treasury.cash.view';
@@ -97,22 +101,90 @@ export async function loadSummaries(where = sql`TRUE`): Promise<LoadedInvoices> 
 	return { raw, names, summaries: raw.map((r) => toSummary(r, names, t)) };
 }
 
-function filterSummaries(list: InvoiceSummary[], q: InvoiceListQuery): InvoiceSummary[] {
-	const search = q.search ? normalizeKey(q.search) : '';
-	return list.filter((i) => {
-		if (q.status === 'unpaid' && !(i.status === 'open' || i.status === 'partial')) return false;
-		if (q.status === 'overdue' && !i.overdue) return false;
-		if (!['all', 'unpaid', 'overdue'].includes(q.status) && i.status !== q.status) return false;
-		if (q.source !== 'all' && i.source !== q.source) return false;
-		if (q.payerId && i.payer?.id !== q.payerId) return false;
-		if (search) {
-			const hay = normalizeKey(
-				[i.number, i.recipientName, ...i.people, i.action?.name ?? ''].join(' ')
-			);
-			if (!hay.includes(search)) return false;
-		}
-		return true;
-	});
+/**
+ * Rechnungsliste: Filter, Status, Sortierung, Summen und Seiten in SQL (`invoiceMetricsSql`); nur die
+ * Rechnungen der Seite werden samt Posten geladen und ihre Namen aufgelöst. Die Suche (Umlaute egal,
+ * auch über Mitglieds- und Aktionsnamen) prüft eine schlanke Kandidatenliste ohne Posten.
+ */
+async function listInvoices(q: InvoiceListQuery): Promise<InvoiceList> {
+	const t = today();
+	const where = sql.join(
+		[
+			invoiceWhere(q),
+			q.source !== 'all' ? sql`i.source = ${q.source}` : sql`TRUE`,
+			q.payerId ? sql`${PAYER_SQL} = ${q.payerId}` : sql`TRUE`
+		],
+		sql` AND `
+	);
+	const metrics = invoiceMetricsSql(where);
+	const status = invoiceStatusSql(q.status, t);
+	const order = sql`ORDER BY m.issued_on DESC, m.number DESC`;
+	let pageIds: string[];
+	let total: number;
+	let totals: InvoiceList['totals'];
+	if (!q.search) {
+		const { page, agg } = await mdb().transaction(async (tx) => ({
+			page: await rows(
+				tx,
+				sql`SELECT m.id FROM ${metrics} WHERE ${status} ${order} LIMIT ${q.limit} OFFSET ${q.offset}`
+			),
+			agg: await rows(
+				tx,
+				sql`SELECT count(*) AS n, coalesce(sum(m.due_cents), 0) AS due, coalesce(sum(m.paid_cents), 0) AS paid,
+					coalesce(sum(m.open_cents), 0) AS open FROM ${metrics} WHERE ${status}`
+			)
+		}));
+		pageIds = page.map((r) => String(r.id));
+		total = num(agg[0]?.n);
+		totals = {
+			totalCents: num(agg[0]?.due),
+			paidCents: num(agg[0]?.paid),
+			openCents: num(agg[0]?.open)
+		};
+	} else {
+		const candidates = await mdb().transaction((tx) =>
+			rows(
+				tx,
+				sql`SELECT m.id, m.number, m.recipient_name, m.action_id, m.due_cents, m.paid_cents, m.open_cents,
+					(SELECT string_agg(DISTINCT l.member_id, ',') FROM invoice_lines l
+						WHERE l.invoice_id = m.id AND l.member_id IS NOT NULL) AS member_ids
+				FROM ${metrics} WHERE ${status} ${order}`
+			)
+		);
+		const memberIdsOf = (r: Record<string, unknown>) =>
+			r.member_ids ? String(r.member_ids).split(',') : [];
+		const names = await resolveNames({
+			memberIds: candidates.flatMap(memberIdsOf),
+			actionIds: candidates.flatMap((r) => (r.action_id ? [String(r.action_id)] : []))
+		});
+		const search = normalizeKey(q.search);
+		const hits = candidates.filter((r) =>
+			normalizeKey(
+				[
+					String(r.number),
+					String(r.recipient_name),
+					...memberIdsOf(r).map((id) => names.members.get(id) ?? ''),
+					r.action_id ? (names.actions.get(String(r.action_id)) ?? '') : ''
+				].join(' ')
+			).includes(search)
+		);
+		pageIds = hits.slice(q.offset, q.offset + q.limit).map((r) => String(r.id));
+		total = hits.length;
+		totals = {
+			totalCents: hits.reduce((s, r) => s + num(r.due_cents), 0),
+			paidCents: hits.reduce((s, r) => s + num(r.paid_cents), 0),
+			openCents: hits.reduce((s, r) => s + num(r.open_cents), 0)
+		};
+	}
+	const { summaries } = pageIds.length
+		? await loadSummaries(sql`i.id IN (${idList(pageIds)})`)
+		: { summaries: [] as InvoiceSummary[] };
+	const byId = new Map(summaries.map((s) => [s.id, s]));
+	return {
+		items: pageIds.flatMap((id) => byId.get(id) ?? []),
+		total,
+		totals
+	};
 }
 
 function invoiceWhere(q: InvoiceListQuery) {
@@ -263,8 +335,10 @@ async function openItems(
 	ctx: RequestContext,
 	q: z.infer<typeof openItemsQuery>
 ): Promise<OpenItems> {
-	await syncIfStale(ctx);
-	const { raw, names, summaries } = await loadSummaries();
+	// Nur Rechnungen mit offenem Betrag oder Guthaben laden (Kennzahlen in SQL)
+	const { raw, names, summaries } = await loadSummaries(
+		sql`i.id IN (SELECT m.id FROM ${invoiceMetricsSql()} WHERE m.open_cents > 0 OR m.credit_cents > 0)`
+	);
 	const search = q.search ? normalizeKey(q.search) : '';
 	let groups = groupOpenItems(summaries, raw, names, q.groupBy);
 	if (q.overdue === '1') {
@@ -357,8 +431,16 @@ async function savePayer(tx: Tx, id: string, input: PayerInput) {
 		);
 	}
 	await tx.execute(sql`DELETE FROM payer_members WHERE payer_id = ${id}`);
-	for (const m of new Set(input.memberIds)) {
-		await tx.execute(sql`INSERT INTO payer_members (payer_id, member_id) VALUES (${id}, ${m})`);
+	try {
+		for (const m of new Set(input.memberIds)) {
+			await tx.execute(sql`INSERT INTO payer_members (payer_id, member_id) VALUES (${id}, ${m})`);
+		}
+	} catch (e) {
+		// Gleichzeitige Zuordnung desselben Mitglieds zu einem anderen Zahler (UNIQUE je Mitglied)
+		if (isUniqueViolation(e, 'payer_members_member_idx')) {
+			throw errors.conflict('Mindestens ein Mitglied gehört bereits zu einem anderen Zahler');
+		}
+		throw e;
 	}
 }
 
@@ -366,8 +448,7 @@ async function savePayer(tx: Tx, id: string, input: PayerInput) {
 
 // --- Aktionen ------------------------------------------------------------------
 
-async function actionReceivables(ctx: RequestContext): Promise<ActionReceivables[]> {
-	await syncIfStale(ctx);
+async function actionReceivables(): Promise<ActionReceivables[]> {
 	const sources = await (await actionsService()).listReceivableSources();
 	const settings = await mdb().transaction((tx) =>
 		rows(
@@ -405,23 +486,7 @@ export const invoiceEndpoints = [
 		tags: TAGS,
 		permission: VIEW,
 		query: invoiceListQuery,
-		handler: async ({ ctx, query }) => {
-			const q = query as InvoiceListQuery;
-			await syncIfStale(ctx);
-			const { summaries } = await loadSummaries(invoiceWhere(q));
-			const filtered = filterSummaries(summaries, q).sort(
-				(a, b) => b.issuedOn.localeCompare(a.issuedOn) || b.number.localeCompare(a.number)
-			);
-			return {
-				items: filtered.slice(q.offset, q.offset + q.limit),
-				total: filtered.length,
-				totals: {
-					totalCents: filtered.reduce((s, i) => s + i.totalCents, 0),
-					paidCents: filtered.reduce((s, i) => s + i.paidCents, 0),
-					openCents: filtered.reduce((s, i) => s + i.openCents, 0)
-				}
-			} satisfies InvoiceList;
-		}
+		handler: ({ query }) => listInvoices(query as InvoiceListQuery)
 	},
 	{
 		method: 'GET',
@@ -460,7 +525,12 @@ export const invoiceEndpoints = [
 		tags: TAGS,
 		permission: 'treasury.invoice.send',
 		params: idParams,
-		handler: ({ ctx, params }) => sendDocuments(ctx, [(params as { id: string }).id], 'manual')
+		handler: async ({ ctx, params }) => {
+			const { id } = params as { id: string };
+			// Unbekannte Rechnung → 404 (bisher 201 mit leerem Ergebnis)
+			await mdb().transaction((tx) => lockInvoice(tx, id));
+			return sendDocuments(ctx, [id], 'manual');
+		}
 	},
 	{
 		method: 'POST',
@@ -756,17 +826,23 @@ export const invoiceEndpoints = [
 		method: 'POST',
 		path: '/reminders/run',
 		summary: 'Fällige Erinnerungen jetzt versenden (wie der tägliche Job)',
+		description:
+			'Je Rechnung und Stufe wird vor dem Versand reserviert – parallele Läufe (Job, Knopf) verschicken nichts doppelt.',
 		tags: TAGS,
 		permission: 'treasury.invoice.send',
+		rateLimit: { limit: 10, windowSec: 60 },
 		handler: ({ ctx }) => runReminderJob(ctx)
 	},
 	{
 		method: 'POST',
 		path: '/sync',
-		summary: 'Rechnungen mit den Aktionen abgleichen',
+		summary: 'Jetzt abgleichen: Rechnungen und Auszahlungen mit allen Aktionen abgleichen',
+		description:
+			'Vollabgleich wie der stündliche Job, inkl. Versand geänderter, bereits verschickter Rechnungen. Lesende Endpunkte gleichen nie ab.',
 		tags: TAGS,
 		permission: EDIT,
-		handler: ({ ctx }) => syncActions(ctx)
+		rateLimit: { limit: 30, windowSec: 60 },
+		handler: ({ ctx }) => syncAll(ctx)
 	},
 	{
 		method: 'GET',
@@ -808,10 +884,10 @@ export const invoiceEndpoints = [
 						i.action?.name ?? '',
 						formatDateDe(i.dueOn),
 						INVOICE_STATUS_LABELS[i.status],
-						centsToCsv(i.totalCents),
-						centsToCsv(i.paidCents),
-						centsToCsv(i.openCents),
-						centsToCsv(i.creditCents),
+						csvCents(i.totalCents),
+						csvCents(i.paidCents),
+						csvCents(i.openCents),
+						csvCents(i.creditCents),
 						i.daysOverdue
 					])
 				)
@@ -835,7 +911,7 @@ export const invoiceEndpoints = [
 		summary: 'Forderungen je Aktion (Beiträge)',
 		tags: TAGS,
 		permission: VIEW,
-		handler: ({ ctx }) => actionReceivables(ctx)
+		handler: () => actionReceivables()
 	},
 	{
 		method: 'PUT',
@@ -867,8 +943,8 @@ export const invoiceEndpoints = [
 				target: id,
 				metadata: { excluded: input.excluded, dueOn: input.dueOn }
 			});
-			await syncActions(ctx);
-			return (await actionReceivables(ctx)).find((a) => a.actionId === id) ?? null;
+			await syncAction(ctx, id);
+			return (await actionReceivables()).find((a) => a.actionId === id) ?? null;
 		}
 	},
 	{

@@ -33,17 +33,29 @@ export interface ParticipantPayment {
 export interface TreasuryService {
 	/** `null`, wenn die Kasse für diese Aktion keine Rechnungen führt */
 	contributionsForAction(actionId: string): Promise<ActionContributions | null>;
+	/**
+	 * Wie `contributionsForAction`, gesammelt für viele Aktionen in EINER Abfrage (#68); Aktionen
+	 * ohne Rechnungen fehlen in der Map.
+	 */
+	contributionsForActions(actionIds: string[]): Promise<Map<string, ActionContributions>>;
 	/** Zahlstand je Teilnehmende*r (nur nicht stornierte Rechnungen aus der Aktion) */
 	participantPayments(actionId: string): Promise<ParticipantPayment[]>;
 	/**
-	 * Nach einer Anmeldung: Rechnung der Person sofort anlegen (Abgleich) und als PDF liefern
-	 * (Fassung 1, wird an der Rechnung gespeichert). `null` ohne Beitrag bzw. Rechnung.
-	 * AUSSERHALB von Modul-Transaktionen aufrufen.
+	 * Nach einer Anmeldung: Rechnung der Person sofort anlegen (gezielter Abgleich NUR dieser Aktion)
+	 * und als PDF liefern (Fassung 1, wird an der Rechnung gespeichert). `null` ohne Beitrag bzw.
+	 * Rechnung oder bei vergangener Aktion. AUSSERHALB von Modul-Transaktionen aufrufen.
 	 */
 	invoiceForRegistration(
 		actionId: string,
 		participantId: string
 	): Promise<RegistrationInvoice | null>;
+	/**
+	 * Nach einem schreibenden Vorgang an einer Aktion (Teilnehmende, Beitrag, Abrechnung …): gleicht
+	 * Rechnungen und Auszahlungen GENAU dieser Aktion sofort ab (inkl. „Geänderte Rechnung“ bei bereits
+	 * versendeten Rechnungen). `ctx` = Auslöser*in (`null` = System). NACH der Transaktion aufrufen;
+	 * wirft nie (Fehler werden geloggt, der stündliche Abgleich holt es nach).
+	 */
+	actionChanged(ctx: RequestContext | null, actionId: string): Promise<void>;
 	/** Bankdaten aus den Kassen-Einstellungen (leere Felder = nicht gepflegt) */
 	bankData(): Promise<{ holder: string; iban: string; bic: string; name: string }>;
 	/**

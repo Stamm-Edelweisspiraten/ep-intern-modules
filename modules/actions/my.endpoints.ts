@@ -4,9 +4,18 @@
  * AUSSERHALB der Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
+import {
+	type ApiEndpoint,
+	core,
+	defineEndpoint,
+	inList,
+	moduleDb,
+	type RequestContext,
+	rowsOf
+} from '$lib/sdk/server';
 import type { MembersService } from '$lib/modules/members/contract';
-import { editableActionsFilter, rowsOf } from './access';
+import { editableActionsFilter } from './access';
 import {
 	DASHBOARD_LIST_LIMIT,
 	MODULE_ID,
@@ -16,26 +25,10 @@ import {
 
 const TAGS = ['Modul: actions'];
 
-let todayOverride: string | null = null;
-/** Nur für Tests: festes „heute“ (`YYYY-MM-DD`) */
-export function setActionsDashboardTodayForTests(d: string | null): void {
-	todayOverride = d;
-}
-/** Heutiges Datum in Deutschland */
-function today(): string {
-	return (
-		todayOverride ??
-		new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date())
-	);
-}
+/** Heutiges Datum in Deutschland (zentral, Test-Override über `setTodayForTests` aus `$lib/sdk/dates`) */
+const today = (): string => todayBerlin();
 
 const text = (v: unknown): string | null => (v == null ? null : String(v));
-const idList = (ids: string[]) =>
-	sql.join(
-		ids.map((v) => sql`${v}`),
-		sql`, `
-	);
-
 export async function loadMyRegistrations(ctx: RequestContext): Promise<MyRegistration[]> {
 	if (!ctx.userId) return [];
 	const userId = ctx.userId;
@@ -43,10 +36,10 @@ export async function loadMyRegistrations(ctx: RequestContext): Promise<MyRegist
 		await core.modules.use<MembersService>('members', MODULE_ID)
 	).listLinkedMembers(ctx);
 	const memberIds = linked.map((m) => m.id);
-	const byMember = memberIds.length ? sql`p.member_id IN (${idList(memberIds)})` : sql`FALSE`;
+	const byMember = memberIds.length ? sql`p.member_id IN (${inList(memberIds)})` : sql`FALSE`;
 	const day = today();
 
-	const found = await core.database.forModule(MODULE_ID).transaction((tx) =>
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT a.id, a.name, a.location, a.starts_time, a.ends_time, a.fee_cents, a.team_fee_cents,
@@ -95,7 +88,7 @@ export async function loadMyRegistrations(ctx: RequestContext): Promise<MyRegist
 
 export async function loadOpenAccountings(ctx: RequestContext): Promise<OpenAccounting[]> {
 	const day = today();
-	const found = await core.database.forModule(MODULE_ID).transaction((tx) =>
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
 			sql`SELECT a.id, a.name, to_char(coalesce(a.ends_on, a.starts_on), 'YYYY-MM-DD') AS ends_on,

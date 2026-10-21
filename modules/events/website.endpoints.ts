@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, defineEndpoint, errors, moduleDb, rowsOf } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
-import { rowsOf } from './access';
 import {
 	EVENT_COLUMNS,
 	EVENT_ORDER,
@@ -22,9 +21,9 @@ import {
 	OPEN_WINDOW_DAYS,
 	idParams,
 	websiteEventQuery,
-	websiteQuery,
 	type WebsiteEvent
 } from './schemas';
+import { websiteEventsQuery, type WebsiteEventPage } from './website.schemas';
 
 /** Heutiges Datum in Europe/Berlin (liegt in `events.service.ts`, hier für bestehende Importe) */
 export { todayBerlin };
@@ -32,7 +31,7 @@ export { todayBerlin };
 /** Höchstzahl Kandidaten-Zeilen (einmalige Termine + Serien) vor dem Expandieren */
 const WEBSITE_ROW_CAP = 5000;
 
-const WEBSITE_RATE_LIMIT = { limit: 120, windowSec: 60 };
+const WEBSITE_RATE_LIMIT = { limit: 600, windowSec: 60 };
 
 /**
  * Vorkommen in öffentliche DTOs umwandeln (nach der Transaktion: Gruppennamen aus Einstellung und
@@ -66,7 +65,7 @@ async function toWebsiteEvents(
 	});
 }
 
-export const websiteEndpoints = [
+export const websiteEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/website/events',
@@ -77,10 +76,12 @@ export const websiteEndpoints = [
 			'einzelne Vorkommen (`recurring: true`, `occurrenceDate`; ohne `to` höchstens ein Jahr ' +
 			'voraus), abgesagte Vorkommen fehlen. `group` (Gruppen-ID oder `stamm`) filtert auf ' +
 			'Termine mit dieser Zuordnung. Nur öffentliche Felder: keine Freigaben, ' +
-			'Eigentümer*innen oder Zeitstempel.',
+			'Eigentümer*innen oder Zeitstempel. Paging: `offset` (Standard 0) überspringt Vorkommen; ' +
+			'mit `paged=1` kommt statt des Arrays `{ items, total, offset, limit, hasMore }` ' +
+			'(ohne `paged` bleibt die Antwort ein Array – abwärtskompatibel).',
 		tags: ['Modul: events'],
 		permission: 'events.website.read',
-		query: websiteQuery,
+		query: websiteEventsQuery,
 		rateLimit: WEBSITE_RATE_LIMIT,
 		handler: async ({ ctx, query }) => {
 			const from = query.from ?? todayBerlin();
@@ -90,12 +91,10 @@ export const websiteEndpoints = [
 			const tag = query.tag?.trim().toLowerCase() || null;
 			const group = query.group ?? null;
 
-			const { rows, exceptions } = await core.database
-				.forModule(MODULE_ID)
-				.transaction(async (tx) => {
-					const raw = await rowsOf(
-						tx,
-						sql`SELECT ${EVENT_COLUMNS} FROM events e
+			const { rows, exceptions } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+				const raw = await rowsOf(
+					tx,
+					sql`SELECT ${EVENT_COLUMNS} FROM events e
 						WHERE e.on_website = true
 							AND (
 								(e.recurrence IS NULL
@@ -120,14 +119,14 @@ export const websiteEndpoints = [
 							}
 						ORDER BY ${EVENT_ORDER}
 						LIMIT ${WEBSITE_ROW_CAP}`
-					);
-					const rows = await hydrateRows(tx, raw);
-					const exceptions = await loadExceptions(
-						tx,
-						rows.filter((r) => r.recurrence).map((r) => r.id)
-					);
-					return { rows, exceptions };
-				});
+				);
+				const rows = await hydrateRows(tx, raw);
+				const exceptions = await loadExceptions(
+					tx,
+					rows.filter((r) => r.recurrence).map((r) => r.id)
+				);
+				return { rows, exceptions };
+			});
 
 			const all: OccurrenceRow[] = [];
 			for (const row of rows) {
@@ -135,8 +134,21 @@ export const websiteEndpoints = [
 				else all.push(singleOccurrence(row));
 			}
 			all.sort(compareOccurrences);
-			const page = all.slice(0, Math.min(query.limit, MAX_OCCURRENCES));
-			return toWebsiteEvents(ctx, page);
+			if (rows.length >= WEBSITE_ROW_CAP) {
+				// Kandidaten gekappt: `total` ist dann eine Untergrenze (sollte praktisch nie eintreten)
+				console.warn(`events: /website/events hat ${WEBSITE_ROW_CAP} Kandidaten-Zeilen erreicht`);
+			}
+			const limit = Math.min(query.limit, MAX_OCCURRENCES);
+			const page = all.slice(query.offset, query.offset + limit);
+			const items = await toWebsiteEvents(ctx, page);
+			if (!query.paged) return items;
+			return {
+				items,
+				total: all.length,
+				offset: query.offset,
+				limit,
+				hasMore: query.offset + page.length < all.length
+			} satisfies WebsiteEventPage;
 		}
 	}),
 	defineEndpoint({
@@ -154,25 +166,23 @@ export const websiteEndpoints = [
 		query: websiteEventQuery,
 		rateLimit: WEBSITE_RATE_LIMIT,
 		handler: async ({ ctx, params, query }) => {
-			const { row, exceptions } = await core.database
-				.forModule(MODULE_ID)
-				.transaction(async (tx) => {
-					const raw = await rowsOf(
-						tx,
-						sql`SELECT ${EVENT_COLUMNS} FROM events e
+			const { row, exceptions } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+				const raw = await rowsOf(
+					tx,
+					sql`SELECT ${EVENT_COLUMNS} FROM events e
 						WHERE e.id = ${params.id} AND e.on_website = true`
-					);
-					const [row] = await hydrateRows(tx, raw);
-					if (!row) return { row: null, exceptions: undefined };
-					const exceptions = row.recurrence
-						? (await loadExceptions(tx, [row.id])).get(row.id)
-						: undefined;
-					return { row, exceptions };
-				});
+				);
+				const [row] = await hydrateRows(tx, raw);
+				if (!row) return { row: null, exceptions: undefined };
+				const exceptions = row.recurrence
+					? (await loadExceptions(tx, [row.id])).get(row.id)
+					: undefined;
+				return { row, exceptions };
+			});
 			if (!row) throw errors.notFound('Termin nicht gefunden');
 			const occ = resolveWebsiteOccurrence(row, exceptions, query.occurrence);
 			const [event] = await toWebsiteEvents(ctx, [occ]);
 			return event!;
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

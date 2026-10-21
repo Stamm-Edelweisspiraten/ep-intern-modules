@@ -148,6 +148,7 @@
 <svelte:head><title>Konto verknüpfen</title></svelte:head>
 
 <div class="mx-auto w-full max-w-md space-y-4 px-4 py-8">
+	<h1 class="text-title">Konto verknüpfen</h1>
 	{#if loading}
 		<Skeleton class="h-64 w-full" />
 	{:else if unavailable}
@@ -167,7 +168,7 @@
 	{:else if done}
 		<Card.Root>
 			<Card.Content class="flex items-start gap-3 pt-6">
-				<CircleCheck class="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+				<CircleCheck class="mt-0.5 size-5 shrink-0 text-link" aria-hidden="true" />
 				<div class="space-y-3">
 					{#if done === 'claimed'}
 						<p class="font-medium">Dein Konto ist jetzt mit {info.memberFirstName} verknüpft.</p>
@@ -185,7 +186,6 @@
 	{:else}
 		<Card.Root>
 			<Card.Header>
-				<Card.Title>Konto verknüpfen</Card.Title>
 				<Card.Description>
 					Verknüpfe dein Konto mit {info.memberFirstName}. Den Code findest du in dem Brief, den du
 					erhalten hast.
@@ -218,7 +218,7 @@
 					<form class="space-y-3" onsubmit={claim}>
 						<p class="text-sm text-muted-foreground">Angemeldet als {info.viewer.name}.</p>
 						<Button type="submit" disabled={busy} class="w-full">
-							{busy ? 'Verknüpfe …' : `Mit ${info.memberFirstName} verknüpfen`}
+							{busy ? 'Verknüpft …' : `Mit ${info.memberFirstName} verknüpfen`}
 						</Button>
 					</form>
 				{:else}

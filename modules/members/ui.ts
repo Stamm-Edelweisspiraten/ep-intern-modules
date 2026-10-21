@@ -4,7 +4,8 @@ export default {
 	routes: {
 		'': () => import('./pages/MembersPage.svelte'),
 		groups: () => import('./pages/GroupsPage.svelte'),
-		fields: () => import('./pages/FieldsPage.svelte')
+		fields: () => import('./pages/FieldsPage.svelte'),
+		retention: () => import('./pages/RetentionPage.svelte')
 	},
 	publicRoutes: {
 		'verknuepfen/:token': () => import('./pages/LinkAccount.svelte')

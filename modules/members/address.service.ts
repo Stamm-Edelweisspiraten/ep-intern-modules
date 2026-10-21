@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { core } from '$lib/sdk/server';
+import { core, moduleDb } from '$lib/sdk/server';
 import type { AddressSuggestion, AddressSuggestions } from './schemas';
 import plzData from './data/plz-de.json';
 import { directoryName, splitHouseNumber } from './address-utils';
@@ -149,7 +149,7 @@ const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 async function localAddresses(q: string): Promise<AddressSuggestion[]> {
 	const pattern = `${likeEscape(q.trim())}%`;
 	try {
-		const rows = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		const rows = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const r = await tx.execute(sql`
 				SELECT street, postal_code, city, country, count(*)::int AS n
 				FROM members
@@ -173,7 +173,7 @@ async function homeRegion(): Promise<string | null> {
 	if (region && Date.now() - region.at < REGION_TTL_MS) return region.prefix;
 	let prefix: string | null;
 	try {
-		prefix = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		prefix = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const r = await tx.execute(sql`
 				SELECT left(postal_code, 2) AS p, count(*)::int AS n
 				FROM members

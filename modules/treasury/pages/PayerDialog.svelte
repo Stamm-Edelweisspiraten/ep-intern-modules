@@ -8,7 +8,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, BUSY_SAVE } from '$lib/components/layout';
 	import { payerInput, type Payer, type PayerFormInput } from '../schemas';
 	import { BASE, fieldErrorsFrom, issuesToErrors } from './helpers';
 
@@ -169,7 +169,7 @@
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

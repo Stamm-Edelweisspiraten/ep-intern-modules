@@ -7,16 +7,22 @@
  * Core-Services (storage, crypto, audit) laufen immer außerhalb der Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
+	type ApiEndpoint,
 	core,
 	errors,
 	isCoreError,
-	type ApiEndpoint,
+	moduleDb,
+	readUpload,
 	type RequestContext,
+	rowsOf,
+	toIsoOrNull,
 	type Tx
 } from '$lib/sdk/server';
 import { formDefinitionSchema } from '$lib/forms/schema';
-import { requireAccess, rowsOf } from './access';
+import { requireAccess } from './access';
+import { linkTokenValues } from './link-tokens';
 import { closedInfo, loadRefundSnapshot } from './accounting-core';
 import {
 	ARCHIVE_FORMAT,
@@ -39,6 +45,7 @@ import {
 	normalizeDedupeKey
 } from './form-support';
 import { ibanLast, isValidIban, normalizeIban } from './iban';
+import { canSeeHealth, healthColumns, readHealthFor } from './health';
 import {
 	CHECKLIST_ITEMS,
 	MAX_RECEIPT_BYTES,
@@ -51,11 +58,9 @@ import {
 } from './schemas';
 
 const TAGS = ['Modul: actions'];
-const mdb = () => core.database.forModule(MODULE_ID);
 const crypt = () => core.crypto.forModule(MODULE_ID);
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
-const iso = (v: unknown): string | null => (v == null ? null : new Date(String(v)).toISOString());
 const decryptOrNull = (enc: unknown): string | null => {
 	if (enc == null) return null;
 	try {
@@ -125,7 +130,7 @@ async function loadExportRows(tx: Tx, id: string): Promise<ExportRows> {
 			tx,
 			sql`SELECT id, name, group_label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
 					bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes,
-					contact_email, source, consent_accepted_at, answers
+					contact_email, source, consent_accepted_at, answers, health_answers
 				FROM action_participants WHERE action_id = ${id} ORDER BY created_at, name, id`
 		),
 		form: (await rowsOf(tx, sql`SELECT * FROM action_forms WHERE action_id = ${id}`))[0] ?? null,
@@ -157,12 +162,14 @@ function cleanDisplayName(v: unknown): string {
 }
 
 async function exportAction(ctx: RequestContext, id: string): Promise<Response> {
-	const rows = await mdb().transaction(async (tx) => {
+	const rows = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		await requireAccess(tx, ctx, id, 'read');
 		return loadExportRows(tx, id);
 	});
 
 	const withBank = core.permissions.has(ctx, 'actions.payout.view');
+	// Gesundheitsdaten (Ernährung, Allergien, Sonstiges, gesundheitsbezogene Antworten) nur mit Sonderrecht
+	const withHealth = canSeeHealth(ctx);
 	const canReadFiles = core.permissions.has(ctx, 'actions.storage.read');
 
 	// Export-IDs nach Reihenfolge: stabil über Export -> Import -> Export
@@ -259,27 +266,30 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 					}))
 				}
 			: null,
-		participants: rows.participants.map((p) => ({
-			id: pid.get(String(p.id))!,
-			name: String(p.name),
-			groupLabel: str(p.group_label),
-			birthDate: str(p.birth_date),
-			bremenResident: bool(p.bremen_resident),
-			role: String(p.role) as 'participant' | 'team',
-			juleica: Boolean(p.juleica),
-			subsidyEligible: bool(p.subsidy_eligible),
-			diet: str(p.diet) as 'vegetarian' | 'vegan' | 'meat' | null,
-			allergies: str(p.allergies),
-			notes: str(p.notes),
-			contactEmail: str(p.contact_email),
-			source: String(p.source) === 'link' ? 'link' : 'manual',
-			consentAcceptedAt: iso(p.consent_accepted_at),
-			answers: asObject(p.answers) as ArchiveDocument['participants'][number]['answers']
-		})),
+		participants: rows.participants.map((p) => {
+			const h = readHealthFor(ctx, p, definition.fields);
+			return {
+				id: pid.get(String(p.id))!,
+				name: String(p.name),
+				groupLabel: str(p.group_label),
+				birthDate: str(p.birth_date),
+				bremenResident: bool(p.bremen_resident),
+				role: String(p.role) as 'participant' | 'team',
+				juleica: Boolean(p.juleica),
+				subsidyEligible: bool(p.subsidy_eligible),
+				diet: h.diet,
+				allergies: h.allergies,
+				notes: h.notes,
+				contactEmail: str(p.contact_email),
+				source: String(p.source) === 'link' ? 'link' : 'manual',
+				consentAcceptedAt: toIsoOrNull(p.consent_accepted_at),
+				answers: h.answers as ArchiveDocument['participants'][number]['answers']
+			};
+		}),
 		form: rows.form
 			? {
-					opensAt: iso(rows.form.opens_at),
-					closesAt: iso(rows.form.closes_at),
+					opensAt: toIsoOrNull(rows.form.opens_at),
+					closesAt: toIsoOrNull(rows.form.closes_at),
 					maxParticipants:
 						rows.form.max_participants == null ? null : Number(rows.form.max_participants),
 					intro: str(rows.form.intro),
@@ -316,7 +326,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			paidBy: String(e.paid_by) as 'club' | 'person',
 			payeeRef: e.payee_id == null ? null : (yid.get(String(e.payee_id)) ?? null),
 			receipt: receiptOf.get(String(e.id)) as ArchiveDocument['entries'][number]['receipt'],
-			reimbursedAt: iso(e.reimbursed_at),
+			reimbursedAt: toIsoOrNull(e.reimbursed_at),
 			...(e.reimbursed_upfront === true ? { reimbursedUpfront: true } : {}),
 			transfer:
 				e.type === 'expense' && e.paid_by === 'club' && e.category !== 'refund'
@@ -325,7 +335,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 							...(withBank ? { iban: decryptOrNull(e.recipient_iban_enc) } : {}),
 							bic: str(e.recipient_bic),
 							purpose: str(e.purpose),
-							paidAt: iso(e.club_paid_at)
+							paidAt: toIsoOrNull(e.club_paid_at)
 						}
 					: null
 		})),
@@ -370,21 +380,22 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 			entries: counts.entries,
 			receipts: counts.receipts,
 			payees: counts.payees,
-			includesBank: withBank
+			includesBank: withBank,
+			includesHealth: withHealth
 		}
 	};
 	const zip = buildArchive({ manifest, document, receipts });
 
 	await core.audit.logFromContext(ctx, 'actions.action.exported', {
 		target: id,
-		metadata: { actionId: id, counts, withBank }
+		metadata: { actionId: id, counts, withBank, withHealth }
 	});
 	return new Response(zip as BodyInit, {
 		status: 200,
 		headers: {
 			'content-type': 'application/zip',
 			'content-length': String(zip.byteLength),
-			'content-disposition': `attachment; filename="${archiveFilename(document.action.name, new Date().toISOString().slice(0, 10))}"`,
+			'content-disposition': `attachment; filename="${archiveFilename(document.action.name, todayBerlin())}"`,
 			'cache-control': 'no-store',
 			'x-content-type-options': 'nosniff'
 		}
@@ -410,21 +421,18 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 	if (!ctx.userId) throw errors.unauthenticated();
 	const ownerId = ctx.userId;
 
-	const form = await request.formData().catch(() => {
-		throw errors.badRequest('Ungültige Formulardaten');
+	// Feld/leer/Typ → 422, Größe → 413 (#33); den ZIP-Inhalt prüft parseArchive
+	const file = await readUpload(request, {
+		maxBytes: MAX_ARCHIVE_BYTES,
+		allowedTypes: ARCHIVE_ZIP_TYPES,
+		typesLabel: 'ZIP-Archiv',
+		detectMissingType: true,
+		sniff: false
 	});
-	const file = form.get('file');
-	if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-	if (file.size > MAX_ARCHIVE_BYTES) throw errors.tooLarge('Archiv überschreitet 200 MB');
-	const declared = (file.type || '').split(';')[0]!.trim().toLowerCase();
-	if (declared && !ARCHIVE_ZIP_TYPES.includes(declared)) {
-		validationError('Datei ist kein ZIP-Archiv');
-	}
-	if (file.size === 0) validationError('Datei ist leer');
 
 	let parsed;
 	try {
-		parsed = parseArchive(new Uint8Array(await file.arrayBuffer()));
+		parsed = parseArchive(file.bytes);
 	} catch (e) {
 		if (e instanceof ArchiveError) validationError(e.message);
 		throw e;
@@ -550,7 +558,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		const now = new Date(base).toISOString();
 		const seenDedupe = new Set<string>();
 
-		await mdb().transaction(async (tx) => {
+		await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const a = doc.action;
 			await tx.execute(
 				sql`INSERT INTO actions (id, name, description, location, starts_on, starts_time, ends_on,
@@ -589,11 +597,12 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 			if (doc.form) {
 				const f = doc.form;
 				const definition = mergeStandardFields(f.definition);
+				const fresh = linkTokenValues(newToken());
 				await tx.execute(
-					sql`INSERT INTO action_forms (action_id, token, enabled, opens_at, closes_at,
+					sql`INSERT INTO action_forms (action_id, token_hash, token_enc, enabled, opens_at, closes_at,
 							max_participants, definition, intro, disclaimer_template, privacy_url,
 							updated_by, updated_at)
-						VALUES (${actionId}, ${newToken()}, false, ${f.opensAt}, ${f.closesAt},
+						VALUES (${actionId}, ${fresh.hash}, ${fresh.enc}, false, ${f.opensAt}, ${f.closesAt},
 							${f.maxParticipants}, ${JSON.stringify(definition)}::jsonb, ${f.intro},
 							${f.disclaimerTemplate}, ${f.privacyUrl}, ${ownerId}, ${now})`
 				);
@@ -608,13 +617,16 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 						dedupe = key;
 					}
 				}
+				// Gesundheitsdaten verschlüsselt; fehlen sie im Archiv (Export ohne Sonderrecht), bleiben sie leer
+				const h = healthColumns(p, doc.form?.definition.fields ?? []);
 				await tx.execute(
 					sql`INSERT INTO action_participants (id, action_id, name, group_label, birth_date,
 							bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes, answers,
-							source, consent_accepted_at, contact_email, dedupe_key, created_at, updated_at)
+							health_answers, source, consent_accepted_at, contact_email, dedupe_key, created_at,
+							updated_at)
 						VALUES (${pids.get(p.id)!}, ${actionId}, ${p.name}, ${p.groupLabel}, ${p.birthDate},
-							${p.bremenResident}, ${p.role}, ${p.juleica}, ${p.subsidyEligible}, ${p.diet},
-							${p.allergies}, ${p.notes}, ${JSON.stringify(p.answers)}::jsonb, ${p.source},
+							${p.bremenResident}, ${p.role}, ${p.juleica}, ${p.subsidyEligible}, ${h.diet},
+							${h.allergies}, ${h.notes}, ${h.answers}::jsonb, ${h.healthAnswers}, ${p.source},
 							${p.consentAcceptedAt}, ${p.contactEmail || null}, ${dedupe}, ${stamp(i)}, ${stamp(i)})`
 				);
 			}

@@ -5,10 +5,14 @@ import { eventEndpoints } from './events.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { websiteEndpoints } from './website.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { onUserDeleted } from './user-deleted';
+import { subjectExport } from './subject-export';
 import { eventRefsService } from './refs.service';
+import type { EventRefsService } from './contract';
 import { DEFAULT_STAMM_NAME, STAMM_NAME_SETTING } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_recurrence.sql?raw';
+import m0003 from './migrations/0003_checks.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -26,6 +30,7 @@ export default defineModule({
 			'events.event.create',
 			'events.event.view-all',
 			'events.event.edit-all',
+			'events.event.publish',
 			'events.website.read'
 		],
 		permissionDescriptions: {
@@ -33,6 +38,8 @@ export default defineModule({
 			'events.event.create': 'Termine und Serien anlegen',
 			'events.event.view-all': 'Alle Termine ansehen, auch ohne Freigabe',
 			'events.event.edit-all': 'Alle Termine bearbeiten und löschen',
+			'events.event.publish':
+				'Termine auf der öffentlichen Stammeswebsite anzeigen („Auf der Stammeswebsite anzeigen“ einschalten)',
 			'events.website.read':
 				'Termine für die Stammeswebsite abrufen (nur API-Key-Scope, kein Zugriff auf interne Funktionen)'
 		},
@@ -58,12 +65,15 @@ export default defineModule({
 	],
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_recurrence', sql: m0002 }
+		{ name: '0002_recurrence', sql: m0002 },
+		{ name: '0003_checks', sql: m0003 }
 	],
 	search: eventsSearch,
 	resetAreas,
 	resetUsers,
+	onUserDeleted,
+	subjectExport,
 	/** Dienst für andere Module (`EventRefsService`, siehe `contract.ts`) */
-	provides: eventRefsService as unknown as Record<string, unknown>,
+	provides: eventRefsService satisfies EventRefsService,
 	endpoints: [...websiteEndpoints, ...metaEndpoints, ...eventEndpoints]
 });

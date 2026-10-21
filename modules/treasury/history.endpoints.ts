@@ -1,7 +1,7 @@
 /** Verlauf (Historie) einer Rechnung, Buchung oder Auszahlung aus dem Audit-Log (`GET /history`) */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint } from '$lib/sdk/server';
+import { core, errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
 import { mdb, rows } from './db';
 import {
 	HISTORY_ACTIONS,
@@ -40,9 +40,17 @@ async function relatedTargets(kind: HistoryKind, id: string): Promise<string[]> 
 	});
 }
 
-export async function loadHistory(kind: HistoryKind, id: string): Promise<HistoryEntry[]> {
+export async function loadHistory(
+	ctx: RequestContext,
+	kind: HistoryKind,
+	id: string
+): Promise<HistoryEntry[]> {
 	const related = await relatedTargets(kind, id);
-	const { rows: audit } = await core.audit.list({ targets: [id, ...related], limit: 200 });
+	// Nur Einträge der Kasse (Modulpräfix) zu diesen Objekten, mit Rechteprüfung des Aufrufers
+	const { rows: audit } = await core.audit.listForModule(ctx, 'treasury', {
+		targets: [id, ...related],
+		limit: 200
+	});
 	return audit
 		.filter((r) => HISTORY_ACTIONS.has(r.action))
 		.map((r) => ({
@@ -66,7 +74,7 @@ export const historyEndpoints = [
 		handler: async ({ ctx, query }) => {
 			await core.permissions.require(ctx, 'treasury.cash.view');
 			const q = query as z.infer<typeof historyQuery>;
-			return { items: await loadHistory(q.kind, q.id) };
+			return { items: await loadHistory(ctx, q.kind, q.id) };
 		}
 	}
 ] as ApiEndpoint[];

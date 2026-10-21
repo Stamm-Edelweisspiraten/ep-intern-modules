@@ -61,10 +61,7 @@
 					{#if t.severity === 'critical'}
 						<CircleAlert class="mt-0.5 size-4 shrink-0 text-destructive" aria-label="Dringend" />
 					{:else if t.severity === 'warning'}
-						<TriangleAlert
-							class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
-							aria-label="Wichtig"
-						/>
+						<TriangleAlert class="mt-0.5 size-4 shrink-0 text-warning" aria-label="Wichtig" />
 					{:else}
 						<Info class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Hinweis" />
 					{/if}

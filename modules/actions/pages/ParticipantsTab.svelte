@@ -387,8 +387,11 @@
 				<Table.Head>E-Mail</Table.Head>
 				<Table.Head>Alter</Table.Head>
 				<Table.Head>Rolle</Table.Head>
-				<Table.Head>Ernährung</Table.Head>
-				<Table.Head>Allergien / Hinweise</Table.Head>
+				<!-- Gesundheitsdaten nur mit Sonderrecht (`members.data.export`, wie das PDF) -->
+				{#if canExportSheets}
+					<Table.Head>Ernährung</Table.Head>
+					<Table.Head>Allergien / Hinweise</Table.Head>
+				{/if}
 				{#if showPayments}<Table.Head>Beitrag</Table.Head>{/if}
 				<Table.Head>Quelle</Table.Head>
 				{#if canEdit}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
@@ -415,10 +418,12 @@
 				<Table.Cell>
 					{PARTICIPANT_ROLE_LABELS[p.role]}{p.role === 'team' && p.juleica ? ' (Juleica)' : ''}
 				</Table.Cell>
-				<Table.Cell>{p.diet ? DIET_LABELS[p.diet] : '–'}</Table.Cell>
-				<Table.Cell class="max-w-64" title={hint || undefined}>
-					{hint ? truncate(hint) : '–'}
-				</Table.Cell>
+				{#if canExportSheets}
+					<Table.Cell>{p.diet ? DIET_LABELS[p.diet] : '–'}</Table.Cell>
+					<Table.Cell class="max-w-64" title={hint || undefined}>
+						{hint ? truncate(hint) : '–'}
+					</Table.Cell>
+				{/if}
 				{#if showPayments}
 					<Table.Cell>
 						<PaymentCell payment={p.payment} linkToInvoice={canOpenInvoices} />

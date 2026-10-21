@@ -4,8 +4,14 @@
  * `view-all`); Principal-Schlüssel VOR der Transaktion. Zuletzt geänderte zuerst.
  */
 import { sql } from 'drizzle-orm';
-import { core, principalKeysFor, type ModuleSearchProvider, type SearchHit } from '$lib/sdk/server';
-import { rowsOf, visibleGalleriesFilter } from './access';
+import {
+	type ModuleSearchProvider,
+	moduleDb,
+	principalKeysFor,
+	rowsOf,
+	type SearchHit
+} from '$lib/sdk/server';
+import { visibleGalleriesFilter } from './access';
 import { MODULE_ID } from './schemas';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -15,7 +21,7 @@ export const galleriesSearch: ModuleSearchProvider = {
 	async run(ctx, query, limit) {
 		const keys = await principalKeysFor(ctx, MODULE_ID);
 		const p = like(query);
-		const found = await core.database.forModule(MODULE_ID).transaction((tx) =>
+		const found = await moduleDb(MODULE_ID).transaction((tx) =>
 			rowsOf(
 				tx,
 				sql`SELECT g.id, g.title, g.visibility,

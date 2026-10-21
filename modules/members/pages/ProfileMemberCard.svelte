@@ -227,7 +227,7 @@
 			{/if}
 
 			<Tabs.Root bind:value={tab}>
-				<Tabs.List variant="line" class="mb-2 h-auto">
+				<Tabs.List variant="line" class="mb-2">
 					<Tabs.Trigger value="contacts">Kontakte{contactsDirty ? ' •' : ''}</Tabs.Trigger>
 					{#if visible.length}
 						<Tabs.Trigger value="fields">Zusatzfelder{valuesDirty ? ' •' : ''}</Tabs.Trigger>
@@ -280,7 +280,7 @@
 						{#if sensitiveFields.length}
 							<div class="grid gap-3 rounded-lg border p-4">
 								<div class="flex items-start gap-2">
-									<ShieldAlert class="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+									<ShieldAlert class="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
 									<div>
 										<p class="text-sm font-medium">Gesundheitsangaben</p>
 										<p class="text-xs text-muted-foreground">

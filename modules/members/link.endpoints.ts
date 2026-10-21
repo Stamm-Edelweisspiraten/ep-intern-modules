@@ -82,7 +82,12 @@ export const linkEndpoints: ApiEndpoint[] = [
 		query: linkUserSearchQuery,
 		handler: async ({ ctx, query }): Promise<LinkUserRef[]> => {
 			if (query.search.length < 2) return [];
-			const users = await core.users.directory(ctx, { search: query.search, limit: 30 });
+			// members.link.manage: Adresse unterscheidet gleichnamige Konten beim Verknüpfen
+			const users = await core.users.directory(ctx, {
+				search: query.search,
+				limit: 30,
+				includeEmail: true
+			});
 			return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
 		}
 	}),

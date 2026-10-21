@@ -23,7 +23,8 @@
 		ShareMenu,
 		type ShareCandidate,
 		type ShareEntry,
-		type ShareOwner
+		type ShareOwner,
+		PageTitle
 	} from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
@@ -229,7 +230,7 @@
 	}
 </script>
 
-<svelte:head><title>{detail?.title ?? 'Galerie'}</title></svelte:head>
+<PageTitle title={detail?.title ?? 'Galerie'} />
 
 {#if loading}
 	<div class="space-y-4" aria-busy="true" aria-label="Lade Galerie">
@@ -325,6 +326,17 @@
 				{/snippet}
 			</PageHeader>
 			<EventBadges events={detail.events} class="mt-3" />
+			{#if detail.visibility === 'public' && detail.publicConfirmation}
+				<p class="mt-2 text-xs text-muted-foreground">
+					Veröffentlichung bestätigt am {new Date(detail.publicConfirmation.at).toLocaleDateString(
+						'de-DE',
+						{ day: '2-digit', month: '2-digit', year: 'numeric' }
+					)}
+					{#if detail.publicConfirmation.by}
+						von {detail.publicConfirmation.by.name}{/if}
+					(Website-Einwilligungen liegen laut Bestätigung vor).
+				</p>
+			{/if}
 		</div>
 
 		{#if canEdit}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
@@ -8,7 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, BUSY_SAVE } from '$lib/components/layout';
 	import { actionInput, type ActionSummary } from '../schemas';
 
 	let {
@@ -52,10 +53,7 @@
 		busy = false;
 	});
 
-	const todayIso = () => {
-		const d = new Date();
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-	};
+	const todayIso = () => todayBerlin();
 	// Beim Anlegen: liegt die Aktion (Ende, sonst Start) in der Vergangenheit, wird die Checkbox
 	// vorgeschlagen – eine laufende mehrtägige Aktion zählt nicht als vergangen
 	$effect(() => {
@@ -157,7 +155,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>{action ? 'Aktion bearbeiten' : 'Aktion anlegen'}</Dialog.Title>
 			<Dialog.Description>Pflichtfelder sind mit * markiert.</Dialog.Description>
@@ -253,9 +251,9 @@
 			</div>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichere …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

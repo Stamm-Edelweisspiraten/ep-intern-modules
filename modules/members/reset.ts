@@ -1,6 +1,6 @@
 /** Bereiche für den Admin-Reset (Core `system/reset`). Siehe `ResetArea`. */
-import { sql } from 'drizzle-orm';
-import type { ModuleDefinition, ResetArea } from '$lib/sdk/server';
+import { sql, type SQL } from 'drizzle-orm';
+import type { ModuleDefinition, ResetArea, Tx } from '$lib/sdk/server';
 
 /**
  * Hinweis Dokumente: Einwilligung/Anmeldebogen liegen als Spalten an `members` und im Storage unter
@@ -14,7 +14,9 @@ export const resetAreas: ResetArea[] = [
 		description:
 			'Löscht alle Mitglieder, Gruppen, Kontakte, Zusatzfelder, Konto-Verknüpfungen und Mail-Einstellungen ' +
 			'sowie alle hochgeladenen Dokumente und Gruppenbilder. Die vordefinierten Zusatzfelder werden neu angelegt. ' +
-			'Teilnehmende in Aktionen bleiben erhalten, verlieren aber den Bezug zum Mitglied.',
+			'Nicht mitgelöscht werden Teilnehmende in Aktionen, Bestellungen, Gruppen-Zuordnungen von Terminen und ' +
+			'Freigaben an Gruppen oder Mitglieder (Termine, Dateien, Galerien): Sie bleiben erhalten, ihr Verweis zeigt ' +
+			'danach ins Leere und erscheint als „Unbekannt“.',
 		tables: [
 			'member_mail_prefs',
 			'member_link_codes',
@@ -50,7 +52,15 @@ export const resetAreas: ResetArea[] = [
 	}
 ];
 
+/**
+ * Konto-Verknüpfungen lösen; `match` erzeugt die Bedingung für `user_id` – gemeinsam genutzt von
+ * `resetUsers` (alle außer einer Person) und `onUserDeleted` (eine Person, `user-deleted.ts`).
+ */
+export async function unlinkUsers(tx: Tx, match: (col: SQL) => SQL): Promise<void> {
+	await tx.execute(sql`DELETE FROM member_user_links WHERE ${match(sql.raw('user_id'))}`);
+}
+
 /** Verweise auf gelöschte Benutzer bereinigen (läuft im Modulschema). */
 export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId) => {
-	await tx.execute(sql`DELETE FROM member_user_links WHERE user_id <> ${keepUserId}`);
+	await unlinkUsers(tx, (col) => sql`${col} <> ${keepUserId}`);
 };

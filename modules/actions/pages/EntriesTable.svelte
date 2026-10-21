@@ -125,9 +125,7 @@
 			<li class="-mx-2 rounded-md bg-muted/40 px-2 py-3">
 				<div class="flex items-start justify-between gap-3">
 					<span class="min-w-0 font-medium break-words">{r.title}</span>
-					<span class="shrink-0 tabular-nums text-green-700 dark:text-green-400"
-						>{@render amount(r.cents, true)}</span
-					>
+					<span class="shrink-0 tabular-nums text-success">{@render amount(r.cents, true)}</span>
 				</div>
 				<div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
 					<Badge variant="secondary">Automatisch</Badge>
@@ -146,11 +144,8 @@
 			<li class="py-3">
 				<div class="flex items-start justify-between gap-3">
 					<span class="min-w-0 font-medium break-words">{e.description}</span>
-					<span
-						class={[
-							'shrink-0 tabular-nums',
-							e.type === 'income' && 'text-green-700 dark:text-green-400'
-						]}>{@render amount(e.amountCents, e.type === 'income')}</span
+					<span class={['shrink-0 tabular-nums', e.type === 'income' && 'text-success']}
+						>{@render amount(e.amountCents, e.type === 'income')}</span
 					>
 				</div>
 				<div class="mt-1 flex items-start justify-between gap-2">
@@ -170,10 +165,7 @@
 								Beleg<span class="sr-only"> zu {e.description} ansehen</span>
 							</a>
 						{:else if e.type === 'expense' && !isRefund(e)}
-							<Badge
-								variant="outline"
-								class="border-amber-500/50 text-amber-700 dark:text-amber-400"
-							>
+							<Badge variant="outline" class="border-warning-border text-warning">
 								Beleg fehlt
 							</Badge>
 						{/if}
@@ -188,7 +180,7 @@
 							{#if e.clubPaidAt === null}
 								<Badge
 									variant="outline"
-									class="border-amber-500/50 text-amber-700 dark:text-amber-400"
+									class="border-warning-border text-warning"
 									title={e.purpose ?? undefined}>Überweisung offen</Badge
 								>
 							{:else if e.clubPaidVia === 'treasury'}
@@ -312,9 +304,7 @@
 						<span>{r.detail}</span>
 					</div>
 				</Table.Cell>
-				<Table.Cell
-					class="text-right align-top whitespace-nowrap tabular-nums text-green-700 dark:text-green-400"
-				>
+				<Table.Cell class="text-right align-top whitespace-nowrap tabular-nums text-success">
 					<span aria-hidden="true">+</span><span class="sr-only">plus </span>{formatEuro(r.cents)}
 				</Table.Cell>
 				<Table.Cell class="align-top"><span class="text-muted-foreground">–</span></Table.Cell>
@@ -356,7 +346,7 @@
 							{#if e.clubPaidAt === null}
 								<Badge
 									variant="outline"
-									class="border-amber-500/50 text-amber-700 dark:text-amber-400"
+									class="border-warning-border text-warning"
 									title={e.purpose ?? undefined}>Überweisung offen</Badge
 								>
 							{:else if e.clubPaidVia === 'treasury'}
@@ -372,7 +362,7 @@
 				<Table.Cell
 					class={[
 						'text-right align-top whitespace-nowrap tabular-nums',
-						e.type === 'income' && 'text-green-700 dark:text-green-400'
+						e.type === 'income' && 'text-success'
 					]}
 				>
 					<span aria-hidden="true">{e.type === 'income' ? '+' : '−'}</span><span class="sr-only"
@@ -391,12 +381,7 @@
 								Ansehen<span class="sr-only">: Beleg zu {e.description}</span>
 							</a>
 						{:else if e.type === 'expense' && !isRefund(e)}
-							<Badge
-								variant="outline"
-								class="border-amber-500/50 text-amber-700 dark:text-amber-400"
-							>
-								fehlt
-							</Badge>
+							<Badge variant="outline" class="border-warning-border text-warning">fehlt</Badge>
 						{:else}
 							<span class="text-muted-foreground">–</span>
 						{/if}

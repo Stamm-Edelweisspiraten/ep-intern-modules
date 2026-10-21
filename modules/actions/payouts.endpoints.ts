@@ -1,7 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	moduleDb,
+	type RequestContext,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
+import { requireAccess } from './access';
 import {
 	assertOpen,
 	closedInfo,
@@ -20,6 +29,7 @@ import {
 	toPayoutCsv,
 	toSummaryEntry
 } from './accounting';
+import { formatEuro } from '$lib/components/layout/money';
 import { safeFilename } from './form-support';
 import { ibanLast, maskFromLast } from './iban';
 import type { PdfAttachment } from '$lib/sdk/types';
@@ -37,18 +47,15 @@ import {
 	type SummaryEntry
 } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 const PAYOUT_PERMISSION = 'actions.payout.view';
 const crypt = () => core.crypto.forModule(MODULE_ID);
 const ATTACHABLE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 const MAX_ATTACHMENTS = 80;
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
-const euroText = (cents: number): string =>
-	new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+const euroText = formatEuro;
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
-const iso = (v: unknown): string => new Date(String(v)).toISOString();
 
 async function actionName(tx: Tx, id: string): Promise<string> {
 	const [a] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${id}`);
@@ -106,7 +113,7 @@ function reimburseEndpoint(method: 'POST' | 'DELETE'): ApiEndpoint {
 		handler: async ({ ctx, params }: { ctx: RequestContext; params: unknown }) => {
 			await core.permissions.require(ctx, PAYOUT_PERMISSION);
 			const { id, payeeId } = params as { id: string; payeeId: string };
-			const res = await mdb().transaction(async (tx) => {
+			const res = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await payeeExists(tx, id, payeeId);
@@ -163,7 +170,7 @@ export async function buildAccountingReport(
 	const withBank = opts.withBank;
 	const interimId = opts.interimId ?? null;
 	const treasury = interimId ? null : await loadTreasuryContributions(id);
-	const data = await mdb().transaction(async (tx) => {
+	const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		if (opts.checkAccess) await requireAccess(tx, ctx, id, 'read');
 		const [a] = await rowsOf(
 			tx,
@@ -373,7 +380,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 			const input = body as PayeeInput;
 			const payeeId = randomUUID();
 			const enc = crypt().encrypt(input.iban);
-			const payee = await mdb().transaction(async (tx) => {
+			const payee = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await tx.execute(
@@ -404,7 +411,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 			const input = body as Omit<PayeeInput, 'iban'> & { iban?: string };
 			const enc = input.iban ? crypt().encrypt(input.iban) : null;
 			const last = input.iban ? ibanLast(input.iban) : null;
-			const payee = await mdb().transaction(async (tx) => {
+			const payee = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await payeeExists(tx, id, payeeId);
@@ -434,7 +441,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			await core.permissions.require(ctx, PAYOUT_PERMISSION);
 			const { id, payeeId } = params as { id: string; payeeId: string };
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				await payeeExists(tx, id, payeeId);
@@ -464,7 +471,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			await core.permissions.require(ctx, PAYOUT_PERMISSION);
 			const { id, payeeId } = params as { id: string; payeeId: string };
-			const enc = await mdb().transaction(async (tx) => {
+			const enc = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				const [r] = await rowsOf(
 					tx,
@@ -496,7 +503,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			await core.permissions.require(ctx, PAYOUT_PERMISSION);
 			const id = (params as { id: string }).id;
-			const { name, list } = await mdb().transaction(async (tx) => {
+			const { name, list } = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'read');
 				const name = await actionName(tx, id);
 				const list = await rowsOf(
@@ -549,7 +556,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
 			const { acceptMissingReceipts } = body as { acceptMissingReceipts: boolean };
-			const res = await mdb().transaction(async (tx) => {
+			const res = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
 				const [c] = await rowsOf(
@@ -571,7 +578,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 						RETURNING closed_at`
 				);
 				const [a] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${id}`);
-				return { closedAt: iso(r!.closed_at), missing, name: String(a?.name ?? 'Aktion') };
+				return { closedAt: toIso(r!.closed_at), missing, name: String(a?.name ?? 'Aktion') };
 			});
 			await core.audit.logFromContext(ctx, 'actions.accounting.closed', {
 				target: id,
@@ -594,7 +601,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			await mdb().transaction(async (tx) => {
+			await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'edit');
 				if (!access.isOwner && !core.permissions.has(ctx, 'actions.action.edit-all')) {
 					throw errors.forbidden('Nur Eigentümer*in darf die Abrechnung wieder öffnen');

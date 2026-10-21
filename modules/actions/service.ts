@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { core, type Tx } from '$lib/sdk/server';
+import { core, moduleDb, type Row, rowsOf } from '$lib/sdk/server';
 import type { ActionRef, ActionsService, InterimRef, ReceivableSource } from './contract';
+import { ACCOUNTING_CATEGORY_LABELS } from './schemas';
 import { summarize, toSummaryEntry } from './accounting';
 import { loadState } from './accounting.endpoints';
 import {
@@ -9,16 +10,12 @@ import {
 	loadEntries,
 	loadInterimSnapshot,
 	loadRefundSnapshot,
-	loadTreasuryContributions
+	loadTreasuryContributions,
+	loadTreasuryContributionsMany
 } from './accounting-core';
 import { buildAccountingReport } from './payouts.endpoints';
 
-type Row = Record<string, unknown>;
 const MODULE_ID = 'actions';
-
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
 
 const idList = (ids: string[]) =>
 	sql.join(
@@ -52,11 +49,16 @@ const ref = (r: Row): ActionRef => ({
 });
 
 export const actionsService: ActionsService = {
+	/** Kasse: Kategorie-Bezeichnungen ohne Laufzeit-Import aus `schemas.ts` (#44) */
+	accountingCategoryLabels() {
+		return { ...ACCOUNTING_CATEGORY_LABELS };
+	},
+
 	async listReceivableSources(query = {}) {
 		if (query.actionIds && !query.actionIds.length) return [];
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
 			const filter = query.actionIds ? sql`AND a.id IN (${idList(query.actionIds)})` : sql``;
-			const actions = await rows(
+			const actions = await rowsOf(
 				tx,
 				sql`SELECT a.id, a.name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
 					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, a.fee_cents, a.team_fee_cents, a.is_past
@@ -64,7 +66,7 @@ export const actionsService: ActionsService = {
 				ORDER BY a.starts_on, a.id`
 			);
 			if (!actions.length) return [];
-			const people = await rows(
+			const people = await rowsOf(
 				tx,
 				sql`SELECT p.id, p.action_id, p.name, p.role, to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date,
 					p.member_id, p.contact_email, p.group_label
@@ -95,14 +97,14 @@ export const actionsService: ActionsService = {
 	async listActionRefs(query = {}) {
 		if (query.ids && !query.ids.length) return [];
 		const limit = Math.min(Math.max(1, Math.floor(query.limit ?? 200)), 200);
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
 			const search = query.search?.trim();
 			const where = query.ids
 				? sql`id IN (${idList(query.ids)})`
 				: search
 					? sql`name ILIKE ${`%${search.replace(/[\\%_]/g, '\\$&')}%`}`
 					: sql`TRUE`;
-			const found = await rows(
+			const found = await rowsOf(
 				tx,
 				sql`SELECT id, name, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
 					to_char(ends_on, 'YYYY-MM-DD') AS ends_on
@@ -113,8 +115,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async listReimbursements() {
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const found = await rows(
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const found = await rowsOf(
 				tx,
 				// Freigegeben: Auslage in einer Zwischenabrechnung oder Abrechnung abgeschlossen
 				sql`SELECT e.action_id, e.payee_id, p.name, p.iban_last4, p.bic,
@@ -142,8 +144,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async getPayeeIban(actionId, payeeId) {
-		const enc = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const [r] = await rows(
+		const enc = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const [r] = await rowsOf(
 				tx,
 				sql`SELECT iban_enc FROM accounting_payees WHERE id = ${payeeId} AND action_id = ${actionId}`
 			);
@@ -154,8 +156,8 @@ export const actionsService: ActionsService = {
 
 	async markReimbursed(actionId, payeeId, reimbursed, interimId) {
 		if (isLegacyInterimKey(interimId)) return 0;
-		const changed = await core.database.forModule(MODULE_ID).transaction(async (tx) =>
-			rows(
+		const changed = await moduleDb(MODULE_ID).transaction(async (tx) =>
+			rowsOf(
 				tx,
 				reimbursed
 					? sql`UPDATE accounting_entries e SET reimbursed_at = now(), updated_at = now()
@@ -188,8 +190,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async listRefundItems() {
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const found = await rows(
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const found = await rowsOf(
 				tx,
 				sql`SELECT r.id, r.action_id, r.participant_id, r.name, r.amount_cents, p.member_id,
 					to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date
@@ -210,8 +212,8 @@ export const actionsService: ActionsService = {
 
 	async listReimbursementReceipts(actionId, payeeId, interimId) {
 		if (isLegacyInterimKey(interimId)) return [];
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const found = await rows(
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const found = await rowsOf(
 				tx,
 				sql`SELECT e.id, e.description, to_char(e.entry_date, 'YYYY-MM-DD') AS entry_date,
 					e.amount_cents, e.receipt_name, e.receipt_content_type
@@ -232,8 +234,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async downloadReceipt(actionId, entryId) {
-		const ref = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const [r] = await rows(
+		const ref = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const [r] = await rowsOf(
 				tx,
 				sql`SELECT receipt_path, receipt_name FROM accounting_entries WHERE id = ${entryId} AND action_id = ${actionId}`
 			);
@@ -250,8 +252,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async listClosedAccountings() {
-		const closed = await core.database.forModule(MODULE_ID).transaction((tx) =>
-			rows(
+		const closed = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
 				tx,
 				sql`SELECT a.id, a.name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
 					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, c.closed_at
@@ -259,16 +261,24 @@ export const actionsService: ActionsService = {
 				WHERE c.closed_at IS NOT NULL ORDER BY c.closed_at DESC`
 			)
 		);
-		const out = [];
-		for (const r of closed) {
-			const id = String(r.id);
-			const treasury = await loadTreasuryContributions(id);
-			const summary = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		if (!closed.length) return [];
+		// #68: ein Kassen-Aufruf für alle Aktionen, eine Modul-Transaktion für alle Summen
+		const ids = closed.map((r) => String(r.id));
+		const treasury = await loadTreasuryContributionsMany(ids);
+		const summaries = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const result = new Map<string, ReturnType<typeof summarize>>();
+			for (const id of ids) {
 				const entries = await loadEntries(tx, id);
 				const se = entries.map(toSummaryEntry);
-				return summarize(se, null, await loadAutoIncome(tx, id, entries, treasury));
-			});
-			out.push({
+				const contributions = treasury ? (treasury.get(id) ?? null) : null;
+				result.set(id, summarize(se, null, await loadAutoIncome(tx, id, entries, contributions)));
+			}
+			return result;
+		});
+		return closed.map((r) => {
+			const id = String(r.id);
+			const summary = summaries.get(id)!;
+			return {
 				actionId: id,
 				name: String(r.name),
 				startsOn: String(r.starts_on),
@@ -277,15 +287,24 @@ export const actionsService: ActionsService = {
 				incomeCents: summary.incomeCents,
 				expenseCents: summary.expenseCents,
 				balanceCents: summary.balanceCents
-			});
-		}
-		return out;
+			};
+		});
+	},
+
+	async isAccountingClosed(actionId) {
+		const found = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
+				tx,
+				sql`SELECT 1 FROM action_accounting WHERE action_id = ${actionId} AND closed_at IS NOT NULL`
+			)
+		);
+		return found.length > 0;
 	},
 
 	async getClosedAccounting(actionId) {
 		const treasury = await loadTreasuryContributions(actionId);
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const [a] = await rows(
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const [a] = await rowsOf(
 				tx,
 				sql`SELECT a.id, a.name, a.location, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
 					to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on, c.closed_at
@@ -323,8 +342,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async listClubExpenses() {
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const found = await rows(
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const found = await rowsOf(
 				tx,
 				sql`SELECT id, action_id, description, recipient_name, recipient_iban_last4, recipient_bic,
 					(recipient_iban_enc IS NOT NULL) AS has_iban, purpose, amount_cents,
@@ -358,8 +377,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async getClubExpenseIban(actionId, entryId) {
-		const enc = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-			const [r] = await rows(
+		const enc = await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const [r] = await rowsOf(
 				tx,
 				sql`SELECT recipient_iban_enc FROM accounting_entries
 				WHERE id = ${entryId} AND action_id = ${actionId} AND paid_by = 'club'`
@@ -370,8 +389,8 @@ export const actionsService: ActionsService = {
 	},
 
 	async markClubExpensePaid(actionId, entryId, paid) {
-		const changed = await core.database.forModule(MODULE_ID).transaction(async (tx) =>
-			rows(
+		const changed = await moduleDb(MODULE_ID).transaction(async (tx) =>
+			rowsOf(
 				tx,
 				paid
 					? sql`UPDATE accounting_entries SET club_paid_at = now(), club_paid_via = 'treasury',
@@ -413,9 +432,9 @@ export const actionsService: ActionsService = {
 
 	async listInterims(query = {}) {
 		if (query.actionIds && !query.actionIds.length) return [];
-		return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+		return moduleDb(MODULE_ID).transaction(async (tx) => {
 			const filter = query.actionIds ? sql`WHERE action_id IN (${idList(query.actionIds)})` : sql``;
-			const found = await rows(
+			const found = await rowsOf(
 				tx,
 				sql`SELECT id, action_id FROM accounting_interims ${filter} ORDER BY action_id, number`
 			);

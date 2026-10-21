@@ -1,5 +1,16 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	inList,
+	isUniqueViolation,
+	moduleDb,
+	resultRows,
+	type Row,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
 import {
 	groupInput,
 	idParams,
@@ -11,41 +22,13 @@ import {
 } from './schemas';
 
 const MODULE = 'members';
-const mdb = () => core.database.forModule(MODULE);
-
-type Row = Record<string, unknown>;
-
-/** Liest die Zeilen eines tx.execute-Ergebnisses (node-postgres und PGlite liefern `rows`). */
-function rowsOf(result: unknown): Row[] {
-	const r = result as { rows?: Row[] } | Row[];
-	return Array.isArray(r) ? r : (r.rows ?? []);
-}
-
-const iso = (v: unknown): string => new Date(v as string | Date).toISOString();
-
-/** Liefert bei einer Unique-Verletzung (23505) Constraint-Name/Meldung, sonst `null`. */
-function uniqueViolation(e: unknown): string | null {
-	let cur = e as
-		{ code?: string; constraint?: string; message?: string; cause?: unknown } | undefined;
-	for (let i = 0; cur && i < 4; i++) {
-		if (cur.code === '23505') return `${cur.constraint ?? ''} ${cur.message ?? ''}`;
-		cur = cur.cause as typeof cur;
-	}
-	return null;
-}
 
 const SLUG_TAKEN = 'Diese Website-Adresse wird bereits von einer anderen Gruppe verwendet';
 const NAME_TAKEN = 'Eine Gruppe mit diesem Namen existiert bereits';
 
-const inList = (values: string[]) =>
-	sql.join(
-		values.map((v) => sql`${v}`),
-		sql`, `
-	);
-
 /** Lädt Gruppen (optional eine einzelne) inkl. Leiter und Mitgliederzahl, sortiert nach Name. */
 async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
-	const groups = rowsOf(
+	const groups = resultRows(
 		await tx.execute(
 			id
 				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
@@ -61,14 +44,14 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 	if (!groups.length) return [];
 	const ids = inList(groups.map((g) => String(g.id)));
 
-	const counts = rowsOf(
+	const counts = resultRows(
 		await tx.execute(
 			sql`SELECT group_id, count(*)::int AS n FROM member_groups WHERE group_id IN (${ids}) GROUP BY group_id`
 		)
 	);
 	const countBy = new Map(counts.map((r) => [String(r.group_id), Number(r.n)]));
 
-	const leaderRows = rowsOf(
+	const leaderRows = resultRows(
 		await tx.execute(
 			sql`SELECT gl.group_id, m.id, m.first_name, m.last_name, m.scout_name
 				FROM group_leaders gl JOIN members m ON m.id = gl.member_id
@@ -99,12 +82,12 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		meetingEndTime: g.meeting_end_time == null ? null : String(g.meeting_end_time),
 		color: g.color == null ? null : String(g.color),
 		hasImage: Boolean(g.has_image),
-		imageVersion: g.has_image ? iso(g.updated_at) : null,
+		imageVersion: g.has_image ? toIso(g.updated_at) : null,
 		leaders: leadersBy.get(String(g.id)) ?? [],
 		memberCount: countBy.get(String(g.id)) ?? 0,
 		website: websiteOf(g),
-		createdAt: iso(g.created_at),
-		updatedAt: iso(g.updated_at)
+		createdAt: toIso(g.created_at),
+		updatedAt: toIso(g.updated_at)
 	}));
 }
 
@@ -128,7 +111,7 @@ async function requireGroup(tx: Tx, id: string): Promise<Group> {
 
 async function assertLeadersExist(tx: Tx, leaderIds: string[]): Promise<string[]> {
 	const unique = [...new Set(leaderIds)];
-	const found = rowsOf(
+	const found = resultRows(
 		await tx.execute(sql`SELECT id FROM members WHERE id IN (${inList(unique)})`)
 	);
 	if (found.length !== unique.length) {
@@ -138,7 +121,7 @@ async function assertLeadersExist(tx: Tx, leaderIds: string[]): Promise<string[]
 }
 
 async function assertNameFree(tx: Tx, name: string, exceptId?: string): Promise<void> {
-	const rows = rowsOf(
+	const rows = resultRows(
 		await tx.execute(
 			sql`SELECT id FROM groups WHERE lower(name) = lower(${name}) AND id <> ${exceptId ?? ''}`
 		)
@@ -148,7 +131,7 @@ async function assertNameFree(tx: Tx, name: string, exceptId?: string): Promise<
 
 async function assertSlugFree(tx: Tx, slug: string | null, exceptId: string): Promise<void> {
 	if (!slug) return;
-	const rows = rowsOf(
+	const rows = resultRows(
 		await tx.execute(sql`SELECT id FROM groups WHERE slug = ${slug} AND id <> ${exceptId}`)
 	);
 	if (rows.length) throw errors.conflict(SLUG_TAKEN);
@@ -179,7 +162,7 @@ async function replaceLeaders(tx: Tx, groupId: string, leaderIds: string[]): Pro
 
 async function save(id: string | null, input: GroupInput): Promise<Group> {
 	try {
-		return await mdb().transaction(async (tx) => {
+		return await moduleDb(MODULE).transaction(async (tx) => {
 			if (id) await requireGroup(tx, id);
 			await assertNameFree(tx, input.name, id ?? undefined);
 			const leaderIds = await assertLeadersExist(tx, input.leaderIds);
@@ -210,9 +193,8 @@ async function save(id: string | null, input: GroupInput): Promise<Group> {
 			return requireGroup(tx, groupId);
 		});
 	} catch (e) {
-		const violation = uniqueViolation(e);
-		if (violation !== null) {
-			throw errors.conflict(violation.includes('slug') ? SLUG_TAKEN : NAME_TAKEN);
+		if (isUniqueViolation(e)) {
+			throw errors.conflict(isUniqueViolation(e, 'slug') ? SLUG_TAKEN : NAME_TAKEN);
 		}
 		throw e;
 	}
@@ -232,7 +214,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 		summary: 'Gruppen auflisten',
 		tags: ['Modul: members'],
 		permission: 'members.group.view',
-		handler: async () => mdb().transaction((tx) => loadGroups(tx))
+		handler: async () => moduleDb(MODULE).transaction((tx) => loadGroups(tx))
 	} as ApiEndpoint,
 	{
 		method: 'GET',
@@ -242,7 +224,7 @@ export const groupEndpoints: ApiEndpoint[] = [
 		permission: 'members.group.view',
 		params: idParams,
 		handler: async ({ params }) =>
-			mdb().transaction((tx) => requireGroup(tx, (params as { id: string }).id))
+			moduleDb(MODULE).transaction((tx) => requireGroup(tx, (params as { id: string }).id))
 	} as ApiEndpoint,
 	{
 		method: 'POST',
@@ -287,9 +269,11 @@ export const groupEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			const { name, imagePath } = await mdb().transaction(async (tx) => {
+			const { name, imagePath } = await moduleDb(MODULE).transaction(async (tx) => {
 				const group = await requireGroup(tx, id);
-				const ref = rowsOf(await tx.execute(sql`SELECT image_path FROM groups WHERE id = ${id}`));
+				const ref = resultRows(
+					await tx.execute(sql`SELECT image_path FROM groups WHERE id = ${id}`)
+				);
 				const imagePath = ref[0]?.image_path == null ? null : String(ref[0].image_path);
 				if (group.memberCount > 0) {
 					throw errors.conflict('Gruppe hat noch Mitglieder und kann nicht gelöscht werden');

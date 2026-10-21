@@ -67,6 +67,12 @@ const RUN_COLUMNS = sql`r.id, r.year, to_char(r.created_on, 'YYYY-MM-DD') AS cre
 const json = <T>(v: unknown): T | null =>
 	v == null ? null : ((typeof v === 'string' ? JSON.parse(v) : v) as T);
 
+/** Hängender Versand ohne Lebenszeichen (z. B. Neustart mittendrin) → als abgebrochen melden */
+function withSendState(r: AnnualSendResult | null): AnnualSendResult | null {
+	if (!r?.sending || isSending(r)) return r;
+	return { ...r, sending: false, interrupted: true };
+}
+
 function toRun(r: Row): AnnualRun {
 	const rates = json<Partial<FeeRates>>(r.rates) ?? {};
 	return {
@@ -81,7 +87,7 @@ function toRun(r: Row): AnnualRun {
 		mailSubject: String(r.mail_subject),
 		mailBody: String(r.mail_body),
 		pdfText: String(r.pdf_text),
-		lastResult: json<AnnualSendResult>(r.last_result),
+		lastResult: withSendState(json<AnnualSendResult>(r.last_result)),
 		invoiceCount: num(r.invoice_count),
 		createdAt: iso(r.created_at),
 		updatedAt: iso(r.updated_at)
@@ -480,13 +486,15 @@ async function unsentInvoiceIds(runId: string, only?: string[]): Promise<string[
 /**
  * Versendet Rechnungen in Paketen. Ein Fehler (z. B. PDF) bricht nicht den ganzen Versand ab:
  * nicht versendete Rechnungen des Pakets zählen als Fehler und können per `resend` nachgeholt werden.
+ * `onProgress` läuft nach jedem Paket (Fortschritt im Lauf speichern).
  */
 async function sendInChunks(
 	ctx: RequestContext,
 	runId: string,
 	invoiceIds: string[],
 	subjectTpl: string,
-	bodyTpl: string
+	bodyTpl: string,
+	onProgress?: (total: typeof EMPTY_SEND, processed: number) => Promise<void>
 ) {
 	const total = { ...EMPTY_SEND };
 	for (let i = 0; i < invoiceIds.length; i += SEND_CHUNK) {
@@ -501,6 +509,11 @@ async function sendInChunks(
 			console.error('[treasury] Versand Jahresbeitrag (Paket) fehlgeschlagen:', e);
 			total.mailErrors += (await unsentInvoiceIds(runId, chunk)).length;
 		}
+		if (onProgress) {
+			await onProgress(total, Math.min(i + SEND_CHUNK, invoiceIds.length)).catch((e) =>
+				console.error('[treasury] Fortschritt des Jahresbeitrags nicht gespeichert:', e)
+			);
+		}
 	}
 	return total;
 }
@@ -514,28 +527,214 @@ async function storeResult(id: string, result: AnnualSendResult): Promise<void> 
 	);
 }
 
+// --- Hintergrundversand (#24) -----------------------------------------------------------
+
+/**
+ * Laufende Versände dieses Prozesses (Lauf-ID → Abschluss). Ein zweiter Versand desselben Laufs
+ * (Doppelklick, Job parallel zu „Jetzt senden“) bekommt 409. Zusätzlich steht der Stand mit
+ * Lebenszeichen in `last_result` (`isSending`); ein Versand ohne Fortschritt seit `STALE_MS`
+ * (z. B. nach Neustart mitten im Versand) gilt als abgebrochen und lässt sich per `resend` nachholen.
+ */
+const activeSends = new Map<string, Promise<unknown>>();
+const STALE_MS = 10 * 60_000;
+
+/** Läuft für den Lauf noch ein Versand (frisches Lebenszeichen)? */
+export function isSending(r: AnnualSendResult | null | undefined, now = Date.now()): boolean {
+	if (!r?.sending) return false;
+	const beat = Date.parse(r.heartbeatAt ?? r.startedAt ?? '');
+	return Number.isFinite(beat) && now - beat < STALE_MS;
+}
+
+/** Für Tests: wartet, bis alle Hintergrundversände dieses Prozesses fertig sind. */
+export async function waitForAnnualSends(): Promise<void> {
+	while (activeSends.size) await Promise.allSettled([...activeSends.values()]);
+}
+
+const CONFLICT_SENDING = 'Für diesen Beitragslauf läuft bereits ein Versand';
+
+/**
+ * Belegt den Lauf synchron (vor dem ersten `await`), damit zwei gleichzeitige Aufrufe sich sicher
+ * ausschließen. Rückgabe: Freigabe, sobald `done` erledigt ist.
+ */
+function claimSend(id: string): (done: Promise<unknown>) => void {
+	if (activeSends.has(id)) throw errors.conflict(CONFLICT_SENDING);
+	let release!: () => void;
+	const gate = new Promise<void>((r) => (release = r));
+	activeSends.set(id, gate);
+	return (done) => {
+		const tracked = done
+			.catch(() => undefined)
+			.finally(() => {
+				if (activeSends.get(id) === tracked) activeSends.delete(id);
+				release();
+			});
+		activeSends.set(id, tracked);
+	};
+}
+
+type SendKind = 'run' | 'catch-up' | 'resend';
+interface Delivery {
+	ids: string[];
+	invoicesCreated: number;
+	mailSubject: string;
+	mailBody: string;
+	audit: { action: string; metadata: Record<string, unknown> };
+}
+
+function startedResult(kind: SendKind, d: Delivery): AnnualSendResult {
+	const now = new Date().toISOString();
+	return {
+		invoicesCreated: d.invoicesCreated,
+		mailsSent: 0,
+		mailErrors: 0,
+		withoutAddress: 0,
+		sending: true,
+		kind,
+		processed: 0,
+		total: d.ids.length,
+		startedAt: now,
+		heartbeatAt: now
+	};
+}
+
+/** Versand + Fortschritt + Endergebnis + Audit; wirft nie (Fehler zählen als `mailErrors`). */
+async function deliver(
+	ctx: RequestContext,
+	id: string,
+	d: Delivery,
+	start: AnnualSendResult
+): Promise<AnnualSendResult> {
+	let sent = { ...EMPTY_SEND };
+	try {
+		if (d.ids.length) {
+			sent = await sendInChunks(ctx, id, d.ids, d.mailSubject, d.mailBody, (t, processed) =>
+				storeResult(id, {
+					...start,
+					mailsSent: t.mailsSent,
+					mailErrors: t.mailErrors,
+					withoutAddress: t.withoutAddress,
+					processed,
+					heartbeatAt: new Date().toISOString()
+				})
+			);
+		}
+	} catch (e) {
+		console.error('[treasury] Versand des Jahresbeitrags abgebrochen:', e);
+		const unsent = await unsentInvoiceIds(id, d.ids).catch(() => d.ids);
+		sent = { ...EMPTY_SEND, mailErrors: unsent.length };
+	}
+	const now = new Date().toISOString();
+	const result: AnnualSendResult = {
+		invoicesCreated: d.invoicesCreated,
+		mailsSent: sent.mailsSent,
+		mailErrors: sent.mailErrors,
+		withoutAddress: sent.withoutAddress,
+		sending: false,
+		kind: start.kind,
+		processed: d.ids.length,
+		total: d.ids.length,
+		startedAt: start.startedAt,
+		heartbeatAt: now,
+		finishedAt: now
+	};
+	try {
+		await storeResult(id, result);
+		await core.audit.logFromContext(ctx, d.audit.action, {
+			target: id,
+			metadata: {
+				...d.audit.metadata,
+				invoicesCreated: result.invoicesCreated,
+				mailsSent: result.mailsSent,
+				mailErrors: result.mailErrors,
+				withoutAddress: result.withoutAddress
+			}
+		});
+	} catch (e) {
+		console.error('[treasury] Ergebnis des Jahresbeitrags nicht gespeichert:', e);
+	}
+	return result;
+}
+
+/** Nur die Zähler (Antwort des synchronen Versands, z. B. Job) */
+const counters = (r: AnnualSendResult): AnnualSendResult => ({
+	invoicesCreated: r.invoicesCreated,
+	mailsSent: r.mailsSent,
+	mailErrors: r.mailErrors,
+	withoutAddress: r.withoutAddress
+});
+
+/**
+ * Gemeinsamer Ablauf: Lauf belegen → vorbereiten (Rechnungen anlegen bzw. offene ermitteln) →
+ * Start speichern → versenden. `background`: Antwort direkt nach dem Start (Endpunkt → 202),
+ * sonst nach dem Versand (Job).
+ */
+async function runSend(
+	ctx: RequestContext,
+	id: string,
+	kind: SendKind,
+	prepare: () => Promise<Delivery | null>,
+	background: boolean
+): Promise<AnnualSendResult | null> {
+	const finish = claimSend(id);
+	let work: Promise<unknown> = Promise.resolve();
+	try {
+		const d = await prepare();
+		if (!d) return null;
+		const start = startedResult(kind, d);
+		await storeResult(id, start);
+		const delivery = deliver(ctx, id, d, start);
+		work = delivery;
+		if (background) return start;
+		return counters(await delivery);
+	} finally {
+		finish(work);
+	}
+}
+
+/** Lauf unter Sperre laden; läuft (laut Lebenszeichen) noch ein Versand → 409 */
+async function loadRunForSend(tx: Tx, id: string): Promise<AnnualRun> {
+	const run = await loadRun(tx, id, true);
+	if (isSending(run.lastResult)) throw errors.conflict(CONFLICT_SENDING);
+	return run;
+}
+
 /**
  * Erzeugt die Rechnungen eines Laufs (`run`) bzw. der Nachberechnung (`catch-up`) und versendet sie.
  * `run`: nur aus Entwurf/geplant (sonst 409), setzt danach `sent`. `catch-up`: nur nach dem Versand.
  * `scheduledOnly` (Job): nur, wenn der Lauf unter Sperre noch geplant und fällig ist – sonst `null`.
+ * `background` (Endpunkte): Rechnungen werden sofort angelegt, der Versand läuft danach im
+ * Hintergrund; Rückgabe = Startstand (`sending: true`, Fortschritt in `lastResult`).
  */
 export async function sendRun(
 	ctx: RequestContext,
 	id: string,
 	mode: AnnualMode,
-	opts: { scheduledOnly?: boolean } = {}
+	opts: { scheduledOnly?: boolean; background?: boolean } = {}
 ): Promise<AnnualSendResult | null> {
+	if (opts.scheduledOnly && activeSends.has(id)) return null;
+	return runSend(
+		ctx,
+		id,
+		mode,
+		() => createRunInvoices(ctx, id, mode, opts.scheduledOnly ?? false),
+		opts.background ?? false
+	);
+}
+
+async function createRunInvoices(
+	ctx: RequestContext,
+	id: string,
+	mode: AnnualMode,
+	scheduledOnly: boolean
+): Promise<Delivery | null> {
 	const contacts = await loadContacts();
 	const todayIso = today();
 	const s = await core.settings.getMany([SETTING_KEYS.minDays]);
 	const minDaysRaw = Number(s[SETTING_KEYS.minDays] ?? 14);
 	const minDays = Number.isFinite(minDaysRaw) ? minDaysRaw : 14;
 	const created = await mdb().transaction(async (tx) => {
-		const run = await loadRun(tx, id, true);
-		if (
-			opts.scheduledOnly &&
-			(run.status !== 'scheduled' || !run.sendOn || run.sendOn > todayIso)
-		) {
+		const run = await loadRunForSend(tx, id);
+		if (scheduledOnly && (run.status !== 'scheduled' || !run.sendOn || run.sendOn > todayIso)) {
 			return null;
 		}
 		if (mode === 'run' && run.status === 'sent') {
@@ -588,55 +787,55 @@ export async function sendRun(
 	});
 	if (!created) return null;
 	// Ab hier sind die Rechnungen gespeichert: Versandfehler nur zählen (Wiederholung per `resend`)
-	const sent = created.ids.length
-		? await sendInChunks(ctx, id, created.ids, created.run.mailSubject, created.run.mailBody)
-		: EMPTY_SEND;
-	const result: AnnualSendResult = {
+	return {
+		ids: created.ids,
 		invoicesCreated: created.ids.length,
-		mailsSent: sent.mailsSent,
-		mailErrors: sent.mailErrors,
-		withoutAddress: sent.withoutAddress
-	};
-	await storeResult(id, result);
-	await core.audit.logFromContext(
-		ctx,
-		mode === 'run' ? 'treasury.annual-fee.sent' : 'treasury.annual-fee.catch-up',
-		{
-			target: id,
+		mailSubject: created.run.mailSubject,
+		mailBody: created.run.mailBody,
+		audit: {
+			action: mode === 'run' ? 'treasury.annual-fee.sent' : 'treasury.annual-fee.catch-up',
 			metadata: {
 				year: created.run.year,
 				members: created.members,
-				totalCents: created.totalCents,
-				...result
+				totalCents: created.totalCents
 			}
 		}
-	);
-	return result;
+	};
 }
 
 /**
  * Wiederholung nach Fehlern: versendet alle nicht stornierten Rechnungen des Laufs, von denen noch
  * keine Fassung zugestellt wurde (z. B. SMTP-Ausfall). Legt keine neuen Rechnungen an.
  */
-export async function resendRun(ctx: RequestContext, id: string): Promise<AnnualSendResult> {
-	const run = await getRun(id);
-	if (run.status !== 'sent') {
-		throw errors.conflict('Der Beitragslauf wurde noch nicht versendet');
-	}
-	const pending = await unsentInvoiceIds(id);
-	const sent = await sendInChunks(ctx, id, pending, run.mailSubject, run.mailBody);
-	const result: AnnualSendResult = {
-		invoicesCreated: 0,
-		mailsSent: sent.mailsSent,
-		mailErrors: sent.mailErrors,
-		withoutAddress: sent.withoutAddress
-	};
-	await storeResult(id, result);
-	await core.audit.logFromContext(ctx, 'treasury.annual-fee.resent', {
-		target: id,
-		metadata: { year: run.year, invoices: pending.length, ...result }
-	});
-	return result;
+export async function resendRun(
+	ctx: RequestContext,
+	id: string,
+	opts: { background?: boolean } = {}
+): Promise<AnnualSendResult> {
+	const result = await runSend(
+		ctx,
+		id,
+		'resend',
+		async () => {
+			const run = await mdb().transaction((tx) => loadRunForSend(tx, id));
+			if (run.status !== 'sent') {
+				throw errors.conflict('Der Beitragslauf wurde noch nicht versendet');
+			}
+			const pending = await unsentInvoiceIds(id);
+			return {
+				ids: pending,
+				invoicesCreated: 0,
+				mailSubject: run.mailSubject,
+				mailBody: run.mailBody,
+				audit: {
+					action: 'treasury.annual-fee.resent',
+					metadata: { year: run.year, invoices: pending.length }
+				}
+			};
+		},
+		opts.background ?? false
+	);
+	return result!;
 }
 
 /** Job: geplante Läufe versenden, sobald `send_on` erreicht ist */

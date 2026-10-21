@@ -4,28 +4,13 @@
  * Zuordnungsvorschläge und Mail-Texte. Alle Beträge Integer-Cent, Daten `YYYY-MM-DD`.
  */
 import { formatEuro } from '$lib/components/layout/money';
+import { addDays, daysBetween, formatDateDe } from '$lib/sdk/dates';
 import type { InvoiceStatus } from './schemas';
 
-const DAY_MS = 86_400_000;
-
-const toUtc = (d: string) => Date.parse(`${d}T00:00:00Z`);
-const fromUtc = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
-export function addDays(date: string, days: number): string {
-	return fromUtc(toUtc(date) + days * DAY_MS);
-}
-
-/** Ganze Tage von `a` nach `b` (positiv, wenn `b` später liegt) */
-export function daysBetween(a: string, b: string): number {
-	return Math.round((toUtc(b) - toUtc(a)) / DAY_MS);
-}
+// Datumshelfer zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { addDays, daysBetween, formatDateDe };
 
 export const maxDate = (a: string, b: string) => (a >= b ? a : b);
-
-export function formatDateDe(d: string): string {
-	const [y, m, day] = d.split('-');
-	return `${day}.${m}.${y}`;
-}
 
 const safe = (n: number) => (Number.isFinite(n) ? Math.trunc(n) : 0);
 
@@ -37,7 +22,18 @@ export interface LineAmounts {
 	paidCents: number;
 }
 
-/** Offener Betrag eines Postens (nie negativ) */
+/** Gruppiert per Schlüssel in eine Map (Reihenfolge innerhalb der Gruppen bleibt erhalten) */
+export function groupBy<T>(items: Iterable<T>, key: (item: T) => string): Map<string, T[]> {
+	const out = new Map<string, T[]>();
+	for (const item of items) {
+		const k = key(item);
+		const list = out.get(k);
+		if (list) list.push(item);
+		else out.set(k, [item]);
+	}
+	return out;
+}
+
 export function lineOpen(l: LineAmounts): number {
 	return Math.max(0, safe(l.amountCents) - safe(l.waivedCents) - safe(l.paidCents));
 }
@@ -723,32 +719,7 @@ export function groupByAddress<T extends { addresses: string[] }>(items: T[]): M
 	return out;
 }
 
-// --- CSV-Export ----------------------------------------------------------------
-
-/** Schutz gegen Formel-Injection und Trennzeichen */
-export function csvCell(v: string | number | null | undefined): string {
-	let s = v == null ? '' : String(v);
-	const numeric = typeof v === 'number' || /^-?\d+(,\d+)?$/.test(s);
-	if (/^[=+\-@\t\r]/.test(s) && !numeric) s = `'${s}`;
-	return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-export function csvDocument(header: string[], rows: (string | number | null)[][]): string {
-	return '\ufeff' + [header, ...rows].map((r) => r.map(csvCell).join(';')).join('\r\n') + '\r\n';
-}
-
-export const centsToCsv = (c: number) => (c / 100).toFixed(2).replace('.', ',');
-
-/** Dateiname für Storage-Pfade und Content-Disposition */
-export function sanitizeName(name: string): string {
-	const cleaned = name
-		.normalize('NFKD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.replace(/[^A-Za-z0-9._-]+/g, '_')
-		.replace(/^[._]+/, '')
-		.slice(-100);
-	return cleaned || 'datei';
-}
+// CSV-Export: `csvDocument`/`csvCents` aus `$lib/sdk/csv`; Dateinamen: `safeFileName` aus `$lib/sdk/server` (#33/#34)
 
 // --- Ausstehende Überweisungen (Abgleich) ---------------------------------------
 

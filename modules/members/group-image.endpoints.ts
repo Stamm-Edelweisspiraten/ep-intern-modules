@@ -1,16 +1,20 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	type ApiEndpoint,
+	core,
+	errors,
+	IMAGE_RATE_LIMIT,
+	moduleDb,
+	readUpload,
+	resultRows,
+	safeFileName,
+	secureFileResponse,
+	type Tx
+} from '$lib/sdk/server';
+import { processGroupImage, processedGroupImagePath } from './group-image.service';
 import { GROUP_IMAGE_CONTENT_TYPES, MAX_GROUP_IMAGE_BYTES, idParams } from './schemas';
 
 const MODULE = 'members';
-const mdb = () => core.database.forModule(MODULE);
-
-type Row = Record<string, unknown>;
-
-function rowsOf(result: unknown): Row[] {
-	const r = result as { rows?: Row[] } | Row[];
-	return Array.isArray(r) ? r : (r.rows ?? []);
-}
 
 interface ImageRef {
 	path: string | null;
@@ -19,7 +23,7 @@ interface ImageRef {
 
 /** Liest Pfad/Name des Bildes; wirft not_found, wenn die Gruppe fehlt. */
 async function readRef(tx: Tx, groupId: string): Promise<ImageRef> {
-	const r = rowsOf(
+	const r = resultRows(
 		await tx.execute(sql`SELECT image_path, image_name FROM groups WHERE id = ${groupId}`)
 	)[0];
 	if (!r) throw errors.notFound('Gruppe nicht gefunden');
@@ -36,55 +40,44 @@ async function writeRef(tx: Tx, groupId: string, ref: ImageRef): Promise<void> {
 	);
 }
 
-function sanitizeName(name: string): string {
-	const cleaned = name
-		.normalize('NFKD')
-		.replace(/[̀-ͯ]/g, '')
-		.replace(/[^A-Za-z0-9._-]+/g, '_')
-		.replace(/^[._]+/, '')
-		.slice(-100);
-	return cleaned || 'bild';
-}
-
 export const groupImageEndpoints: ApiEndpoint[] = [
 	{
 		method: 'POST',
 		path: '/groups/:id/image',
 		summary: 'Gruppenbild hochladen (multipart, Feld "file")',
 		description:
-			'Ersetzt ein vorhandenes Bild. Erlaubt: JPEG, PNG, WebP bis 2 MB. Rückgabe: { name }.',
+			'Ersetzt ein vorhandenes Bild. Erlaubt: JPEG, PNG, WebP bis 2 MB; der Inhalt muss zum Typ passen ' +
+			'(sonst 400). Gespeichert wird nur eine bereinigte WebP-Variante (ohne EXIF/GPS, lange Kante ' +
+			'≤ 1600 px). Rückgabe: { name }.',
 		tags: ['Modul: members'],
 		permission: 'members.group.edit',
 		params: idParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
+			// Typ/leer/fehlend → 422, Größe → 413 (#33); den Bildinhalt prüft core.images.process
+			const file = await readUpload(request, {
+				maxBytes: MAX_GROUP_IMAGE_BYTES,
+				allowedTypes: GROUP_IMAGE_CONTENT_TYPES,
+				typesLabel: 'JPEG, PNG oder WebP',
+				sniff: false,
+				fallbackName: 'bild'
 			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const contentType = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (!(GROUP_IMAGE_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (JPEG, PNG oder WebP)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_GROUP_IMAGE_BYTES) {
-				throw errors.tooLarge('Bild überschreitet das Limit von 2 MB');
-			}
+			const { contentType } = file;
 
-			const old = await mdb().transaction((tx) => readRef(tx, id));
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			const displayName = file.name?.trim() || 'bild';
-			const path = `groups/${id}/image-${crypto.randomUUID()}-${sanitizeName(displayName)}`;
+			const old = await moduleDb(MODULE).transaction((tx) => readRef(tx, id));
+			// Inhalt prüfen und bereinigen (Metadaten inkl. GPS weg, WebP) – nie das Original speichern (#19)
+			const clean = await processGroupImage(file.bytes, contentType);
+			const displayName = file.name;
+			const path = processedGroupImagePath(id);
 			await core.storage.upload(ctx, {
 				module: MODULE,
 				path,
-				file: bytes,
-				contentType,
-				name: displayName
+				file: clean.bytes,
+				contentType: clean.contentType,
+				name: `${safeFileName(displayName, { fallback: 'bild' }).replace(/\.[A-Za-z0-9]{1,5}$/, '')}.webp`
 			});
 			try {
-				await mdb().transaction((tx) => writeRef(tx, id, { path, name: displayName }));
+				await moduleDb(MODULE).transaction((tx) => writeRef(tx, id, { path, name: displayName }));
 			} catch (e) {
 				await core.storage.remove(ctx, { module: MODULE, path }).catch(() => undefined);
 				throw e;
@@ -93,8 +86,7 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 				await core.storage.remove(ctx, { module: MODULE, path: old.path }).catch(() => undefined);
 			}
 			await core.audit.logFromContext(ctx, 'members.group.image.uploaded', {
-				target: id,
-				metadata: { name: displayName }
+				target: id // ohne Original-Dateinamen (#26)
 			});
 			return { name: displayName };
 		}
@@ -106,20 +98,18 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 		tags: ['Modul: members'],
 		permission: 'members.group.view',
 		params: idParams,
+		rateLimit: IMAGE_RATE_LIMIT,
 		handler: async ({ ctx, params }) => {
 			const { id } = params as { id: string };
-			const ref = await mdb().transaction((tx) => readRef(tx, id));
+			const ref = await moduleDb(MODULE).transaction((tx) => readRef(tx, id));
 			if (!ref.path) throw errors.notFound('Kein Bild vorhanden');
 			const { buffer, file } = await core.storage.download(ctx, { module: MODULE, path: ref.path });
-			return new Response(buffer as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-length': String(buffer.byteLength),
-					'content-disposition': 'inline',
-					'cache-control': 'private, max-age=3600',
-					'x-content-type-options': 'nosniff'
-				}
+			// Gemeinsame gehärtete Antwort (CSP-Sandbox, nosniff; #67, 01b-11)
+			return secureFileResponse(buffer, {
+				contentType: file.contentType,
+				size: buffer.byteLength,
+				name: file.name || 'gruppenbild.webp',
+				cache: 'private, max-age=3600'
 			});
 		}
 	} as ApiEndpoint,
@@ -132,13 +122,12 @@ export const groupImageEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const { id } = params as { id: string };
-			const ref = await mdb().transaction((tx) => readRef(tx, id));
+			const ref = await moduleDb(MODULE).transaction((tx) => readRef(tx, id));
 			if (!ref.path) throw errors.notFound('Kein Bild vorhanden');
 			await core.storage.remove(ctx, { module: MODULE, path: ref.path });
-			await mdb().transaction((tx) => writeRef(tx, id, { path: null, name: null }));
+			await moduleDb(MODULE).transaction((tx) => writeRef(tx, id, { path: null, name: null }));
 			await core.audit.logFromContext(ctx, 'members.group.image.deleted', {
-				target: id,
-				metadata: { name: ref.name }
+				target: id
 			});
 			return { deleted: true };
 		}

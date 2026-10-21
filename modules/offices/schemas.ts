@@ -3,6 +3,7 @@
  * Wird von Server UND UI genutzt – keine Server-Imports.
  */
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 
 export const MODULE_ID = 'offices';
 export const BASE_PATH = '/modules/offices';
@@ -23,12 +24,8 @@ export const MAX_HOLDERS = 50;
 export const MAX_OFFICES = 200;
 
 /** Echtes Kalenderdatum `JJJJ-MM-TT` */
-export function isRealDate(iso: string): boolean {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-	if (!m) return false;
-	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-	return d.toISOString().slice(0, 10) === iso;
-}
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
 
 const optionalText = (max: number) =>
 	z
@@ -124,6 +121,10 @@ export type HoldersInput = z.input<typeof holdersInput>;
 
 export const bioInput = z.object({ bio: optionalText(MAX_BIO) });
 export type BioInput = z.input<typeof bioInput>;
+
+/** PUT `/me/website` – Zustimmung zur Anzeige auf der Stammeswebsite (Opt-in) */
+export const websiteOptInInput = z.object({ showOnWebsite: z.boolean() }).strict();
+export type WebsiteOptInInput = z.input<typeof websiteOptInInput>;
 
 export const userSearchQuery = z.object({ search: z.string().trim().max(100).default('') });
 
@@ -233,6 +234,8 @@ export interface MyOffices {
 	bio: string | null;
 	/** Nur wer mindestens ein Amt hat, darf eine Beschreibung speichern */
 	canEditBio: boolean;
+	/** Zustimmung: Name, Profilbild und Beschreibung erscheinen auf der Stammeswebsite (Standard aus) */
+	showOnWebsite: boolean;
 }
 
 export interface UserRef {

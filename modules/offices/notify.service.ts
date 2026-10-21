@@ -15,6 +15,9 @@ export const MAX_SUBJECT = 150;
 export const MAX_TEXT = 4000;
 /** Höchstzahl Ereignisse je Aufruf (Schutz vor Riesenmails) */
 const MAX_ITEMS = 200;
+/** Warteschlange: Höchstalter eines Eintrags (Tage) und Höchstzahl fehlgeschlagener Versuche */
+export const QUEUE_MAX_AGE_DAYS = 14;
+export const QUEUE_MAX_ATTEMPTS = 5;
 const KEY = /^[a-z][a-z0-9-]*$/;
 
 interface CleanItem {
@@ -252,7 +255,9 @@ export async function notify(
 					queue.push({ userId, item });
 				} else {
 					const ev = { officeName: t.officeName, ...item };
-					immediate.set(userId, [...(immediate.get(userId) ?? []), ev]);
+					const list = immediate.get(userId);
+					if (list) list.push(ev);
+					else immediate.set(userId, [ev]);
 				}
 			}
 		}
@@ -313,14 +318,41 @@ export interface DigestResult {
 	sent: number;
 	events: number;
 	failed: number;
+	/** Verworfene Einträge insgesamt (inkl. `expired`) */
 	dropped: number;
+	/** Davon wegen Höchstalter oder zu vieler Fehlversuche verworfen */
+	expired: number;
 }
 
 /**
  * Tageszusammenfassung: Warteschlange je Person zu einer Mail. Versendete Zeilen und Zeilen inaktiver
- * Konten werden gelöscht; bei Versandfehler bleiben die Zeilen für den nächsten Lauf liegen.
+ * Konten werden gelöscht; bei Versandfehler bleiben die Zeilen für den nächsten Lauf liegen und
+ * zählen einen Versuch. Einträge älter als `QUEUE_MAX_AGE_DAYS` oder nach `QUEUE_MAX_ATTEMPTS`
+ * Fehlversuchen werden verworfen (`expired`).
  */
 export async function sendDigest(ctx: RequestContext): Promise<DigestResult> {
+	const result: DigestResult = {
+		users: 0,
+		sent: 0,
+		events: 0,
+		failed: 0,
+		dropped: 0,
+		expired: 0
+	};
+	const [old] = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`WITH d AS (
+				DELETE FROM notification_queue
+				WHERE created_at < now() - make_interval(days => ${QUEUE_MAX_AGE_DAYS})
+					OR attempts >= ${QUEUE_MAX_ATTEMPTS}
+				RETURNING 1
+			) SELECT count(*)::int AS n FROM d`
+		)
+	);
+	result.expired = Number(old?.n ?? 0);
+	result.dropped = result.expired;
+
 	const rows = await mdb().transaction((tx) =>
 		rowsOf(
 			tx,
@@ -333,18 +365,23 @@ export async function sendDigest(ctx: RequestContext): Promise<DigestResult> {
 				ORDER BY q.user_id, q.created_at, q.id`
 		)
 	);
-	const result: DigestResult = { users: 0, sent: 0, events: 0, failed: 0, dropped: 0 };
-	if (rows.length === 0) return result;
+	if (rows.length === 0) {
+		await auditDigest(ctx, result);
+		return result;
+	}
 
 	const byUser = new Map<string, typeof rows>();
 	for (const r of rows) {
 		const id = String(r.user_id);
-		byUser.set(id, [...(byUser.get(id) ?? []), r]);
+		const list = byUser.get(id);
+		if (list) list.push(r);
+		else byUser.set(id, [r]);
 	}
 	result.users = byUser.size;
 	const users = await usersByIds(lookupCtx(), [...byUser.keys()]);
 
 	const done: string[] = [];
+	const failed: string[] = [];
 	for (const [userId, all] of byUser) {
 		// Amt gelöscht oder Person nicht mehr Inhaber*in → verwerfen
 		const list = all.filter((r) => r.is_holder === true || r.is_holder === 't');
@@ -372,6 +409,7 @@ export async function sendDigest(ctx: RequestContext): Promise<DigestResult> {
 			done.push(...list.map((r) => String(r.id)));
 		} else {
 			result.failed++;
+			failed.push(...list.map((r) => String(r.id)));
 		}
 	}
 	if (done.length) {
@@ -382,12 +420,43 @@ export async function sendDigest(ctx: RequestContext): Promise<DigestResult> {
 			);
 		}
 	}
-	if (result.sent) {
-		await core.audit.logFromContext(ctx, 'offices.notification.sent', {
-			metadata: { digest: true, sent: result.sent, events: result.events, failed: result.failed }
+	// Fehlversuch zählen; wer die Höchstzahl erreicht, wird sofort verworfen
+	for (let i = 0; i < failed.length; i += 500) {
+		const part = failed.slice(i, i + 500);
+		const [r] = await mdb().transaction(async (tx) => {
+			await tx.execute(
+				sql`UPDATE notification_queue SET attempts = attempts + 1 WHERE id IN (${inList(part)})`
+			);
+			return rowsOf(
+				tx,
+				sql`WITH d AS (
+					DELETE FROM notification_queue
+					WHERE id IN (${inList(part)}) AND attempts >= ${QUEUE_MAX_ATTEMPTS}
+					RETURNING 1
+				) SELECT count(*)::int AS n FROM d`
+			);
 		});
+		const n = Number(r?.n ?? 0);
+		result.expired += n;
+		result.dropped += n;
 	}
+	await auditDigest(ctx, result);
 	return result;
+}
+
+/** Audit nur mit Zählern; auch, wenn nur verworfen wurde */
+async function auditDigest(ctx: RequestContext, result: DigestResult): Promise<void> {
+	if (!result.sent && !result.expired) return;
+	await core.audit.logFromContext(ctx, 'offices.notification.sent', {
+		metadata: {
+			digest: true,
+			sent: result.sent,
+			events: result.events,
+			failed: result.failed,
+			dropped: result.dropped,
+			expired: result.expired
+		}
+	});
 }
 
 export const officesService: OfficesService = { notify };

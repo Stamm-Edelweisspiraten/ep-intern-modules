@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
-import { requireAccess, rowsOf } from './access';
+import { todayBerlin } from '$lib/sdk/dates';
+import { type ApiEndpoint, core, errors, moduleDb, rowsOf, type Tx } from '$lib/sdk/server';
+import { requireAccess } from './access';
 import { appliedAutoIncome } from './auto-income';
 import type { ActionContributions } from '$lib/modules/treasury/contract';
 import {
@@ -19,7 +20,6 @@ import {
 } from './refund';
 import { MODULE_ID, idParams, refundBodySchema, refundQuerySchema } from './schemas';
 
-const mdb = () => core.database.forModule(MODULE_ID);
 const TAGS = ['Modul: actions'];
 
 interface RefundItemDto {
@@ -198,7 +198,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const treasury = await loadTreasuryContributions(id);
 			const count = (query as { count?: number } | undefined)?.count;
-			return mdb().transaction(async (tx) => {
+			return moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
 				return loadRefund(
 					tx,
@@ -223,7 +223,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 			const treasury = await loadTreasuryContributions(id);
 			const names = (body as { names?: string[] } | undefined)?.names;
 			const by = ctx.userId ?? null;
-			const state = await mdb().transaction(async (tx) => {
+			const state = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await lockAction(tx, id);
 				await assertOpen(tx, id);
@@ -254,7 +254,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 						: `${cur.items.length} × ${same ? '' : 'bis zu '}${euros(cur.perHeadCents)} €`;
 				const description = `Rückzahlung an Teilnehmende (${head})`;
 				const entryId = crypto.randomUUID();
-				const today = new Date().toISOString().slice(0, 10);
+				const today = todayBerlin();
 				await tx.execute(
 					sql`INSERT INTO accounting_entries (id, action_id, type, category, description,
 							amount_cents, entry_date, paid_by, payee_id, created_by)
@@ -300,7 +300,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
 			const treasury = await loadTreasuryContributions(id);
-			const result = await mdb().transaction(async (tx) => {
+			const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await lockAction(tx, id);
 				await assertOpen(tx, id);

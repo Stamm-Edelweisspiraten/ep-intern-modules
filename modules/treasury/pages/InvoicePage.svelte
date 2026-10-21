@@ -346,7 +346,7 @@
 											{[l.member?.name, l.action?.name].filter(Boolean).join(' · ')}
 										</div>
 										{#if l.waivedCents > 0}
-											<div class="text-xs text-amber-700 dark:text-amber-400">
+											<div class="text-xs text-warning">
 												Ermäßigt um {formatEuro(l.waivedCents)}{l.waiveReason
 													? ` (${l.waiveReason})`
 													: ''}
@@ -422,7 +422,7 @@
 								</ul>
 							</div>
 						{:else if canEdit || canSend}
-							<p class="text-xs text-amber-700 dark:text-amber-400">
+							<p class="text-xs text-warning">
 								Keine E-Mail-Adresse: Mitglied zuordnen oder E-Mail eintragen.
 							</p>
 						{/if}

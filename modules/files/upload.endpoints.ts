@@ -5,7 +5,14 @@
  * `storeIntoFolder` (Tx 1, Storage außerhalb jeder Transaktion, Tx 2, Aufräumen; `upload.service.ts`) → Audit.
  * Core-Services (Storage, Audit, Einstellungen) nie in einer offenen Transaktion (PGlite).
  */
-import { core, defineEndpoint, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	defineEndpoint,
+	errors,
+	IMAGE_RATE_LIMIT,
+	type AnyApiEndpoint,
+	type Tx
+} from '$lib/sdk/server';
 import { requireFolderTarget, requireNode } from './access';
 import { filesSettings, mdb } from './db';
 import { normalizeName, splitRelativePath } from './names';
@@ -36,7 +43,7 @@ function textField(form: FormData, key: string): string | undefined {
 	return v;
 }
 
-export const uploadEndpoints = [
+export const uploadEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'POST',
 		path: '/nodes/:parent/upload',
@@ -175,6 +182,8 @@ export const uploadEndpoints = [
 		tags,
 		permission: PERMISSIONS.view,
 		params: idParams,
+		// eigenes Kontingent: das Dateiraster lädt viele Vorschaubilder (#23)
+		rateLimit: IMAGE_RATE_LIMIT,
 		handler: async ({ ctx, params }) => {
 			const keys = await keysFor(ctx);
 			const node = await mdb().transaction(async (tx) => {
@@ -187,4 +196,4 @@ export const uploadEndpoints = [
 			return thumbResponse(node.thumbPath);
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

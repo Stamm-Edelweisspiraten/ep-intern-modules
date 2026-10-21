@@ -1,12 +1,11 @@
 /** Gemeinsame Datenbank-Hilfen der Abrechnung (Buchungen, Abschlussstatus). */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, type RequestContext, rowsOf, toIso, type Tx } from '$lib/sdk/server';
 import type {
 	AccountingClosedEvent,
 	ActionContributions,
 	TreasuryService
 } from '$lib/modules/treasury/contract';
-import { rowsOf } from './access';
 import { payeeTotals, summarize, toSummaryEntry } from './accounting';
 import { computeAutoIncome } from './auto-income';
 import { calculate } from './calculation';
@@ -32,8 +31,6 @@ import type {
 	PaidBy
 } from './schemas';
 
-const iso = (v: unknown): string => new Date(String(v)).toISOString();
-
 /** Abschlussstatus; `null`, wenn die Abrechnung offen ist. */
 export async function closedInfo(
 	tx: Tx,
@@ -44,7 +41,7 @@ export async function closedInfo(
 		sql`SELECT closed_at, closed_by FROM action_accounting WHERE action_id = ${actionId}`
 	);
 	if (!r || r.closed_at == null) return null;
-	return { at: iso(r.closed_at), by: r.closed_by == null ? null : String(r.closed_by) };
+	return { at: toIso(r.closed_at), by: r.closed_by == null ? null : String(r.closed_by) };
 }
 
 /** Wirft 409, wenn die Abrechnung abgeschlossen ist (alle ändernden Endpoints rufen das auf). */
@@ -201,7 +198,9 @@ async function snapshotOf(
 	actionId: string,
 	r: Record<string, unknown>
 ): Promise<InterimSnapshot> {
-	return parseSnapshot(r.snapshot) ?? legacySnapshot(tx, actionId, String(r.id), iso(r.created_at));
+	return (
+		parseSnapshot(r.snapshot) ?? legacySnapshot(tx, actionId, String(r.id), toIso(r.created_at))
+	);
 }
 
 /** Summen einer Zwischenabrechnung aus ihrem Abbild. */
@@ -250,7 +249,7 @@ export async function loadInterimSnapshot(
 			id: String(r.id),
 			number: Number(r.number),
 			note: r.note == null ? null : String(r.note),
-			createdAt: iso(r.created_at),
+			createdAt: toIso(r.created_at),
 			createdBy: r.created_by == null ? null : String(r.created_by)
 		},
 		snapshot: await snapshotOf(tx, actionId, r)
@@ -299,7 +298,7 @@ export async function loadInterims(
 			id: String(r.id),
 			number: Number(r.number),
 			note: r.note == null ? null : String(r.note),
-			createdAt: iso(r.created_at),
+			createdAt: toIso(r.created_at),
 			createdBy:
 				r.created_by == null
 					? null
@@ -323,9 +322,10 @@ export async function resolveInterimUsers(
 		...new Set(interims.map((i) => i.createdBy?.userId).filter((v): v is string => !!v))
 	];
 	if (!ids.length) return;
-	const found = await core.users.directory(ctx, { ids: ids.slice(0, 30), limit: 30 });
+	// `byIds` stückelt selbst (früher nur die ersten 30 IDs)
+	const found = await core.users.byIds(ctx, ids);
 	for (const i of interims) {
-		const u = i.createdBy && found.find((x) => x.id === i.createdBy!.userId);
+		const u = i.createdBy && found.get(i.createdBy.userId);
 		if (u) i.createdBy = { userId: u.id, name: u.name, email: u.email };
 	}
 }
@@ -353,7 +353,7 @@ export function mapEntry(r: Record<string, unknown>): AccountingEntry {
 						name: String(r.receipt_name ?? 'Beleg'),
 						contentType: String(r.receipt_content_type ?? 'application/octet-stream')
 					},
-		reimbursedAt: r.reimbursed_at == null ? null : iso(r.reimbursed_at),
+		reimbursedAt: r.reimbursed_at == null ? null : toIso(r.reimbursed_at),
 		recipient:
 			r.recipient_name == null
 				? null
@@ -364,10 +364,10 @@ export function mapEntry(r: Record<string, unknown>): AccountingEntry {
 						bic: r.recipient_bic == null ? null : String(r.recipient_bic)
 					},
 		purpose: r.purpose == null ? null : String(r.purpose),
-		clubPaidAt: r.club_paid_at == null ? null : iso(r.club_paid_at),
+		clubPaidAt: r.club_paid_at == null ? null : toIso(r.club_paid_at),
 		clubPaidVia: r.club_paid_via == null ? null : (String(r.club_paid_via) as ClubPaidVia),
-		createdAt: iso(r.created_at),
-		updatedAt: iso(r.updated_at)
+		createdAt: toIso(r.created_at),
+		updatedAt: toIso(r.updated_at)
 	};
 }
 
@@ -414,7 +414,7 @@ export async function loadRefundSnapshot(tx: Tx, actionId: string): Promise<Refu
 	}));
 	const mode = String(b.mode) === 'manual' ? 'manual' : 'auto';
 	return {
-		bookedAt: iso(b.booked_at),
+		bookedAt: toIso(b.booked_at),
 		entryId: String(b.entry_id),
 		surplusCents: Number(b.surplus_cents),
 		perHeadCents: Number(b.per_head_cents),
@@ -504,6 +504,24 @@ export async function loadTreasuryContributions(
 	if (!svc) return null;
 	try {
 		return await svc.contributionsForAction(actionId);
+	} catch (e) {
+		console.error('[actions] Kasse nicht erreichbar:', e);
+		return null;
+	}
+}
+
+/**
+ * Wie `loadTreasuryContributions`, gesammelt für viele Aktionen in einem Kassen-Aufruf (#68).
+ * `null` = Kasse nicht aktiv/nicht erreichbar (alle Aktionen ohne Ist-Werte).
+ */
+export async function loadTreasuryContributionsMany(
+	actionIds: string[]
+): Promise<Map<string, ActionContributions> | null> {
+	if (!actionIds.length) return new Map();
+	const svc = await core.modules.useOptional<TreasuryService>('treasury', 'actions');
+	if (!svc) return null;
+	try {
+		return await svc.contributionsForActions(actionIds);
 	} catch (e) {
 		console.error('[actions] Kasse nicht erreichbar:', e);
 		return null;

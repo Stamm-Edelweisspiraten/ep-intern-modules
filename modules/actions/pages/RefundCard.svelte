@@ -71,7 +71,7 @@
 </script>
 
 {#if loading && !state_}
-	<Skeleton class="h-16 w-full" aria-busy="true" aria-label="Lade Rückzahlung" />
+	<Skeleton class="h-16 w-full" aria-busy="true" aria-label="Rückzahlung wird geladen" />
 {:else if error && !state_}
 	<div class="flex flex-wrap items-center gap-3 rounded-lg border p-3">
 		<p class="text-sm text-destructive" role="alert">{error}</p>
@@ -83,7 +83,7 @@
 			<div class="min-w-0">
 				<div class="text-sm font-semibold">Rückzahlung des Überschusses</div>
 				<div class="flex items-center gap-1.5 text-sm text-muted-foreground" role="status">
-					{#if booked}<Check class="size-4 shrink-0 text-green-600" aria-hidden="true" />{/if}
+					{#if booked}<Check class="size-4 shrink-0 text-success" aria-hidden="true" />{/if}
 					<span>{status}</span>
 				</div>
 			</div>

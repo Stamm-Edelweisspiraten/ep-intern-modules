@@ -1,10 +1,10 @@
-import { defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
 import { placesForPostalCode, suggestAddresses } from './address.service';
 import { addressPlacesQuery, addressSuggestQuery } from './schemas';
 
 const tags = ['Mitglieder'];
 
-export const addressEndpoints: ApiEndpoint[] = [
+export const addressEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/address/suggest',
@@ -27,4 +27,4 @@ export const addressEndpoints: ApiEndpoint[] = [
 		query: addressPlacesQuery,
 		handler: ({ query }) => ({ items: placesForPostalCode(query.postalCode) })
 	})
-] as unknown as ApiEndpoint[];
+];

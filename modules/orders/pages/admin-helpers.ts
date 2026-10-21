@@ -3,37 +3,21 @@
  * Nur von den Admin-Tabs/Dialogen genutzt (Team E); keine Server-Imports.
  */
 import { ApiClientError } from '$lib/sdk/client';
+import { formatDateDe, formatDateTimeDe, todayBerlin } from '$lib/sdk/dates';
 import { BASE_PATH, ORDER_STATUS_LABELS, SUPPLIER_STATUS_LABELS } from '../schemas';
 
 export const API = BASE_PATH;
 
 /** `YYYY-MM-DD` oder ISO → `TT.MM.JJJJ` */
-export function fmtDate(d: string | null | undefined): string {
-	if (!d) return '–';
-	const [y, m, day] = d.slice(0, 10).split('-');
-	return y && m && day ? `${day}.${m}.${y}` : '–';
-}
+export const fmtDate = (d: string | null | undefined): string => formatDateDe(d, '–');
 
-export function fmtDateTime(iso: string | null | undefined): string {
-	if (!iso) return '–';
-	const d = new Date(iso);
-	return Number.isNaN(d.getTime())
-		? '–'
-		: d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-}
+export const fmtDateTime = (iso: string | null | undefined): string => formatDateTimeDe(iso, '–');
 
-/** Heute als `YYYY-MM-DD` (lokale Zeit) */
-export function todayIso(): string {
-	const d = new Date();
-	const p = (n: number) => String(n).padStart(2, '0');
-	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+/** Heute als `YYYY-MM-DD` (Europe/Berlin) */
+export const todayIso = (): string => todayBerlin();
 
 /** Menge „3/5“ */
 export const fmtRatio = (done: number, total: number) => `${done}/${total}`;
-
-/** „3 Stück“ / „1 Stück“ */
-export const fmtPieces = (n: number) => `${n} Stück`;
 
 /** Artikel mit Größe: „Halstuch (M)“ bzw. „Liederbuch“ */
 export const itemName = (title: string, label: string) => (label ? `${title} (${label})` : title);

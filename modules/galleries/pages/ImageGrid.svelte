@@ -80,7 +80,7 @@
 						<span
 							class="bg-background/90 text-foreground absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium shadow-sm"
 						>
-							<StarIcon class="size-3 fill-amber-400 text-amber-500" aria-hidden="true" />
+							<StarIcon class="size-3 fill-warning text-warning" aria-hidden="true" />
 							Titelbild
 						</span>
 					{/if}

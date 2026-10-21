@@ -2,6 +2,17 @@
  * Abgleich Aktionen → Rechnungen: Jede*r Teilnehmende einer Aktion mit übernommenem Beitrag
  * bekommt eine Rechnung mit einem Posten. Dienste von `actions`/`members` werden VOR der
  * Transaktion gelesen (PGlite), die Änderungen laufen in EINER Modul-Transaktion.
+ *
+ * Auslöser (Lesepfade lösen NIE einen Abgleich aus):
+ * - `syncAll` – Vollabgleich inkl. Auszahlungen und Versand geänderter Rechnungen: stündlicher Job
+ *   `treasury.sync` und ausdrücklich `POST /sync` („Jetzt abgleichen“). Setzt `sync_state.last_sync_at`.
+ * - `syncAction` – gezielt EINE Aktion: nach schreibenden Vorgängen in `actions` (über
+ *   `TreasuryService.actionChanged`) und bei der Anmeldung (`invoiceForRegistration`).
+ *
+ * Alle Läufe eines Prozesses sind hintereinandergeschaltet (Warteschlange); ein Lauf liest seine
+ * Quellen erst beim Start, sieht also alles, was vor dem Einreihen committet war (#58). Gleiche,
+ * noch nicht gestartete Läufe (gleiche Art, Aktion und auslösende Person) werden zusammengelegt.
+ * Zusätzlich serialisiert `pg_advisory_xact_lock` die Schreibphase über Instanzen hinweg.
  */
 import { sql } from 'drizzle-orm';
 import { core, type RequestContext } from '$lib/sdk/server';
@@ -15,8 +26,8 @@ import {
 	str,
 	today
 } from './db';
-import { refreshSentDocuments } from './documents';
-import { notifyKasse, payableNotification } from './office-notify';
+import { refreshSentDocuments, type SendResult } from './documents';
+import { notifyKasse, payableNotification, type CreatedPayableInfo } from './office-notify';
 import { syncPayables } from './payables';
 import { planSync, type ExistingSyncLine } from './logic';
 import { SETTING_KEYS } from './schemas';
@@ -26,27 +37,41 @@ export interface SyncResult {
 	updated: number;
 	cancelled: number;
 	reactivated: number;
+	/** Versand geänderter/stornierter, bereits verschickter Rechnungen */
+	documents?: { invoices: number; mailsSent: number; mailErrors: number };
 }
 
 const AUTO_CANCEL_REASON = 'Teilnahme oder Beitrag entfallen';
+/** Schlüssel für `pg_advisory_xact_lock` (Schreibphase des Abgleichs) */
+const SYNC_LOCK = sql`hashtext('treasury.sync')`;
 
-async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
-	const sources = await (await actionsService()).listReceivableSources();
+const systemCtx = () => core.auth.systemContext('treasury-sync');
+
+/** Rechnungen (und danach Auszahlungen) abgleichen – alle Aktionen (`null`) oder genau eine. */
+async function syncDatabase(
+	ctx: RequestContext | null,
+	actionId: string | null
+): Promise<{ result: SyncResult; createdPayables: CreatedPayableInfo[] }> {
+	const sources = await (
+		await actionsService()
+	).listReceivableSources(actionId ? { actionIds: [actionId] } : {});
 	const members = await (await membersService()).listMemberContacts({});
 	const s = await core.settings.getMany([SETTING_KEYS.daysBeforeStart, SETTING_KEYS.minDays]);
 	const todayIso = today();
 
 	const result = await mdb().transaction(async (tx) => {
+		await tx.execute(sql`SELECT pg_advisory_xact_lock(${SYNC_LOCK})`);
 		const settings = await rows(
 			tx,
-			sql`SELECT action_id, excluded, to_char(due_on, 'YYYY-MM-DD') AS due_on FROM action_settings`
+			sql`SELECT action_id, excluded, to_char(due_on, 'YYYY-MM-DD') AS due_on FROM action_settings
+			${actionId ? sql`WHERE action_id = ${actionId}` : sql``}`
 		);
 		const existing = await rows(
 			tx,
 			sql`SELECT l.id AS line_id, l.invoice_id, l.source_ref, l.amount_cents, l.waived_cents, l.description,
 				l.member_id, i.cancelled_at, i.auto_cancelled
 			FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
-			WHERE l.source_ref LIKE 'action:%'`
+			WHERE l.source_ref LIKE ${actionId ? `action:${actionId}:%` : 'action:%'}`
 		);
 		const plan = planSync({
 			sources,
@@ -109,7 +134,7 @@ async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
 					auto_cancelled = true, updated_at = now() WHERE id = ${c.invoiceId} AND cancelled_at IS NULL`
 			);
 		}
-		await tx.execute(sql`UPDATE sync_state SET last_sync_at = now() WHERE id = 1`);
+		if (!actionId) await tx.execute(sql`UPDATE sync_state SET last_sync_at = now() WHERE id = 1`);
 		return {
 			created: plan.create.length,
 			updated: plan.update.length,
@@ -118,57 +143,110 @@ async function runSync(ctx: RequestContext | null): Promise<SyncResult> {
 		};
 	});
 
-	// Auszahlungen (Auslagen, Rückzahlungen, Guthaben) nachziehen
+	// Auszahlungen (Auslagen, Rückzahlungen, Guthaben) nachziehen – gezielt nur für die Aktion
+	let createdPayables: CreatedPayableInfo[] = [];
 	try {
-		const payables = await syncPayables(members);
-		// Amt „Kasse“: je neu angelegter Auszahlung ein Ereignis (Fehler werden in `notifyKasse` geloggt)
-		await notifyKasse(ctx, payables.createdItems.map(payableNotification));
+		const payables = await syncPayables(members, actionId ? { actionIds: [actionId] } : undefined);
+		createdPayables = payables.createdItems;
 	} catch (e) {
 		console.error('[treasury] Abgleich der Auszahlungen fehlgeschlagen:', e);
 	}
-	// Bereits versendete Rechnungen mit Änderungen (Betrag, Rolle, Storno …) neu verschicken
+	return { result, createdPayables };
+}
+
+/** Benachrichtigung, Versand geänderter Rechnungen und Audit – NACH der Schreibphase, außerhalb der Warteschlange */
+async function finish(
+	ctx: RequestContext | null,
+	actionId: string | null,
+	db: { result: SyncResult; createdPayables: CreatedPayableInfo[] }
+): Promise<SyncResult> {
+	const actor = ctx ?? systemCtx();
+	// Amt „Kasse“: je neu angelegter Auszahlung ein Ereignis (Fehler werden in `notifyKasse` geloggt)
+	await notifyKasse(ctx, db.createdPayables.map(payableNotification));
+	// Bereits versendete Rechnungen mit Änderungen (Betrag, Rolle, Storno …) neu verschicken –
+	// nur Rechnungen, die seit ihrer letzten Fassung geändert wurden
+	let documents: SendResult | null = null;
 	try {
-		await refreshSentDocuments(ctx ?? core.auth.systemContext('treasury-sync'));
+		documents = await refreshSentDocuments(actor, {
+			changedSince: 'latest-document',
+			...(actionId ? { actionId } : {})
+		});
 	} catch (e) {
 		console.error('[treasury] Versand geänderter Rechnungen fehlgeschlagen:', e);
 	}
-	if (result.created || result.updated || result.cancelled || result.reactivated) {
-		await core.audit.logFromContext(
-			ctx ?? core.auth.systemContext('treasury-sync'),
-			'treasury.sync.completed',
-			{
-				metadata: { ...result }
-			}
-		);
+	const r = db.result;
+	if (r.created || r.updated || r.cancelled || r.reactivated) {
+		await core.audit.logFromContext(actor, 'treasury.sync.completed', {
+			...(actionId ? { target: actionId } : {}),
+			metadata: { ...r, scope: actionId ? 'action' : 'all' }
+		});
 	}
-	return result;
+	return {
+		...r,
+		...(documents
+			? {
+					documents: {
+						invoices: documents.invoices,
+						mailsSent: documents.mailsSent,
+						mailErrors: documents.mailErrors
+					}
+				}
+			: {})
+	};
 }
 
-let inFlight: Promise<SyncResult> | null = null;
-let lastRun = 0;
-const STALE_MS = 60_000;
+// --- Warteschlange --------------------------------------------------------------------------
 
-/** Abgleich ausführen (parallele Aufrufe teilen sich einen Lauf). */
-export function syncActions(ctx: RequestContext | null): Promise<SyncResult> {
-	inFlight ??= runSync(ctx).finally(() => {
-		inFlight = null;
-		lastRun = Date.now();
+let chain: Promise<unknown> = Promise.resolve();
+/** Eingereihte, noch NICHT gestartete Läufe je Schlüssel (werden zusammengelegt) */
+const queued = new Map<
+	string,
+	Promise<{ result: SyncResult; createdPayables: CreatedPayableInfo[] }>
+>();
+
+function enqueue(
+	key: string,
+	run: () => Promise<{ result: SyncResult; createdPayables: CreatedPayableInfo[] }>
+) {
+	const pending = queued.get(key);
+	if (pending) return pending;
+	const p = chain.then(() => {
+		// Ab jetzt liest der Lauf frische Daten – spätere Aufrufer reihen einen neuen Lauf ein
+		queued.delete(key);
+		return run();
 	});
-	return inFlight;
+	queued.set(key, p);
+	chain = p.catch(() => undefined);
+	return p;
 }
 
-/** Beim Öffnen von Kassenseiten: nur, wenn der letzte Lauf länger als eine Minute her ist. */
-export async function syncIfStale(ctx: RequestContext): Promise<void> {
-	if (Date.now() - lastRun < STALE_MS && !inFlight) return;
-	try {
-		await syncActions(ctx);
-	} catch (e) {
-		// Anzeige soll auch ohne erfolgreichen Abgleich funktionieren
-		console.error('[treasury] Abgleich mit Aktionen fehlgeschlagen:', e);
-	}
+const actorKey = (ctx: RequestContext | null) => ctx?.userId ?? ctx?.actor.id ?? 'system';
+
+/**
+ * Vollabgleich aller Aktionen inkl. Auszahlungen und Versand geänderter Rechnungen (Job, „Jetzt
+ * abgleichen“). `ctx = null` → Systemkontext. Nie in einem Lesepfad aufrufen.
+ */
+export async function syncAll(ctx: RequestContext | null): Promise<SyncResult> {
+	const db = await enqueue(`all:${actorKey(ctx)}`, () => syncDatabase(ctx, null));
+	return finish(ctx, null, db);
 }
 
-/** Nur für Tests: nächster `syncIfStale` läuft sofort */
-export function resetSyncThrottleForTests(): void {
-	lastRun = 0;
+/**
+ * Gezielter Abgleich EINER Aktion (Rechnungen der Teilnehmenden, Auszahlungen der Aktion, Versand
+ * geänderter Rechnungen dieser Aktion). Für Aufrufe nach Schreibvorgängen in `actions`; der Lauf
+ * startet nach allen bereits laufenden und sieht daher den Commit des Aufrufers.
+ */
+export async function syncAction(
+	ctx: RequestContext | null,
+	actionId: string
+): Promise<SyncResult> {
+	const db = await enqueue(`action:${actionId}:${actorKey(ctx)}`, () =>
+		syncDatabase(ctx, actionId)
+	);
+	return finish(ctx, actionId, db);
+}
+
+/** Nur für Tests: wartet, bis alle eingereihten Abgleiche (Schreibphase) fertig sind */
+export function syncIdleForTests(): Promise<unknown> {
+	return chain;
 }

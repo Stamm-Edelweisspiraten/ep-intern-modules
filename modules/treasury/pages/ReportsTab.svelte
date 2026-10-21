@@ -232,7 +232,7 @@
 					></span
 				>
 				{#if report.unassignedCount}
-					<span class="text-amber-700 dark:text-amber-400">
+					<span class="text-warning">
 						{report.unassignedCount} Buchung(en) ohne Kategorie, Aktion oder Rechnung
 					</span>
 				{/if}

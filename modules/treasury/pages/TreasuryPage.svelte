@@ -190,11 +190,16 @@
 	async function sync() {
 		syncing = true;
 		try {
-			const r = await apiFetch<{ created: number; updated: number; cancelled: number }>(
-				`${BASE}/sync`,
-				{ method: 'POST' }
+			const r = await apiFetch<{
+				created: number;
+				updated: number;
+				cancelled: number;
+				documents?: { mailsSent: number };
+			}>(`${BASE}/sync`, { method: 'POST' });
+			toast.success(
+				`Abgeglichen: ${r.created} neu, ${r.updated} geändert, ${r.cancelled} storniert` +
+					(r.documents?.mailsSent ? `, ${r.documents.mailsSent} Mails verschickt` : '')
 			);
-			toast.success(`Abgleich: ${r.created} neu, ${r.updated} geändert, ${r.cancelled} storniert`);
 			await changed();
 		} catch (e) {
 			toast.error(errorMessage(e, 'Abgleich fehlgeschlagen'));
@@ -254,7 +259,7 @@
 				>
 					<Plus /> Buchung
 					<kbd
-						class="ml-0.5 hidden rounded border border-current/30 px-1 font-mono text-[10px] leading-4 opacity-70 sm:inline"
+						class="ml-0.5 hidden rounded border border-current/30 px-1 font-mono text-xs leading-4 opacity-70 sm:inline"
 						aria-hidden="true">N</kbd
 					>
 				</Button>
@@ -293,7 +298,7 @@
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={sync} disabled={syncing}>
 								<RefreshCw />
-								{syncing ? 'Gleicht ab …' : 'Mit Aktionen abgleichen'}
+								{syncing ? 'Gleicht ab …' : 'Jetzt abgleichen'}
 							</DropdownMenu.Item>
 						{/if}
 					</DropdownMenu.Content>
@@ -303,7 +308,7 @@
 	</PageHeader>
 
 	<Tabs.Root value={activeSection} onValueChange={(v) => setSection(v)}>
-		<Tabs.List variant="line" class="mb-4 h-auto w-full flex-wrap justify-start">
+		<Tabs.List variant="line" class="mb-4 w-full justify-start">
 			{#each visibleSections as s (s)}
 				<Tabs.Trigger value={s} class="flex-none px-2 sm:px-3">{SECTION_LABELS[s]}</Tabs.Trigger>
 			{/each}
@@ -318,6 +323,8 @@
 					oncreate={() => editTransaction(null)}
 					onimport={() => (importOpen = true)}
 					onchanged={changed}
+					onsync={sync}
+					{syncing}
 				/>
 			{/if}
 		</Tabs.Content>

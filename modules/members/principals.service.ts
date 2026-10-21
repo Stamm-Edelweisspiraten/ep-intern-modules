@@ -1,25 +1,24 @@
 import { sql } from 'drizzle-orm';
-import { core, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	inList,
+	moduleDb,
+	type PrincipalProvider,
+	type RequestContext,
+	rowsOf
+} from '$lib/sdk/server';
 import type { MemberGroupRef, MemberPrincipalRef, MembersService } from './contract';
 import { MODULE_ID } from './schemas';
 
 /**
- * Dienste für Freigaben an Principals (Gruppen, Mitglieder) – ohne Rechteprüfung, nur Namen/Farben.
- * In `module.ts` an `provides` gehängt (Vertrag `contract.ts`).
+ * Dienste für Freigaben an Principals (Gruppen, Mitglieder). In `module.ts` an `provides` gehängt
+ * (Vertrag `PrincipalProvider` im SDK, erweitert in `contract.ts`).
+ * `listGroups`/`principalIdsForUser`/`searchMembers` prüfen keine Rechte (Aufrufer prüft);
+ * `searchMemberPrincipals` (Freigabe-Suche) prüft selbst `members.member.view`.
  */
 
-type Row = Record<string, unknown>;
-const mdb = () => core.database.forModule(MODULE_ID);
-
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	return ((await tx.execute(query)) as unknown as { rows: Row[] }).rows;
-}
-
-const idList = (ids: readonly string[]) =>
-	sql.join(
-		ids.map((v) => sql`${v}`),
-		sql`, `
-	);
+/** Recht, ohne das die Freigabe-Suche keine Mitglieder (Kinder) liefert */
+const MEMBER_VIEW = 'members.member.view';
 
 /** Nicht ausgetreten: kein Austritt oder Austritt erst in der Zukunft */
 const ACTIVE = sql`(m.exit_date IS NULL OR m.exit_date > CURRENT_DATE)`;
@@ -30,8 +29,8 @@ const LIMIT_DEFAULT = 20;
 const LIMIT_MAX = 30;
 
 async function listGroups(): Promise<MemberGroupRef[]> {
-	const found = await mdb().transaction((tx) =>
-		rows(
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
+		rowsOf(
 			tx,
 			sql`SELECT id, name, color, meeting_weekday, meeting_time, meeting_end_time, meeting_place,
 					image_path IS NOT NULL AS has_image, updated_at
@@ -83,19 +82,19 @@ async function principalIdsForUser(
 	userId: string
 ): Promise<{ memberIds: string[]; groupIds: string[] }> {
 	if (!userId) return { memberIds: [], groupIds: [] };
-	return mdb().transaction(async (tx) => {
-		const members = await rows(
+	return moduleDb(MODULE_ID).transaction(async (tx) => {
+		const members = await rowsOf(
 			tx,
 			sql`SELECT DISTINCT m.id FROM member_user_links l JOIN members m ON m.id = l.member_id
 				WHERE l.user_id = ${userId} AND ${ACTIVE} ORDER BY m.id`
 		);
 		const memberIds = members.map((r) => r.id as string);
 		if (!memberIds.length) return { memberIds, groupIds: [] };
-		const groups = await rows(
+		const groups = await rowsOf(
 			tx,
-			sql`SELECT group_id FROM member_groups WHERE member_id IN (${idList(memberIds)})
+			sql`SELECT group_id FROM member_groups WHERE member_id IN (${inList(memberIds)})
 				UNION
-				SELECT group_id FROM group_leaders WHERE member_id IN (${idList(memberIds)})`
+				SELECT group_id FROM group_leaders WHERE member_id IN (${inList(memberIds)})`
 		);
 		const groupIds = [...new Set(groups.map((r) => r.group_id as string))].sort();
 		return { memberIds, groupIds };
@@ -125,22 +124,22 @@ async function searchMembers(query: {
 		where = sql`${ACTIVE} AND (m.first_name ILIKE ${p} OR m.last_name ILIKE ${p}
 			OR m.scout_name ILIKE ${p} OR (m.first_name || ' ' || m.last_name) ILIKE ${p})`;
 	} else if (ids.length) {
-		where = sql`m.id IN (${idList(ids)})`;
+		where = sql`m.id IN (${inList(ids)})`;
 	} else {
 		return [];
 	}
 
-	return mdb().transaction(async (tx) => {
-		const list = await rows(
+	return moduleDb(MODULE_ID).transaction(async (tx) => {
+		const list = await rowsOf(
 			tx,
 			sql`SELECT m.id, m.first_name, m.last_name FROM members m WHERE ${where}
 				ORDER BY m.last_name, m.first_name, m.id LIMIT ${limit}`
 		);
 		if (!list.length) return [];
-		const groups = await rows(
+		const groups = await rowsOf(
 			tx,
 			sql`SELECT mg.member_id, g.id, g.name FROM member_groups mg JOIN groups g ON g.id = mg.group_id
-				WHERE mg.member_id IN (${idList(list.map((r) => r.id as string))}) ORDER BY g.name, g.id`
+				WHERE mg.member_id IN (${inList(list.map((r) => r.id as string))}) ORDER BY g.name, g.id`
 		);
 		return list.map((r) => ({
 			id: r.id as string,
@@ -152,7 +151,22 @@ async function searchMembers(query: {
 	});
 }
 
-export const principalsService: Pick<
-	MembersService,
-	'listGroups' | 'principalIdsForUser' | 'searchMembers'
-> = { listGroups, principalIdsForUser, searchMembers };
+/**
+ * Freigabe-Suche/-Anzeige mit Rechteprüfung (Defense in Depth zu `$lib/sdk/server/sharing.ts`):
+ * Namen und Gruppen von Mitgliedern nur mit `members.member.view` (System-Kontext immer).
+ */
+async function searchMemberPrincipals(
+	ctx: RequestContext,
+	query: { search?: string; ids?: string[]; limit?: number }
+): Promise<MemberPrincipalRef[]> {
+	if (!core.permissions.has(ctx, MEMBER_VIEW)) return [];
+	return searchMembers(query);
+}
+
+export const principalsService = {
+	listGroups,
+	principalIdsForUser,
+	searchMembers,
+	searchMemberPrincipals
+} satisfies PrincipalProvider &
+	Pick<MembersService, 'listGroups' | 'principalIdsForUser' | 'searchMembers'>;

@@ -343,7 +343,7 @@
 						Bild {safeIndex + 1}
 						{#if isCover}
 							<Badge variant="secondary" class="gap-1">
-								<StarIcon class="size-3 fill-amber-400 text-amber-500" aria-hidden="true" />
+								<StarIcon class="size-3 fill-warning text-warning" aria-hidden="true" />
 								Titelbild
 							</Badge>
 						{/if}

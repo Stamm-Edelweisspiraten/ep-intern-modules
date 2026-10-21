@@ -9,19 +9,12 @@
  *   - sonst kein Zugriff (Aufrufer erhält 404, damit die Existenz nicht verraten wird)
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { core, errors, type RequestContext, rowsOf, type Tx } from '$lib/sdk/server';
 
 export interface ActionAccess {
 	level: 'edit' | 'read';
 	isOwner: boolean;
 	canShare: boolean;
-}
-
-type Row = Record<string, unknown>;
-
-export async function rowsOf(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	const res = (await tx.execute(query)) as unknown as { rows: Row[] };
-	return res.rows;
 }
 
 /** Zugriff des Kontexts auf eine Aktion oder `null` (nicht vorhanden / kein Zugriff). */

@@ -5,11 +5,17 @@
  * Alle Funktionen mit `core.*` nur AUSSERHALB offener Modul-Transaktionen aufrufen (PGlite).
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, type ImageVariantSpec, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	moduleDb,
+	secureFileResponse,
+	type ImageVariantSpec,
+	type Tx
+} from '$lib/sdk/server';
 import type { EventRefsService } from '$lib/modules/events/contract';
 import { MODULE_ID, type ImageVariant } from './schemas';
 
-export const db = () => core.database.forModule(MODULE_ID);
+export const db = () => moduleDb(MODULE_ID);
 export const filesCtx = () => core.auth.systemContext('galleries-files');
 
 /** Varianten für `core.images.process` (Reihenfolge = `IMAGE_VARIANTS`) */
@@ -36,31 +42,35 @@ export const VARIANT_COLUMN: Record<ImageVariant, string> = {
 	full: 'full_path'
 };
 
-/** Dateien best-effort entfernen (Fehler werden ignoriert) */
+/**
+ * Dateien best-effort entfernen (Fehler werden ignoriert). Sammel-Löschung über
+ * `core.storage.removeMany` (S3 DeleteObjects, ein Audit-Eintrag) – auch bei 2 000 Bildern × 3 Varianten.
+ */
 export async function removeFiles(paths: readonly (string | null | undefined)[]): Promise<void> {
-	const ctx = filesCtx();
-	for (const path of paths) {
-		if (!path) continue;
-		await core.storage.remove(ctx, { module: MODULE_ID, path }).catch(() => undefined);
-	}
+	const list = paths.filter((p): p is string => !!p);
+	if (!list.length) return;
+	await core.storage
+		.removeMany(filesCtx(), { module: MODULE_ID, paths: list })
+		.catch(() => undefined);
 }
 
-/** Datei als rohe Response (Download/Anzeige) */
+/** Datei als rohe Response (Download/Anzeige), gestreamt statt komplett im Speicher */
 export async function fileResponse(
 	path: string,
 	opts: { cache: string; attachmentName?: string }
 ): Promise<Response> {
-	const { buffer, file } = await core.storage.download(filesCtx(), { module: MODULE_ID, path });
-	const headers: Record<string, string> = {
-		'content-type': file.contentType,
-		'content-length': String(buffer.byteLength),
-		'cache-control': opts.cache,
-		'x-content-type-options': 'nosniff',
-		'content-disposition': opts.attachmentName
-			? `attachment; filename="${opts.attachmentName.replace(/[^A-Za-z0-9._-]+/g, '_')}"`
-			: 'inline'
-	};
-	return new Response(buffer as BodyInit, { status: 200, headers });
+	const { stream, file } = await core.storage.downloadStream(filesCtx(), {
+		module: MODULE_ID,
+		path
+	});
+	// Gemeinsame gehärtete Antwort (CSP-Sandbox, nosniff, RFC-5987-Name; #67, 01b-11)
+	return secureFileResponse(stream, {
+		contentType: file.contentType,
+		size: file.size,
+		name: opts.attachmentName ?? path.split('/').pop() ?? 'bild',
+		download: !!opts.attachmentName,
+		cache: opts.cache
+	});
 }
 
 /**

@@ -1,6 +1,15 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	readUpload,
+	safeFileName,
+	secureFileResponse,
+	type ApiEndpoint,
+	type RequestContext,
+	type Tx
+} from '$lib/sdk/server';
 import { loadMatchLines, replaceAllocations } from './allocation';
 import {
 	actionsService,
@@ -13,18 +22,17 @@ import {
 	rows,
 	str,
 	toTransaction,
-	type RawTransaction
+	type RawTransaction,
+	RECEIPT_UPLOAD
 } from './db';
-import { sanitizeName, suggestMatch, suggestPayable } from './logic';
+import { suggestMatch, suggestPayable } from './logic';
 import { ibanHash } from './bank';
 import { applyCounterparty } from './counterparty';
 import { notifyPaid } from './notify';
 import { learnPayerFromTransaction } from './payer-learning';
 import { linkTransactionToPayable, listPayables, syncActionPayableStatus } from './payables';
 import {
-	MAX_RECEIPT_BYTES,
 	MODULE_ID,
-	RECEIPT_CONTENT_TYPES,
 	allocateInput,
 	idParams,
 	matchPreviewInput,
@@ -45,7 +53,6 @@ import {
 	type TransactionListQuery,
 	type TransferInput
 } from './schemas';
-import { syncIfStale } from './sync';
 
 const TAGS = ['Modul: treasury'];
 const VIEW = 'treasury.cash.view';
@@ -274,7 +281,7 @@ export const transactionEndpoints = [
 		tags: TAGS,
 		permission: VIEW,
 		body: matchPreviewInput,
-		handler: async ({ ctx, body }): Promise<MatchPreview> => {
+		handler: async ({ body }): Promise<MatchPreview> => {
 			const input = body as MatchPreviewInput;
 			const empty: MatchPreview = {
 				lines: [],
@@ -284,7 +291,6 @@ export const transactionEndpoints = [
 			};
 			const iban = ibanHash(input.counterpartyIban);
 			if (input.amountCents > 0) {
-				await syncIfStale(ctx);
 				const { open, match } = await loadMatchLines();
 				let payerId = input.payerId ?? null;
 				if (!payerId && iban) payerId = (await payerByIbanHash()).get(iban.hash) ?? null;
@@ -462,9 +468,8 @@ export const transactionEndpoints = [
 		tags: TAGS,
 		permission: VIEW,
 		params: idParams,
-		handler: async ({ ctx, params }) => {
+		handler: async ({ params }) => {
 			const { id } = params as { id: string };
-			await syncIfStale(ctx);
 			const t = await mdb().transaction((tx) => loadOne(tx, id));
 			const amount = num(t.row.amount_cents) - num(t.row.allocated_cents);
 			if (amount <= 0 || t.row.transfer_id) return null;
@@ -489,8 +494,7 @@ export const transactionEndpoints = [
 		tags: TAGS,
 		permission: VIEW,
 		query: z.object({ transactionId: z.uuid().optional() }),
-		handler: async ({ ctx, query }) => {
-			await syncIfStale(ctx);
+		handler: async ({ query }) => {
 			const q = query as { transactionId?: string };
 			return (await loadMatchLines(q.transactionId)).open;
 		}
@@ -504,27 +508,19 @@ export const transactionEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params, request }) => {
 			const { id } = params as { id: string };
-			const form = await request.formData().catch(() => {
-				throw errors.badRequest('Ungültige Formulardaten');
-			});
-			const file = form.get('file');
-			if (!(file instanceof File)) throw errors.badRequest('Feld "file" fehlt');
-			const contentType = (file.type || '').split(';')[0]!.trim().toLowerCase();
-			if (!(RECEIPT_CONTENT_TYPES as readonly string[]).includes(contentType)) {
-				throw errors.badRequest('Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP)');
-			}
-			if (file.size === 0) throw errors.badRequest('Datei ist leer');
-			if (file.size > MAX_RECEIPT_BYTES) throw errors.tooLarge('Datei überschreitet 10 MB');
+			// Typ, Größe und Inhalt (Magic Bytes) einheitlich geprüft (#33)
+			const file = await readUpload(request, RECEIPT_UPLOAD);
+			const { bytes, contentType } = file;
 			const old = await mdb().transaction(async (tx) => {
 				const cur = await lockTransaction(tx, id);
 				return cur.receipt_path == null ? null : String(cur.receipt_path);
 			});
-			const displayName = file.name?.trim() || 'beleg';
-			const path = `${id}/receipt-${crypto.randomUUID()}-${sanitizeName(displayName)}`;
+			const displayName = file.name;
+			const path = `${id}/receipt-${crypto.randomUUID()}-${safeFileName(displayName)}`;
 			await core.storage.upload(ctx, {
 				module: MODULE_ID,
 				path,
-				file: new Uint8Array(await file.arrayBuffer()),
+				file: bytes,
 				contentType,
 				name: displayName
 			});
@@ -575,15 +571,11 @@ export const transactionEndpoints = [
 				path: ref.path
 			});
 			const name = ref.name || file.name || 'beleg';
-			return new Response(buffer as BodyInit, {
-				status: 200,
-				headers: {
-					'content-type': file.contentType,
-					'content-length': String(buffer.byteLength),
-					'content-disposition': `inline; filename="${sanitizeName(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-					'cache-control': 'private, no-store',
-					'x-content-type-options': 'nosniff'
-				}
+			return secureFileResponse(buffer, {
+				contentType: file.contentType,
+				size: buffer.byteLength,
+				name,
+				cache: 'private, no-store'
 			});
 		}
 	},

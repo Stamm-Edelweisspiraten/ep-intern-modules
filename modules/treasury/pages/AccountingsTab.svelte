@@ -136,11 +136,7 @@
 								{#if c.closedAt}
 									<div class="whitespace-nowrap tabular-nums">{fmtDate(c.closedAt)}</div>
 								{:else}
-									<Badge
-										variant="outline"
-										class="border-amber-500/50 text-amber-700 dark:text-amber-400"
-										>Zwischenabgerechnet ({c.interims.length})</Badge
-									>
+									<Badge variant="warning">Zwischenabgerechnet ({c.interims.length})</Badge>
 								{/if}
 								{#if c.interims.length}
 									<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">

@@ -29,6 +29,8 @@ export const resetAreas: ResetArea[] = [
 			'action_calculations',
 			'action_participants',
 			'action_shares',
+			'pending_registrations',
+			'public_mail_counters',
 			'actions'
 		],
 		storagePrefixes: 'all',
@@ -75,7 +77,7 @@ export const resetAreas: ResetArea[] = [
 		description:
 			'Löscht alle Teilnehmenden und Anmeldungen aller Aktionen. Aktionen, Kalkulationen und Abrechnungen ' +
 			'bleiben erhalten.',
-		tables: ['action_participants'],
+		tables: ['pending_registrations', 'action_participants'],
 		implies: [
 			{
 				area: 'treasury:invoices',

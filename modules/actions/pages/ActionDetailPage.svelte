@@ -261,7 +261,7 @@
 <svelte:head><title>{action?.name ?? 'Aktion'}</title></svelte:head>
 
 {#if loading}
-	<div class="space-y-4" aria-busy="true" aria-label="Lade Aktion">
+	<div class="space-y-4" aria-busy="true" aria-label="Aktion wird geladen">
 		<Skeleton class="h-8 w-64" />
 		<Skeleton class="h-5 w-96 max-w-full" />
 		<Skeleton class="h-64 w-full" />
@@ -348,7 +348,7 @@
 	</PageHeader>
 
 	<Tabs.Root bind:value={tab}>
-		<Tabs.List variant="line" class="mb-4 h-auto flex-wrap">
+		<Tabs.List variant="line" class="mb-4">
 			<Tabs.Trigger value="overview">Übersicht</Tabs.Trigger>
 			<Tabs.Trigger value="calculation">Kalkulation</Tabs.Trigger>
 			<Tabs.Trigger value="registration">Anmeldung</Tabs.Trigger>
@@ -492,6 +492,7 @@
 		bind:open={partFormOpen}
 		actionId={id}
 		participant={editParticipant}
+		healthVisible={canExportSheets}
 		onsaved={refreshAfterParticipant}
 	/>
 	<ConfirmDialog

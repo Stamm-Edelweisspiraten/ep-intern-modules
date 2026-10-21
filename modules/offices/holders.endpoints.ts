@@ -4,14 +4,14 @@
  * Inhaber-Rolle (Schutz vor Rechteausweitung).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint } from '$lib/sdk/server';
+import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
 import { assertCanChange, syncGrants } from './grants.service';
 import { buildOffice, loadOfficeOr404, mdb, usersByIds } from './load';
 import { holdersInput, idParams, type Office } from './schemas';
 
 const tags = ['Modul: offices'];
 
-export const holderEndpoints = [
+export const holderEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'PUT',
 		path: '/offices/:id/holders',
@@ -76,4 +76,4 @@ export const holderEndpoints = [
 			return office;
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

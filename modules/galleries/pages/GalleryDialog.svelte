@@ -3,18 +3,20 @@
 	import { toast } from 'svelte-sonner';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Lock from '@lucide/svelte/icons/lock';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, SharePanel } from '$lib/components/layout';
+	import { ConfirmDialog, FormField, SharePanel } from '$lib/components/layout';
 	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
 		MAX_DESCRIPTION,
 		MAX_TITLE,
+		PUBLISH_PERMISSION,
 		SHARE_LEVELS,
 		SHARE_LEVEL_LABELS,
 		VISIBILITIES,
@@ -23,6 +25,7 @@
 		galleryInput,
 		type EventRef,
 		type GalleryDetail,
+		type GalleryInput,
 		type Visibility
 	} from '../schemas';
 	import EventPicker from './EventPicker.svelte';
@@ -46,12 +49,24 @@
 	let title = $state('');
 	let description = $state('');
 	let visibility = $state<Visibility>('private');
+	// Veröffentlichen braucht ein eigenes Recht (#67, 01b-06); bereits öffentliche Galerien dürfen zurückgenommen werden
+	const canPublish = $derived(can((page.data.permissions ?? []) as string[], PUBLISH_PERMISSION));
+	const publishLocked = $derived(!canPublish && gallery?.visibility !== 'public');
 	let shares = $state<ShareEntry[]>([]);
 	let events = $state<EventRef[]>([]);
 	let stammName = $state('Stamm');
 	let busy = $state(false);
 	let error = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
+	/** Bestätigung der Einwilligungen vor dem Veröffentlichen (#27) */
+	let confirmOpen = $state(false);
+	let pending = $state<GalleryInput | null>(null);
+
+	const CONSENT_TEXT =
+		'Öffentliche Galerien erscheinen auf der Stammeswebsite und sind für alle Konten sichtbar. ' +
+		'Bitte bestätige, dass für alle erkennbaren Personen eine Einwilligung zur Veröffentlichung auf ' +
+		'der Website vorliegt – bei Kindern und Jugendlichen die der Erziehungsberechtigten. Deine ' +
+		'Bestätigung wird mit Zeitpunkt und Namen gespeichert.';
 
 	const ids = {
 		title: 'gal-title',
@@ -204,16 +219,35 @@
 			showErrors(issuesToErrors(parsed.error.issues), 'Bitte die markierten Felder prüfen.');
 			return;
 		}
+		// Wird die Galerie dadurch öffentlich, erst die Einwilligungen bestätigen lassen
+		const publishing =
+			parsed.data.visibility === 'public' && !(isEdit && gallery?.visibility === 'public');
+		if (publishing) {
+			pending = parsed.data;
+			confirmOpen = true;
+			return;
+		}
+		await send(parsed.data);
+	}
+
+	async function confirmPublish() {
+		const data = pending;
+		pending = null;
+		if (data) await send({ ...data, consentConfirmed: true });
+	}
+
+	async function send(data: GalleryInput) {
+		const isEdit = mode === 'edit' && !!gallery;
 		busy = true;
 		try {
 			const saved = isEdit
 				? await apiFetch<GalleryDetail>(`${BASE}/galleries/${encodeURIComponent(gallery!.id)}`, {
 						method: 'PUT',
-						body: JSON.stringify(parsed.data)
+						body: JSON.stringify(data)
 					})
 				: await apiFetch<GalleryDetail>(`${BASE}/galleries`, {
 						method: 'POST',
-						body: JSON.stringify(parsed.data)
+						body: JSON.stringify(data)
 					});
 			toast.success(isEdit ? 'Galerie gespeichert' : 'Galerie angelegt');
 			open = false;
@@ -272,10 +306,13 @@
 					>
 						{#each VISIBILITIES as v (v)}
 							{@const Icon = VISIBILITY_ICONS[v]}
+							{@const locked = v === 'public' && publishLocked}
 							<label
 								class={[
-									'flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors',
-									'hover:bg-muted/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+									'flex items-start gap-3 rounded-lg border p-3 transition-colors',
+									locked
+										? 'cursor-not-allowed opacity-60'
+										: 'cursor-pointer hover:bg-muted/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
 									visibility === v ? 'border-primary bg-primary/5' : 'border-border'
 								]}
 							>
@@ -284,12 +321,13 @@
 									name="gal-visibility"
 									value={v}
 									bind:group={visibility}
+									disabled={locked}
 									class="sr-only"
 								/>
 								<Icon
 									class={[
 										'mt-0.5 size-4 shrink-0',
-										visibility === v ? 'text-primary' : 'text-muted-foreground'
+										visibility === v ? 'text-link' : 'text-muted-foreground'
 									]}
 									aria-hidden="true"
 								/>
@@ -302,6 +340,20 @@
 							</label>
 						{/each}
 					</div>
+					{#if publishLocked}
+						<p class="text-xs text-muted-foreground">
+							Veröffentlichen darf nur, wer das Recht dazu hat.
+						</p>
+					{/if}
+					{#if visibility === 'public'}
+						<p class="text-xs text-muted-foreground">
+							Vor dem Veröffentlichen bestätigst du, dass für alle erkennbaren Personen eine
+							Website-Einwilligung vorliegt.
+						</p>
+					{/if}
+					{#if fieldErrors.consentConfirmed}
+						<p role="alert" class="text-xs text-destructive">{fieldErrors.consentConfirmed}</p>
+					{/if}
 					{#if fieldErrors.visibility}
 						<p id="{ids.visibility}-error" role="alert" class="text-xs text-destructive">
 							{fieldErrors.visibility}
@@ -371,3 +423,11 @@
 		</form>
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={confirmOpen}
+	title="Einwilligungen bestätigen"
+	description={CONSENT_TEXT}
+	confirmLabel="Bestätigen und veröffentlichen"
+	onconfirm={confirmPublish}
+/>

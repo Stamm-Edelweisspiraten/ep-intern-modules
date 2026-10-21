@@ -5,7 +5,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput } from '$lib/components/layout';
+	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import { transferInput, type Account } from '../schemas';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
 
@@ -142,7 +142,7 @@
 				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || active.length < 2}>
-					{busy ? 'Speichert …' : 'Umbuchen'}
+					{busy ? BUSY_SAVE : 'Umbuchen'}
 				</Button>
 			</Dialog.Footer>
 		</form>

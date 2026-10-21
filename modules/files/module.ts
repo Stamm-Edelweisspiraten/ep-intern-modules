@@ -8,6 +8,8 @@ import { sharesEndpoints } from './shares.endpoints';
 import { trashEndpoints } from './trash.endpoints';
 import { uploadEndpoints } from './upload.endpoints';
 import { resetAreas, resetUsers } from './reset';
+import { onUserDeleted } from './user-deleted';
+import { subjectExport } from './subject-export';
 import { filesBackup } from './backup';
 import { filesSearch } from './search';
 import { purgeExpired } from './trash.service';
@@ -79,6 +81,8 @@ export default defineModule({
 	resetAreas,
 	backup: filesBackup,
 	resetUsers,
+	onUserDeleted,
+	subjectExport,
 	jobs: [
 		{
 			id: 'purge-trash',

@@ -8,7 +8,8 @@
  * äußeren entfernt sie per CASCADE mit.
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
+import { core, errors, inList, type RequestContext, rowsOf, toIso, type Tx } from '$lib/sdk/server';
 import { accessForMany, canManageAll, requireNode, resolveAccess, rootAccess } from './access';
 import {
 	ancestorsOf,
@@ -18,8 +19,6 @@ import {
 	mdb,
 	nodeRowOf,
 	NODE_COLUMNS,
-	rowsOf,
-	toIso,
 	userRefs,
 	type NodeRow
 } from './db';
@@ -34,12 +33,6 @@ const PURGE_BATCH = 500;
 /** Höchstzahl Einträge in der Papierkorb-Liste */
 const MAX_TRASH_LIST = 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const idList = (ids: readonly string[]) =>
-	sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-
 /**
  * IDs der Teilbäume unter `rootIds` (inkl. der Wurzeln). Mit `ownOnly` endet der Abstieg an
  * verschachtelten Papierkorb-Wurzeln (die gehören zu einem eigenen Eintrag).
@@ -53,7 +46,7 @@ async function subtree(
 	const rows = await rowsOf(
 		tx,
 		sql`WITH RECURSIVE t(root, id) AS (
-				SELECT id, id FROM nodes WHERE id IN (${idList(rootIds)})
+				SELECT id, id FROM nodes WHERE id IN (${inList(rootIds)})
 				UNION ALL
 				SELECT t.root, n.id FROM nodes n JOIN t ON n.parent_id = t.id
 				WHERE ${ownOnly ? sql`NOT n.trash_root` : sql`TRUE`}
@@ -111,7 +104,7 @@ async function storagePathsOf(tx: Tx, ids: readonly string[]): Promise<string[]>
 	if (ids.length === 0) return [];
 	const rows = await rowsOf(
 		tx,
-		sql`SELECT storage_path, thumb_path FROM nodes WHERE id IN (${idList(ids)})`
+		sql`SELECT storage_path, thumb_path FROM nodes WHERE id IN (${inList(ids)})`
 	);
 	const paths: string[] = [];
 	for (const r of rows) {
@@ -127,12 +120,13 @@ async function deleteRoots(tx: Tx, rootIds: readonly string[]): Promise<string[]
 	const all = await subtree(tx, rootIds, false);
 	const paths = await storagePathsOf(tx, [...new Set(all.map((r) => r.id))]);
 	// CASCADE entfernt Kinder, Freigaben und öffentliche Links
-	await tx.execute(sql`DELETE FROM nodes WHERE id IN (${idList(rootIds)})`);
+	await tx.execute(sql`DELETE FROM nodes WHERE id IN (${inList(rootIds)})`);
 	return paths;
 }
 
+/** Kalendertag (Europe/Berlin), an dem der Eintrag endgültig gelöscht wird */
 function purgeDate(deletedAt: string, trashDays: number): string {
-	return new Date(new Date(deletedAt).getTime() + trashDays * DAY_MS).toISOString().slice(0, 10);
+	return todayBerlin(new Date(new Date(deletedAt).getTime() + trashDays * DAY_MS));
 }
 
 /** POST `/nodes/trash`: edit nötig; Teilbaum bekommt `deleted_at`, die Wurzel `trash_root = true` */
@@ -154,7 +148,7 @@ export async function trashNodes(ctx: RequestContext, ids: readonly string[]): P
 			// Bereits gelöschte Unterbäume behalten ihren eigenen Papierkorb-Eintrag
 			await tx.execute(
 				sql`UPDATE nodes SET deleted_at = now(), deleted_by = ${uid}
-					WHERE id IN (${idList(ids)}) AND deleted_at IS NULL`
+					WHERE id IN (${inList(ids)}) AND deleted_at IS NULL`
 			);
 			await tx.execute(sql`UPDATE nodes SET trash_root = true WHERE id = ${root}`);
 		}
@@ -194,7 +188,7 @@ export async function listTrash(ctx: RequestContext): Promise<TrashItem[]> {
 			const sizeRows = await rowsOf(
 				tx,
 				sql`WITH RECURSIVE t(root, id) AS (
-						SELECT id, id FROM nodes WHERE id IN (${idList(visible.map((v) => v.id))})
+						SELECT id, id FROM nodes WHERE id IN (${inList(visible.map((v) => v.id))})
 						UNION ALL
 						SELECT t.root, n.id FROM nodes n JOIN t ON n.parent_id = t.id WHERE NOT n.trash_root
 					)
@@ -282,7 +276,7 @@ export async function restoreNodes(
 			if (rest.length > 0)
 				await tx.execute(
 					sql`UPDATE nodes SET deleted_at = NULL, deleted_by = NULL
-						WHERE id IN (${idList(rest)})`
+						WHERE id IN (${inList(rest)})`
 				);
 		}
 		return roots.length;

@@ -19,7 +19,8 @@
 		PageHeader,
 		Pagination,
 		SearchInput,
-		type CalendarItem
+		type CalendarItem,
+		PageTitle
 	} from '$lib/components/layout';
 	import {
 		buildMonthGrid,
@@ -37,7 +38,7 @@
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canCreate = $derived(can(permissions, 'events.event.create'));
 
-	/** „Heute“ lokal (nicht UTC), einmal beim Laden der Seite bestimmt */
+	/** „Heute“ in Europe/Berlin (nicht UTC), einmal beim Laden der Seite bestimmt */
 	const today = localToday();
 
 	// --- Zustand aus der URL ---------------------------------------------------------------
@@ -244,7 +245,7 @@
 	}
 </script>
 
-<svelte:head><title>Termine</title></svelte:head>
+<PageTitle title="Termine" />
 
 <PageHeader title="Termine" description="Interne Termine und Termine für die Stammeswebsite">
 	{#snippet actions()}
@@ -277,7 +278,7 @@
 {/snippet}
 
 <Tabs.Root value={view} onValueChange={setView}>
-	<Tabs.List variant="line" class="mb-4 h-auto flex-wrap" aria-label="Ansicht">
+	<Tabs.List variant="line" class="mb-4" aria-label="Ansicht">
 		<Tabs.Trigger value="month">Monat</Tabs.Trigger>
 		<Tabs.Trigger value="list">Liste</Tabs.Trigger>
 	</Tabs.List>

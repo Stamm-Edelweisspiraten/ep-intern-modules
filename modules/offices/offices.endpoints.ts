@@ -4,8 +4,8 @@
  * Namen auflösen → Audit (Core-Aufrufe immer außerhalb der Modul-Transaktion).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
-import { assertCanChange, syncGrants, validateRoleIds } from './grants.service';
+import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
+import { assertCanChange, holderRoleId, syncGrants, validateRoleIds } from './grants.service';
 import { applyTemplatesCached } from './templates.service';
 import { buildOffice, buildOffices, loadOfficeOr404, loadOffices, mdb, rowsOf } from './load';
 import {
@@ -44,7 +44,7 @@ async function replaceRoles(tx: Tx, officeId: string, roleIds: readonly string[]
 	}
 }
 
-export const officeEndpoints = [
+export const officeEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/offices',
@@ -84,6 +84,8 @@ export const officeEndpoints = [
 			await assertCanChange(ctx, body.roleIds);
 			const id = crypto.randomUUID();
 			const data = await mdb().transaction(async (tx) => {
+				// Anzahl/Position nur unter Sperre lesen (parallele Neuanlagen, #73)
+				await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('offices:list'))`);
 				const [stats] = await rowsOf(
 					tx,
 					sql`SELECT count(*)::int AS n, COALESCE(MAX(position), -1)::int AS max FROM offices`
@@ -227,8 +229,11 @@ export const officeEndpoints = [
 		method: 'GET',
 		path: '/users',
 		summary: 'Aktive Benutzer*innen suchen (für die Zuordnung von Inhaber*innen, ab 2 Zeichen)',
+		description:
+			'E-Mail-Adressen nur mit `core.users.view` (sonst leer) – die Zuordnung braucht nur Name und Bild.',
 		tags,
 		permission: 'offices.office.manage',
+		rateLimit: { limit: 60, windowSec: 60 },
 		query: userSearchQuery,
 		handler: async ({ ctx, query }): Promise<UserRef[]> => {
 			if (query.search.length < 2) return [];
@@ -244,10 +249,11 @@ export const officeEndpoints = [
 		tags,
 		permission: 'offices.office.manage',
 		handler: async ({ ctx }): Promise<RoleRef[]> => {
-			const roles = await core.roles.directory(ctx, { all: true });
-			return roles
-				.filter((r) => r.name !== HOLDER_ROLE_NAME)
-				.map((r) => ({ id: r.id, name: r.name }));
+			const [roles, holderRole] = [
+				await core.roles.directory(ctx, { all: true }),
+				await holderRoleId(ctx)
+			];
+			return roles.filter((r) => r.id !== holderRole).map((r) => ({ id: r.id, name: r.name }));
 		}
 	})
-] as unknown as ApiEndpoint[];
+];

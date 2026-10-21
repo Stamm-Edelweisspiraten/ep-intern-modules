@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Link2 from '@lucide/svelte/icons/link-2';
@@ -17,7 +18,13 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ColorBadge, ContactListField, FileField, FormField } from '$lib/components/layout';
+	import {
+		ColorBadge,
+		ConfirmDialog,
+		ContactListField,
+		FileField,
+		FormField
+	} from '$lib/components/layout';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FormRenderer } from '$lib/components/forms';
 	import type { FieldDefinition, FormValues } from '$lib/forms';
@@ -79,7 +86,7 @@
 	const accept = DOCUMENT_CONTENT_TYPES.join(',');
 	const maxMb = MAX_DOCUMENT_BYTES / 1024 / 1024;
 	const hasGroups = $derived(groups.length > 0);
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayBerlin();
 	const left = $derived(!!member?.exitDate && member.exitDate <= today);
 	const groupOptions = $derived(
 		groups.map((g) => ({ value: g.id, label: g.name, description: GROUP_TYPE_LABELS[g.type] }))
@@ -226,6 +233,14 @@
 			method: 'POST',
 			body: fd
 		});
+	}
+
+	// Entfernen löscht sofort und endgültig → erst nach Bestätigung (#53)
+	let removeKind = $state<DocumentKind | null>(null);
+	let removeOpen = $state(false);
+	function askRemoveDoc(kind: DocumentKind) {
+		removeKind = kind;
+		removeOpen = true;
 	}
 
 	async function removeDoc(kind: DocumentKind) {
@@ -481,10 +496,22 @@
 	const docs = DOCUMENT_KINDS.map((kind) => ({ kind, label: DOCUMENT_LABELS[kind] }));
 	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 	const consentItems = [
-		{ id: 'm-consent-social', label: 'Socialmedia', key: 'consentSocialMedia' },
-		{ id: 'm-consent-web', label: 'Stammeswebsite', key: 'consentWebsite' },
-		{ id: 'm-consent-print', label: 'Print', key: 'consentPrint' }
+		{
+			id: 'm-consent-social',
+			label: 'Socialmedia',
+			key: 'consentSocialMedia',
+			proof: 'socialMedia'
+		},
+		{ id: 'm-consent-web', label: 'Stammeswebsite', key: 'consentWebsite', proof: 'website' },
+		{ id: 'm-consent-print', label: 'Print', key: 'consentPrint', proof: 'print' }
 	] as const;
+	/** Nachweis (#27): „erteilt/widerrufen am …“ der letzten Änderung */
+	function consentProofText(kind: 'socialMedia' | 'website' | 'print', given: boolean): string {
+		const p = member?.consentProof?.[kind];
+		if (!p) return '';
+		const d = new Date(p.at).toLocaleDateString('de-DE');
+		return `${given ? 'erteilt' : 'widerrufen'} am ${d}`;
+	}
 	const tabs = $derived([
 		{ value: 'person' as const, label: 'Person' },
 		{ value: 'contact' as const, label: 'Kontakt' },
@@ -518,7 +545,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[90vh] flex-col sm:max-w-2xl">
+	<Dialog.Content class="flex flex-col sm:max-w-2xl">
 		<Dialog.Header>
 			{#if viewing && member}
 				<Dialog.Title class="flex flex-wrap items-center gap-2">
@@ -539,10 +566,7 @@
 
 		<form class="flex min-h-0 flex-1 flex-col gap-4" onsubmit={submit} novalidate>
 			<Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col gap-3">
-				<Tabs.List
-					variant="line"
-					class="w-full flex-wrap justify-start gap-y-2 group-data-[orientation=horizontal]/tabs:h-auto"
-				>
+				<Tabs.List variant="line" class="w-full justify-start">
 					{#each tabs as t (t.value)}
 						<Tabs.Trigger value={t.value} class="flex-none">
 							{t.label}
@@ -777,6 +801,11 @@
 												<Checkbox id={c.id} bind:checked={consentPrint} />
 											{/if}
 											<label for={c.id} class="text-sm">{c.label}</label>
+											{#if consentProofText(c.proof, Boolean(member?.[c.key]))}
+												<span class="text-xs text-muted-foreground">
+													({consentProofText(c.proof, Boolean(member?.[c.key]))})
+												</span>
+											{/if}
 										</div>
 									{/each}
 								</div>
@@ -797,7 +826,7 @@
 												existingHref={member ? `${base}/${member.id}/documents/${d.kind}` : null}
 												canUpload={canUpload && !viewing}
 												canRemove={canRemoveDoc && !viewing}
-												onremove={() => removeDoc(d.kind)}
+												onremove={() => askRemoveDoc(d.kind)}
 											/>
 										{/key}
 										{#if canUpload && !viewing}
@@ -858,3 +887,14 @@
 		</form>
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={removeOpen}
+	title={removeKind ? `${DOCUMENT_LABELS[removeKind]} entfernen?` : 'Dokument entfernen?'}
+	description={removeKind
+		? `„${docNames[removeKind] ?? DOCUMENT_LABELS[removeKind]}“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.`
+		: undefined}
+	confirmLabel="Entfernen"
+	destructive
+	onconfirm={() => (removeKind ? removeDoc(removeKind) : undefined)}
+/>

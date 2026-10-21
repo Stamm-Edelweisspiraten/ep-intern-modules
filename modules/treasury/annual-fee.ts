@@ -22,6 +22,7 @@ import type {
 	FeeLevel,
 	FeeRates
 } from './schemas';
+import { addDays } from '$lib/sdk/dates';
 import { FEE_FULL_UNTIL, FEE_LEVEL_LABELS, FEE_LEVELS } from './schemas';
 
 export interface AnnualMember {
@@ -256,12 +257,7 @@ export function joinNames(names: string[]): string {
 export function defaultAnnualDueOn(year: number, todayIso: string, minDays: number): string {
 	const march = `${year}-03-31`;
 	if (march > todayIso) return march;
-	return addDaysIso(todayIso, minDays);
-}
-
-function addDaysIso(dateIso: string, days: number): string {
-	const d = new Date(Date.parse(`${dateIso}T00:00:00Z`) + Math.max(0, days) * 86_400_000);
-	return d.toISOString().slice(0, 10);
+	return addDays(todayIso, Math.max(0, minDays));
 }
 
 /**
@@ -269,5 +265,5 @@ function addDaysIso(dateIso: string, days: number): string {
  * sonst heute + Mindestfrist (z. B. Nachberechnung nach dem 31.03. oder Versand nach der Frist).
  */
 export function annualInvoiceDueOn(runDueOn: string, todayIso: string, minDays: number): string {
-	return runDueOn >= todayIso ? runDueOn : addDaysIso(todayIso, minDays);
+	return runDueOn >= todayIso ? runDueOn : addDays(todayIso, Math.max(0, minDays));
 }

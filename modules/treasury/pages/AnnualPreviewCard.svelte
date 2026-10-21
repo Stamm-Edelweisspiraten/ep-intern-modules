@@ -182,9 +182,7 @@
 								{:else if mail.to.length}
 									{mail.to.join(', ')}
 								{:else}
-									<span class="text-amber-700 dark:text-amber-400"
-										>keine E-Mail-Adresse – nur Rechnung, keine Mail</span
-									>
+									<span class="text-warning">keine E-Mail-Adresse – nur Rechnung, keine Mail</span>
 								{/if}
 							</dd>
 						</dl>
@@ -192,10 +190,10 @@
 							title="Mail-Vorschau"
 							sandbox=""
 							srcdoc={mailDoc(mail.html)}
-							class="h-[60vh] w-full rounded-md border bg-white"
+							class="h-[60dvh] w-full rounded-md border bg-white"
 						></iframe>
 					{:else}
-						<Skeleton class="h-[60vh] w-full" />
+						<Skeleton class="h-[60dvh] w-full" />
 					{/if}
 				</section>
 				<section class="min-w-0 space-y-2" aria-label="PDF-Vorschau">
@@ -211,13 +209,13 @@
 						<iframe
 							title="Rechnungs-PDF"
 							src={pdfUrl}
-							class="hidden h-[70vh] w-full rounded-md border bg-white sm:block"
+							class="hidden h-[70dvh] w-full rounded-md border bg-white sm:block"
 						></iframe>
 						<p class="text-xs text-muted-foreground sm:hidden">
 							Auf dem Handy öffnet sich das PDF in einem neuen Fenster.
 						</p>
 					{:else}
-						<Skeleton class="h-[70vh] w-full" />
+						<Skeleton class="h-[70dvh] w-full" />
 					{/if}
 				</section>
 			</div>

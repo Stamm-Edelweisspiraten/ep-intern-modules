@@ -10,6 +10,7 @@ import type { SearchHit } from '$lib/sdk/types/search';
 import { formatEuro } from '$lib/components/layout/money';
 import { idList, iso, mdb, num, rows } from './db';
 import { canManage, linkedMemberIds, ORDER_STATUS_SQL } from './orders.service';
+import { formatDateDe } from '$lib/sdk/dates';
 import { priceRange } from './stock';
 import { ORDER_STATUS_LABELS, PERMISSIONS, type OrderStatus } from './schemas';
 
@@ -17,10 +18,7 @@ function likePattern(q: string): string {
 	return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-function formatDate(isoString: string): string {
-	const [y, m, d] = isoString.slice(0, 10).split('-');
-	return `${d}.${m}.${y}`;
-}
+const formatDate = (iso: string): string => formatDateDe(iso);
 
 function priceText(prices: number[]): string | undefined {
 	if (!prices.length) return undefined;

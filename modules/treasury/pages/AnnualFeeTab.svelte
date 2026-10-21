@@ -456,11 +456,9 @@
 						{#if saveState === 'pending' || saveState === 'saving'}
 							Speichert …
 						{:else if saveState === 'saved'}
-							<span class="text-emerald-700 dark:text-emerald-400">Gespeichert</span>
+							<span class="text-success">Gespeichert</span>
 						{:else if saveState === 'invalid'}
-							<span class="text-amber-700 dark:text-amber-400"
-								>Nicht gespeichert – Eingaben prüfen</span
-							>
+							<span class="text-warning">Nicht gespeichert – Eingaben prüfen</span>
 						{:else if saveState === 'error'}
 							<span class="text-destructive">{saveError}</span>
 							<button type="button" class="ml-1 underline" onclick={() => void save()}>

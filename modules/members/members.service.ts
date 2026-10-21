@@ -1,10 +1,22 @@
 import { sql } from 'drizzle-orm';
-import { core, errors, isCoreError, type RequestContext, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	isCoreError,
+	logBestEffort,
+	moduleDb,
+	type RequestContext,
+	type Row,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
 import { mergeCustom, validateCustomValues } from './fields.service';
 import {
 	MODULE_ID,
 	type BulkInput,
 	type BulkResult,
+	type ConsentRecord,
 	type ContactEntry,
 	type GroupRef,
 	FEE_LEVELS,
@@ -15,18 +27,30 @@ import {
 	type Stage
 } from './schemas';
 
-type Row = Record<string, unknown>;
+const proof = (at: unknown, by: unknown): ConsentRecord | null =>
+	at == null ? null : { at: toIso(at), by: by == null ? null : String(by) };
 
-async function rows(tx: Tx, query: ReturnType<typeof sql>): Promise<Row[]> {
-	const res = (await tx.execute(query)) as unknown as { rows: Row[] };
-	return res.rows;
+/** Erfassende Person für den Einwilligungsnachweis */
+export function consentActor(ctx: RequestContext): string {
+	return ctx.userId ?? `${ctx.actor.type}:${ctx.actor.id}`;
 }
 
-/** pg liefert Date, PGlite Strings: immer als ISO-String ausgeben */
-const iso = (v: unknown): string => {
-	const d = v instanceof Date ? v : new Date(String(v));
-	return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
-};
+/**
+ * SET-Teil für eine Einwilligung: Wert setzen und – nur bei tatsächlicher Änderung – Zeitpunkt und
+ * erfassende Person (rechte Seite einer UPDATE-Zuweisung sieht den alten Wert).
+ */
+export function consentSet(
+	column: 'consent_social_media' | 'consent_website' | 'consent_print',
+	value: boolean,
+	by: string
+) {
+	const col = sql.raw(column);
+	const at = sql.raw(`${column}_at`);
+	const who = sql.raw(`${column}_by`);
+	return sql`${col} = ${value},
+		${at} = CASE WHEN ${col} IS DISTINCT FROM ${value} THEN now() ELSE ${at} END,
+		${who} = CASE WHEN ${col} IS DISTINCT FROM ${value} THEN ${by} ELSE ${who} END`;
+}
 
 const contact = (r: Row): ContactEntry => ({
 	name: (r.name as string | null) ?? null,
@@ -36,6 +60,8 @@ const contact = (r: Row): ContactEntry => ({
 const MEMBER_COLUMNS = sql`m.id, m.first_name, m.last_name, m.scout_name,
 	to_char(m.birth_date, 'YYYY-MM-DD') AS birth_date, m.street, m.postal_code, m.city, m.country, m.stage,
 	m.consent_social_media, m.consent_website, m.consent_print,
+	m.consent_social_media_at, m.consent_social_media_by, m.consent_website_at, m.consent_website_by,
+	m.consent_print_at, m.consent_print_by, m.anonymized_at,
 	m.privacy_consent_name, m.registration_name, m.created_at, m.updated_at,
 		(SELECT count(*)::int FROM member_user_links l WHERE l.member_id = m.id) AS link_count, m.custom,
 	to_char(m.entry_date, 'YYYY-MM-DD') AS entry_date, to_char(m.exit_date, 'YYYY-MM-DD') AS exit_date,
@@ -65,15 +91,15 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 		list.map((r) => sql`${r.id as string}`),
 		sql`, `
 	);
-	const phones = await rows(
+	const phones = await rowsOf(
 		tx,
 		sql`SELECT member_id, name, value FROM member_phones WHERE member_id IN (${ids}) ORDER BY position, id`
 	);
-	const emails = await rows(
+	const emails = await rowsOf(
 		tx,
 		sql`SELECT member_id, name, value FROM member_emails WHERE member_id IN (${ids}) ORDER BY position, id`
 	);
-	const groups = await rows(
+	const groups = await rowsOf(
 		tx,
 		sql`SELECT mg.member_id, g.id, g.name, g.type, g.color FROM member_groups mg
 			JOIN groups g ON g.id = mg.group_id WHERE mg.member_id IN (${ids}) ORDER BY g.name`
@@ -99,6 +125,12 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 			consentSocialMedia: Boolean(r.consent_social_media),
 			consentWebsite: Boolean(r.consent_website),
 			consentPrint: Boolean(r.consent_print),
+			consentProof: {
+				socialMedia: proof(r.consent_social_media_at, r.consent_social_media_by),
+				website: proof(r.consent_website_at, r.consent_website_by),
+				print: proof(r.consent_print_at, r.consent_print_by)
+			},
+			anonymizedAt: r.anonymized_at == null ? null : toIso(r.anonymized_at),
 			privacyConsent: r.privacy_consent_name ? { name: r.privacy_consent_name as string } : null,
 			registration: r.registration_name ? { name: r.registration_name as string } : null,
 			entryDate: (r.entry_date as string | null) ?? null,
@@ -109,15 +141,15 @@ async function hydrate(tx: Tx, list: Row[]): Promise<Member[]> {
 			custom: (typeof r.custom === 'string'
 				? JSON.parse(r.custom)
 				: (r.custom ?? {})) as Member['custom'],
-			createdAt: iso(r.created_at),
-			updatedAt: iso(r.updated_at)
+			createdAt: toIso(r.created_at),
+			updatedAt: toIso(r.updated_at)
 		};
 	});
 }
 
 /** Lädt ein Member-DTO innerhalb einer Modul-Transaktion; null, wenn nicht vorhanden. */
 export async function loadMember(tx: Tx, id: string): Promise<Member | null> {
-	const found = await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id = ${id}`);
+	const found = await rowsOf(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id = ${id}`);
 	return (await hydrate(tx, found))[0] ?? null;
 }
 
@@ -130,14 +162,14 @@ export async function loadMembersByIds(tx: Tx, ids: string[]): Promise<Member[]>
 	);
 	const found = await hydrate(
 		tx,
-		await rows(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id IN (${list})`)
+		await rowsOf(tx, sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE m.id IN (${list})`)
 	);
 	return ids.map((i) => found.find((m) => m.id === i)).filter((m): m is Member => !!m);
 }
 
 /** Lädt ein Member-DTO in eigener Modul-Transaktion; wirft 404. */
 export async function getMember(id: string): Promise<Member> {
-	const m = await core.database.forModule(MODULE_ID).transaction((tx) => loadMember(tx, id));
+	const m = await moduleDb(MODULE_ID).transaction((tx) => loadMember(tx, id));
 	if (!m) throw errors.notFound('Mitglied nicht gefunden');
 	return m;
 }
@@ -150,7 +182,7 @@ export async function listMembers(query: {
 	limit: number;
 	offset: number;
 }): Promise<MemberList> {
-	return core.database.forModule(MODULE_ID).transaction(async (tx) => {
+	return moduleDb(MODULE_ID).transaction(async (tx) => {
 		const conds = [sql`TRUE`];
 		if (query.search) {
 			const p = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;
@@ -167,8 +199,8 @@ export async function listMembers(query: {
 		if (status === 'active') conds.push(sql`(m.exit_date IS NULL OR m.exit_date > CURRENT_DATE)`);
 		else if (status === 'left') conds.push(sql`m.exit_date <= CURRENT_DATE`);
 		const where = sql.join(conds, sql` AND `);
-		const total = await rows(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
-		const found = await rows(
+		const total = await rowsOf(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
+		const found = await rowsOf(
 			tx,
 			sql`SELECT ${MEMBER_COLUMNS} FROM members m WHERE ${where}
 				ORDER BY m.last_name, m.first_name, m.id LIMIT ${query.limit} OFFSET ${query.offset}`
@@ -184,7 +216,7 @@ async function checkGroups(tx: Tx, groupIds: string[]): Promise<string[]> {
 			unique.map((g) => sql`${g}`),
 			sql`, `
 		);
-		const found = await rows(tx, sql`SELECT id FROM groups WHERE id IN (${ids})`);
+		const found = await rowsOf(tx, sql`SELECT id FROM groups WHERE id IN (${ids})`);
 		if (found.length !== unique.length) {
 			throw errors.validation({ groupIds: 'Unbekannte Gruppe' }, 'Unbekannte Gruppe');
 		}
@@ -213,7 +245,7 @@ async function writeRelations(tx: Tx, id: string, input: MemberInput, groupIds: 
 
 export async function createMember(ctx: RequestContext, input: MemberInput): Promise<Member> {
 	const id = crypto.randomUUID();
-	const member = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+	const member = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const groupIds = await checkGroups(tx, input.groupIds);
 		const custom = mergeCustom({}, await validateCustomValues(tx, input.custom));
 		await tx.execute(
@@ -224,11 +256,23 @@ export async function createMember(ctx: RequestContext, input: MemberInput): Pro
 				${input.entryDate}::date, ${input.exitDate}::date, ${input.secondaryMember}, ${feeLevelsSql(storedFeeLevels(input))})`
 		);
 		await writeRelations(tx, id, input, groupIds);
+		// Einwilligungsnachweis: erteilte Einwilligungen mit Zeitpunkt und erfassender Person
+		const by = consentActor(ctx);
+		await tx.execute(
+			sql`UPDATE members SET
+				consent_social_media_at = CASE WHEN consent_social_media THEN now() END,
+				consent_social_media_by = CASE WHEN consent_social_media THEN ${by} END,
+				consent_website_at = CASE WHEN consent_website THEN now() END,
+				consent_website_by = CASE WHEN consent_website THEN ${by} END,
+				consent_print_at = CASE WHEN consent_print THEN now() END,
+				consent_print_by = CASE WHEN consent_print THEN ${by} END
+				WHERE id = ${id}`
+		);
 		return (await loadMember(tx, id))!;
 	});
 	await core.audit.logFromContext(ctx, 'members.member.created', {
-		target: id,
-		metadata: { name: `${member.firstName} ${member.lastName}` }
+		target: id
+		// Keine Klarnamen im unveränderlichen Audit (#26): die ID in `target` genügt
 	});
 	return member;
 }
@@ -238,8 +282,11 @@ export async function updateMember(
 	id: string,
 	input: MemberInput
 ): Promise<Member> {
-	const member = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-		const exists = await rows(tx, sql`SELECT id, custom FROM members WHERE id = ${id} FOR UPDATE`);
+	const member = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const exists = await rowsOf(
+			tx,
+			sql`SELECT id, custom FROM members WHERE id = ${id} FOR UPDATE`
+		);
 		if (!exists.length) throw errors.notFound('Mitglied nicht gefunden');
 		const groupIds = await checkGroups(tx, input.groupIds);
 		const stored = exists[0]!.custom;
@@ -251,8 +298,10 @@ export async function updateMember(
 			sql`UPDATE members SET first_name = ${input.firstName}, last_name = ${input.lastName},
 				scout_name = ${input.scoutName}, birth_date = ${input.birthDate}::date, street = ${input.street}, postal_code = ${input.postalCode}, city = ${input.city},
 					country = ${input.country}, address = NULL, custom = ${JSON.stringify(custom)}::jsonb,
-				stage = ${input.stage}, consent_social_media = ${input.consentSocialMedia},
-				consent_website = ${input.consentWebsite}, consent_print = ${input.consentPrint},
+				stage = ${input.stage},
+				${consentSet('consent_social_media', input.consentSocialMedia, consentActor(ctx))},
+				${consentSet('consent_website', input.consentWebsite, consentActor(ctx))},
+				${consentSet('consent_print', input.consentPrint, consentActor(ctx))},
 				entry_date = ${input.entryDate}::date, exit_date = ${input.exitDate}::date,
 				secondary_member = ${input.secondaryMember}, fee_levels = ${feeLevelsSql(storedFeeLevels(input))},
 				updated_at = now() WHERE id = ${id}`
@@ -261,8 +310,8 @@ export async function updateMember(
 		return (await loadMember(tx, id))!;
 	});
 	await core.audit.logFromContext(ctx, 'members.member.updated', {
-		target: id,
-		metadata: { name: `${member.firstName} ${member.lastName}` }
+		target: id
+		// Keine Klarnamen im unveränderlichen Audit (#26): die ID in `target` genügt
 	});
 	return member;
 }
@@ -278,12 +327,12 @@ export async function bulkUpdateMembers(
 ): Promise<BulkResult> {
 	if (input.action === 'delete') return bulkDelete(ctx, input.ids);
 
-	const result = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
+	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const idList = sql.join(
 			input.ids.map((i) => sql`${i}`),
 			sql`, `
 		);
-		const found = await rows(
+		const found = await rowsOf(
 			tx,
 			sql`SELECT id, first_name, last_name FROM members WHERE id IN (${idList}) ORDER BY id FOR UPDATE`
 		);
@@ -297,7 +346,7 @@ export async function bulkUpdateMembers(
 				groupIds.map((g) => sql`${g}`),
 				sql`, `
 			);
-			const known = await rows(tx, sql`SELECT id FROM groups WHERE id IN (${gList})`);
+			const known = await rowsOf(tx, sql`SELECT id FROM groups WHERE id IN (${gList})`);
 			if (known.length !== groupIds.length) {
 				throw errors.validation({ groupIds: 'Unbekannte Gruppe' }, 'Unbekannte Gruppe');
 			}
@@ -305,7 +354,7 @@ export async function bulkUpdateMembers(
 				if (input.action === 'add-groups') {
 					const before = Number(
 						(
-							await rows(
+							await rowsOf(
 								tx,
 								sql`SELECT count(*)::int AS n FROM member_groups WHERE member_id = ${memberId}`
 							)
@@ -318,7 +367,7 @@ export async function bulkUpdateMembers(
 					}
 					const after = Number(
 						(
-							await rows(
+							await rowsOf(
 								tx,
 								sql`SELECT count(*)::int AS n FROM member_groups WHERE member_id = ${memberId}`
 							)
@@ -329,7 +378,7 @@ export async function bulkUpdateMembers(
 				}
 				// Entfernen (Gruppen sind optional, auch die letzte darf entfallen)
 				const current = (
-					await rows(tx, sql`SELECT group_id FROM member_groups WHERE member_id = ${memberId}`)
+					await rowsOf(tx, sql`SELECT group_id FROM member_groups WHERE member_id = ${memberId}`)
 				).map((r) => r.group_id as string);
 				const toRemove = current.filter((g) => groupIds.includes(g));
 				if (!toRemove.length) continue;
@@ -352,10 +401,14 @@ export async function bulkUpdateMembers(
 			const c = input.consent;
 			const sets = [
 				c.consentSocialMedia !== undefined
-					? sql`consent_social_media = ${c.consentSocialMedia}`
+					? consentSet('consent_social_media', c.consentSocialMedia, consentActor(ctx))
 					: null,
-				c.consentWebsite !== undefined ? sql`consent_website = ${c.consentWebsite}` : null,
-				c.consentPrint !== undefined ? sql`consent_print = ${c.consentPrint}` : null,
+				c.consentWebsite !== undefined
+					? consentSet('consent_website', c.consentWebsite, consentActor(ctx))
+					: null,
+				c.consentPrint !== undefined
+					? consentSet('consent_print', c.consentPrint, consentActor(ctx))
+					: null,
 				sql`updated_at = now()`
 			].filter((s): s is ReturnType<typeof sql> => s !== null);
 			await tx.execute(sql`UPDATE members SET ${sql.join(sets, sql`, `)} WHERE id IN (${idList})`);
@@ -378,9 +431,7 @@ async function bulkDelete(ctx: RequestContext, ids: string[]): Promise<BulkResul
 	const skipped: BulkResult['skipped'] = [];
 	let affected = 0;
 	for (const id of ids) {
-		const existing = await core.database
-			.forModule(MODULE_ID)
-			.transaction((tx) => loadMember(tx, id));
+		const existing = await moduleDb(MODULE_ID).transaction((tx) => loadMember(tx, id));
 		if (!existing) throw errors.notFound('Mitglied nicht gefunden');
 		try {
 			await deleteMember(ctx, id);
@@ -398,15 +449,15 @@ async function bulkDelete(ctx: RequestContext, ids: string[]): Promise<BulkResul
 }
 
 export async function deleteMember(ctx: RequestContext, id: string): Promise<void> {
-	const { name, paths } = await core.database.forModule(MODULE_ID).transaction(async (tx) => {
-		const found = await rows(
+	const { paths } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const found = await rowsOf(
 			tx,
-			sql`SELECT first_name, last_name, privacy_consent_path, registration_path
+			sql`SELECT privacy_consent_path, registration_path
 				FROM members WHERE id = ${id} FOR UPDATE`
 		);
 		const m = found[0];
 		if (!m) throw errors.notFound('Mitglied nicht gefunden');
-		const sole = await rows(
+		const sole = await rowsOf(
 			tx,
 			sql`SELECT g.name FROM group_leaders gl JOIN groups g ON g.id = gl.group_id
 				WHERE gl.member_id = ${id}
@@ -420,21 +471,32 @@ export async function deleteMember(ctx: RequestContext, id: string): Promise<voi
 		await tx.execute(sql`DELETE FROM group_leaders WHERE member_id = ${id}`);
 		await tx.execute(sql`DELETE FROM members WHERE id = ${id}`);
 		return {
-			name: `${m.first_name} ${m.last_name}`,
 			paths: [m.privacy_consent_path, m.registration_path].filter(
 				(p): p is string => typeof p === 'string' && p.length > 0
 			)
 		};
 	});
+	await removeMemberFiles(ctx, paths);
+	// Kopien in anderen Modulen aufräumen (z. B. `actions`: verknüpfte Teilnehmende anonymisieren)
+	await core.modules.memberDeleted(MODULE_ID, { memberIds: [id], reason: 'deleted' });
+	// Ohne Namen: gelöschte Personen sollen über das Audit nicht namentlich auffindbar bleiben (#26)
+	await core.audit.logFromContext(ctx, 'members.member.deleted', { target: id });
+}
+
+/**
+ * Dokumente entfernen (best-effort). Fehlschläge werden protokolliert (ohne Pfad/Name), damit
+ * verwaiste Dateien auffallen; der Löschvorgang selbst scheitert daran nicht.
+ */
+export async function removeMemberFiles(ctx: RequestContext, paths: string[]): Promise<number> {
+	let failed = 0;
 	for (const path of paths) {
 		try {
 			await core.storage.remove(ctx, { module: MODULE_ID, path });
-		} catch {
-			// best-effort
+		} catch (err) {
+			failed++;
+			// Ohne Pfad/Name protokollieren (verwaiste Dateien sollen auffallen)
+			logBestEffort('members.member.document-cleanup', err, { ctx });
 		}
 	}
-	await core.audit.logFromContext(ctx, 'members.member.deleted', {
-		target: id,
-		metadata: { name }
-	});
+	return failed;
 }

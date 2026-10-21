@@ -220,7 +220,7 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] w-full max-w-full overflow-y-auto sm:max-w-lg">
+	<Dialog.Content class="w-full max-w-full sm:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title>Rückzahlung des Überschusses</Dialog.Title>
 			<Dialog.Description>
@@ -229,7 +229,7 @@
 		</Dialog.Header>
 
 		{#if loading && !data}
-			<div class="space-y-3" aria-busy="true" aria-label="Lade Rückzahlung">
+			<div class="space-y-3" aria-busy="true" aria-label="Rückzahlung wird geladen">
 				<Skeleton class="h-10 w-full" />
 				<Skeleton class="h-24 w-full" />
 			</div>
@@ -249,7 +249,7 @@
 					</div>
 					{#if booked}
 						<div
-							class="flex items-center gap-2 rounded-lg border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm font-medium"
+							class="flex items-center gap-2 rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm font-medium"
 							role="status"
 						>
 							<Check class="size-4" aria-hidden="true" />
@@ -407,7 +407,7 @@
 				{/if}
 			</div>
 
-			<Dialog.Footer class="gap-2">
+			<Dialog.Footer sticky class="gap-2">
 				<Button variant="outline" onclick={() => (open = false)}>Schließen</Button>
 				{#if editable}
 					{#if booked}

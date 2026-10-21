@@ -6,7 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import {
 		MAX_RECEIPT_BYTES,
 		RECEIPT_CONTENT_TYPES,
@@ -119,7 +119,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>
 				{payable ? 'Auszahlung bearbeiten' : 'Eingangsrechnung / Auszahlung erfassen'}
@@ -216,9 +216,9 @@
 				</div>
 			{/if}
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer>
+			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
-				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>
+				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>

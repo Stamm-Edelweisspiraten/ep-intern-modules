@@ -27,14 +27,14 @@
 					.join(' · ')
 			: 'Keine Rechnung in der Kasse'
 	);
-	const amber = 'border-amber-500/50 text-amber-700 dark:text-amber-400';
+	const amber = 'border-warning-border text-warning';
 </script>
 
 {#snippet badge()}
 	{#if !payment}
 		<span class="text-muted-foreground">–</span>
 	{:else if payment.status === 'paid'}
-		<Badge variant="secondary" class="text-green-700 dark:text-green-400"
+		<Badge variant="secondary" class="text-success"
 			><Check class="size-3" aria-hidden="true" /> Bezahlt</Badge
 		>
 	{:else if payment.status === 'waived'}

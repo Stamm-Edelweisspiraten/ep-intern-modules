@@ -139,7 +139,7 @@
 				<SummaryList {rows} />
 
 				{#if missing.length > 0}
-					<div class="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2">
+					<div class="space-y-2 rounded-md border border-warning-border bg-warning-muted px-3 py-2">
 						<p class="text-sm">
 							{missing.length === 1
 								? 'Eine Ausgabe hat keinen Beleg:'

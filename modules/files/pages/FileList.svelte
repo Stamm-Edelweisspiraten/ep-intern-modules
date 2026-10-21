@@ -682,7 +682,7 @@
 												use:watchThumb
 											/>
 										{:else if node.kind === 'folder'}
-											<Icon class="size-14 text-primary/80" aria-hidden="true" />
+											<Icon class="size-14 text-link/80" aria-hidden="true" />
 										{:else}
 											<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
 										{/if}
@@ -819,7 +819,7 @@
 												{:else}
 													<Icon
 														class={node.kind === 'folder'
-															? 'size-5 text-primary/80'
+															? 'size-5 text-link/80'
 															: 'size-5 text-muted-foreground'}
 														aria-hidden="true"
 													/>

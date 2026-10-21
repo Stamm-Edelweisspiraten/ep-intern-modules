@@ -4,7 +4,7 @@
  * Storage-Aufrufe nur AUSSERHALB offener Transaktionen (Ausnahme: `quotaUsed`/`assertQuota` sind reine SQL-Helfer).
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, isCoreError, type Tx } from '$lib/sdk/server';
+import { contentDisposition, core, errors, isCoreError, rowsOf, type Tx } from '$lib/sdk/server';
 import { filesCtx } from './db';
 import {
 	MODULE_ID,
@@ -106,24 +106,10 @@ function formatBytes(n: number): string {
 	return `${n} Byte`;
 }
 
-/** `content-disposition` nach RFC 6266/5987 mit ASCII-Ersatznamen */
-function disposition(kind: 'inline' | 'attachment', name: string): string {
-	const ascii =
-		name
-			.normalize('NFKD')
-			.replace(/[̀-ͯ]/g, '')
-			.replace(/[^A-Za-z0-9._ -]+/g, '_')
-			.trim() || 'datei';
-	const encoded = encodeURIComponent(name).replace(
-		/['()*]/g,
-		(c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
-	);
-	return `${kind}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
-}
-
+/** Inhalt als Stream (nicht komplett im Speicher); `file.size` = Länge */
 async function download(path: string) {
 	try {
-		return await core.storage.download(filesCtx(), { module: MODULE_ID, path });
+		return await core.storage.downloadStream(filesCtx(), { module: MODULE_ID, path });
 	} catch (e) {
 		if (isCoreError(e) && e.code === 'not_found') throw errors.notFound('Datei nicht gefunden');
 		throw e;
@@ -224,7 +210,7 @@ export async function contentResponse(input: {
 	contentType: string;
 	download: boolean;
 }): Promise<Response> {
-	const { buffer } = await download(input.path);
+	const { stream, file } = await download(input.path);
 	const ct = cleanType(input.contentType) ?? OCTET;
 	const isText = includes(PREVIEW_TEXT_TYPES, ct);
 	const never = includes(NEVER_INLINE_TYPES, ct);
@@ -237,12 +223,12 @@ export async function contentResponse(input: {
 	else if (isText) contentType = `${ct}; charset=utf-8`;
 	else contentType = ct;
 
-	return new Response(buffer as BodyInit, {
+	return new Response(stream, {
 		status: 200,
 		headers: {
 			'content-type': contentType,
-			'content-length': String(buffer.byteLength),
-			'content-disposition': disposition(inline ? 'inline' : 'attachment', input.name),
+			'content-length': String(file.size),
+			'content-disposition': contentDisposition(inline ? 'inline' : 'attachment', input.name),
 			'x-content-type-options': 'nosniff',
 			'content-security-policy': "default-src 'none'; sandbox",
 			'cache-control': 'private, max-age=60'
@@ -252,12 +238,12 @@ export async function contentResponse(input: {
 
 /** Thumbnail (WebP) als Response, `cache-control: private, max-age=3600` */
 export async function thumbResponse(path: string): Promise<Response> {
-	const { buffer } = await download(path);
-	return new Response(buffer as BodyInit, {
+	const { stream, file } = await download(path);
+	return new Response(stream, {
 		status: 200,
 		headers: {
 			'content-type': 'image/webp',
-			'content-length': String(buffer.byteLength),
+			'content-length': String(file.size),
 			'content-disposition': 'inline',
 			'x-content-type-options': 'nosniff',
 			'content-security-policy': "default-src 'none'; sandbox",
@@ -266,22 +252,27 @@ export async function thumbResponse(path: string): Promise<Response> {
 	});
 }
 
-/** Objekte best-effort entfernen (Fehler ignorieren) */
+/**
+ * Objekte best-effort entfernen (Fehler ignorieren). Sammel-Löschung über `core.storage.removeMany`
+ * (S3 DeleteObjects in Paketen à 1000, ein Audit-Eintrag) – Papierkorb leeren bleibt auch bei
+ * Tausenden Dateien schnell.
+ */
 export async function removeObjects(paths: readonly (string | null | undefined)[]): Promise<void> {
-	const ctx = filesCtx();
-	for (const path of new Set(paths)) {
-		if (!path) continue;
-		await core.storage.remove(ctx, { module: MODULE_ID, path }).catch(() => undefined);
-	}
+	const list = [...new Set(paths)].filter((p): p is string => !!p);
+	if (!list.length) return;
+	await core.storage
+		.removeMany(filesCtx(), { module: MODULE_ID, paths: list })
+		.catch(() => undefined);
 }
 
 /** Belegter Platz einer Person (alle eigenen Dateien inkl. Papierkorb), in der Transaktion */
 export async function quotaUsed(tx: Tx, ownerId: string): Promise<number> {
-	const res = (await tx.execute(
+	const [row] = await rowsOf(
+		tx,
 		sql`SELECT COALESCE(SUM(size_bytes), 0)::bigint AS used FROM nodes
 			WHERE owner_id = ${ownerId} AND kind = 'file'`
-	)) as unknown as { rows: Record<string, unknown>[] };
-	return Number(res.rows[0]?.used ?? 0);
+	);
+	return Number(row?.used ?? 0);
 }
 
 /** 413 „Dein Speicherplatz ist voll …“, wenn `used + addBytes > limitBytes` (`null` = unbegrenzt) */
@@ -292,6 +283,10 @@ export async function assertQuota(
 	limitBytes: number | null
 ): Promise<void> {
 	if (limitBytes === null) return;
+	// Sperre je Eigentümer*in bis Transaktionsende: parallele Uploads (Client lädt 3 gleichzeitig,
+	// dazu Link-Uploads) sehen sonst die Belegung der anderen nicht (Check-then-insert, #72 06-12/07-05).
+	// Immer als letzte Sperre einer Transaktion nehmen (nach Link-/Verschiebe-Sperren) → keine Verklemmung.
+	await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'files:quota:' + ownerId}))`);
 	const used = await quotaUsed(tx, ownerId);
 	if (used + addBytes > limitBytes) {
 		throw errors.tooLarge(

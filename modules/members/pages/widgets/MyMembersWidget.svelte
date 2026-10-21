@@ -112,7 +112,7 @@
 					<p
 						class={[
 							'mt-0.5 flex items-center gap-1 text-xs',
-							soon ? 'font-medium text-primary' : 'text-muted-foreground'
+							soon ? 'font-medium text-link' : 'text-muted-foreground'
 						]}
 					>
 						<Cake class="size-3.5 shrink-0" aria-hidden="true" />

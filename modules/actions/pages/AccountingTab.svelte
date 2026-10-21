@@ -176,7 +176,7 @@
 </script>
 
 {#if loading && !acc}
-	<div class="space-y-4" aria-busy="true" aria-label="Lade Abrechnung">
+	<div class="space-y-4" aria-busy="true" aria-label="Abrechnung wird geladen">
 		<div class="grid gap-4 sm:grid-cols-3">
 			<Skeleton class="h-20 w-full" />
 			<Skeleton class="h-20 w-full" />
@@ -193,7 +193,7 @@
 	<div class="space-y-6">
 		{#if acc.closed}
 			<div
-				class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-600/30 bg-green-600/10 px-4 py-3"
+				class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success-border bg-success-muted px-4 py-3"
 				role="status"
 			>
 				<div class="flex items-center gap-2 text-sm font-medium">
@@ -268,10 +268,7 @@
 		{/if}
 
 		<Tabs.Root bind:value={section}>
-			<Tabs.List
-				class="h-auto max-w-full flex-wrap justify-start group-data-[orientation=horizontal]/tabs:h-auto"
-				aria-label="Bereiche der Abrechnung"
-			>
+			<Tabs.List variant="line" class="justify-start" aria-label="Bereiche der Abrechnung">
 				<Tabs.Trigger value="entries">
 					Buchungen
 					{#if entryCount > 0}
@@ -282,10 +279,7 @@
 					<Tabs.Trigger value="payouts">
 						Auslagen & Auszahlung
 						{#if summary.openReimbursementCents > 0}
-							<Badge
-								variant="outline"
-								class="ml-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
-							>
+							<Badge variant="outline" class="ml-1 border-warning-border text-warning">
 								{formatEuro(summary.openReimbursementCents)}
 							</Badge>
 						{/if}

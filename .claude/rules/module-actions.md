@@ -12,7 +12,7 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 ## Dateien (`src/lib/modules/actions/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `actions.bank.*`, `actions.payment.purposeTemplate`; Routen `''`, `:id`, öffentlich `anmeldung/:token` |
+| `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `actions.bank.*`, `actions.payment.purposeTemplate`, `actions.health.retentionDays`; Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `onMemberDeleted`, `subjectExport`, `backup` (`actionsBackup`), `provides`; Endpoints in `withTreasurySync([...])`; Routen `''`, `:id`, öffentlich `anmeldung/:token`, `anmeldung-bestaetigen/:token`, `auslagen/:token` |
 | `schemas.ts` | Zod + DTO-Typen + Konstanten (`CALC_CATEGORIES`, `ACCOUNTING_CATEGORIES`, `CHECKLIST_ITEMS`, `FORM_PUBLIC_PREFIX`, `STANDARD_FORM_KEYS`) |
 | `access.ts` | `resolveAccess`/`requireAccess`/`visibleActionsFilter` (Objektzugriff) |
 | `actions.endpoints.ts`, `participants.endpoints.ts` | Aktionen, Freigaben, Benutzersuche, Teilnehmende |
@@ -25,7 +25,21 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 | `payouts.endpoints.ts`, `iban.ts` | Empfänger, IBAN, Auszahlung, Abschluss, `report.pdf`; IBAN-Prüfung/Maske |
 | `refund.ts` (rein), `refund.endpoints.ts` | Rückzahlung |
 | `action-archive.ts` (rein), `export-import.endpoints.ts` | Export/Import als ZIP (Format, Zod, Limits, Pfadschutz; Endpoints) |
+| `health.ts` | Gesundheitsdaten: `canSeeHealth`, Erkennung gesundheitsbezogener Antworten, Ver-/Entschlüsselung, Bereinigung, Bestandsmigration (siehe „Gesundheitsdaten“) |
+| `contract.ts` / `service.ts` | Vertrag `ActionsService` / Umsetzung `actionsService` (`provides`, ohne Objektrechte): `listReceivableSources`, `listActionRefs`, `listReimbursements`, `markReimbursed`, `listRefundItems`, `listReimbursementReceipts`, `downloadReceipt`, `listClosedAccountings`/`getClosedAccounting`, `listClubExpenses`/`getClubExpenseIban`/`markClubExpensePaid`, `accountingReportPdf`, `listInterims`/`interimReportPdf`, `accountingCategoryLabels` |
+| `my.endpoints.ts` | Dashboard: `GET /my/registrations` (`loadMyRegistrations`), `GET /accounting/open` (`loadOpenAccountings`); nur lesend, ohne Audit |
+| `interim.endpoints.ts` | Zwischenabrechnungen: `GET/POST …/accounting/interims`, `DELETE …/interims/:interimId`, `GET …/interims/:interimId/report.pdf` (siehe „Zwischenabrechnungen“) |
+| `expense-link.endpoints.ts` | Kosten-Link: intern `…/expense-link[/rotate]`, `…/expense-submissions`, `…/:submissionId/receipt`, `…/accept`, `…/reject`; öffentlich `/public/expense-links/:token[/submit]` (multipart), `MAX_PENDING_SUBMISSIONS` 50 |
+| `participants-sheet.endpoints.ts` | Teilnehmendenliste als PDF (`participants.pdf`, `participants/pdf-columns`), siehe unten |
+| `link-tokens.ts` | Link-Tokens (Anmeldelink, Kosten-Link) nur als `token_hash` + `token_enc`; `hashStoredLinkTokens` (`onEnable` + Job), Backup-Hook `actionsBackup.rehash` |
+| `privacy.ts` | Löschfrist Gesundheitsdaten (Einstellung `actions.health.retentionDays`, Job `actions.purge-health`), `onMemberDeleted`, `subjectExport` |
+| `public-mail.ts` | Hilfen für öffentliche Formulare, Tageslimit für Mails (`PUBLIC_MAIL_LIMITS`, Tabelle `public_mail_counters`) |
+| `treasury-sync.ts` | `withTreasurySync(endpoints)` umhüllt alle Endpoints: nach jedem schreibenden Endpoint mit Kassenbezug `notifyTreasury` → `TreasuryService.actionChanged` für genau diese Aktion (nach der Transaktion; ohne Kasse nichts) |
+| `search.ts` | Globale Suche (`actionsSearch`): Aktionen nach Name/Ort, sichtbar wie `GET /actions` (`visibleActionsFilter`), laufende/kommende zuerst |
+| `reset.ts` | Reset-Bereiche `all` (`rebuild`, alle Belege, `implies` `treasury:invoices` + `treasury:payables`), `accounting` (`implies` `treasury:payables`), `participants` (`implies` `treasury:invoices`); `resetUsers` |
+| `user-deleted.ts` | `onUserDeleted`: Eigentum an `transferTo`, Freigaben an die Person löschen, Anmeldungen `user_id` → `NULL`, `created_by` → `NULL` |
 | `pages/` | `ActionsPage`, `ActionDetailPage` (Tabs), `ActionForm`, `CalculationTab` (+`CalcItemsEditor`, `CalcSummary`, `SubsidySection`), `RegistrationTab` (+`FormSettings`, `DisclaimerEditor`), `ParticipantForm`, `AccountingTab` (+`AccountingSummaryCards`, `EntriesTable`, `AccountingEntryDialog`, `PayeeDialog`, `PayoutsSection`, `RefundCard`, `refund-types.ts`), `PublicRegistration` |
+| `pages/` (weitere) | `ParticipantsTab` (Filter-Chips, Mehrfachbearbeitung), `PaymentCell`, `ImportActionDialog`, `CloseAccountingDialog`, `InterimDialog`/`InterimsCard`, `ExpenseLinkSection`/`ExpenseSubmissionDialog`, `RefundDialog`, öffentlich `PublicConfirmRegistration` (Double-Opt-in) und `PublicExpense` (+`ReceiptPicker`, `DateInputDe`); Hilfen `auto-types.ts`, `download.ts`, `format.ts`; Dashboard-Kacheln `widgets/MyRegistrationsWidget`, `widgets/OpenAccountingWidget` |
 
 ## Datenmodell (Migrationen, nie ändern)
 - **0001** `actions` (`owner_id`, `starts_on`, optionale Uhrzeiten als text), `action_shares` (PK action+user, `level` read|edit),
@@ -48,6 +62,16 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
   API: `isPast` in `ActionSummary` (Liste + Detail) und `ReceivableSource`; POST-Default `false`, PUT ohne Feld = unverändert
   (`actionUpdateInput`); Audit created/updated mit `isPast`; Archiv `action.isPast` optional (fehlt = false).
 - **0013** `accounting_entries.reimbursed_upfront boolean NOT NULL DEFAULT false` (beim Erfassen bereits erstattet; schützt vor Doppelzahlung bei Rücknahme einer Kassen-Zahlung).
+- **0018** CHECK `action_participants_diet_check` entfällt (Chiffrat; Prüfung per Zod), neue Spalte `health_answers text` (verschlüsseltes JSON der gesundheitsbezogenen Antworten).
+- **0019** `pending_registrations` (Double-Opt-in: `token_hash` sha256, `payload` = Chiffrat aller Spaltenwerte, `dedupe_key`, `expires_at` = +7 Tage, FK CASCADE),
+  `public_mail_counters(action_id, kind, day, count)` (Tageslimit je Aktion und Mail-Art). Beide in den Reset-Bereichen `all` bzw. `participants`.
+- **0020** (#67 01b-14, #73): Link-Tokens `action_forms`/`expense_links` nur noch als `token_hash` (`core.crypto.forModule('actions').hash`) +
+  `token_enc` (für Link-URL/Kopieren), `token` = NULL (`link-tokens.ts`: `linkTokenValues`, `tokenMatchSql` findet Altzeilen ohne Hash noch über den
+  Klartext, `hashStoredLinkTokens` in `onEnable` + Job `actions.hash-link-tokens`, Backup-Hook `actionsBackup.rehash`, nicht entschlüsselbar → Link
+  deaktiviert). FK `accounting_refunds.entry_id` SET NULL, `action_refund_booking.entry_id` CASCADE, Index `expense_submissions(entry_id)`, CHECKs
+  `starts_time`/`ends_time` HH:MM und `ends_on >= starts_on` (Altbestand bereinigt). **Kein** FK `accounting_refunds.participant_id`: manuelle
+  Rückzahlungen speichern dort eigene UUIDs. Test `tests/integration/link-token-hash-migration.test.ts`.
+- Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
 ## Rechte
@@ -75,7 +99,8 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 | `/actions/:id/calculation/apply` | POST/DELETE | schreibt `recommendedPerPerson`/`…Team` nach `fee_cents`/`team_fee_cents`; 400 ungespeichert, 422 bei 0 Teilnehmenden |
 | `/actions/:id/form`, `…/form/rotate-token` | GET/PUT, POST | Formular-Konfiguration; Token erneuern macht alten Link ungültig |
 | `/public/forms/:token` | GET | **`public: true`**, `permission: null`, Rate-Limit 60/60 s; 404 „Anmeldung nicht verfügbar“ |
-| `/public/forms/:token/submit` | POST | **`public: true`**, 5 pro 600 s, Honeypot `website`, 409 bei voll/geschlossen/Duplikat |
+| `/public/forms/:token/submit` | POST | **`public: true`**, 5 pro 600 s, Honeypot `website`, 409 bei voll/geschlossen/Duplikat/Tageslimit; ohne Mitglied → `confirmationRequired: true` (Double-Opt-in), Mailfehler → 503 |
+| `/public/registrations/:token/confirm` | POST | **`public: true`**, 10 pro 600 s, Body `{}`; legt die Teilnehmer*in an → `PublicConfirmResult`; ungültig/abgelaufen/benutzt → 404, voll/Duplikat → 409 (Zwischenstand gelöscht) |
 | `/actions/:id/accounting` | GET | Buchungen, Summen (`summarize`), Soll aus Kalkulation, Empfänger, Abschlussstatus |
 | `/actions/:id/accounting/entries[/:eid]` | POST/PUT/DELETE | 409 bei Kategorie `refund`, erstatteter Buchung oder Abschluss; Datum nicht zu weit in der Zukunft |
 | `…/entries/:eid/receipt` | POST/GET/DELETE | multipart `file`, PDF/JPEG/PNG/WebP ≤ 10 MB, nur Ausgaben; ohne S3 503 |
@@ -160,6 +185,16 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Disclaimer aus Vorlage mit Platzhaltern (`renderDisclaimer`, Beitrag, Kontodaten aus Settings); Datenschutz = externer Link + Pflicht-Checkbox.
 - Bestätigungs-Mail über `core.mail.send` nach der Transaktion (Fehler ≠ Fehlschlag); Audit mit Akteur `system`/`public-form`.
 - Öffentliche Seite `/p/actions/anmeldung/<token>`; Link kopieren/erneuern im Tab „Anmeldung“.
+- **Pflichtfelder (Issue #28)**: Name, E-Mail, Geburtsdatum, Datenschutz, Disclaimer tragen `mandatory: true` (`MANDATORY_KEYS`); `mergeStandardFields`
+  erzwingt `hidden=false`/`required=true`, der `FieldEditor` bietet dort weder „Ausblenden“ noch „Optional“. Absenden ohne Datenschutz-/Disclaimer-Haken → 422.
+  `PUT …/form` mit `enabled: true` ohne `privacyUrl` → **422** (Pfad `privacyUrl`), außer die globale Einstellung `core.legal.privacyUrl` ist gesetzt
+  (dann Ersatz-Link im öffentlichen Formular und beim Kosten-Link).
+- **Double-Opt-in (Issue #17)**: Anmeldung **ohne Mitglied** (auch eingeloggt als „andere Person“) legt nur `pending_registrations` an und schickt
+  `buildOptInMail` (nur Aktionsname, Zeitraum, feste Texte, Link `/p/actions/anmeldung-bestaetigen/<token>`; **kein** Name/Gruppe/Freitext). Erst
+  `POST …/confirm` (Seite `PublicConfirmRegistration`, Bestätigung per Knopf, nicht per GET) legt die Teilnehmer*in an → Kasse/Rechnung → Anmeldebestätigung
+  (`buildConfirmationMail`, Links in Name/Gruppe per `neutralizeLinks` entschärft). Unbestätigte Anmeldungen zählen nicht als Plätze/Teilnehmende und erzeugen
+  keine Rechnung; Job `actions.purge-pending` (stündlich) löscht Abgelaufene + alte Zähler. Mit Mitglied (Adresse aus Mitglied/Konto) wie bisher direkt.
+  Tageslimit (`public-mail.ts`, `PUBLIC_MAIL_LIMITS`): 100 Bitten um Bestätigung je Formular/Tag, darüber 409 ohne Speichern. Test-Hilfe `tests/helpers/registration-optin.ts`.
 
 ## Ausgaben „bezahlt vom Stamm“ (Migration 0011, 2026-10-16)
 - Ausgabe + `paidBy='club'`: `clubPaid` (API-Default **true** = bezahlt; die UI startet mit **offen**). Offen ⇒ Pflicht
@@ -245,7 +280,7 @@ Anmeldung, Teilnehmende (n), Abrechnung. Abrechnung: Summenkarten, Buchungstabel
 Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlung (Test prüft das).
 
 ## Tests
-Integration: `actions.test.ts` (Zugriffsmatrix), `actions-calculation`, `actions-form` (+`public-endpoints.test.ts`),
+Integration: `actions.test.ts` (Zugriffsmatrix), `actions-health-privacy` (Gesundheitsdaten), `actions-calculation`, `actions-form` (+`public-endpoints.test.ts`),
 `actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`, `actions-past` (isPast, vorab erstattete Auslagen), `actions-past-fixes` (Rücknahme durch die Kasse, PUT-422, Archiv).
 Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-report`, `refund`, `iban`, `actions-form-support`, `forms-*`,
 `pdf-attachments`, `pdf-letterhead`. Helfer: `tests/helpers/fake-storage.ts`, `setPdfRendererForTests`.
@@ -257,8 +292,35 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - IBAN/Namen nie in Audit-`metadata`; `payouts.csv` Format vorläufig (ggf. SEPA-XML).
 - Zahlungseingänge je Teilnehmende*r: Modul `treasury` (siehe `rules/module-treasury.md`). Offen: Auszahlungsformat, `docs/` um `actions` ergänzen.
 
+## Gesundheitsdaten (`health.ts`, Migration 0018, Issue #7, 2026-10-20)
+- **Recht**: `members.data.export` (kein eigenes Recht; dasselbe wie Datenblätter/PDF, standardmäßig nur Administrator). `canSeeHealth(ctx)` ist die
+  einzige Prüfung. Gesundheitsdaten = `diet`, `allergies`, `notes` und gesundheitsbezogene Formularantworten.
+- **Ohne Recht** (auch mit Lese-/Bearbeiten-Freigabe): `GET …/participants` → `diet/allergies/notes = null` + `healthHidden: true`; `participants.csv`
+  ohne die Spalten Ernährung/Allergien/Sonstiges; ZIP-Export ohne diese Felder und ohne gesundheitsbezogene `answers`, Manifest `contents.includesHealth: false`;
+  PDF 403. `PUT …/participants/:pid` ohne Recht lässt die drei Felder **unverändert** (UI blendet sie aus, Hinweis im Dialog; Tabelle ohne die Spalten).
+  POST darf sie setzen. Audit `participants.exported`/`action.exported` mit `withHealth`.
+- **Speicherung**: `diet/allergies/notes` als `core.crypto.forModule('actions')`-Chiffrat (`encryptHealthText`), gesundheitsbezogene Antworten getrennt in
+  `health_answers` (ein Chiffrat, JSON), übrige Antworten bleiben in `answers` (jsonb). Lesen: `readHealth` / `readHealthFor(ctx, row)` (Altbestand im
+  Klartext wird toleriert, nicht entschlüsselbar → `null`). Schreiben: `healthColumns(input, fields)` (Formular, manuell, Import). Suche/Sortierung auf den Feldern gibt es nicht.
+- **Erkennung** gesundheitsbezogener Antworten (`isHealthAnswerKey`): Felder mit `memberKey` bzw. `mf_*` (außer `juleica`), Schlüssel aus `SENSITIVE_FIELD_KEYS`
+  (`members/schemas.ts`), Beschriftung/Hilfetext mit Gesundheitsbegriffen (Allergie, Medikament, Krank…, Impf…, Tetanus, Schwimm…, Notfall …). **Grenze**:
+  zusätzlich das Kennzeichen `health: true` am Feld (Schalter „Gesundheitsdaten“ im `FieldEditor`, Standardfelder Ernährung/Allergien/Sonstiges fest gesetzt).
+  Freie Felder ohne Kennzeichen und ohne solche Begriffe gelten nicht als Gesundheitsdaten.
+- **Bestand**: `encryptStoredHealthData()` (idempotent: Klartext → Chiffrat, Gesundheitsantworten aus `answers` → `health_answers`) läuft in `onEnable` und
+  im stündlichen Job `actions.encrypt-health`. SQL kann nicht verschlüsseln (Schlüssel nur in der App).
+- **Datensicherung**: Textspalten mit `enc:v1:` in `mod_actions` behandelt der Core automatisch (Marker, beim Import mit Zielschlüssel neu verschlüsselt) –
+  kein `rehash`-Hook nötig (keine Hashes). ZIP-Archive enthalten Klartext (nur mit Recht), der Import verschlüsselt neu; fehlende Felder → `null`.
+- Offen: `members.custom` (Zusatzfelder Ernährung/Allergien/Medikamente der Mitglieder) ist weiterhin unverschlüsselt (Modul `members`).
+  Geburtsdatum gilt nicht als Gesundheitsdatum (wird für Zuschuss/Alter gebraucht) und bleibt in allen Exporten.
+- Test: `tests/integration/actions-health-privacy.test.ts`.
+- **Löschfrist** (`privacy.ts`, #30): Einstellung `actions.health.retentionDays` (0–3650, Standard 90, 0 = nie); täglicher Job `actions.purge-health`
+  leert `diet/allergies/notes/health_answers` und gesundheitsbezogene `answers` aller Teilnehmenden, deren Aktion (Ende, sonst Start) länger vorbei ist
+  (idempotent, `purgeExpiredHealthData(days?)`). **Mitglied gelöscht/anonymisiert** (`onMemberDeleted`): Teilnehmende mit diesem `member_id` → Name
+  „Anonymisiert“, ohne `contact_email`, Gesundheitsdaten, `answers`, `dedupe_key`, `member_id`, `user_id` (Geburtsdatum/Rolle bleiben). **Datenauskunft**
+  (`subjectExport`): Teilnahmen über `user_id`/`member_id` im Klartext, eigene Aktionen, Freigaben. Test `tests/integration/privacy-retention.test.ts`.
+
 ## Teilnehmendenliste als PDF (`participants-sheet.endpoints.ts`)
-- Katalog = Mitglieder-Katalog (`members/sheet-columns.ts`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
+- Katalog = Mitglieder-Katalog (`$lib/pdf-lists/member-columns.ts`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
   Felddefinitionen über `core.modules.use('members')` (`listFieldDefinitions`), **nie** in der Modul-Transaktion.
 - Zeile: ohne Mitglied aus `action_participants` (Gruppe = `group_label`, Alter, E-Mail, `diet` → Ernährung, `allergies` → Allergien); mit `member_id` aus `listMemberSheets` (Notfall-Telefon, Zusatzfelder), Ernährung/Allergien/E-Mail aus beiden zusammengeführt.
   `fee` = `fee_cents` bzw. `team_fee_cents` (Team), `notes` = Hinweise + Antworten des Anmeldeformulars (ohne `mf_*` bei Mitglied). Abschnitte „Teilnehmende“ und „Team“ (neue Seite).
@@ -302,7 +364,9 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - **Kosten-Link mit mehreren Auslagen** (Migration 0017 `expense_submissions.batch_id`): `POST /public/expense-links/:token/submit` nimmt
   `publicExpenseBatchInput` (gemeinsame Person/Konto, `items` als JSON, 1–5 Auslagen), je Auslage genau eine Datei `file` in Reihenfolge,
   multipart ≤ 30 MB (`MAX_MULTIPART_BYTES` im Core jetzt 30 MB), Fehlerpfade `items.<i>.<feld>`/`items.<i>.file`; Antwort `{ batchId, count, emailSent }`.
-  Mail an die Person (Liste + Summe) und **an die Eigentümer*in** der Aktion (Name, Anzahl, Summe, Link; keine IBAN). Intern gruppiert je `batchId`, „Alle annehmen“.
+  Mail an die Person (nur Kategorie, Datum, Betrag, Summe – **kein** Name/Beschreibung/Notiz, Issue #17) und **an die Eigentümer*in** der Aktion (Name mit
+  neutralisierten Links, Anzahl, Summe, Link; keine IBAN). Tageslimit je Link 30 + 30 Mails (`expense-confirm`/`expense-owner`): darüber gespeichert, aber ohne Mail.
+  Intern gruppiert je `batchId`, „Alle annehmen“.
   Öffentliche Seite: Auslage-Karten, `ReceiptPicker` (Upload mit Vorschau), `DateInputDe` (TT.MM.JJJJ).
 - **Teilnehmende** (`pages/ParticipantsTab.svelte`): Filter-Chips (Rolle, Beitrag bezahlt/offen, Zuschuss, Angaben fehlen) + Mehrfachbearbeitung;
   `PATCH /actions/:id/participants` `{ ids (≤ 500), subsidyEligible?, role? }` → `{ updated }`, fremde ID → 404 ohne Änderung, Audit `actions.participant.bulk_updated`.
@@ -319,3 +383,13 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
   Mitglied (`member_id`) teilnimmt; nur eigene Namen, `feeCents` = Summe der eigenen Beiträge. `GET /accounting/open` (`actions.action.view`):
   Aktionen mit Bearbeiten-Zugriff (`editableActionsFilter` in `access.ts`), Ende ≤ heute, Abrechnung offen, Zähler Belege/Auslagen.
   Kacheln `actions:registrations`, `actions:open-accounting` (Link `?tab=accounting`; `ActionDetailPage` liest `?tab=` beim Laden). Test `actions-my.test.ts`.
+
+## Modulübergreifende Verweise, Löschen und Reset (Stand 2026-10-21, Issue #76 10-09)
+- Hooks: `search`, `resetAreas` (mit `implies` auf `treasury:*`), `resetUsers`, `onUserDeleted` (`user-deleted.ts`), `onMemberDeleted` + `subjectExport`
+  (`privacy.ts`), `backup.rehash` (`link-tokens.ts`). Als **einziges** Modul implementiert `actions` `onMemberDeleted`.
+- `action_participants.member_id` (Migr. 0010, ohne FK): **Löschen/Anonymisieren eines Mitglieds** (`members.service.ts` `deleteMember`,
+  `retention.service.ts`) → `core.modules.memberDeleted` → `onMemberDeleted` anonymisiert die Teilnehmenden (siehe „Löschfrist“).
+  **Reset `members:all`** impliziert **keinen** `actions`-Bereich und ruft `onMemberDeleted` nicht auf: `member_id` bleibt als hängender Verweis
+  stehen (die Bereichsbeschreibung in `members/reset.ts` nennt das „verlieren den Bezug zum Mitglied“). Wer das vermeiden will, setzt
+  zusätzlich `actions:participants` zurück.
+- `action_shares.user_id` / `owner_id` / `user_id`: `onUserDeleted` bzw. `resetUsers` (Benutzerkonten, nicht Mitglieder).

@@ -35,6 +35,7 @@ export async function loadGroupMap(_ctx: RequestContext): Promise<Map<string, Ev
 		color: null,
 		meetingWeekday: null,
 		meetingTime: null,
+		meetingEndTime: null,
 		meetingPlace: null
 	});
 	const members = await core.modules.useOptional<PrincipalProvider>('members', MODULE_ID);
@@ -47,6 +48,7 @@ export async function loadGroupMap(_ctx: RequestContext): Promise<Map<string, Ev
 				color: g.color ?? null,
 				meetingWeekday: g.meetingWeekday ?? null,
 				meetingTime: g.meetingTime ?? null,
+				meetingEndTime: g.meetingEndTime ?? null,
 				meetingPlace: g.meetingPlace ?? null
 			});
 		}

@@ -4,7 +4,17 @@
  * Muster: `principalKeysFor` vor der Transaktion → DB in `mdb().transaction` → Namen (`userRefs`) danach → Audit danach.
  */
 import { sql, type SQL } from 'drizzle-orm';
-import { core, errors, principalMatchSql, type RequestContext, type Tx } from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
+import {
+	core,
+	errors,
+	inList,
+	isUniqueViolation,
+	principalMatchSql,
+	type RequestContext,
+	rowsOf,
+	type Tx
+} from '$lib/sdk/server';
 import {
 	accessForMany,
 	canManageAll,
@@ -23,7 +33,6 @@ import {
 	mdb,
 	NODE_COLUMNS,
 	nodeRowOf,
-	rowsOf,
 	userRefs,
 	type NodeRow
 } from './db';
@@ -72,12 +81,6 @@ function chunks<T>(list: readonly T[], size = CHUNK): T[][] {
 	return out;
 }
 
-const idList = (ids: readonly string[]): SQL =>
-	sql.join(
-		ids.map((id) => sql`${id}`),
-		sql`, `
-	);
-
 const maxLevel = (a: AccessLevel | null | undefined, b: AccessLevel | null | undefined) =>
 	a === 'edit' || b === 'edit' ? 'edit' : a === 'read' || b === 'read' ? 'read' : null;
 
@@ -105,16 +108,6 @@ function conflictError(name: string, existing: readonly string[]) {
 	return errors.conflict(
 		`Es gibt hier schon „${name}“. Vorschlag: „${uniqueName(existing, name)}“`
 	);
-}
-
-/** Verletzung des Unique-Index (gleichzeitiges Anlegen) erkennen */
-function isUniqueViolation(e: unknown): boolean {
-	let cur: unknown = e;
-	for (let i = 0; i < 5 && cur && typeof cur === 'object'; i++) {
-		if (String((cur as { code?: unknown }).code) === '23505') return true;
-		cur = (cur as { cause?: unknown }).cause;
-	}
-	return false;
 }
 
 function depthError(path: string) {
@@ -235,11 +228,11 @@ export async function extrasForMany(
 					EXISTS (SELECT 1 FROM node_shares s WHERE s.node_id = n.id) AS shared,
 					${stammSharedSql(sql`n.id`)} AS stamm,
 					EXISTS (SELECT 1 FROM share_links l WHERE l.node_id = n.id AND l.revoked_at IS NULL
-						AND (l.expires_on IS NULL OR l.expires_on >= CURRENT_DATE)) AS linked,
+						AND (l.expires_on IS NULL OR l.expires_on >= ${todayBerlin()}::date)) AS linked,
 					CASE WHEN n.kind = 'folder' THEN
 						(SELECT count(*) FROM nodes c WHERE c.parent_id = n.id AND c.deleted_at IS NULL)
 					END AS child_count
-				FROM nodes n WHERE n.id IN (${idList(part)})`
+				FROM nodes n WHERE n.id IN (${inList(part)})`
 		);
 		for (const r of res) {
 			const id = String(r.id);
@@ -536,7 +529,7 @@ async function editShareAnchors(
 	const rows = await rowsOf(
 		tx,
 		sql`SELECT DISTINCT s.node_id FROM node_shares s
-			WHERE s.node_id IN (${idList(chainIds)}) AND s.level = 'edit' AND ${principalMatchSql('s', keys)}`
+			WHERE s.node_id IN (${inList(chainIds)}) AND s.level = 'edit' AND ${principalMatchSql('s', keys)}`
 	);
 	return new Set(rows.map((r) => String(r.node_id)));
 }
@@ -636,7 +629,7 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
 			for (const part of chunks(sub)) {
 				await tx.execute(
 					sql`UPDATE nodes SET space = 'personal', owner_id = ${targetOwner}
-						WHERE id IN (${idList(part)})`
+						WHERE id IN (${inList(part)})`
 				);
 			}
 			// Eigentumsübergabe: öffentliche Links der bisherigen Eigentümer*in gelten nicht weiter
@@ -644,7 +637,7 @@ export async function moveNodes(ctx: RequestContext, input: MoveInput): Promise<
 				const revoked = await rowsOf(
 					tx,
 					sql`UPDATE share_links SET revoked_at = now()
-						WHERE revoked_at IS NULL AND node_id IN (${idList(part)}) RETURNING id`
+						WHERE revoked_at IS NULL AND node_id IN (${inList(part)}) RETURNING id`
 				);
 				revokedLinks += revoked.length;
 			}

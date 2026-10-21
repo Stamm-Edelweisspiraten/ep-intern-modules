@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
@@ -61,7 +62,7 @@
 		(['active', 'left', 'all'] as const).find((s) => s === page.url.searchParams.get('status')) ??
 			'active'
 	);
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayBerlin();
 	const isLeft = (m: Member) => !!m.exitDate && m.exitDate <= today;
 	const offset = $derived(Math.max(0, Number(page.url.searchParams.get('offset')) || 0));
 
@@ -484,7 +485,7 @@
 							{@const on = m[c.key]}
 							<li class="flex items-center gap-1" class:text-muted-foreground={!on}>
 								{#if on}
-									<Check class="size-3.5 text-primary" aria-hidden="true" />
+									<Check class="size-3.5 text-link" aria-hidden="true" />
 								{:else}
 									<Minus class="size-3.5" aria-hidden="true" />
 								{/if}
@@ -511,7 +512,7 @@
 									><Link2 />
 									{#if m.linkCount}
 										<span
-											class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-[10px] text-primary-foreground"
+											class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-xs leading-none text-primary-foreground"
 											aria-hidden="true">{m.linkCount}</span
 										>
 									{/if}

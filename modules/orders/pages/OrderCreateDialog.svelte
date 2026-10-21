@@ -261,7 +261,7 @@
 											<li>
 												<button
 													type="button"
-													class="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+													class="w-full px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:-outline-offset-2"
 													onclick={() => choose(m)}
 												>
 													{m.name}

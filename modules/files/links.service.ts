@@ -20,27 +20,36 @@
  *   - Knoten-Zugriff nur innerhalb des Link-Teilbaums (Vorfahren-Prüfung), gelöschte Knoten nie.
  *   - Audit `files.link.accessed` höchstens 1× je Link und Stunde (über `last_access_at`), `access_count` zählt jeden Aufruf von Info/Inhalt.
  *
- * Ablaufdatum: gültig bis einschließlich `expires_on`, verglichen mit `CURRENT_DATE` der Datenbank
- * (beim Anlegen und beim Abruf dieselbe Quelle).
+ * Ablaufdatum: gültig bis einschließlich `expires_on`, verglichen mit „heute“ in Europe/Berlin
+ * (`todayBerlin`, nicht `CURRENT_DATE` der Datenbank, die in UTC läuft; beim Anlegen und Abruf dieselbe Quelle).
  */
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { sql } from 'drizzle-orm';
-import { core, errors, isCoreError, type RequestContext, type Tx } from '$lib/sdk/server';
+import { todayBerlin } from '$lib/sdk/dates';
+import {
+	core,
+	errors,
+	isCoreError,
+	logBestEffort,
+	type RequestContext,
+	type Row,
+	rowsOf,
+	toIso,
+	type Tx
+} from '$lib/sdk/server';
 import { requireNode, resolveAccess } from './access';
 import { normalizeName } from './names';
 import { storeIntoFolder } from './upload.service';
 import {
 	NODE_COLUMNS,
 	ancestorsOf,
+	filesCtx,
 	mdb,
 	nodeRowOf,
-	rowsOf,
 	filesSettings,
-	toIso,
 	userRefs,
-	type NodeRow,
-	type Row
+	type NodeRow
 } from './db';
 import { contentResponse, quotaUsed, storageLimits, thumbResponse } from './storage';
 import {
@@ -51,6 +60,7 @@ import {
 	MAX_UNLOCK_FAILURES,
 	MODULE_ID,
 	PERMISSIONS,
+	isRealDate,
 	linkCanUpload,
 	linkCanView,
 	type Breadcrumb,
@@ -138,22 +148,18 @@ function accessTokenValid(linkId: string, token: string | undefined): boolean {
 	return safeEqualHex(sig, accessSignature(id, expRaw));
 }
 
-/** Echtes Kalenderdatum `YYYY-MM-DD` (z. B. kein 31.02.) */
-function isRealDate(v: string): boolean {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-	if (!m) return false;
-	const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-	return d.toISOString().slice(0, 10) === v;
-}
-
 // ---------------------------------------------------------------------------
 // Zeilen
 // ---------------------------------------------------------------------------
 
+/** „Heute“ (Europe/Berlin) als SQL-Datum */
+const todaySql = () => sql`${todayBerlin()}::date`;
+
 /** Spalten für `share_links l`; `active`/`audit_due` in SQL, Datum als Text */
-const LINK_COLUMNS = sql`l.id, l.node_id, l.mode, l.token_enc, to_char(l.expires_on, 'YYYY-MM-DD') AS expires_on,
+const linkColumns =
+	() => sql`l.id, l.node_id, l.mode, l.token_enc, to_char(l.expires_on, 'YYYY-MM-DD') AS expires_on,
 	l.password_hash, l.created_by, l.created_at, l.revoked_at, l.last_access_at, l.access_count,
-	(l.revoked_at IS NULL AND (l.expires_on IS NULL OR l.expires_on >= CURRENT_DATE)) AS active,
+	(l.revoked_at IS NULL AND (l.expires_on IS NULL OR l.expires_on >= ${todaySql()})) AS active,
 	(l.last_access_at IS NULL OR l.last_access_at < now() - interval '1 hour') AS audit_due`;
 
 interface LinkRow {
@@ -230,7 +236,7 @@ function toShareLink(row: LinkRow, users: Map<string, UserRef>): ShareLink {
 }
 
 async function loadLinkById(tx: Tx, id: string): Promise<LinkRow | null> {
-	const [r] = await rowsOf(tx, sql`SELECT ${LINK_COLUMNS} FROM share_links l WHERE l.id = ${id}`);
+	const [r] = await rowsOf(tx, sql`SELECT ${linkColumns()} FROM share_links l WHERE l.id = ${id}`);
 	return r ? linkRowOf(r) : null;
 }
 
@@ -259,7 +265,7 @@ interface ValidLink {
 async function loadValidLink(tx: Tx, token: string): Promise<ValidLink> {
 	const [r] = await rowsOf(
 		tx,
-		sql`SELECT ${LINK_COLUMNS} FROM share_links l WHERE l.token_hash = ${hashValue(token)}`
+		sql`SELECT ${linkColumns()} FROM share_links l WHERE l.token_hash = ${hashValue(token)}`
 	);
 	if (!r) throw unavailable();
 	const link = linkRowOf(r);
@@ -270,6 +276,15 @@ async function loadValidLink(tx: Tx, token: string): Promise<ValidLink> {
 		throw unavailable();
 	}
 	return { link, node };
+}
+
+/**
+ * Eigentümer*in des Link-Knotens muss existieren und aktiv sein: Links gelöschter oder deaktivierter
+ * Konten sind gesperrt (dieselbe 404). Core-Aufruf – nur AUSSERHALB der Transaktion.
+ */
+async function assertOwnerActive(node: NodeRow): Promise<void> {
+	const [owner] = await core.users.directory(filesCtx(), { ids: [node.ownerId], limit: 1 });
+	if (owner?.id !== node.ownerId) throw unavailable();
 }
 
 /** Ansehen (Ordnerinhalt, Dateien) nur bei Link-Arten mit Ansehen */
@@ -319,8 +334,9 @@ async function auditAccess(ctx: RequestContext, link: LinkRow, counted: boolean)
 			requestId: ctx.requestId,
 			metadata: { linkId: link.id, nodeId: link.nodeId, accessCount: link.accessCount + 1 }
 		});
-	} catch {
-		// Audit-Fehler dürfen den Abruf nicht verhindern
+	} catch (e) {
+		// Audit-Fehler dürfen den Abruf nicht verhindern – aber nicht unbemerkt bleiben
+		logBestEffort('files.link.audit-accessed', e, { ctx, target: link.id });
 	}
 }
 
@@ -335,7 +351,7 @@ export async function listLinks(ctx: RequestContext, nodeId: string): Promise<Sh
 		assertCanManageShares(ctx, await requireNode(tx, ctx, nodeId, keys, 'edit'));
 		const list = await rowsOf(
 			tx,
-			sql`SELECT ${LINK_COLUMNS} FROM share_links l WHERE l.node_id = ${nodeId}
+			sql`SELECT ${linkColumns()} FROM share_links l WHERE l.node_id = ${nodeId}
 				ORDER BY l.created_at DESC, l.id`
 		);
 		return list.map(linkRowOf);
@@ -381,7 +397,7 @@ export async function createLink(
 			);
 		}
 		if (expiresOn !== null) {
-			const [r] = await rowsOf(tx, sql`SELECT (${expiresOn}::date < CURRENT_DATE) AS past`);
+			const [r] = await rowsOf(tx, sql`SELECT (${expiresOn}::date < ${todaySql()}) AS past`);
 			if (r && bool(r.past)) {
 				throw errors.validation([
 					{ path: ['expiresOn'], message: 'Das Ablaufdatum liegt in der Vergangenheit' }
@@ -392,7 +408,7 @@ export async function createLink(
 			tx,
 			sql`SELECT count(*)::int AS n FROM share_links
 				WHERE node_id = ${nodeId} AND revoked_at IS NULL
-					AND (expires_on IS NULL OR expires_on >= CURRENT_DATE)`
+					AND (expires_on IS NULL OR expires_on >= ${todaySql()})`
 		);
 		if (Number(c?.n ?? 0) >= MAX_LINKS_PER_NODE) {
 			throw errors.conflict(
@@ -458,11 +474,9 @@ export async function publicInfo(
 	token: string,
 	accessToken?: string
 ): Promise<PublicLinkInfo> {
-	const { link, node } = await mdb().transaction(async (tx) => {
-		const valid = await loadValidLink(tx, token);
-		await countAccess(tx, valid.link.id);
-		return valid;
-	});
+	const { link, node } = await mdb().transaction((tx) => loadValidLink(tx, token));
+	await assertOwnerActive(node);
+	await mdb().transaction((tx) => countAccess(tx, link.id));
 	await auditAccess(ctx, link, true);
 	// Nach dem Freischalten (gültiges `t`) gibt es den Datei-Knoten auch bei Passwort-Links
 	const needsPassword = link.passwordHash !== null && !accessTokenValid(link.id, accessToken);
@@ -492,54 +506,56 @@ export async function publicInfo(
 /**
  * POST `/public/links/:token/unlock`: falsches Passwort → 403 „Passwort falsch“.
  * Ab `MAX_UNLOCK_FAILURES` Fehlversuchen innerhalb einer Stunde (Fenster je Link) → 429, auch bei
- * richtigem Passwort. scrypt läuft außerhalb der Transaktion; der Zähler wird danach atomar geändert.
+ * richtigem Passwort. Jeder Versuch wird vor der scrypt-Prüfung atomar reserviert (gezählt); Erfolg setzt zurück.
  */
 export async function unlockLink(
 	_ctx: RequestContext,
 	token: string,
 	password: string
 ): Promise<{ accessToken: string; expiresInSec: number }> {
-	const { link, locked } = await mdb().transaction(async (tx) => {
+	const { link, node, locked } = await mdb().transaction(async (tx) => {
 		const valid = await loadValidLink(tx, token);
 		const [r] = await rowsOf(
 			tx,
 			sql`SELECT ${LOCKED_SQL} AS locked FROM share_links WHERE id = ${valid.link.id}`
 		);
-		return { link: valid.link, locked: bool(r?.locked) };
+		return { link: valid.link, node: valid.node, locked: bool(r?.locked) };
 	});
+	await assertOwnerActive(node);
 	if (link.passwordHash === null) {
 		return { accessToken: issueAccessToken(link.id), expiresInSec: LINK_ACCESS_TTL_SEC };
 	}
 	if (locked) throw lockedOut();
 
-	const ok = await verifyPassword(password, link.passwordHash);
-	if (!ok) {
-		// Fehlversuch zählen; Fenster neu starten, wenn es älter als eine Stunde ist
-		await mdb().transaction((tx) =>
-			tx.execute(
-				sql`UPDATE share_links SET
+	// Versuch VOR der (langsamen) scrypt-Prüfung atomar reservieren (#67, 01b-10): Der Zähler steigt nur,
+	// solange der Link nicht gesperrt ist. Parallele Anfragen können so höchstens `MAX_UNLOCK_FAILURES`
+	// Passwörter je Fenster prüfen lassen, der Rest bekommt 429. Fenster neu starten, wenn älter als 1 h.
+	const reserved = await mdb().transaction(async (tx) => {
+		const rows = await rowsOf(
+			tx,
+			sql`UPDATE share_links SET
 					failed_count = CASE
 						WHEN failed_window_start IS NULL OR failed_window_start <= now() - interval '1 hour'
 						THEN 1 ELSE failed_count + 1 END,
 					failed_window_start = CASE
 						WHEN failed_window_start IS NULL OR failed_window_start <= now() - interval '1 hour'
 						THEN now() ELSE failed_window_start END
-					WHERE id = ${link.id}`
-			)
-		);
-		throw errors.forbidden('Passwort falsch');
-	}
-	// Erfolg setzt zurück – aber nur, wenn inzwischen (parallele Versuche) keine Sperre greift
-	const unlocked = await mdb().transaction(async (tx) => {
-		const rows = await rowsOf(
-			tx,
-			sql`UPDATE share_links SET failed_count = 0, failed_window_start = NULL
 				WHERE id = ${link.id} AND NOT ${LOCKED_SQL}
 				RETURNING id`
 		);
 		return rows.length > 0;
 	});
-	if (!unlocked) throw lockedOut();
+	if (!reserved) throw lockedOut();
+
+	const ok = await verifyPassword(password, link.passwordHash);
+	// Fehlversuch: bleibt gezählt (die Reservierung war der Zähler)
+	if (!ok) throw errors.forbidden('Passwort falsch');
+	// Erfolg (innerhalb des Kontingents geprüft) setzt den Zähler zurück
+	await mdb().transaction((tx) =>
+		tx.execute(
+			sql`UPDATE share_links SET failed_count = 0, failed_window_start = NULL WHERE id = ${link.id}`
+		)
+	);
 	return { accessToken: issueAccessToken(link.id), expiresInSec: LINK_ACCESS_TTL_SEC };
 }
 
@@ -549,6 +565,8 @@ export async function publicList(
 	token: string,
 	input: { parentId: string | null; accessToken?: string }
 ): Promise<PublicListing> {
+	const { node: owned } = await mdb().transaction((tx) => loadValidLink(tx, token));
+	await assertOwnerActive(owned);
 	return mdb().transaction(async (tx) => {
 		const { link, node: linkNode } = await loadValidLink(tx, token);
 		assertCanView(link);
@@ -597,6 +615,8 @@ export async function publicContent(
 ): Promise<Response> {
 	// Vorschaubilder einer Ordneransicht zählen nicht als Abruf
 	const counted = !input.thumb;
+	const { node: owned } = await mdb().transaction((tx) => loadValidLink(tx, token));
+	await assertOwnerActive(owned);
 	const { link, file } = await mdb().transaction(async (tx) => {
 		const valid = await loadValidLink(tx, token);
 		assertCanView(valid.link);
@@ -664,8 +684,9 @@ async function auditUpload(
 			requestId: ctx.requestId,
 			metadata: { linkId: link.id, nodeId: link.nodeId, count, bytes }
 		});
-	} catch {
-		// Audit-Fehler dürfen den Upload nicht scheitern lassen
+	} catch (e) {
+		// Audit-Fehler dürfen den Upload nicht scheitern lassen – aber nicht unbemerkt bleiben
+		logBestEffort('files.link.audit-uploaded', e, { ctx, target: link.id });
 	}
 }
 
@@ -687,6 +708,7 @@ export async function publicUpload(
 	files: readonly File[]
 ): Promise<PublicUploadResult> {
 	const { link, node } = await mdb().transaction((tx) => loadValidLink(tx, token));
+	await assertOwnerActive(node);
 	if (!linkCanUpload(link.mode) || node.kind !== 'folder') throw uploadNotAllowed();
 	assertUnlocked(link, body.t);
 

@@ -358,7 +358,7 @@
 
 		{#if applied && !outdated}
 			<div
-				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm"
+				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-success-border bg-success-muted px-3 py-2 text-sm"
 				role="status"
 			>
 				<span>
@@ -377,7 +377,7 @@
 			</div>
 		{:else if applied && outdated}
 			<div
-				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+				class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning-border bg-warning-muted px-3 py-2 text-sm"
 				role="status"
 			>
 				<span>
@@ -601,7 +601,7 @@
 			{#if settings.includeSubsidy}
 				<span class="flex flex-col">
 					<span class="text-muted-foreground text-xs">Zuschuss</span>
-					<span class="text-sm font-medium tabular-nums text-green-700 dark:text-green-400">
+					<span class="text-sm font-medium tabular-nums text-success">
 						− {formatEuro(result.subsidyCents)}
 					</span>
 				</span>

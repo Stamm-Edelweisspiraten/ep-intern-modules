@@ -3,6 +3,7 @@
  * Wird von Server UND UI genutzt – keine Server-Imports.
  */
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 
 export const MODULE_ID = 'orders';
 export const BASE_PATH = '/modules/orders';
@@ -69,11 +70,8 @@ export function imageUrl(articleId: string, imageId: string, variant: ImageVaria
 	return `/api/v1${BASE_PATH}/articles/${articleId}/images/${imageId}/${variant}`;
 }
 
-export function isRealDate(iso: string): boolean {
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
-	const d = new Date(`${iso}T00:00:00Z`);
-	return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
-}
+// Zentral in `$lib/sdk/dates` (#32); hier für bestehende Importe weitergereicht
+export { isRealDate };
 
 // --- Bausteine -----------------------------------------------------------------
 

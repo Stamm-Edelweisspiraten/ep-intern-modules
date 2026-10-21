@@ -1,4 +1,9 @@
 import type { FieldDefinition, FormValue } from '$lib/forms';
+import type {
+	PrincipalGroupRef,
+	PrincipalMemberRef,
+	PrincipalProvider
+} from '$lib/sdk/types/sharing';
 import type { MailCategory } from './schemas';
 
 /**
@@ -81,39 +86,21 @@ export interface MemberSheetData {
 	custom: Record<string, FormValue>;
 }
 
-/** Gruppe für Auswahl/Freigaben anderer Module */
-export interface MemberGroupRef {
-	id: string;
-	name: string;
-	color: string | null;
-	/** Gruppenbild (`/api/v1/modules/members/groups/<id>/image?v=…`) oder `null`; Abruf braucht `members.group.view` */
-	image: string | null;
-	/** Gruppenstunde: 1 = Mo … 7 = So, `HH:MM`, Treffpunkt (je `null`, wenn nicht hinterlegt) */
-	meetingWeekday: number | null;
-	meetingTime: string | null;
-	/** Ende der Gruppenstunde `HH:MM` oder `null` */
-	meetingEndTime: string | null;
-	meetingPlace: string | null;
-}
+/** Gruppe für Auswahl/Freigaben anderer Module (Vertrag im SDK, siehe `PrincipalGroupRef`) */
+export type MemberGroupRef = PrincipalGroupRef;
 
-/** Mitglied für Freigabe-Suche (Name = „Vorname Nachname“) */
-export interface MemberPrincipalRef {
-	id: string;
-	name: string;
-	groups: { id: string; name: string }[];
-}
+/** Mitglied für Freigabe-Suche (Name = „Vorname Nachname“, Vertrag im SDK) */
+export type MemberPrincipalRef = PrincipalMemberRef;
 
-export interface MembersService {
-	/** Alle Gruppen nach Name, ohne Rechteprüfung (nur Name/Farbe) */
-	listGroups(): Promise<MemberGroupRef[]>;
+/**
+ * `listGroups`, `principalIdsForUser` und `searchMemberPrincipals` stammen aus `PrincipalProvider`
+ * (`$lib/sdk/types/sharing`) – eine Quelle für SDK und `members`.
+ */
+export interface MembersService extends PrincipalProvider {
 	/**
-	 * Für Freigaben: mit `userId` verknüpfte Mitglieder (ohne ausgetretene, Austritt ≤ heute) und deren
-	 * Gruppen (Mitgliedschaft UND Leitung).
-	 */
-	principalIdsForUser(userId: string): Promise<{ memberIds: string[]; groupIds: string[] }>;
-	/**
-	 * Für Freigaben, ohne Rechteprüfung: `search` (ab 2 Zeichen, Vor-/Nach-/Pfadname, ohne ausgetretene)
-	 * oder `ids` (≤ 100, auch ausgetretene); max. `limit` (Standard 20, höchstens 30).
+	 * Für Systemfunktionen anderer Module, OHNE Rechteprüfung (der Aufrufer prüft seine Rechte):
+	 * `search` (ab 2 Zeichen, Vor-/Nach-/Pfadname, ohne ausgetretene) oder `ids` (≤ 100, auch
+	 * ausgetretene); max. `limit` (Standard 20, höchstens 30). Für Freigaben `searchMemberPrincipals`.
 	 */
 	searchMembers(query: {
 		search?: string;

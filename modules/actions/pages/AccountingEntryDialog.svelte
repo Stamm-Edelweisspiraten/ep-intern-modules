@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
@@ -14,7 +15,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
 	import {
 		ACCOUNTING_CATEGORY_LABELS,
 		CALC_CATEGORIES,
@@ -56,7 +57,7 @@
 		onsaved: () => void | Promise<void>;
 	} = $props();
 
-	const today = () => new Date().toISOString().slice(0, 10);
+	const today = () => todayBerlin();
 	const base = $derived(`/modules/actions/actions/${actionId}/accounting`);
 
 	let type = $state<string | null>('expense');
@@ -300,7 +301,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+	<Dialog.Content class="sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title
 				>{entry
@@ -566,7 +567,7 @@
 			</div>
 
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			<Dialog.Footer class="items-center gap-3 sm:justify-between">
+			<Dialog.Footer sticky class="items-center gap-3 sm:justify-between">
 				{#if canKeepOpen}
 					<div class="flex items-center gap-2">
 						<Checkbox
@@ -587,7 +588,7 @@
 						{canKeepOpen && keepOpen && savedCount ? 'Fertig' : 'Abbrechen'}
 					</Button>
 					<Button type="submit" disabled={busy || locked}>
-						{busy ? 'Speichere …' : canKeepOpen && keepOpen ? 'Speichern & weiter' : 'Speichern'}
+						{busy ? BUSY_SAVE : canKeepOpen && keepOpen ? 'Speichern & weiter' : 'Speichern'}
 					</Button>
 				</div>
 			</Dialog.Footer>

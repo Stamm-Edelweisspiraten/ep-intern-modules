@@ -47,6 +47,8 @@ export async function applyTemplates(ctx: RequestContext): Promise<ApplyResult> 
 	const templates = await activeTemplates();
 	if (templates.length === 0) return { created: [] };
 	const created = await mdb().transaction(async (tx) => {
+		// Erledigte Vorlagen, Anzahl und Position nur unter Sperre lesen (parallele Läufe/Neuanlagen, #73)
+		await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('offices:list'))`);
 		const done = new Set(
 			(await rowsOf(tx, sql`SELECT module_id, office_key FROM office_templates_applied`)).map(
 				(r) => `${String(r.module_id)}:${String(r.office_key)}`

@@ -9,6 +9,7 @@ import FileText from '@lucide/svelte/icons/file-text';
 import Folder from '@lucide/svelte/icons/folder';
 import Presentation from '@lucide/svelte/icons/presentation';
 import { ApiClientError } from '$lib/sdk/client';
+import { formatDateTimeDe } from '$lib/sdk/dates';
 import {
 	BASE_PATH,
 	PREVIEW_IMAGE_TYPES,
@@ -80,13 +81,8 @@ export function thumbUrl(node: Pick<FileNode, 'id' | 'hasThumb' | 'updatedAt'>):
 }
 
 /** ISO-Zeitstempel → „19.10.2026, 14:05“ */
-export function formatDateTime(iso: string | null | undefined): string {
-	if (!iso) return '';
-	const d = new Date(iso);
-	return Number.isNaN(d.getTime())
-		? iso
-		: d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-}
+export const formatDateTime = (iso: string | null | undefined): string =>
+	formatDateTimeDe(iso, iso ?? '');
 
 /** Verständlicher Fehlertext aus einem API-Fehler */
 export function errorText(e: unknown, fallback: string): string {

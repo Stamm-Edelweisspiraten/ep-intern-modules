@@ -3,7 +3,7 @@
  * Rechteprüfung mit einem System-Kontext – Mitglieder brauchen keine Storage-Rechte.
  * Alle Funktionen mit `core.*` nur AUSSERHALB offener Modul-Transaktionen aufrufen (PGlite).
  */
-import { core, type ImageVariantSpec } from '$lib/sdk/server';
+import { core, secureFileResponse, type ImageVariantSpec } from '$lib/sdk/server';
 import { MODULE_ID, type ImageVariant } from './schemas';
 
 export const filesCtx = () => core.auth.systemContext('orders-files');
@@ -30,26 +30,26 @@ export const VARIANT_COLUMN: Record<ImageVariant, 'thumb_path' | 'web_path'> = {
 	web: 'web_path'
 };
 
-/** Dateien best-effort entfernen (Fehler werden ignoriert) */
+/** Dateien best-effort entfernen (Fehler werden ignoriert); Sammel-Löschung, ein Audit-Eintrag */
 export async function removeFiles(paths: readonly (string | null | undefined)[]): Promise<void> {
-	const ctx = filesCtx();
-	for (const path of paths) {
-		if (!path) continue;
-		await core.storage.remove(ctx, { module: MODULE_ID, path }).catch(() => undefined);
-	}
+	const list = paths.filter((p): p is string => !!p);
+	if (!list.length) return;
+	await core.storage
+		.removeMany(filesCtx(), { module: MODULE_ID, paths: list })
+		.catch(() => undefined);
 }
 
-/** Datei als rohe Response (Anzeige im Browser) */
+/** Datei als rohe Response (Anzeige im Browser), gestreamt */
 export async function fileResponse(path: string, opts: { cache: string }): Promise<Response> {
-	const { buffer, file } = await core.storage.download(filesCtx(), { module: MODULE_ID, path });
-	return new Response(buffer as BodyInit, {
-		status: 200,
-		headers: {
-			'content-type': file.contentType,
-			'content-length': String(buffer.byteLength),
-			'cache-control': opts.cache,
-			'x-content-type-options': 'nosniff',
-			'content-disposition': 'inline'
-		}
+	const { stream, file } = await core.storage.downloadStream(filesCtx(), {
+		module: MODULE_ID,
+		path
+	});
+	// Gemeinsame gehärtete Antwort (CSP-Sandbox, nosniff, RFC-5987-Name; #67, 01b-11)
+	return secureFileResponse(stream, {
+		contentType: file.contentType,
+		size: file.size,
+		name: path.split('/').pop() ?? 'bild',
+		cache: opts.cache
 	});
 }

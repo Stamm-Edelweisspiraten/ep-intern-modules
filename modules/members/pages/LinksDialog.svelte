@@ -11,7 +11,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { ConfirmDialog, EntityAvatar } from '$lib/components/layout';
+	import { ConfirmDialog, EntityAvatar, BUSY_LOAD } from '$lib/components/layout';
 	import type { LinkedUser, LinkUserRef, Member, MemberLinks } from '../schemas';
 	import { downloadPdf } from './download';
 
@@ -173,7 +173,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+	<Dialog.Content class="sm:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title>Verknüpfte Konten</Dialog.Title>
 			<Dialog.Description>
@@ -183,7 +183,7 @@
 		</Dialog.Header>
 
 		{#if loading && !links}
-			<p class="text-sm text-muted-foreground">Lade …</p>
+			<p class="text-sm text-muted-foreground">{BUSY_LOAD}</p>
 		{:else if error}
 			<p class="text-sm text-destructive" role="alert">{error}</p>
 		{:else if links}
@@ -305,11 +305,16 @@
 					<p class="text-muted-foreground">
 						Abgelaufen am {fmt(links.code.expiresAt)}. Der nächste Brief erzeugt einen neuen Code.
 					</p>
+				{:else if links.code.exhausted}
+					<p class="text-muted-foreground">
+						Verbraucht: {links.code.uses} von {links.code.maxUses} Konten verknüpft. Der nächste Brief
+						erzeugt einen neuen Code.
+					</p>
 				{:else}
 					<p class="text-muted-foreground">
 						Gültig bis {fmt(links.code.expiresAt)}{links.code.locked
 							? ' · wegen Fehlversuchen vorübergehend gesperrt'
-							: ''}. Mehrere Personen können denselben Code nutzen.
+							: ''}. Bisher {links.code.uses} von {links.code.maxUses} Konten über diesen Code verknüpft.
 					</p>
 				{/if}
 			</div>

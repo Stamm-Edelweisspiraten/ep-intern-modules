@@ -1,9 +1,9 @@
 <script lang="ts" module>
-	/** Heutiges Datum (lokale Zeit) als `YYYY-MM-DD`. */
+	import { todayBerlin } from '$lib/sdk/dates';
+
+	/** Heutiges Datum (Europe/Berlin) als `YYYY-MM-DD`. */
 	export function todayIso(): string {
-		const d = new Date();
-		const p = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+		return todayBerlin();
 	}
 
 	/**

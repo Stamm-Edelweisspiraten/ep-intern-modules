@@ -7,6 +7,8 @@ import { supplierEndpoints } from './supplier.endpoints';
 import { runDeficitDigest } from './notify';
 import { syncTreasury } from './treasury-link';
 import { resetAreas, resetUsers } from './reset';
+import { onUserDeleted } from './user-deleted';
+import { subjectExport } from './subject-export';
 import { ordersSearch } from './search';
 import {
 	MANAGER_ROLE_NAME,
@@ -17,6 +19,7 @@ import {
 } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_digest_state.sql?raw';
+import m0003 from './migrations/0003_fk_indexes.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -89,10 +92,13 @@ export default defineModule({
 	},
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_digest_state', sql: m0002 }
+		{ name: '0002_digest_state', sql: m0002 },
+		{ name: '0003_fk_indexes', sql: m0003 }
 	],
 	resetAreas,
 	resetUsers,
+	onUserDeleted,
+	subjectExport,
 	jobs: [
 		{
 			id: 'sync-treasury',

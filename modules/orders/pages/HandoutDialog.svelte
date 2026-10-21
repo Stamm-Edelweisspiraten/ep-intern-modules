@@ -104,7 +104,7 @@
 									offen {item.openQty} · auf Lager {item.stock ?? 0}
 								</div>
 								{#if missing > 0}
-									<p class="mt-1 text-xs text-amber-700 dark:text-amber-400">
+									<p class="mt-1 text-xs text-warning">
 										{missing}
 										{missing === 1 ? 'fehlt' : 'fehlen'} – {missing === 1 ? 'wird' : 'werden'} nachbestellt
 									</p>
