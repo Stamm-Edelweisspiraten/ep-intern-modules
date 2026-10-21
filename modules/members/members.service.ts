@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
 	core,
 	errors,
+	inList,
 	isCoreError,
 	logBestEffort,
 	moduleDb,
@@ -23,8 +25,11 @@ import {
 	FEE_LEVELS,
 	type FeeLevel,
 	type Member,
+	type MemberFilter,
+	type MemberIdsResult,
 	type MemberInput,
 	type MemberList,
+	SELECT_ALL_MAX,
 	type Stage
 } from './schemas';
 
@@ -181,36 +186,74 @@ export async function getMember(id: string, scope?: readonly string[]): Promise<
 	return m;
 }
 
+/**
+ * WHERE-Bedingung für die Mitgliederliste (Alias `m`); gemeinsam für Liste und `/members/ids`.
+ * Mit `scope` (Gruppen-IDs einer Gruppenleitung) nur Mitglieder dieser Gruppen.
+ */
+export function buildMemberFilter(filter: MemberFilter, scope?: readonly string[]) {
+	const today = todayBerlin();
+	const conds = [sql`TRUE`];
+	if (scope) conds.push(inScopeSql('m', scope));
+	if (filter.search) {
+		const p = `%${filter.search.replace(/[\\%_]/g, '\\$&')}%`;
+		conds.push(sql`(m.first_name ILIKE ${p} OR m.last_name ILIKE ${p} OR m.scout_name ILIKE ${p})`);
+	}
+	const stages = [...new Set([...(filter.stage ? [filter.stage] : []), ...(filter.stages ?? [])])];
+	if (stages.length) conds.push(sql`m.stage IN (${inList(stages)})`);
+
+	const groupIds = [
+		...new Set([...(filter.groupId ? [filter.groupId] : []), ...(filter.groupIds ?? [])])
+	];
+	const inGroups = (ids: string[]) =>
+		sql`EXISTS (SELECT 1 FROM member_groups fg WHERE fg.member_id = m.id AND fg.group_id IN (${inList(ids)}))`;
+	const noGroup = sql`NOT EXISTS (SELECT 1 FROM member_groups fg WHERE fg.member_id = m.id)`;
+	if (groupIds.length && filter.groupMode === 'all') {
+		// alle gewählten Gruppen; „ohne Gruppe“ schließt das aus und wird ignoriert
+		conds.push(
+			sql`(SELECT count(DISTINCT fg.group_id) FROM member_groups fg
+				WHERE fg.member_id = m.id AND fg.group_id IN (${inList(groupIds)})) = ${groupIds.length}`
+		);
+	} else if (groupIds.length && filter.ungrouped) {
+		conds.push(sql`(${inGroups(groupIds)} OR ${noGroup})`);
+	} else if (groupIds.length) {
+		conds.push(inGroups(groupIds));
+	} else if (filter.ungrouped) {
+		conds.push(noGroup);
+	}
+
+	const status = filter.status ?? 'active';
+	if (status === 'active') conds.push(sql`(m.exit_date IS NULL OR m.exit_date > ${today}::date)`);
+	else if (status === 'left') conds.push(sql`m.exit_date <= ${today}::date`);
+
+	if (filter.ageMin != null)
+		conds.push(sql`date_part('year', age(${today}::date, m.birth_date)) >= ${filter.ageMin}`);
+	if (filter.ageMax != null)
+		conds.push(sql`date_part('year', age(${today}::date, m.birth_date)) <= ${filter.ageMax}`);
+
+	const flag = (col: string, v: 'yes' | 'no' | undefined) => {
+		if (!v) return;
+		conds.push(v === 'yes' ? sql`${sql.raw(col)} IS TRUE` : sql`${sql.raw(col)} IS NOT TRUE`);
+	};
+	flag('m.consent_website', filter.consentWebsite);
+	flag('m.consent_social_media', filter.consentSocialMedia);
+	flag('m.consent_print', filter.consentPrint);
+	flag('m.secondary_member', filter.secondary);
+	if (filter.hasEmail) {
+		const has = sql`EXISTS (SELECT 1 FROM member_emails fe WHERE fe.member_id = m.id)`;
+		conds.push(filter.hasEmail === 'yes' ? has : sql`NOT ${has}`);
+	}
+	if (filter.entryFrom) conds.push(sql`m.entry_date >= ${filter.entryFrom}::date`);
+	if (filter.entryTo) conds.push(sql`m.entry_date <= ${filter.entryTo}::date`);
+	return sql.join(conds, sql` AND `);
+}
+
 /** Mitgliederliste; mit `scope` (Gruppen-IDs einer Gruppenleitung) nur Mitglieder dieser Gruppen */
 export async function listMembers(
-	query: {
-		search?: string;
-		stage?: Stage;
-		groupId?: string;
-		status?: 'active' | 'left' | 'all';
-		limit: number;
-		offset: number;
-	},
+	query: MemberFilter & { limit: number; offset: number },
 	scope?: readonly string[]
 ): Promise<MemberList> {
 	return moduleDb(MODULE_ID).transaction(async (tx) => {
-		const conds = [sql`TRUE`];
-		if (scope) conds.push(inScopeSql('m', scope));
-		if (query.search) {
-			const p = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;
-			conds.push(
-				sql`(m.first_name ILIKE ${p} OR m.last_name ILIKE ${p} OR m.scout_name ILIKE ${p})`
-			);
-		}
-		if (query.stage) conds.push(sql`m.stage = ${query.stage}`);
-		if (query.groupId)
-			conds.push(
-				sql`EXISTS (SELECT 1 FROM member_groups mg WHERE mg.member_id = m.id AND mg.group_id = ${query.groupId})`
-			);
-		const status = query.status ?? 'active';
-		if (status === 'active') conds.push(sql`(m.exit_date IS NULL OR m.exit_date > CURRENT_DATE)`);
-		else if (status === 'left') conds.push(sql`m.exit_date <= CURRENT_DATE`);
-		const where = sql.join(conds, sql` AND `);
+		const where = buildMemberFilter(query, scope);
 		const total = await rowsOf(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
 		const found = await rowsOf(
 			tx,
@@ -218,6 +261,31 @@ export async function listMembers(
 				ORDER BY m.last_name, m.first_name, m.id LIMIT ${query.limit} OFFSET ${query.offset}`
 		);
 		return { items: await hydrate(tx, found), total: Number(total[0]?.n ?? 0) };
+	});
+}
+
+/** Alle Treffer eines Filters (IDs + Namen, höchstens `SELECT_ALL_MAX`) für „alle Treffer auswählen“ */
+export async function listMemberIds(
+	filter: MemberFilter,
+	scope?: readonly string[]
+): Promise<MemberIdsResult> {
+	return moduleDb(MODULE_ID).transaction(async (tx) => {
+		const where = buildMemberFilter(filter, scope);
+		const total = await rowsOf(tx, sql`SELECT count(*)::int AS n FROM members m WHERE ${where}`);
+		const found = await rowsOf(
+			tx,
+			sql`SELECT m.id, m.first_name, m.last_name FROM members m WHERE ${where}
+				ORDER BY m.last_name, m.first_name, m.id LIMIT ${SELECT_ALL_MAX}`
+		);
+		const n = Number(total[0]?.n ?? 0);
+		return {
+			items: found.map((r) => ({
+				id: r.id as string,
+				name: `${r.first_name as string} ${r.last_name as string}`.trim()
+			})),
+			total: n,
+			truncated: n > SELECT_ALL_MAX
+		};
 	});
 }
 

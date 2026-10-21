@@ -5,6 +5,7 @@
 	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
 	import FileDown from '@lucide/svelte/icons/file-down';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -27,7 +28,6 @@
 		SearchInput
 	} from '$lib/components/layout';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
-	import { SelectField } from '$lib/components/ui/select-field';
 	import {
 		BULK_MAX_IDS,
 		LED_EDIT,
@@ -35,15 +35,18 @@
 		LED_VIEW,
 		STAGES,
 		STAGE_LABELS,
+		LINK_LETTERS_MAX_IDS,
 		ageFromBirthDate,
 		type BulkResult,
 		type GroupRef,
 		type Member,
+		type MemberIdsResult,
 		type MemberList
 	} from '../schemas';
 	import BulkDialog, { type BulkMode } from './BulkDialog.svelte';
 	import { downloadPdf } from './download';
 	import LinksDialog from './LinksDialog.svelte';
+	import MemberFilters, { UNGROUPED, type MemberFilterState } from './MemberFilters.svelte';
 	import MemberForm from './MemberForm.svelte';
 
 	const PAGE_SIZE = 20;
@@ -65,13 +68,68 @@
 	const canUpload = $derived(can(permissions, 'members.storage.write'));
 	const canRemoveDoc = $derived(can(permissions, 'members.storage.delete'));
 
-	const search = $derived(page.url.searchParams.get('search') ?? '');
-	const stage = $derived(page.url.searchParams.get('stage') ?? '');
-	const groupId = $derived(page.url.searchParams.get('groupId') ?? '');
+	/** URL-Parameter der Filter (ohne Seitenangaben); `search` wird von `SearchInput` gesetzt */
+	const FILTER_KEYS = [
+		'search',
+		'stage',
+		'stages',
+		'groupId',
+		'groupIds',
+		'groupMode',
+		'ungrouped',
+		'status',
+		'ageMin',
+		'ageMax',
+		'consentWebsite',
+		'consentSocialMedia',
+		'consentPrint',
+		'secondary',
+		'hasEmail',
+		'entryFrom',
+		'entryTo'
+	] as const;
+	const param = (k: string) => page.url.searchParams.get(k) ?? '';
+	const csv = (k: string) =>
+		param(k)
+			.split(',')
+			.map((x) => x.trim())
+			.filter(Boolean);
+	const search = $derived(param('search'));
 	/** Mitgliedschaftsstatus: active (Standard) | left | all */
 	const status = $derived(
-		(['active', 'left', 'all'] as const).find((s) => s === page.url.searchParams.get('status')) ??
-			'active'
+		(['active', 'left', 'all'] as const).find((s) => s === param('status')) ?? 'active'
+	);
+	const filter: MemberFilterState = $derived({
+		status,
+		stages: [...new Set([...(param('stage') ? [param('stage')] : []), ...csv('stages')])],
+		groups: [
+			...new Set([
+				...(param('groupId') ? [param('groupId')] : []),
+				...csv('groupIds'),
+				...(param('ungrouped') ? [UNGROUPED] : [])
+			])
+		],
+		groupMode: param('groupMode') === 'all' ? 'all' : 'any',
+		ageMin: param('ageMin'),
+		ageMax: param('ageMax'),
+		consentWebsite: param('consentWebsite'),
+		consentSocialMedia: param('consentSocialMedia'),
+		consentPrint: param('consentPrint'),
+		secondary: param('secondary'),
+		hasEmail: param('hasEmail'),
+		entryFrom: param('entryFrom'),
+		entryTo: param('entryTo')
+	});
+	/** Filter als Query (ohne Seitenangaben), gemeinsam für Liste und „alle Treffer auswählen“ */
+	const filterQuery = $derived.by(() => {
+		const q = new URLSearchParams();
+		for (const k of FILTER_KEYS) if (param(k)) q.set(k, param(k));
+		q.set('status', status);
+		return q.toString();
+	});
+	/** Etwas außer der Suche gesetzt (Standard = nur „Aktiv“)? */
+	const filtersActive = $derived(
+		FILTER_KEYS.some((k) => k !== 'search' && param(k) && !(k === 'status' && status === 'active'))
 	);
 	const today = todayBerlin();
 	const isLeft = (m: Member) => !!m.exitDate && m.exitDate <= today;
@@ -99,22 +157,67 @@
 
 	// --- Sammelaktionen ---------------------------------------------------------
 	let selected = $state<string[]>([]);
+	/** `selected` enthält alle Treffer des aktuellen Filters (nicht nur die gesehenen Seiten) */
+	let allMatched = $state(false);
+	let selectingAll = $state(false);
+	// E-Mail an Mitglieder: nur mit aktivem Modul „Nachrichten“ (Recht existiert nur dann)
+	const canMail = $derived(can(permissions, 'messages.message.send'));
+	/** Namen der gesehenen Mitglieder, damit die Nachricht die Auswahl auch seitenübergreifend benennen kann */
+	const nameCache = new Map<string, string>();
+	$effect(() => {
+		for (const m of items) nameCache.set(m.id, `${m.firstName} ${m.lastName}`.trim());
+	});
+	function composeForSelection() {
+		try {
+			sessionStorage.setItem(
+				'messages:compose',
+				JSON.stringify({
+					members: selected.map((id) => ({ id, name: nameCache.get(id) ?? 'Mitglied' }))
+				})
+			);
+		} catch {
+			// ohne Speicher startet die Nachricht ohne Vorauswahl
+		}
+		location.assign('/modules/messages/new');
+	}
 	let bulkOpen = $state(false);
 	let bulkMode = $state<BulkMode>('add-groups');
 	let bulkDeleteOpen = $state(false);
-	const showSelect = $derived(canBulkEdit || canDelete || canLinkManage || canExport);
+	const showSelect = $derived(canBulkEdit || canDelete || canLinkManage || canExport || canMail);
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
 	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeändert wird
 	let lastFilter = '';
 	$effect(() => {
-		const key = `${search}|${stage}|${groupId}|${status}`;
-		if (lastFilter && key !== lastFilter) selected = [];
+		const key = filterQuery;
+		if (lastFilter && key !== lastFilter) {
+			selected = [];
+			allMatched = false;
+		}
 		lastFilter = key;
 	});
 
+	/** Wählt wirklich alle Treffer des Filters aus (Server liefert IDs, höchstens `SELECT_ALL_MAX`) */
+	async function selectAllMatches() {
+		selectingAll = true;
+		try {
+			const r = await apiFetch<MemberIdsResult>(`${apiBase}/members/ids?${filterQuery}`);
+			for (const m of r.items) nameCache.set(m.id, m.name);
+			selected = r.items.map((m) => m.id);
+			allMatched = !r.truncated;
+			if (r.truncated) {
+				toast.warning(`Nur die ersten ${r.items.length} von ${r.total} Treffern ausgewählt`);
+			}
+		} catch (e) {
+			toast.error(e instanceof ApiClientError ? e.message : 'Auswahl fehlgeschlagen');
+		} finally {
+			selectingAll = false;
+		}
+	}
+
 	function toggle(id: string, on: boolean) {
+		allMatched = false;
 		if (on && selected.length >= BULK_MAX_IDS && !selected.includes(id)) {
 			toast.error(`Höchstens ${BULK_MAX_IDS} Mitglieder auf einmal`);
 			return;
@@ -122,6 +225,7 @@
 		selected = on ? [...new Set([...selected, id])] : selected.filter((i) => i !== id);
 	}
 	function togglePage(on: boolean) {
+		allMatched = false;
 		const pageIds = items.map((m) => m.id);
 		if (!on) {
 			selected = selected.filter((i) => !pageIds.includes(i));
@@ -140,6 +244,10 @@
 		linksOpen = true;
 	}
 	async function bulkLetters() {
+		if (selected.length > LINK_LETTERS_MAX_IDS) {
+			toast.error(`Briefe: höchstens ${LINK_LETTERS_MAX_IDS} Mitglieder auf einmal`);
+			return;
+		}
 		lettersBusy = true;
 		try {
 			await downloadPdf(
@@ -207,6 +315,7 @@
 		}
 		if (!r.affected && !r.skipped.length) toast.info('Keine Änderung nötig');
 		selected = [];
+		allMatched = false;
 		reloadTick++;
 	}
 	async function confirmBulkDelete() {
@@ -236,11 +345,9 @@
 
 	$effect(() => {
 		void reloadTick;
-		const q = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
-		if (search) q.set('search', search);
-		if (stage) q.set('stage', stage);
-		if (groupId) q.set('groupId', groupId);
-		q.set('status', status);
+		const q = new URLSearchParams(filterQuery);
+		q.set('limit', String(PAGE_SIZE));
+		q.set('offset', String(offset));
 		let stale = false;
 		loading = true;
 		apiFetch<MemberList>(`${apiBase}/members?${q}`)
@@ -261,12 +368,18 @@
 		};
 	});
 
-	function setFilter(key: string, value: string) {
+	/** Mehrere Filter in einem Schritt ändern (leerer Wert = Parameter entfernen) */
+	function setFilters(patch: Record<string, string>) {
 		const url = new URL(page.url);
-		if (value) url.searchParams.set(key, value);
-		else url.searchParams.delete(key);
+		for (const [key, value] of Object.entries(patch)) {
+			if (value) url.searchParams.set(key, value);
+			else url.searchParams.delete(key);
+		}
 		url.searchParams.delete('offset');
 		goto(url, { keepFocus: true, noScroll: true });
+	}
+	function resetFilters() {
+		setFilters(Object.fromEntries(FILTER_KEYS.filter((k) => k !== 'search').map((k) => [k, ''])));
 	}
 
 	function fmtDate(iso: string) {
@@ -336,11 +449,6 @@
 
 	const stageOptions = STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] }));
 	const groupOptions = $derived(groups.map((g) => ({ value: g.id, label: g.name })));
-	const statusOptions = [
-		{ value: 'active', label: 'Aktiv' },
-		{ value: 'left', label: 'Ausgetreten' },
-		{ value: 'all', label: 'Alle' }
-	];
 	const consents = [
 		{ key: 'consentSocialMedia', label: 'Socialmedia' },
 		{ key: 'consentWebsite', label: 'Stammeswebsite' },
@@ -375,7 +483,7 @@
 			: 'Keine Mitglieder gefunden'}
 		emptyDescription={ledMode && groupsLoaded && !groups.length
 			? 'Hier erscheinen die Mitglieder, sobald du als Leitung einer Gruppe eingetragen bist und dein Konto in der Mitgliederverwaltung als eigenes Konto deines Mitglieds markiert ist.'
-			: search || stage || groupId || status !== 'active'
+			: search || filtersActive
 				? 'Passe Suche oder Filter an.'
 				: ledMode
 					? 'Deinen Gruppen sind noch keine Mitglieder zugeordnet.'
@@ -383,29 +491,36 @@
 	>
 		{#snippet toolbar()}
 			<SearchInput placeholder="Name suchen …" label="Mitglieder suchen" />
-			<SelectField
-				label="Nach Mitgliedschaft filtern"
-				class="w-auto"
-				options={statusOptions}
-				value={status}
-				onchange={(v) => setFilter('status', v && v !== 'active' ? v : '')}
+			<MemberFilters
+				{filter}
+				{stageOptions}
+				{groupOptions}
+				onchange={setFilters}
+				onreset={resetFilters}
+				resettable={filtersActive}
 			/>
-			<SelectField
-				label="Nach Stand filtern"
-				emptyLabel="Alle Stände"
-				class="w-auto"
-				options={stageOptions}
-				value={stage || null}
-				onchange={(v) => setFilter('stage', v ?? '')}
-			/>
-			<SelectField
-				label="Nach Gruppe filtern"
-				emptyLabel="Alle Gruppen"
-				class="w-auto"
-				options={groupOptions}
-				value={groupId || null}
-				onchange={(v) => setFilter('groupId', v ?? '')}
-			/>
+			{#if showSelect && selected.length > 0 && (allMatched || (allOnPage && total > items.length))}
+				<div
+					class="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-info-border bg-info-muted px-3 py-2 text-sm"
+					role="status"
+				>
+					{#if allMatched}
+						<span>Alle {selected.length} Treffer sind ausgewählt.</span>
+						<Button
+							size="sm"
+							variant="ghost"
+							onclick={() => ((selected = []), (allMatched = false))}
+						>
+							Auswahl aufheben
+						</Button>
+					{:else}
+						<span>Alle {items.length} Mitglieder dieser Seite sind ausgewählt.</span>
+						<Button size="sm" variant="outline" disabled={selectingAll} onclick={selectAllMatches}>
+							{selectingAll ? 'Wählt aus …' : `Alle ${total} Treffer auswählen`}
+						</Button>
+					{/if}
+				</div>
+			{/if}
 			<MobileActionBar
 				show={selected.length > 0}
 				label="Sammelaktionen"
@@ -438,12 +553,22 @@
 						{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederliste (PDF)'}
 					</Button>
 				{/if}
+				{#if canMail}
+					<Button size="sm" variant="outline" onclick={composeForSelection}>
+						<Mail /> E-Mail senden
+					</Button>
+				{/if}
 				{#if canDelete}
 					<Button size="sm" variant="destructive" onclick={() => (bulkDeleteOpen = true)}>
 						<Trash2 /> Löschen
 					</Button>
 				{/if}
-				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
+				<Button
+					size="sm"
+					variant="ghost"
+					class="ml-auto"
+					onclick={() => ((selected = []), (allMatched = false))}
+				>
 					<X /> Auswahl aufheben
 				</Button>
 			</MobileActionBar>

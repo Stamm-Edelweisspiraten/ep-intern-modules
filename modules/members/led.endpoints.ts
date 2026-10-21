@@ -19,7 +19,7 @@ import { placesForPostalCode, suggestAddresses } from './address.service';
 import { deleteDocument, downloadDocument, uploadDocument } from './documents.endpoints';
 import { listFieldDefs } from './fields.service';
 import { inScopeSql, ledGroupIds } from './leader.service';
-import { getMember, listMembers, updateMember } from './members.service';
+import { getMember, listMemberIds, listMembers, updateMember } from './members.service';
 import { buildGroupSheets, buildMemberSheets, getMemberCatalog } from './sheets.service';
 import {
 	LED_EDIT,
@@ -32,6 +32,7 @@ import {
 	groupSheetsInput,
 	idParams,
 	memberInput,
+	memberIdsQuery,
 	memberListQuery,
 	memberSheetsInput,
 	type DocumentKind,
@@ -145,6 +146,17 @@ export const ledEndpoints: AnyApiEndpoint[] = [
 		permission: LED_VIEW,
 		query: memberListQuery,
 		handler: async ({ ctx, query }) => listMembers(query, await ledGroupIds(ctx))
+	}),
+	// fester Pfad vor `/led/members/:id`
+	defineEndpoint({
+		method: 'GET',
+		path: '/led/members/ids',
+		summary: 'IDs und Namen aller Treffer eines Filters in meinen Gruppen',
+		tags,
+		permission: LED_VIEW,
+		query: memberIdsQuery,
+		rateLimit: { limit: 60, windowSec: 60 },
+		handler: async ({ ctx, query }) => listMemberIds(query, await ledGroupIds(ctx))
 	}),
 	defineEndpoint({
 		method: 'GET',

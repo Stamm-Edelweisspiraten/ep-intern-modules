@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import FileDown from '@lucide/svelte/icons/file-down';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
@@ -54,6 +55,22 @@
 	const canExport = $derived(
 		can(permissions, 'members.data.export') && can(permissions, 'members.member.view')
 	);
+
+	// E-Mail an Gruppen: nur mit aktivem Modul „Nachrichten“ (Recht existiert nur dann)
+	const canMail = $derived(
+		can(permissions, 'messages.message.send') && can(permissions, 'members.member.view')
+	);
+	const canSelect = $derived(canExport || canMail);
+
+	/** Auswahl an „Neue Nachricht“ übergeben (Modul messages, Schlüssel `messages:compose`) */
+	function composeFor(groupIds: string[]) {
+		try {
+			sessionStorage.setItem('messages:compose', JSON.stringify({ groupIds }));
+		} catch {
+			// ohne Speicher startet die Nachricht ohne Vorauswahl
+		}
+		location.assign('/modules/messages/new');
+	}
 
 	let groups = $state<Group[]>([]);
 
@@ -471,20 +488,27 @@
 				</p>
 			{/if}
 			<MobileActionBar
-				show={canExport && selected.length > 0}
+				show={canSelect && selected.length > 0}
 				label="Sammelaktionen"
 				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
 			>
 				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
-				<Button
-					size="sm"
-					variant="outline"
-					disabled={sheetsBusy}
-					onclick={() => openSheets(selected, 'Gruppen.pdf')}
-				>
-					<FileDown />
-					{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederlisten (PDF)'}
-				</Button>
+				{#if canExport}
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={sheetsBusy}
+						onclick={() => openSheets(selected, 'Gruppen.pdf')}
+					>
+						<FileDown />
+						{sheetsBusy ? 'Erzeuge PDF …' : 'Mitgliederlisten (PDF)'}
+					</Button>
+				{/if}
+				{#if canMail}
+					<Button size="sm" variant="outline" onclick={() => composeFor(selected)}>
+						<Mail /> E-Mail senden
+					</Button>
+				{/if}
 				<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
 					<X /> Auswahl aufheben
 				</Button>
@@ -492,7 +516,7 @@
 		{/snippet}
 		{#snippet head()}
 			<Table.Row>
-				{#if canExport}
+				{#if canSelect}
 					<Table.Head class="w-10">
 						<Checkbox
 							aria-label="Alle Gruppen auswählen"
@@ -508,7 +532,8 @@
 				<Table.Head class="text-right">Mitglieder</Table.Head>
 				<Table.Head>Treffpunkt</Table.Head>
 				<Table.Head>Treffen</Table.Head>
-				{#if canEdit || canDelete || canExport}<Table.Head class="text-right">Aktionen</Table.Head
+				{#if canEdit || canDelete || canExport || canMail}<Table.Head class="text-right"
+						>Aktionen</Table.Head
 					>{/if}
 			</Table.Row>
 		{/snippet}
@@ -518,7 +543,7 @@
 				class={highlightId === g.id ? 'bg-muted' : undefined}
 				data-state={selected.includes(g.id) ? 'selected' : undefined}
 			>
-				{#if canExport}
+				{#if canSelect}
 					<Table.Cell>
 						<Checkbox
 							aria-label={`Gruppe ${g.name} auswählen`}
@@ -549,9 +574,20 @@
 				<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
 				<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
 				<Table.Cell>{meetingText(g)}</Table.Cell>
-				{#if canEdit || canDelete || canExport}
+				{#if canEdit || canDelete || canExport || canMail}
 					<Table.Cell class="text-right">
 						<div class="flex justify-end gap-1">
+							{#if canMail}
+								<Button
+									size="icon"
+									variant="ghost"
+									aria-label="E-Mail an die Gruppe {g.name}"
+									title="E-Mail an die Gruppe"
+									onclick={() => composeFor([g.id])}
+								>
+									<Mail class="size-4" />
+								</Button>
+							{/if}
 							{#if canExport}
 								<Button
 									size="icon"
