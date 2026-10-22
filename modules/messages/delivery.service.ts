@@ -21,11 +21,17 @@ import {
 	type RequestContext
 } from '$lib/sdk/server';
 import { htmlToText, plainDocument, sanitizeBody } from './html';
+import { loadInboxConfig } from './inbound.service';
+import { notifyReplied } from './inbox-notify.service';
+import { forwardAttachments, loadInboxRow } from './inbox.service';
+import { MESSAGE_ID_PATTERN, mailboxKeyForSender } from './mailbox';
 import { resolveRecipients } from './recipients.service';
 import { accountEmail, loadSettings, requireSender } from './sender.service';
 import {
 	ATTACHMENT_DAYS,
 	MAX_BODY_HTML,
+	MAX_FILES,
+	MAX_TOTAL_BYTES,
 	MODULE_ID,
 	PERM_VIEW_ALL,
 	RETENTION_DAYS,
@@ -135,6 +141,8 @@ export async function getMessage(ctx: RequestContext, id: string): Promise<Messa
 		bodyHtml: String(data.m.body_html),
 		layout: data.m.layout === 'plain' ? 'plain' : 'stamm',
 		replyTo: data.m.reply_to == null ? null : String(data.m.reply_to),
+		replyOf: data.m.reply_of == null ? null : String(data.m.reply_of),
+		forwardOf: data.m.forward_of == null ? null : String(data.m.forward_of),
 		attachments: data.attachments.map((a): MessageAttachmentInfo => ({
 			id: String(a.id),
 			filename: String(a.filename),
@@ -161,6 +169,29 @@ export async function createMessage(
 	files: UploadedAttachment[]
 ): Promise<MessageDetail> {
 	const sender = await requireSender(ctx, input.senderKey);
+	if (input.replyOf && input.forwardOf) {
+		throw errors.validation([
+			{ path: ['forwardOf'], message: 'Antwort oder Weiterleitung, nicht beides' }
+		]);
+	}
+	if (input.forwardAttachmentIds.length && !input.forwardOf) {
+		throw errors.validation([
+			{ path: ['forwardAttachmentIds'], message: 'Anhänge nur beim Weiterleiten übernehmen' }
+		]);
+	}
+	// Bezug aus dem Posteingang (404 ohne Zugriff auf dessen Postfach)
+	const refId = input.replyOf ?? input.forwardOf ?? null;
+	const ref = refId ? await loadInboxRow(ctx, refId) : null;
+	const forwarded = input.forwardOf
+		? await forwardAttachments(input.forwardOf, input.forwardAttachmentIds)
+		: [];
+	const allFiles = [...forwarded, ...files];
+	if (allFiles.length > MAX_FILES) {
+		throw errors.validation([{ path: ['files'], message: `Höchstens ${MAX_FILES} Anhänge` }]);
+	}
+	if (allFiles.reduce((sum, f) => sum + f.bytes.byteLength, 0) > MAX_TOTAL_BYTES) {
+		throw errors.tooLarge('Die Anhänge sind zusammen zu groß (höchstens 20 MB).');
+	}
 	const resolved = await resolveRecipients(ctx, input);
 	if (!resolved.recipients.length) {
 		throw errors.validation([
@@ -185,14 +216,32 @@ export async function createMessage(
 	}
 	const settings = await loadSettings();
 	const layout = input.layout ?? settings.layout;
+	// Mit Posteingang landen Antworten an der Absenderadresse im passenden Postfach
+	const inboxOn = (await loadInboxConfig()).enabled;
 	const replyTo =
-		input.replyTo ?? (settings.replyTo === 'sender' ? sender.address : await accountEmail(ctx));
+		input.replyTo ??
+		(inboxOn || settings.replyTo === 'sender' ? sender.address : await accountEmail(ctx));
 
 	const id = crypto.randomUUID();
+	const mailboxKey = mailboxKeyForSender(sender.key, ctx.userId);
+	const threadId = ref ? String(ref.row.thread_id) : id;
+	const refMessageId =
+		ref?.row.message_id_header && MESSAGE_ID_PATTERN.test(String(ref.row.message_id_header))
+			? String(ref.row.message_id_header)
+			: null;
+	const inReplyTo = input.replyOf ? refMessageId : null;
+	const references = input.replyOf
+		? [
+				...String(ref?.row.references_list ?? '')
+					.split(/\s+/)
+					.filter((r) => MESSAGE_ID_PATTERN.test(r)),
+				...(refMessageId ? [refMessageId] : [])
+			].slice(-20)
+		: [];
 	// Anhänge erst ablegen, dann speichern; bei Fehler wieder entfernen
 	const stored: { id: string; path: string; file: UploadedAttachment }[] = [];
 	try {
-		for (const file of files) {
+		for (const file of allFiles) {
 			const attId = crypto.randomUUID();
 			const path = `messages/${id}/${attId}-${safeFileName(file.filename)}`;
 			await core.storage.upload(system(), {
@@ -207,9 +256,12 @@ export async function createMessage(
 		await mdb().transaction(async (tx) => {
 			await tx.execute(
 				sql`INSERT INTO messages (id, subject, body_html, body_text, sender_address, sender_name,
-						reply_to, created_by, total, layout)
+						reply_to, created_by, total, layout, mailbox_key, thread_id, reply_of, forward_of,
+						in_reply_to, references_list)
 					VALUES (${id}, ${input.subject}, ${bodyHtml}, ${bodyText}, ${sender.address}, ${sender.name},
-						${replyTo}, ${ctx.userId ?? null}, ${resolved.recipients.length}, ${layout})`
+						${replyTo}, ${ctx.userId ?? null}, ${resolved.recipients.length}, ${layout}, ${mailboxKey},
+						${threadId}, ${input.replyOf ?? null}, ${input.forwardOf ?? null}, ${inReplyTo},
+						${references.join(' ') || null})`
 			);
 			for (const r of resolved.recipients) {
 				await tx.execute(
@@ -230,9 +282,28 @@ export async function createMessage(
 	}
 	await core.audit.logFromContext(ctx, 'messages.message.created', {
 		target: id,
-		metadata: { recipients: resolved.recipients.length, attachments: stored.length }
+		metadata: {
+			recipients: resolved.recipients.length,
+			attachments: stored.length,
+			...(input.replyOf ? { reply: true } : {}),
+			...(input.forwardOf ? { forward: true } : {})
+		}
 	});
 	startDelivery(ctx, id);
+	if (ref && refId) {
+		const original = ref.row;
+		await notifyReplied(ctx, {
+			inboxId: refId,
+			mailboxKey: String(original.mailbox_key),
+			kind: input.replyOf ? 'reply' : 'forward',
+			originalSubject: String(original.subject ?? ''),
+			originalFrom: original.from_name
+				? `${String(original.from_name)} <${String(original.from_address)}>`
+				: String(original.from_address),
+			recipients: resolved.recipients.map((r) => r.address),
+			text: bodyText
+		});
+	}
 	return getMessage(ctx, id);
 }
 
@@ -334,11 +405,17 @@ async function claimBatch(messageId: string): Promise<Claimed[]> {
 	});
 }
 
-async function markRecipient(id: string, ok: boolean, error?: string): Promise<void> {
+async function markRecipient(
+	id: string,
+	ok: boolean,
+	error?: string,
+	messageId?: string | null
+): Promise<void> {
 	await mdb().transaction((tx) =>
 		tx.execute(
 			ok
-				? sql`UPDATE message_recipients SET status = 'sent', error = NULL, sent_at = now(), updated_at = now() WHERE id = ${id}`
+				? sql`UPDATE message_recipients SET status = 'sent', error = NULL, sent_at = now(), updated_at = now(),
+						message_id_header = ${messageId ?? null} WHERE id = ${id}`
 				: sql`UPDATE message_recipients SET status = 'failed', error = ${error ?? 'Versand fehlgeschlagen'}, updated_at = now() WHERE id = ${id}`
 		)
 	);
@@ -388,8 +465,14 @@ async function deliver(ctx: RequestContext, id: string): Promise<void> {
 		from: String(m.sender_address),
 		...(m.sender_name ? { fromName: String(m.sender_name) } : {}),
 		...(m.reply_to ? { replyTo: String(m.reply_to) } : {}),
-		...(attachments.length ? { attachments } : {})
+		...(attachments.length ? { attachments } : {}),
+		...(m.in_reply_to ? { inReplyTo: String(m.in_reply_to) } : {}),
+		...(m.references_list
+			? { references: String(m.references_list).split(/\s+/).filter(Boolean) }
+			: {})
 	};
+	// Eigene Message-ID je Empfänger (Domain der Absenderadresse): Antworten lassen sich so zuordnen
+	const domain = String(m.sender_address).split('@').pop() || 'localhost';
 
 	for (;;) {
 		const batch = await claimBatch(id);
@@ -400,8 +483,9 @@ async function deliver(ctx: RequestContext, id: string): Promise<void> {
 			await Promise.all(
 				batch.slice(i, i + CONCURRENCY).map(async (r) => {
 					try {
-						await core.mail.sendMessage({ ...base, to: r.address });
-						await markRecipient(r.id, true);
+						const messageId = `<${crypto.randomUUID()}@${domain}>`;
+						const result = await core.mail.sendMessage({ ...base, to: r.address, messageId });
+						await markRecipient(r.id, true, undefined, result.messageId ?? messageId);
 					} catch (e) {
 						await markRecipient(r.id, false, errorText(e));
 					}

@@ -25,7 +25,7 @@ import { todayBerlin } from '$lib/sdk/dates';
 import { LEADER_ROLE_NAME, MODULE_ID } from './schemas';
 
 /** Mitglied zählt als Leitung: nicht ausgetreten, nicht anonymisiert */
-const activeLeader = (alias: string) => {
+export const activeLeader = (alias: string) => {
 	const a = sql.raw(alias);
 	return sql`${a}.anonymized_at IS NULL AND (${a}.exit_date IS NULL OR ${a}.exit_date > ${todayBerlin()}::date)`;
 };

@@ -37,7 +37,17 @@ export interface OwnOfficeEmails {
 	emails: { label: string | null; email: string }[];
 }
 
+/** Amt mit Funktions-Adressen und Inhaber*innen (Postfach im Modul `messages`) */
+export interface OfficeMailbox {
+	officeId: string;
+	officeName: string;
+	emails: { label: string | null; email: string }[];
+	holderUserIds: string[];
+}
+
 export interface OfficesService {
+	/** Systemweit, ohne Rechteprüfung: alle Ämter mit mindestens einer Adresse und ihren Inhaber*innen */
+	listOfficeMailboxes(): Promise<OfficeMailbox[]>;
 	/** Ämter, bei denen `ctx.userId` Inhaber*in ist, mit Adressen (nur Ämter mit mindestens einer Adresse) */
 	listOwnOfficeEmails(ctx: RequestContext): Promise<OwnOfficeEmails[]>;
 	/**

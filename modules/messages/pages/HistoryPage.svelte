@@ -7,6 +7,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Table from '$lib/components/ui/table';
 	import { DataTable, PageHeader, PageTitle } from '$lib/components/layout';
+	import MessagesTabs from './MessagesTabs.svelte';
 	import { MESSAGE_STATUS_LABELS, type MessageStatus, type MessageSummary } from '../schemas';
 	import { BASE, errorText, formatDateTime } from './helpers';
 
@@ -66,7 +67,7 @@
 					: 'destructive';
 </script>
 
-<PageTitle title="Nachrichten" />
+<PageTitle title="Gesendet" />
 
 <div class="space-y-6">
 	<PageHeader title="Nachrichten" description="Gesendete E-Mails an Mitglieder und Gruppen.">
@@ -74,6 +75,7 @@
 			<Button href={`${BASE}/new`}><Plus class="size-4" /> Neue Nachricht</Button>
 		{/snippet}
 	</PageHeader>
+	<MessagesTabs />
 
 	<DataTable
 		mobile="cards"

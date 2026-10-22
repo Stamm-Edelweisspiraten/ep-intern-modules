@@ -94,6 +94,16 @@ export interface LedGroupRef {
 	email: string | null;
 }
 
+/** Gruppe mit Kontakt-E-Mail und den Konten ihrer Leitungen (Postfach im Modul `messages`) */
+export interface GroupMailbox {
+	id: string;
+	name: string;
+	/** Kontakt-E-Mail der Gruppe (nie leer) */
+	email: string;
+	/** Konten, deren eigenes, aktives Mitglied die Gruppe leitet */
+	leaderUserIds: string[];
+}
+
 /** Gruppe für Auswahl/Freigaben anderer Module (Vertrag im SDK, siehe `PrincipalGroupRef`) */
 export type MemberGroupRef = PrincipalGroupRef;
 
@@ -152,6 +162,13 @@ export interface MembersService extends PrincipalProvider {
 	getOwnMemberName(
 		ctx: import('$lib/sdk/types').RequestContext
 	): Promise<{ firstName: string; lastName: string } | null>;
+	/**
+	 * Systemweit, ohne Rechteprüfung (Postfach-Zuordnung in `messages`): Namen aller als **eigenes Konto**
+	 * verknüpften, nicht anonymisierten Mitglieder (je Konto höchstens ein Eintrag).
+	 */
+	listSelfMemberNames(): Promise<{ userId: string; firstName: string; lastName: string }[]>;
+	/** Systemweit, ohne Rechteprüfung: alle Gruppen mit Kontakt-E-Mail und ihren Leitungs-Konten */
+	listGroupMailboxes(): Promise<GroupMailbox[]>;
 	/** Aktive Zusatzfelder (für den Formular-Builder anderer Module) */
 	listFieldDefinitions(): Promise<MemberFieldDefinition[]>;
 	/**

@@ -98,10 +98,13 @@
 
 <div class="space-y-6">
 	<a
-		href={BASE}
+		href={message?.replyOf || message?.forwardOf
+			? `${BASE}/inbox/${message.replyOf ?? message.forwardOf}`
+			: `${BASE}/sent`}
 		class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
 	>
-		<ArrowLeft class="size-4" /> Zum Verlauf
+		<ArrowLeft class="size-4" />
+		{message?.replyOf || message?.forwardOf ? 'Zur ursprünglichen Nachricht' : 'Zu „Gesendet“'}
 	</a>
 
 	{#if loading}

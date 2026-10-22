@@ -5,8 +5,8 @@
 import { sql } from 'drizzle-orm';
 import { inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
-import type { LedGroupRef, MembersService } from './contract';
-import { ledGroupIds } from './leader.service';
+import type { GroupMailbox, LedGroupRef, MembersService } from './contract';
+import { activeLeader, ledGroupIds } from './leader.service';
 import { MODULE_ID } from './schemas';
 
 /** Höchstzahl Gruppen je Aufruf */
@@ -14,7 +14,11 @@ const GROUPS_MAX = 50;
 
 export const messagingService: Pick<
 	MembersService,
-	'listGroupMemberIds' | 'listLedGroups' | 'getOwnMemberName'
+	| 'listGroupMemberIds'
+	| 'listLedGroups'
+	| 'getOwnMemberName'
+	| 'listSelfMemberNames'
+	| 'listGroupMailboxes'
 > = {
 	async listGroupMemberIds(groupIds) {
 		const ids = [...new Set(groupIds)].slice(0, GROUPS_MAX);
@@ -65,5 +69,51 @@ export const messagingService: Pick<
 			name: String(r.name),
 			email: r.contact_email == null || r.contact_email === '' ? null : String(r.contact_email)
 		}));
+	},
+
+	async listSelfMemberNames() {
+		const rows = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
+				tx,
+				sql`SELECT DISTINCT ON (l.user_id) l.user_id, m.first_name, m.last_name
+					FROM member_user_links l JOIN members m ON m.id = l.member_id
+					WHERE l.is_self AND m.anonymized_at IS NULL
+					ORDER BY l.user_id, m.id`
+			)
+		);
+		return rows.map((r) => ({
+			userId: String(r.user_id),
+			firstName: String(r.first_name),
+			lastName: String(r.last_name)
+		}));
+	},
+
+	async listGroupMailboxes(): Promise<GroupMailbox[]> {
+		const rows = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
+				tx,
+				sql`SELECT g.id, g.name, g.contact_email, l.user_id
+					FROM groups g
+					LEFT JOIN group_leaders gl ON gl.group_id = g.id
+					LEFT JOIN members m ON m.id = gl.member_id AND ${activeLeader('m')}
+					LEFT JOIN member_user_links l ON l.member_id = m.id AND l.is_self
+					WHERE g.contact_email IS NOT NULL AND g.contact_email <> ''
+					ORDER BY g.name, g.id`
+			)
+		);
+		const byId = new Map<string, GroupMailbox>();
+		for (const r of rows) {
+			const id = String(r.id);
+			const entry = byId.get(id) ?? {
+				id,
+				name: String(r.name),
+				email: String(r.contact_email).trim().toLowerCase(),
+				leaderUserIds: []
+			};
+			const user = r.user_id == null ? null : String(r.user_id);
+			if (user && !entry.leaderUserIds.includes(user)) entry.leaderUserIds.push(user);
+			byId.set(id, entry);
+		}
+		return [...byId.values()];
 	}
 };
