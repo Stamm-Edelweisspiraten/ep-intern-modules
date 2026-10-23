@@ -154,9 +154,19 @@ export const listQuery = z.object({
 
 export const INBOX_FILTERS = ['all', 'unread', 'spam', 'trash'] as const;
 export type InboxFilter = (typeof INBOX_FILTERS)[number];
-/** Ansichten der Filterleiste: Filter des Posteingangs plus „Gesendet“ (von der Adresse des Postfachs) */
-export const INBOX_VIEWS = [...INBOX_FILTERS, 'sent'] as const;
-export type InboxView = (typeof INBOX_VIEWS)[number];
+/**
+ * Ansicht im Ordnerbaum eines Postfachs: Posteingang (`inbox`), ein eigener Ordner (ID), „Gesendet“
+ * (von der Adresse des Postfachs), Spam, Papierkorb. Die Filterleiste kennt nur noch Alle | Ungelesen.
+ */
+export const INBOX_SYSTEM_VIEWS = ['inbox', 'sent', 'spam', 'trash'] as const;
+export type InboxSystemView = (typeof INBOX_SYSTEM_VIEWS)[number];
+export type InboxView = InboxSystemView | (string & {});
+
+/** Ordner: höchstens so viele Ebenen, Ordner je Postfach, Mails je Sammelaktion */
+export const MAX_FOLDER_DEPTH = 3;
+export const MAX_FOLDERS_PER_MAILBOX = 100;
+export const MAX_FOLDER_NAME = 100;
+export const MAX_BULK_IDS = 200;
 
 export const mailboxSentQuery = z.object({
 	mailbox: z.string().trim().min(1).max(400),
@@ -175,6 +185,8 @@ export const mailboxKey = z
 export const inboxListQuery = z.object({
 	mailbox: mailboxKey,
 	filter: z.enum(INBOX_FILTERS).default('all'),
+	/** `inbox` = Mails ohne Ordner, sonst Ordner-ID (bei Spam/Papierkorb ohne Wirkung) */
+	folder: z.union([z.literal('inbox'), z.uuid()]).default('inbox'),
 	search: z.string().trim().max(100).default(''),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
 	offset: z.coerce.number().int().min(0).default(0)
@@ -185,6 +197,45 @@ export type ComposeMode = (typeof COMPOSE_MODES)[number];
 export const composeQuery = z.object({ mode: z.enum(COMPOSE_MODES) });
 
 export const assignInput = z.object({ mailbox: mailboxKey });
+
+export const folderName = z
+	.string()
+	.trim()
+	.min(1, 'Bitte einen Namen eingeben')
+	.max(MAX_FOLDER_NAME, `Höchstens ${MAX_FOLDER_NAME} Zeichen`)
+	// eslint-disable-next-line no-control-regex
+	.regex(/^[^\u0000-\u001f\u007f]+$/, 'Ungültige Zeichen im Namen');
+
+export const folderCreateInput = z.object({
+	mailbox: mailboxKey,
+	/** Elternordner im selben Postfach; `null` = oberste Ebene */
+	parentId: z.uuid().nullable().default(null),
+	name: folderName
+});
+export type FolderCreateInput = z.infer<typeof folderCreateInput>;
+
+export const folderUpdateInput = z
+	.object({ name: folderName.optional(), parentId: z.uuid().nullable().optional() })
+	.refine((v) => v.name !== undefined || v.parentId !== undefined, {
+		message: 'Nichts zu ändern'
+	});
+export type FolderUpdateInput = z.infer<typeof folderUpdateInput>;
+
+const mailIds = z
+	.array(id)
+	.min(1, 'Keine Nachricht ausgewählt')
+	.max(MAX_BULK_IDS, `Höchstens ${MAX_BULK_IDS} Nachrichten auf einmal`);
+
+export const moveMailsInput = z.object({
+	ids: mailIds,
+	/** Zielordner; `null` = Posteingang */
+	folderId: z.uuid().nullable()
+});
+export type MoveMailsInput = z.infer<typeof moveMailsInput>;
+
+export const BULK_ACTIONS = ['read', 'unread', 'delete', 'restore'] as const;
+export type BulkAction = (typeof BULK_ACTIONS)[number];
+export const bulkInput = z.object({ ids: mailIds, action: z.enum(BULK_ACTIONS) });
 
 export const INBOX_EVENTS = ['new', 'replied'] as const;
 export type InboxEvent = (typeof INBOX_EVENTS)[number];
@@ -326,6 +377,34 @@ export interface MailboxInfo {
 	/** Absender-Schlüssel zum Antworten (`null` bei „Nicht zugeordnet“) */
 	senderKey: string | null;
 	unread: number;
+	/** Eigene Ordner des Postfachs (flach, alphabetisch; leer bei „Nicht zugeordnet“) */
+	folders: InboxFolder[];
+	/** Ungelesene Mails im Posteingang (ohne Ordner) */
+	inboxUnread: number;
+	/** Mails im Spam (nicht gelöscht) */
+	spamCount: number;
+}
+
+export interface InboxFolder {
+	id: string;
+	parentId: string | null;
+	name: string;
+	/** Ungelesene Mails direkt in diesem Ordner (ohne Spam/Papierkorb) */
+	unread: number;
+	/** Mails direkt in diesem Ordner (ohne Spam/Papierkorb) */
+	total: number;
+}
+
+export interface MoveMailsResult {
+	moved: number;
+	/** Vorheriger Ordner je Mail (für „Rückgängig“) */
+	previous: { id: string; folderId: string | null }[];
+}
+
+export interface DeleteFolderResult {
+	deleted: true;
+	/** Mails, die zurück in den Posteingang gingen */
+	movedMessages: number;
 }
 
 export interface MailboxesResponse {
@@ -357,6 +436,8 @@ export interface InboxSummary {
 	/** Mindestens eine Antwort aus der App */
 	answered: boolean;
 	deleted: boolean;
+	/** Ordner der Mail; `null` = Posteingang */
+	folderId: string | null;
 }
 
 export interface InboxAttachmentInfo {
@@ -389,6 +470,8 @@ export interface ThreadEntry {
 export interface InboxDetail extends InboxSummary {
 	mailboxAddress: string;
 	mailboxName: string;
+	/** Pfad des Ordners von oben nach unten (leer = Posteingang) */
+	folderPath: { id: string; name: string }[];
 	to: InboxAddress[];
 	cc: InboxAddress[];
 	replyTo: string | null;

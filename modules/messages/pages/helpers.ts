@@ -2,6 +2,9 @@ import { ApiClientError } from '$lib/sdk/client';
 
 export const BASE = '/modules/messages';
 
+/** Aktionen auf Ordnern im Posteingang (Baum, Kopfzeile) */
+export type FolderAction = 'create' | 'rename' | 'move' | 'delete';
+
 /** Schlüssel in `sessionStorage`, über den Mitglieder-/Gruppenliste die Auswahl an die Nachricht übergeben */
 export const COMPOSE_KEY = 'messages:compose';
 

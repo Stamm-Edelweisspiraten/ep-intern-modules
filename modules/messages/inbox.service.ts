@@ -27,6 +27,7 @@ import {
 	type AccessibleMailbox
 } from './mailbox.service';
 import { loadInboxConfig } from './inbound.service';
+import { folderPathOf, mailboxStats } from './folders.service';
 import {
 	BASE_PATH,
 	INLINE_IMAGE_MAX,
@@ -77,7 +78,8 @@ function summaryOf(r: Row): InboxSummary {
 		attachmentCount: Number(r.attachment_count ?? 0),
 		spam: r.spam === true,
 		answered: r.answered === true || r.answered === 't',
-		deleted: r.deleted_at != null
+		deleted: r.deleted_at != null,
+		folderId: strOrNull(r.folder_id)
 	};
 }
 
@@ -118,9 +120,11 @@ export async function unreadTotal(ctx: RequestContext): Promise<number> {
 
 export async function listMailboxes(ctx: RequestContext): Promise<MailboxesResponse> {
 	const boxes = await accessibleMailboxes(ctx);
-	const unread = await unreadCounts(
+	const keys = boxes.map((b) => b.key);
+	const unread = await unreadCounts(ctx.userId ?? '', keys);
+	const stats = await mailboxStats(
 		ctx.userId ?? '',
-		boxes.map((b) => b.key)
+		keys.filter((k) => k !== UNASSIGNED)
 	);
 	const canManage = core.permissions.has(ctx, PERM_INBOX_MANAGE);
 	const cfg = await loadInboxConfig();
@@ -136,7 +140,14 @@ export async function listMailboxes(ctx: RequestContext): Promise<MailboxesRespo
 		};
 	}
 	return {
-		mailboxes: boxes.map((b) => ({ ...b, unread: unread.get(b.key) ?? 0 })),
+		mailboxes: boxes.map((b) => ({
+			...b,
+			unread: unread.get(b.key) ?? 0,
+			folders: stats.folders.get(b.key) ?? [],
+			inboxUnread:
+				b.key === UNASSIGNED ? (unread.get(b.key) ?? 0) : (stats.inboxUnread.get(b.key) ?? 0),
+			spamCount: stats.spam.get(b.key) ?? 0
+		})),
 		enabled: cfg.enabled,
 		canManage,
 		lastPoll
@@ -160,18 +171,39 @@ const escapeLike = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export async function listInbox(
 	ctx: RequestContext,
-	q: { mailbox: string; filter: InboxFilter; search: string; limit: number; offset: number }
+	q: {
+		mailbox: string;
+		filter: InboxFilter;
+		folder?: string;
+		search: string;
+		limit: number;
+		offset: number;
+	}
 ): Promise<InboxListResponse> {
 	const box = await requireBox(ctx, q.mailbox);
 	const userId = ctx.userId ?? '';
 	const like = `%${escapeLike(q.search.toLowerCase())}%`;
-	const where = sql`i.mailbox_key = ${box.key} AND ${filterSql(q.filter, userId)}
+	// Spam und Papierkorb gelten für das ganze Postfach, sonst Posteingang (ohne Ordner) bzw. ein Ordner
+	const folder = q.folder ?? 'inbox';
+	const postbox = q.filter === 'spam' || q.filter === 'trash';
+	if (!postbox && folder !== 'inbox') {
+		const [f] = await mdb().transaction((tx) =>
+			rowsOf(tx, sql`SELECT 1 FROM inbox_folders WHERE id = ${folder} AND mailbox_key = ${box.key}`)
+		);
+		if (!f) throw errors.notFound('Ordner nicht gefunden');
+	}
+	const folderSql = postbox
+		? sql``
+		: folder === 'inbox'
+			? sql`AND i.folder_id IS NULL`
+			: sql`AND i.folder_id = ${folder}`;
+	const where = sql`i.mailbox_key = ${box.key} AND ${filterSql(q.filter, userId)} ${folderSql}
 		${q.search ? sql`AND (lower(i.subject) LIKE ${like} OR lower(i.from_address) LIKE ${like} OR lower(coalesce(i.from_name, '')) LIKE ${like})` : sql``}`;
 	return mdb().transaction(async (tx) => {
 		const rows = await rowsOf(
 			tx,
-			sql`SELECT i.id, i.mailbox_key, i.from_address, i.from_name, i.subject, left(i.body_text, 400) AS body_text,
-					i.received_at, i.spam, i.deleted_at, ${statusColumns(userId)}
+			sql`SELECT i.id, i.mailbox_key, i.folder_id, i.from_address, i.from_name, i.subject,
+					left(i.body_text, 400) AS body_text, i.received_at, i.spam, i.deleted_at, ${statusColumns(userId)}
 				FROM inbox_messages i WHERE ${where}
 				ORDER BY i.received_at DESC, i.id LIMIT ${q.limit} OFFSET ${q.offset}`
 		);
@@ -323,6 +355,7 @@ export async function getInboxMessage(ctx: RequestContext, id: string): Promise<
 		return { replies, inbound, outbound };
 	});
 	const attachments = await attachmentsOf(id);
+	const folderPath = await folderPathOf(box.key, strOrNull(row.folder_id));
 	// Eingebettete Bilder (cid) als data:-URLs
 	const images = new Map<string, { contentType: string; data: Uint8Array }>();
 	for (const a of attachments) {
@@ -379,6 +412,7 @@ export async function getInboxMessage(ctx: RequestContext, id: string): Promise<
 		...summaryOf({ ...row, is_read: true }),
 		mailboxAddress: str(row.mailbox_address),
 		mailboxName: box.name,
+		folderPath,
 		to: addresses(row.to_list),
 		cc: addresses(row.cc_list),
 		replyTo: strOrNull(row.reply_to),
@@ -481,7 +515,7 @@ export async function assignMail(
 		if (dup.length) throw errors.conflict('Die Nachricht liegt bereits in diesem Postfach');
 		await tx.execute(
 			sql`UPDATE inbox_messages SET mailbox_key = ${mailbox}, mailbox_address = ${target.address},
-					unassigned_reason = NULL WHERE id = ${id}`
+					unassigned_reason = NULL, folder_id = NULL WHERE id = ${id}`
 		);
 		// Gelesen-Status der Verwaltung gilt nicht für die Empfänger*innen
 		await tx.execute(sql`DELETE FROM inbox_reads WHERE inbox_message_id = ${id}`);

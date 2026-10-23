@@ -5,6 +5,7 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Eye from '@lucide/svelte/icons/eye';
+	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import Forward from '@lucide/svelte/icons/forward';
 	import Mail from '@lucide/svelte/icons/mail';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
@@ -33,7 +34,8 @@
 	} from '$lib/components/layout';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { cn } from '$lib/utils';
-	import type { InboxAddress, InboxDetail } from '../schemas';
+	import type { InboxAddress, InboxDetail, MailboxesResponse, MailboxInfo } from '../schemas';
+	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
 	import { BASE, errorText, formatDateTime, formatSize } from './helpers';
 
 	let { params }: ModulePageProps = $props();
@@ -65,7 +67,59 @@
 		untrack(() => void load());
 	});
 
-	const backHref = $derived(mail ? `${BASE}?mailbox=${encodeURIComponent(mail.mailboxKey)}` : BASE);
+	const backHref = $derived(
+		mail
+			? `${BASE}?mailbox=${encodeURIComponent(mail.mailboxKey)}${
+					mail.deleted
+						? '&folder=trash'
+						: mail.spam
+							? '&folder=spam'
+							: mail.folderId
+								? `&folder=${mail.folderId}`
+								: ''
+				}`
+			: BASE
+	);
+	const backLabel = $derived(
+		mail?.deleted
+			? 'Zum Papierkorb'
+			: mail?.folderPath.length
+				? `Zu „${mail.folderPath[mail.folderPath.length - 1]!.name}“`
+				: 'Zum Posteingang'
+	);
+
+	// --- In einen Ordner verschieben ------------------------------------------------------------
+	let moveOpen = $state(false);
+	let moveBox = $state<MailboxInfo | null>(null);
+	async function openMove() {
+		if (!mail) return;
+		try {
+			const res = await apiFetch<MailboxesResponse>(`${BASE}/mailboxes`);
+			moveBox = res.mailboxes.find((b) => b.key === mail?.mailboxKey) ?? null;
+			if (moveBox) moveOpen = true;
+		} catch (e) {
+			toast.error(errorText(e, 'Die Ordner konnten nicht geladen werden.'));
+		}
+	}
+	async function moveTo(folderId: string | null) {
+		if (!mail) return;
+		busy = true;
+		try {
+			await apiFetch(`${BASE}/inbox/move`, {
+				method: 'POST',
+				body: JSON.stringify({ ids: [mail.id], folderId })
+			});
+			const name = folderId
+				? (moveBox?.folders.find((f) => f.id === folderId)?.name ?? 'Ordner')
+				: 'Posteingang';
+			toast.success(`Nach „${name}“ verschoben`);
+			await load();
+		} catch (e) {
+			toast.error(errorText(e, 'Verschieben nicht möglich.'));
+		} finally {
+			busy = false;
+		}
+	}
 	const label = (a: InboxAddress) => (a.name ? `${a.name} <${a.address}>` : a.address);
 	const recipientCount = $derived(mail ? mail.to.length + mail.cc.length : 0);
 	const fileUrl = (attachmentId: string, inline = false) =>
@@ -141,7 +195,8 @@
 		href={backHref}
 		class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
 	>
-		<ArrowLeft class="size-4" /> Zum Posteingang
+		<ArrowLeft class="size-4" />
+		{backLabel}
 	</a>
 
 	{#if loading}
@@ -182,6 +237,11 @@
 								<DropdownMenu.Item onSelect={markUnread} disabled={busy}>
 									<Mail class="size-4" /> Als ungelesen markieren
 								</DropdownMenu.Item>
+								{#if mail.mailboxKey !== 'unassigned' && !mail.spam}
+									<DropdownMenu.Item onSelect={openMove} disabled={busy}>
+										<FolderInput class="size-4" /> Verschieben nach …
+									</DropdownMenu.Item>
+								{/if}
 								<DropdownMenu.Separator />
 								<DropdownMenu.Item
 									class="text-destructive"
@@ -284,6 +344,10 @@
 					<dd class="break-words">
 						{mail.mailboxName}{mail.mailboxAddress ? ` (${mail.mailboxAddress})` : ''}
 					</dd>
+					{#if mail.folderPath.length}
+						<dt class="text-muted-foreground">Ordner</dt>
+						<dd class="break-words">{mail.folderPath.map((f) => f.name).join(' › ')}</dd>
+					{/if}
 				</dl>
 
 				{#if mail.authResult === 'fail'}
@@ -415,4 +479,11 @@
 	confirmLabel="In den Papierkorb"
 	destructive
 	onconfirm={remove}
+/>
+
+<MoveToFolderDialog
+	bind:open={moveOpen}
+	mailbox={moveBox}
+	current={mail?.folderId ?? null}
+	onpick={(id) => void moveTo(id)}
 />

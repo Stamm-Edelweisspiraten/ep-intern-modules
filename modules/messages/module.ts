@@ -24,6 +24,7 @@ import {
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_layout.sql?raw';
 import m0003 from './migrations/0003_inbox.sql?raw';
+import m0004 from './migrations/0004_inbox_folders.sql?raw';
 
 /** IMAP-Ordnername: druckbar, ohne Steuerzeichen und Platzhalter */
 const folderName = z
@@ -40,7 +41,7 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
 		permissions: [PERM_SEND, PERM_VIEW_ALL, PERM_SETTINGS, PERM_INBOX_STAMM, PERM_INBOX_MANAGE],
@@ -68,7 +69,8 @@ export default defineModule({
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_layout', sql: m0002 },
-		{ name: '0003_inbox', sql: m0003 }
+		{ name: '0003_inbox', sql: m0003 },
+		{ name: '0004_inbox_folders', sql: m0004 }
 	],
 	settings: [
 		{

@@ -1,6 +1,7 @@
 /**
  * Endpoints des Posteingangs (`/api/v1/modules/messages/…`): Postfächer, Liste, Detail, gelesen/ungelesen,
- * Papierkorb, Zuordnen, Anhänge, Vorbelegung für Antworten, Abruf/Test (Verwaltung) und die eigenen
+ * Papierkorb, Ordner (anlegen, umbenennen, verschieben, löschen, Mails einsortieren), Sammelaktionen,
+ * Zuordnen, Anhänge, Vorbelegung für Antworten, Abruf/Test (Verwaltung) und die eigenen
  * Benachrichtigungs-Einstellungen. Zugriff je Mail über ihr Postfach (fremd → 404).
  * Feste Pfade vor den Parameter-Pfaden.
  */
@@ -20,17 +21,24 @@ import {
 	setRead
 } from './inbox.service';
 import { pollInbox, testConnection } from './inbound.service';
+import { bulkAction, createFolder, deleteFolder, moveMails, updateFolder } from './folders.service';
 import {
 	PERM_INBOX_MANAGE,
 	PERM_SEND,
 	assignInput,
 	attachmentParams,
+	bulkInput,
 	composeQuery,
+	folderCreateInput,
+	folderUpdateInput,
 	idParams,
 	inboxListQuery,
 	mailboxSentQuery,
+	moveMailsInput,
 	notificationPrefInput
 } from './schemas';
+
+const folderParams = z.object({ id: z.uuid() });
 
 const tags = ['Modul: messages'];
 const READ_LIMIT = { limit: 240, windowSec: 60 };
@@ -69,7 +77,7 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/inbox',
-		summary: 'Nachrichten eines Postfachs (Filter: alle, ungelesen, Spam, Papierkorb)',
+		summary: 'Nachrichten eines Postfachs bzw. Ordners (Filter: alle, ungelesen, Spam, Papierkorb)',
 		tags,
 		permission: PERM_SEND,
 		rateLimit: READ_LIMIT,
@@ -99,6 +107,58 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 			}
 			return testConnection();
 		}
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/folders',
+		summary: 'Ordner in einem Postfach anlegen (gemeinsam für alle mit Zugriff auf das Postfach)',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		body: folderCreateInput,
+		handler: ({ ctx, body }) => createFolder(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'PATCH',
+		path: '/folders/:id',
+		summary: 'Ordner umbenennen oder in einen anderen Ordner desselben Postfachs verschieben',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		params: folderParams,
+		body: folderUpdateInput,
+		handler: ({ ctx, params, body }) => updateFolder(ctx, params.id, body)
+	}),
+	defineEndpoint({
+		method: 'DELETE',
+		path: '/folders/:id',
+		summary: 'Ordner samt Unterordnern löschen; die Nachrichten gehen zurück in den Posteingang',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		params: folderParams,
+		handler: ({ ctx, params }) => deleteFolder(ctx, params.id)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/inbox/move',
+		summary:
+			'Nachrichten in einen Ordner (oder `null` = Posteingang) desselben Postfachs verschieben',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		body: moveMailsInput,
+		handler: ({ ctx, body }) => moveMails(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/inbox/bulk',
+		summary: 'Markierte Nachrichten: gelesen, ungelesen, Papierkorb oder wiederherstellen',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		body: bulkInput,
+		handler: ({ ctx, body }) => bulkAction(ctx, body)
 	}),
 	defineEndpoint({
 		method: 'GET',

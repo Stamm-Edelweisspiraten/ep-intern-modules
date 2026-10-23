@@ -2,7 +2,7 @@
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.1.0,
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.2.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
 
 ## Dateien (`src/lib/modules/messages/`)
@@ -17,6 +17,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `inbound.service.ts` | `pollInbox` (Abruf, Zuordnung, Speichern, erst danach IMAP-MOVE), `testConnection`, `cleanupInbox`, `loadInboxConfig` |
 | `inbox.service.ts` | Postfächer mit Ungelesen-Zähler, Liste, Detail (cid-Bilder als `data:`), gelesen/Papierkorb, Zuordnen, Anhänge, `composePrefill` |
 | `inbox-notify.service.ts` | Benachrichtigungen `new`/`replied` an die Konto-Adresse, Profil-Einstellungen |
+| `folders.ts` (rein), `folders.service.ts` | Ordner je Postfach: Baum/Pfad/Tiefe/Zyklus; Anlegen/Umbenennen/Verschieben/Löschen, `moveMails`, `bulkAction`, `mailboxStats` (Zähler je Ordner) |
 | `inbox.endpoints.ts`, `privacy.ts` | REST des Posteingangs; Löschen beim Konto-Löschen, Datenauskunft |
 | `schemas.ts` | Konstanten (Limits, Rechte-/Einstellungsschlüssel), Zod `recipientsInput`/`sendInput`, DTOs |
 | `sender.ts` (rein) | `personalAddress`, `slugPart`, `firstGivenName`, `splitFullName`, `isValidDomain`, `dedupeAddresses` |
@@ -25,8 +26,8 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `recipients.service.ts` | `resolveRecipients(ctx, input)`: Mitglieder/Gruppen → eindeutige Adressen, Bereichsprüfung; freie Adressen (`addresses`) zuletzt angehängt |
 | `delivery.service.ts` | `createMessage`, `previewMessage`, `getMessage`, `listMessages`, `retryMessage`, Versand (`deliver`), `resumeDeliveries`, `cleanup` |
 | `messages.endpoints.ts` | REST (siehe unten) |
-| `pages/` | `InboxPage`, `InboxMessagePage`, `InboxNotificationsCard`, `MessagesTabs`, `HistoryPage`, `ComposePage`, `MessageDetailPage`, `helpers.ts` |
-| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`) |
+| `pages/` | `InboxPage`, `MailboxTree` (Ordnerbaum mit Drag & Drop und Rechtsklick), `FolderDialog`, `MoveToFolderDialog`, `inbox-drag.svelte.ts`, `InboxMessagePage`, `InboxNotificationsCard`, `MessagesTabs`, `HistoryPage`, `ComposePage`, `MessageDetailPage`, `helpers.ts` |
+| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql`, `0004_inbox_folders.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`); Ordner (`inbox_folders`, `inbox_messages.folder_id`) |
 
 ## Rechte
 | Schlüssel | Bedeutung |
@@ -150,7 +151,32 @@ unzuordenbare Mails in „Nicht zugeordnet“ für die Verwaltung; nach dem Impo
 - **Tests**: `tests/unit/messages-inbox.test.ts`, `tests/integration/messages-inbox.test.ts` (IMAP-Ersatz), E2E `messages.spec.ts` (Posteingang ohne IMAP).
   Demo: GreenMail in `docker-compose.demo.yml` (IMAP `127.0.0.1:1143`), `node scripts/seed-demo-inbox.mjs`. Einrichtung: `docs/deployment.md`.
 - **Offen**: echter Provider-Catch-all ungeprüft (nur GreenMail); Namensänderung → alte persönliche Adresse wird „Nicht zugeordnet“; Mehrinstanz-Betrieb
-  (Sperre je Prozess); kein IMAP IDLE (Verzögerung bis 1 min); keine Volltextsuche im Inhalt; keine Ordner/Labels; Dashboard-Kachel fehlt.
+  (Sperre je Prozess); kein IMAP IDLE (Verzögerung bis 1 min); keine Volltextsuche im Inhalt; keine Labels; Dashboard-Kachel fehlt.
+
+## Ordner im Posteingang (2026-10-23, v1.2.0, Migr. 0004)
+Nutzerentscheidung: eigene Ordner mit Unterordnern **je Postfach**; in gemeinsamen Postfächern (Amt, Gruppe, Stamm) **sehen und ändern alle
+mit Zugriff** dieselben Ordner (gemeinsam sortieren), im persönlichen Postfach nur die Person. Drag & Drop und Rechtsklick.
+- **Daten**: `inbox_folders(id, mailbox_key, parent_id FK CASCADE, name, created_by, …)`, Name eindeutig je Ebene (Unique-Index auf
+  `lower(name)`), `inbox_messages.folder_id` (FK `ON DELETE SET NULL`, `NULL` = Posteingang).
+- **Regeln** (`folders.service.ts`): Zugriff über `accessibleMailboxes` (fremd → 404), ≤ 3 Ebenen, ≤ 100 Ordner je Postfach (Advisory-Sperre je
+  Postfach), Name ≤ 100 → doppelt 409; Zyklus/zu tief/Elternordner aus anderem Postfach → 422; „Nicht zugeordnet“ hat keine Ordner (422).
+  Sortierung alphabetisch (kein manuelles Umsortieren). Ordner löschen nimmt Unterordner mit, Mails gehen in den **Posteingang**.
+  Mails verschieben nur **innerhalb desselben Postfachs** (anderes Postfach = „Zuordnen“, das `folder_id` zurücksetzt). Papierkorb/Spam bleiben
+  Flags: gelöschte Mails behalten den Ordner, Wiederherstellen bringt sie zurück. Neue Mails/Antworten landen immer im Posteingang.
+- **API** (alle `send`): POST `/folders` `{ mailbox, parentId, name }`, PATCH `/folders/:id` `{ name?, parentId? }`, DELETE `/folders/:id`
+  → `{ deleted, movedMessages }`, POST `/inbox/move` `{ ids ≤ 200, folderId|null }` → `{ moved, previous }` (für Rückgängig), POST `/inbox/bulk`
+  `{ ids, action: read|unread|delete|restore }`; GET `/inbox?folder=inbox|<id>` (bei `filter=spam|trash` postfachweit); GET `/mailboxes` liefert je
+  Postfach `folders` (mit `unread`/`total`), `inboxUnread`, `spamCount`; Detail `folderId` + `folderPath`.
+- **Oberfläche**: `MailboxTree` (Postfächer aufklappbar, Zustand in `localStorage` `messages:inbox-tree`; Posteingang, Ordner, gedämpft Gesendet/Spam/
+  Papierkorb, „Ordner anlegen“; Rechtsklick und „…“ (auch Shift+F10): Unterordner anlegen, Umbenennen, Verschieben nach …, Löschen; Ordner per
+  Ziehen in andere Ordner bzw. auf den Postfach-Kopf = oberste Ebene; zugeklappte Ziele öffnen nach 600 ms). Liste: Checkboxen, Sammelleiste
+  (Verschieben nach / Gelesen / Ungelesen / Löschen bzw. Wiederherstellen), Zeilen ziehbar (markierte zusammen, Ziehbild „N Nachrichten“), Rechtsklick
+  auf Zeilen, Rückgängig-Toast nach Verschieben/Löschen. Filter nur Alle | Ungelesen; URL `?mailbox=&folder=`. Mobil: Knopf mit Pfad → Sheet mit dem
+  Baum (ohne Drag & Drop, Long-Press = Kontextmenü). Detail: „Verschieben nach …“ im Menü, Ordnerpfad, Rücklink in den Ordner.
+- **Datenschutz/Audit**: `messages.inbox.folder-created|folder-updated|folder-deleted`, `messages.inbox.moved`, Sammel-Papierkorb mit `count` – nur
+  Zähler/`shared`, **keine Ordnernamen**. `onUserDeleted` löscht die persönlichen Ordner, `created_by` → `NULL`; `subjectExport` enthält `personalFolders`.
+- **Tests**: `tests/unit/messages-folders.test.ts`, `tests/integration/messages-inbox-folders.test.ts`, E2E `messages.spec.ts` (Ordner anlegen/
+  umbenennen/löschen per Rechtsklick). Drag & Drop von Mails ist nur manuell geprüft (E2E hat keine Posteingangs-Mails).
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.

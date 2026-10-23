@@ -1,6 +1,6 @@
 /**
  * Datenschutz im Modul `messages`:
- * - `onUserDeleted`: persönliches Postfach (inkl. Anhänge im Speicher), Gelesen-Markierungen und
+ * - `onUserDeleted`: persönliches Postfach (inkl. Ordner und Anhänge im Speicher), Gelesen-Markierungen und
  *   Benachrichtigungs-Einstellungen der Person löschen; Verweise (`deleted_by`, `created_by`) → `NULL`.
  * - `subjectExport`: Datenauskunft für ein Konto (gesendete Nachrichten, persönliches Postfach als
  *   Metadaten, Einstellungen). Inhalte gemeinsamer Postfächer gehören nicht der Person und fehlen.
@@ -29,6 +29,8 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (tx, { use
 	);
 	// messages.reply_of/forward_of → NULL per Fremdschlüssel (ON DELETE SET NULL)
 	await tx.execute(sql`DELETE FROM inbox_messages WHERE mailbox_key = ${key}`);
+	await tx.execute(sql`DELETE FROM inbox_folders WHERE mailbox_key = ${key}`);
+	await tx.execute(sql`UPDATE inbox_folders SET created_by = NULL WHERE created_by = ${userId}`);
 	await tx.execute(sql`DELETE FROM inbox_reads WHERE user_id = ${userId}`);
 	await tx.execute(sql`DELETE FROM inbox_notification_prefs WHERE user_id = ${userId}`);
 	await tx.execute(sql`UPDATE inbox_messages SET deleted_by = NULL WHERE deleted_by = ${userId}`);
@@ -57,12 +59,17 @@ async function run(subject: DataSubject): Promise<Record<string, unknown> | null
 			sql`SELECT id, from_address, from_name, subject, received_at, deleted_at FROM inbox_messages
 				WHERE mailbox_key = ${personalKey(userId)} ORDER BY received_at, id`
 		);
+		const folders = await rowsOf(
+			tx,
+			sql`SELECT id, parent_id, name, created_at FROM inbox_folders
+				WHERE mailbox_key = ${personalKey(userId)} ORDER BY created_at, id`
+		);
 		const prefs = await rowsOf(
 			tx,
 			sql`SELECT mailbox_key, event, enabled FROM inbox_notification_prefs
 				WHERE user_id = ${userId} ORDER BY mailbox_key, event`
 		);
-		if (!sent.length && !inbox.length && !prefs.length) return null;
+		if (!sent.length && !inbox.length && !folders.length && !prefs.length) return null;
 		return {
 			sentMessages: sent.map((r) => ({
 				id: String(r.id),
@@ -80,6 +87,12 @@ async function run(subject: DataSubject): Promise<Record<string, unknown> | null
 				subject: String(r.subject),
 				receivedAt: toIso(r.received_at),
 				deleted: r.deleted_at != null
+			})),
+			personalFolders: folders.map((r) => ({
+				id: String(r.id),
+				parentId: r.parent_id == null ? null : String(r.parent_id),
+				name: String(r.name),
+				createdAt: toIso(r.created_at)
 			})),
 			notificationPreferences: prefs.map((r) => ({
 				mailbox: String(r.mailbox_key),
