@@ -51,7 +51,7 @@ import {
 	userRefs,
 	type NodeRow
 } from './db';
-import { contentResponse, quotaUsed, storageLimits, thumbResponse } from './storage';
+import { contentResponse, quotaLimitFor, quotaUsed, storageLimits, thumbResponse } from './storage';
 import {
 	LINK_ACCESS_TTL_SEC,
 	MAX_LINKS_PER_NODE,
@@ -245,6 +245,8 @@ function toPublicNode(n: NodeRow): PublicNode {
 		id: n.id,
 		kind: n.kind,
 		name: n.name,
+		icon: n.kind === 'folder' ? n.icon : null,
+		color: n.kind === 'folder' ? n.color : null,
 		contentType: n.kind === 'file' ? n.contentType : null,
 		sizeBytes: n.kind === 'file' ? n.sizeBytes : null,
 		hasThumb: n.kind === 'file' && n.thumbPath !== null,
@@ -738,13 +740,14 @@ export async function publicUpload(
 			);
 		}
 	}
-	if (quotaBytes !== null || linkUploadBytes !== null) {
-		const { used, viaLink } = await mdb().transaction(async (tx) => ({
-			used: quotaBytes !== null ? await quotaUsed(tx, ownerId) : 0,
+	{
+		const { used, limit, viaLink } = await mdb().transaction(async (tx) => ({
+			used: await quotaUsed(tx, ownerId),
+			limit: await quotaLimitFor(tx, ownerId, quotaBytes),
 			viaLink: linkUploadBytes !== null ? await linkUploadedBytes(tx, link.id) : 0
 		}));
 		if (linkUploadBytes !== null && viaLink + total > linkUploadBytes) throw linkFull();
-		if (quotaBytes !== null && used + total > quotaBytes) throw noSpace();
+		if (limit !== null && used + total > limit) throw noSpace();
 	}
 
 	/** Größe der Datei, die gerade gespeichert wird (für die Link-Obergrenze im `recheck`) */

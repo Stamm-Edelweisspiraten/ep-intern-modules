@@ -58,13 +58,20 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 						WHERE l.created_by = ${userId} ORDER BY l.created_at, l.id`
 				)
 			: [];
-		return { owned, foreignUploads, shares, links };
+		const [quota] = userId
+			? await rowsOf(
+					tx,
+					sql`SELECT quota_mb, updated_at FROM user_quotas WHERE user_id = ${userId}`
+				)
+			: [];
+		return { owned, foreignUploads, shares, links, quota };
 	});
 	if (
 		!data.owned.length &&
 		!data.foreignUploads.length &&
 		!data.shares.length &&
-		!data.links.length
+		!data.links.length &&
+		!data.quota
 	) {
 		return null;
 	}
@@ -108,7 +115,15 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 			revokedAt: toIsoOrNull(r.revoked_at),
 			lastAccessAt: toIsoOrNull(r.last_access_at),
 			accessCount: Number(r.access_count ?? 0)
-		}))
+		})),
+		// Eigenes Speicherkontingent (fehlt = Standard der Einstellungen)
+		storageQuota: data.quota
+			? {
+					quotaMb: data.quota.quota_mb == null ? null : Number(data.quota.quota_mb),
+					unlimited: data.quota.quota_mb == null,
+					updatedAt: toIso(data.quota.updated_at)
+				}
+			: null
 	};
 }
 

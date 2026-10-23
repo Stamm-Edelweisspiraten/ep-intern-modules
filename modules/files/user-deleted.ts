@@ -7,7 +7,8 @@
  *     öffentliche Links dieser Knoten – auch Ansicht- und Upload-Links);
  *   - übrige Links, die die Person angelegt hat, widerrufen;
  *   - Freigaben an die Person (`user:<id>`) löschen;
- *   - Verweise in fremden Ablagen (`created_by`, `deleted_by`) auf `NULL` setzen.
+ *   - Verweise in fremden Ablagen (`created_by`, `deleted_by`) auf `NULL` setzen;
+ *   - eigenes Speicherkontingent löschen, `user_quotas.updated_by` auf `NULL`.
  * Nach dem Commit: Storage-Objekte (Inhalt + Vorschaubild) aller gelöschten Dateien entfernen.
  */
 import { sql } from 'drizzle-orm';
@@ -40,6 +41,8 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (tx, { use
 	await tx.execute(sql`UPDATE node_shares SET created_by = NULL WHERE created_by = ${userId}`);
 	await tx.execute(sql`UPDATE nodes SET created_by = NULL WHERE created_by = ${userId}`);
 	await tx.execute(sql`UPDATE nodes SET deleted_by = NULL WHERE deleted_by = ${userId}`);
+	await tx.execute(sql`DELETE FROM user_quotas WHERE user_id = ${userId}`);
+	await tx.execute(sql`UPDATE user_quotas SET updated_by = NULL WHERE updated_by = ${userId}`);
 
 	return { afterCommit: () => removeObjects(paths) };
 };

@@ -12,7 +12,8 @@ import {
 	loadFileNode,
 	moveNodes,
 	renameNode,
-	searchNodes
+	searchNodes,
+	setNodeStyle
 } from './nodes.service';
 import { keysFor } from './shares.service';
 import {
@@ -23,6 +24,7 @@ import {
 	moveInput,
 	renameInput,
 	searchQuery,
+	styleInput,
 	type BulkResult,
 	type FileNode,
 	type FolderListing,
@@ -68,6 +70,15 @@ export const nodesEndpoints = [
 		permission: PERMISSIONS.view,
 		body: moveInput,
 		handler: async ({ ctx, body }): Promise<BulkResult> => moveNodes(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/nodes/style',
+		summary: 'Icon und Farbe von Ordnern setzen oder zurücksetzen',
+		tags,
+		permission: PERMISSIONS.view,
+		body: styleInput,
+		handler: async ({ ctx, body }): Promise<BulkResult> => setNodeStyle(ctx, body)
 	}),
 	defineEndpoint({
 		method: 'GET',

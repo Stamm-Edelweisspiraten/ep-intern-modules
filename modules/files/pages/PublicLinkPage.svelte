@@ -47,12 +47,14 @@
 	import {
 		API,
 		RAW_API,
+		breakableName,
 		formatBytes,
 		iconFor,
 		previewKind,
 		type ContentUrlFn,
 		type PreviewNode
 	} from './helpers';
+	import FolderGlyph from './FolderGlyph.svelte';
 
 	let { params }: { params: Record<string, string> } = $props();
 
@@ -927,10 +929,10 @@
 					{#each listing.items as node (node.id)}
 						{@const Icon = iconFor(node.kind, node.contentType)}
 						{@const thumb = thumbOf(node)}
-						<li class="min-w-0">
+						<li class="flex min-w-0">
 							<button
 								type="button"
-								class="group flex w-full flex-col overflow-hidden rounded-lg border bg-card text-left text-card-foreground transition-colors hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								class="group flex h-full w-full flex-col overflow-hidden rounded-lg border bg-card text-left text-card-foreground transition-colors hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 								onclick={() =>
 									node.kind === 'folder' ? openFolder(node.id) : openPreview(node, fileItems)}
 								aria-label={node.kind === 'folder'
@@ -939,6 +941,9 @@
 							>
 								<span
 									class="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-muted/50"
+									style:background-color={node.kind === 'folder' && node.color
+										? `color-mix(in srgb, ${node.color} 12%, transparent)`
+										: undefined}
 								>
 									{#if thumb}
 										<img
@@ -951,13 +956,23 @@
 											use:watchImage
 										/>
 									{:else if node.kind === 'folder'}
-										<Icon class="size-12 text-link/80" aria-hidden="true" />
+										<FolderGlyph icon={node.icon} color={node.color} />
 									{:else}
-										<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
+										<Icon
+											class="size-11 text-muted-foreground"
+											strokeWidth={1.75}
+											aria-hidden="true"
+										/>
 									{/if}
 								</span>
-								<span class="flex flex-col gap-0.5 p-2.5">
-									<span class="line-clamp-2 text-sm font-medium break-words">{node.name}</span>
+								<span class="flex flex-col gap-0.5 px-2.5 pt-2 pb-2.5">
+									<!-- feste Höhe für zwei Zeilen, Umbruch bevorzugt an _ - . -->
+									<span
+										class="line-clamp-2 h-10 text-sm leading-5 font-medium break-words"
+										title={node.name}
+									>
+										{#each breakableName(node.name) as part, i (i)}{part}<wbr />{/each}
+									</span>
 									<span class="text-xs text-muted-foreground tabular-nums">
 										{node.kind === 'folder'
 											? 'Ordner'

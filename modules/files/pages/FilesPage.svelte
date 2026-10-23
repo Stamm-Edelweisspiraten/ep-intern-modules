@@ -54,6 +54,7 @@
 	} from './helpers';
 	import FileList from './FileList.svelte';
 	import FilePreview from './FilePreview.svelte';
+	import FolderStyleDialog from './FolderStyleDialog.svelte';
 	import LinkDialog from './LinkDialog.svelte';
 	import MoveDialog from './MoveDialog.svelte';
 	import NameDialog from './NameDialog.svelte';
@@ -324,6 +325,7 @@
 	let shareOpen = $state(false);
 	let linkOpen = $state(false);
 	let infoOpen = $state(false);
+	let styleOpen = $state(false);
 	let dialogNode = $state<FileNode | null>(null);
 
 	let trashOpen = $state(false);
@@ -391,10 +393,48 @@
 				dialogNode = first;
 				infoOpen = true;
 				break;
+			case 'style':
+				dialogNode = first;
+				styleOpen = true;
+				break;
 			case 'trash':
 				trashNodes = nodes;
 				trashOpen = true;
 				break;
+		}
+	}
+
+	/** Schnellwahl „Farbe“ im Menü (auch für mehrere Ordner), mit Rückgängig auf die bisherigen Farben */
+	async function setColor(nodes: FileNode[], color: string | null) {
+		const ids = nodes.map((n) => n.id);
+		const previous = new Map<string | null, string[]>();
+		for (const n of nodes) previous.set(n.color, [...(previous.get(n.color) ?? []), n.id]);
+		try {
+			await apiFetch<BulkResult>(`${API}/nodes/style`, {
+				method: 'POST',
+				body: JSON.stringify({ ids, color })
+			});
+			toastWithUndo({
+				message: color
+					? ids.length === 1
+						? 'Farbe geändert'
+						: `Farbe von ${ids.length} Ordnern geändert`
+					: ids.length === 1
+						? 'Farbe entfernt'
+						: `Farbe von ${ids.length} Ordnern entfernt`,
+				undo: async () => {
+					for (const [before, group] of previous) {
+						await apiFetch(`${API}/nodes/style`, {
+							method: 'POST',
+							body: JSON.stringify({ ids: group, color: before })
+						});
+					}
+				},
+				onundone: reload
+			});
+			reload();
+		} catch (e) {
+			toast.error(errorText(e, 'Farbe konnte nicht geändert werden.'));
 		}
 	}
 
@@ -730,6 +770,7 @@
 						{onaction}
 						onmove={(ids, targetId) => void moveTo(ids, targetId)}
 						{onbackground}
+						oncolor={(nodes, color) => void setColor(nodes, color)}
 					/>
 				</UploadDropzone>
 			{/if}
@@ -845,6 +886,7 @@
 <ShareNodeDialog bind:open={shareOpen} node={dialogNode} onchanged={afterChange} />
 <LinkDialog bind:open={linkOpen} node={dialogNode} onchanged={afterChange} />
 <NodeInfoDialog bind:open={infoOpen} node={dialogNode} />
+<FolderStyleDialog bind:open={styleOpen} node={dialogNode} onsaved={afterChange} />
 
 <ConfirmDialog
 	bind:open={trashOpen}

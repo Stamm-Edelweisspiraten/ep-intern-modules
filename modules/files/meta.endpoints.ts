@@ -4,7 +4,7 @@
 import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
 import { canManageAll } from './access';
 import { filesSettings, mdb } from './db';
-import { quotaUsed, storageLimits } from './storage';
+import { quotaLimitFor, quotaUsed, storageLimits } from './storage';
 import { PERMISSIONS, type FilesMeta } from './schemas';
 
 const TAGS = ['Modul: files'];
@@ -21,9 +21,14 @@ export const metaEndpoints = [
 			const settings = await filesSettings();
 			const limits = await storageLimits();
 			const userId = ctx.userId;
-			const usedBytes = userId ? await mdb().transaction((tx) => quotaUsed(tx, userId)) : 0;
+			const quota = userId
+				? await mdb().transaction(async (tx) => ({
+						usedBytes: await quotaUsed(tx, userId),
+						limitBytes: await quotaLimitFor(tx, userId, settings.quotaBytes)
+					}))
+				: { usedBytes: 0, limitBytes: settings.quotaBytes };
 			return {
-				quota: { usedBytes, limitBytes: settings.quotaBytes },
+				quota,
 				maxFileBytes: limits.maxFileBytes,
 				allowedContentTypes: limits.allowedContentTypes,
 				trashDays: settings.trashDays,
