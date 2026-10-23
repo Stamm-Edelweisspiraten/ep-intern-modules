@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Abschnitt „Dateien – Speicherkontingent“ im Dialog „Benutzer bearbeiten“ (`userAdminSections`):
+	// Reiter „Speicherplatz“ im Dialog „Benutzer bearbeiten“ (`userAdminSections`):
 	// Belegung, Auswahl Standard / eigenes Limit / unbegrenzt, Warnung unter der Belegung. Speichert selbst.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';

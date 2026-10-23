@@ -10,7 +10,7 @@ export default {
 	userAdminSections: [
 		{
 			id: 'quota',
-			title: 'Dateien – Speicherkontingent',
+			title: 'Speicherplatz',
 			permission: 'files.quota.manage',
 			component: () => import('./pages/UserQuotaSection.svelte')
 		}
