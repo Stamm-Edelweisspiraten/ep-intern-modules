@@ -24,7 +24,12 @@
 </script>
 
 <span
-	class={cn('relative inline-flex shrink-0', !color && 'text-muted-foreground/55', className)}
+	class={cn(
+		'relative inline-flex shrink-0',
+		// deckend gemischt statt Transparenz: sonst zeichnet die Kontur über der Füllung einen dunkleren Rand
+		!color && 'text-[color-mix(in_oklab,var(--muted-foreground)_55%,var(--background))]',
+		className
+	)}
 	style:width="{px}px"
 	style:height="{px}px"
 	style:color={color ?? undefined}
