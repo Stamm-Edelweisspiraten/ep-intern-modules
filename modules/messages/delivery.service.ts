@@ -23,7 +23,7 @@ import {
 import { htmlToText, plainDocument, sanitizeBody } from './html';
 import { loadInboxConfig } from './inbound.service';
 import { notifyReplied } from './inbox-notify.service';
-import { forwardAttachments, loadInboxRow } from './inbox.service';
+import { forwardAttachments, loadInboxRow, sentViaAccessibleMailbox } from './inbox.service';
 import { MESSAGE_ID_PATTERN, mailboxKeyForSender } from './mailbox';
 import { resolveRecipients } from './recipients.service';
 import { accountEmail, loadSettings, requireSender } from './sender.service';
@@ -134,7 +134,9 @@ export async function getMessage(ctx: RequestContext, id: string): Promise<Messa
 	});
 	if (!data) throw errors.notFound('Nachricht nicht gefunden');
 	const owner = data.m.created_by == null ? null : String(data.m.created_by);
-	if (!canSeeAll(ctx) && owner !== ctx.userId) throw errors.notFound('Nachricht nicht gefunden');
+	if (!canSeeAll(ctx) && owner !== ctx.userId && !(await sentViaAccessibleMailbox(ctx, data.m))) {
+		throw errors.notFound('Nachricht nicht gefunden');
+	}
 	const names = await core.users.byIds(ctx, [owner]);
 	return {
 		...summaryOf(data.m, names),

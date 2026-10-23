@@ -154,6 +154,16 @@ export const listQuery = z.object({
 
 export const INBOX_FILTERS = ['all', 'unread', 'spam', 'trash'] as const;
 export type InboxFilter = (typeof INBOX_FILTERS)[number];
+/** Ansichten der Filterleiste: Filter des Posteingangs plus „Gesendet“ (von der Adresse des Postfachs) */
+export const INBOX_VIEWS = [...INBOX_FILTERS, 'sent'] as const;
+export type InboxView = (typeof INBOX_VIEWS)[number];
+
+export const mailboxSentQuery = z.object({
+	mailbox: z.string().trim().min(1).max(400),
+	search: z.string().trim().max(100).default(''),
+	limit: z.coerce.number().int().min(1).max(100).default(50),
+	offset: z.coerce.number().int().min(0).default(0)
+});
 
 export const mailboxKey = z
 	.string()
@@ -400,6 +410,24 @@ export interface InboxDetail extends InboxSummary {
 
 export interface InboxListResponse {
 	items: InboxSummary[];
+	total: number;
+}
+
+/** Von der Adresse eines Postfachs gesendete Nachricht (Ansicht „Gesendet“ im Posteingang) */
+export interface MailboxSentItem {
+	id: string;
+	subject: string;
+	/** Erste Empfängeradresse */
+	to: string;
+	recipients: number;
+	createdAt: string;
+	createdByName: string;
+	status: MessageStatus;
+	attachmentCount: number;
+}
+
+export interface MailboxSentResponse {
+	items: MailboxSentItem[];
 	total: number;
 }
 

@@ -3,6 +3,7 @@ import { defineModule } from '$lib/sdk/server';
 import { cleanup, resumeDeliveries } from './delivery.service';
 import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
 import { inboxEndpoints } from './inbox.endpoints';
+import { unreadTotal } from './inbox.service';
 import { messageEndpoints } from './messages.endpoints';
 import { onUserDeleted, subjectExport } from './privacy';
 import { isValidDomain } from './sender';
@@ -205,6 +206,8 @@ export default defineModule({
 			run: async () => `${await cleanup()}; ${await cleanupInbox()}`
 		}
 	],
+	/** Ungelesene Mails der eigenen Postfächer am Eintrag „Nachrichten“ der Seitenleiste */
+	navBadge: { count: unreadTotal },
 	onUserDeleted,
 	subjectExport,
 	endpoints: [...messageEndpoints, ...inboxEndpoints]

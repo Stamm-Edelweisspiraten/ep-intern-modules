@@ -12,6 +12,7 @@ import {
 	composePrefill,
 	downloadAttachment,
 	listAssignTargets,
+	listMailboxSent,
 	getInboxMessage,
 	listInbox,
 	listMailboxes,
@@ -27,6 +28,7 @@ import {
 	composeQuery,
 	idParams,
 	inboxListQuery,
+	mailboxSentQuery,
 	notificationPrefInput
 } from './schemas';
 
@@ -52,6 +54,17 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 		permission: PERM_INBOX_MANAGE,
 		rateLimit: READ_LIMIT,
 		handler: () => listAssignTargets()
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/mailboxes/sent',
+		summary:
+			'Von der Adresse eines Postfachs gesendete Nachrichten (gemeinsame Postfächer: von allen)',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: READ_LIMIT,
+		query: mailboxSentQuery,
+		handler: ({ ctx, query }) => listMailboxSent(ctx, query)
 	}),
 	defineEndpoint({
 		method: 'GET',

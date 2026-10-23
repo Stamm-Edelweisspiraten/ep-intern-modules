@@ -41,6 +41,9 @@ import {
 	type InboxListResponse,
 	type InboxSummary,
 	type MailboxesResponse,
+	type MailboxSentItem,
+	type MailboxSentResponse,
+	type MessageStatus,
 	type ThreadEntry
 } from './schemas';
 
@@ -84,22 +87,41 @@ const statusColumns = (userId: string) => sql`
 	EXISTS (SELECT 1 FROM messages m WHERE m.reply_of = i.id) AS answered,
 	(SELECT count(*)::int FROM inbox_attachments a WHERE a.inbox_message_id = i.id AND NOT a.inline) AS attachment_count`;
 
+/** Ungelesene Mails (ohne Spam/Papierkorb) je Postfach für die angemeldete Person */
+async function unreadCounts(userId: string, keys: string[]): Promise<Map<string, number>> {
+	if (!keys.length) return new Map();
+	const counts = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT i.mailbox_key, count(*)::int AS n FROM inbox_messages i
+				WHERE i.mailbox_key IN (${inList(keys)}) AND i.deleted_at IS NULL AND NOT i.spam
+					AND NOT EXISTS (SELECT 1 FROM inbox_reads rd WHERE rd.inbox_message_id = i.id AND rd.user_id = ${userId})
+				GROUP BY i.mailbox_key`
+		)
+	);
+	return new Map(counts.map((c) => [str(c.mailbox_key), Number(c.n)]));
+}
+
+/**
+ * Zähler für die Seitenleiste (`navBadge`): ungelesene Mails in allen eigenen Postfächern – ohne
+ * „Nicht zugeordnet“ (Sammelordner der Verwaltung soll nicht dauerhaft zählen).
+ */
+export async function unreadTotal(ctx: RequestContext): Promise<number> {
+	if (!ctx.userId) return 0;
+	const keys = (await accessibleMailboxes(ctx))
+		.filter((b) => b.kind !== 'unassigned')
+		.map((b) => b.key);
+	let total = 0;
+	for (const n of (await unreadCounts(ctx.userId, keys)).values()) total += n;
+	return total;
+}
+
 export async function listMailboxes(ctx: RequestContext): Promise<MailboxesResponse> {
 	const boxes = await accessibleMailboxes(ctx);
-	const keys = boxes.map((b) => b.key);
-	const userId = ctx.userId ?? '';
-	const counts = keys.length
-		? await mdb().transaction((tx) =>
-				rowsOf(
-					tx,
-					sql`SELECT i.mailbox_key, count(*)::int AS n FROM inbox_messages i
-						WHERE i.mailbox_key IN (${inList(keys)}) AND i.deleted_at IS NULL AND NOT i.spam
-							AND NOT EXISTS (SELECT 1 FROM inbox_reads rd WHERE rd.inbox_message_id = i.id AND rd.user_id = ${userId})
-						GROUP BY i.mailbox_key`
-				)
-			)
-		: [];
-	const unread = new Map(counts.map((c) => [str(c.mailbox_key), Number(c.n)]));
+	const unread = await unreadCounts(
+		ctx.userId ?? '',
+		boxes.map((b) => b.key)
+	);
 	const canManage = core.permissions.has(ctx, PERM_INBOX_MANAGE);
 	const cfg = await loadInboxConfig();
 	let lastPoll: MailboxesResponse['lastPoll'] = null;
@@ -159,6 +181,77 @@ export async function listInbox(
 		);
 		return { items: rows.map(summaryOf), total: Number(t?.n ?? 0) };
 	});
+}
+
+/** SQL-Bedingung „Nachricht gehört zu diesem Postfach“ (`m` = messages); Altbestand ohne `mailbox_key` über die Absenderadresse */
+function sentFromSql(box: AccessibleMailbox, userId: string) {
+	const legacy =
+		box.kind === 'personal'
+			? sql`(m.mailbox_key IS NULL AND lower(m.sender_address) = ${box.address.toLowerCase()} AND m.created_by = ${userId})`
+			: sql`(m.mailbox_key IS NULL AND lower(m.sender_address) = ${box.address.toLowerCase()})`;
+	return sql`(m.mailbox_key = ${box.key} OR ${legacy})`;
+}
+
+/** Von der Adresse eines Postfachs gesendete Nachrichten (gemeinsame Postfächer: von allen Berechtigten) */
+export async function listMailboxSent(
+	ctx: RequestContext,
+	q: { mailbox: string; search: string; limit: number; offset: number }
+): Promise<MailboxSentResponse> {
+	const box = await requireBox(ctx, q.mailbox);
+	if (box.kind === 'unassigned') throw errors.notFound('Postfach nicht gefunden');
+	const like = `%${escapeLike(q.search.toLowerCase())}%`;
+	const where = sql`${sentFromSql(box, ctx.userId ?? '')}
+		${q.search ? sql`AND (lower(m.subject) LIKE ${like} OR EXISTS (SELECT 1 FROM message_recipients rs WHERE rs.message_id = m.id AND lower(rs.address) LIKE ${like}))` : sql``}`;
+	const data = await mdb().transaction(async (tx) => {
+		const rows = await rowsOf(
+			tx,
+			sql`SELECT m.id, m.subject, m.created_at, m.created_by, m.status, m.total,
+					(SELECT r.address FROM message_recipients r WHERE r.message_id = m.id
+						ORDER BY r.name NULLS LAST, r.address LIMIT 1) AS first_to,
+					(SELECT count(*)::int FROM message_attachments a WHERE a.message_id = m.id) AS attachment_count
+				FROM messages m WHERE ${where}
+				ORDER BY m.created_at DESC, m.id LIMIT ${q.limit} OFFSET ${q.offset}`
+		);
+		const [t] = await rowsOf(tx, sql`SELECT count(*)::int AS n FROM messages m WHERE ${where}`);
+		return { rows, total: Number(t?.n ?? 0) };
+	});
+	const names = await core.users.byIds(
+		ctx,
+		data.rows.map((r) => strOrNull(r.created_by))
+	);
+	return {
+		items: data.rows.map((r): MailboxSentItem => ({
+			id: str(r.id),
+			subject: str(r.subject),
+			to: str(r.first_to),
+			recipients: Number(r.total ?? 0),
+			createdAt: toIso(r.created_at),
+			createdByName: userLabel(names, strOrNull(r.created_by)),
+			status: str(r.status) as MessageStatus,
+			attachmentCount: Number(r.attachment_count ?? 0)
+		})),
+		total: data.total
+	};
+}
+
+/**
+ * Darf `ctx` diese gesendete Nachricht über ein Postfach sehen? (zusätzlich zu „eigene“/`view-all`):
+ * gehört sie zu einem eigenen Postfach – gemeinsame Postfächer auch, wenn jemand anderes gesendet hat.
+ */
+export async function sentViaAccessibleMailbox(
+	ctx: RequestContext,
+	m: { mailbox_key?: unknown; sender_address?: unknown; created_by?: unknown }
+): Promise<boolean> {
+	if (!ctx.userId) return false;
+	const boxes = (await accessibleMailboxes(ctx)).filter((b) => b.kind !== 'unassigned');
+	const key = strOrNull(m.mailbox_key);
+	if (key) return boxes.some((b) => b.key === key);
+	const sender = str(m.sender_address).toLowerCase();
+	return boxes.some(
+		(b) =>
+			b.address.toLowerCase() === sender &&
+			(b.kind !== 'personal' || strOrNull(m.created_by) === ctx.userId)
+	);
 }
 
 async function requireBox(ctx: RequestContext, key: string): Promise<AccessibleMailbox> {

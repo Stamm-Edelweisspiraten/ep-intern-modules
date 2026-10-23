@@ -16,6 +16,7 @@
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import { toast } from 'svelte-sonner';
 	import { apiFetch } from '$lib/sdk/client';
+	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -50,6 +51,8 @@
 		try {
 			mail = await apiFetch<InboxDetail>(`${BASE}/inbox/${params.id}`);
 			loadError = '';
+			// Öffnen markiert als gelesen → Zähler der Seitenleiste nachziehen
+			void refreshNavBadges();
 		} catch (e) {
 			loadError = errorText(e, 'Die Nachricht konnte nicht geladen werden.');
 		} finally {
@@ -77,6 +80,7 @@
 		try {
 			await apiFetch(`${BASE}/inbox/${params.id}${path}`, { method });
 			toast.success(done);
+			void refreshNavBadges();
 			return true;
 		} catch (e) {
 			toast.error(errorText(e, 'Das hat nicht geklappt.'));

@@ -28,6 +28,10 @@
 
 	let { params }: ModulePageProps = $props();
 
+	/** Aus der Ansicht „Gesendet“ eines Postfachs geöffnet → zurück in dieses Postfach */
+	const fromMailbox =
+		typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('mailbox');
+
 	let message = $state<MessageDetail | null>(null);
 	let loading = $state(true);
 	let loadError = $state('');
@@ -98,13 +102,19 @@
 
 <div class="space-y-6">
 	<a
-		href={message?.replyOf || message?.forwardOf
-			? `${BASE}/inbox/${message.replyOf ?? message.forwardOf}`
-			: `${BASE}/sent`}
+		href={fromMailbox
+			? `${BASE}?mailbox=${encodeURIComponent(fromMailbox)}`
+			: message?.replyOf || message?.forwardOf
+				? `${BASE}/inbox/${message.replyOf ?? message.forwardOf}`
+				: `${BASE}/sent`}
 		class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
 	>
 		<ArrowLeft class="size-4" />
-		{message?.replyOf || message?.forwardOf ? 'Zur ursprünglichen Nachricht' : 'Zu „Gesendet“'}
+		{fromMailbox
+			? 'Zum Posteingang'
+			: message?.replyOf || message?.forwardOf
+				? 'Zur ursprünglichen Nachricht'
+				: 'Zu „Gesendet“'}
 	</a>
 
 	{#if loading}

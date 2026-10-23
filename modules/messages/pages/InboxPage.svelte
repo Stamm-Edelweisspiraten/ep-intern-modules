@@ -10,10 +10,12 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Reply from '@lucide/svelte/icons/reply';
 	import Search from '@lucide/svelte/icons/search';
+	import Send from '@lucide/svelte/icons/send';
 	import User from '@lucide/svelte/icons/user';
 	import Users from '@lucide/svelte/icons/users';
 	import { toast } from 'svelte-sonner';
 	import { apiFetch, can } from '$lib/sdk/client';
+	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -23,8 +25,10 @@
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import {
+		CountBadge,
 		DataTable,
 		ErrorState,
+		formatCount,
 		LoadingState,
 		PageHeader,
 		PageTitle
@@ -32,23 +36,36 @@
 	import { cn } from '$lib/utils';
 	import type { MailboxKind } from '../mailbox';
 	import {
-		INBOX_FILTERS,
-		type InboxFilter,
+		INBOX_VIEWS,
+		MESSAGE_STATUS_LABELS,
 		type InboxListResponse,
 		type InboxSummary,
+		type InboxView,
 		type MailboxesResponse,
+		type MailboxSentItem,
+		type MailboxSentResponse,
+		type MessageStatus,
 		type PollResult
 	} from '../schemas';
 	import MessagesTabs from './MessagesTabs.svelte';
 	import { BASE, errorText, formatDateTime } from './helpers';
 
 	const PAGE_SIZE = 50;
-	const FILTER_LABELS: Record<InboxFilter, string> = {
+	const FILTER_LABELS: Record<InboxView, string> = {
 		all: 'Alle',
 		unread: 'Ungelesen',
 		spam: 'Spam',
-		trash: 'Papierkorb'
+		trash: 'Papierkorb',
+		sent: 'Gesendet'
 	};
+	const statusVariant = (s: MessageStatus) =>
+		s === 'done'
+			? 'success'
+			: s === 'sending'
+				? 'info'
+				: s === 'partial'
+					? 'warning'
+					: 'destructive';
 	const KIND_ICONS: Record<MailboxKind, typeof User> = {
 		personal: User,
 		office: Briefcase,
@@ -63,18 +80,23 @@
 	let boxes = $state<MailboxesResponse | null>(null);
 	let boxesError = $state('');
 	let mailbox = $state<string | null>(null);
-	let filter = $state<InboxFilter>('all');
+	let filter = $state<InboxView>('all');
 	let searchText = $state('');
 	let query = $state('');
 	let offset = $state(0);
 
 	let items = $state<InboxSummary[]>([]);
+	/** Ansicht „Gesendet“: von der Adresse des Postfachs gesendete Nachrichten */
+	let sentItems = $state<MailboxSentItem[]>([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let listError = $state('');
 	let polling = $state(false);
 
 	const current = $derived(boxes?.mailboxes.find((b) => b.key === mailbox) ?? null);
+	/** „Gesendet“ gibt es nicht für „Nicht zugeordnet“ */
+	const views = $derived(INBOX_VIEWS.filter((v) => v !== 'sent' || current?.kind !== 'unassigned'));
+	const showSent = $derived(filter === 'sent');
 
 	/** Postfächer laden; wählt beim ersten Mal das Postfach aus der URL bzw. das erste */
 	async function loadBoxes() {
@@ -97,7 +119,7 @@
 	/** Liste laden; liest selbst keinen reaktiven Zustand (Aufruf aus `$effect` mit `untrack`) */
 	async function loadList(
 		key: string,
-		f: InboxFilter,
+		f: InboxView,
 		q: string,
 		at: number,
 		silent = false
@@ -108,14 +130,22 @@
 		try {
 			const params = new URLSearchParams({
 				mailbox: key,
-				filter: f,
 				limit: String(PAGE_SIZE),
 				offset: String(at)
 			});
 			if (q) params.set('search', q);
-			const res = await apiFetch<InboxListResponse>(`${BASE}/inbox?${params}`);
-			items = res.items;
-			total = res.total;
+			if (f === 'sent') {
+				const res = await apiFetch<MailboxSentResponse>(`${BASE}/mailboxes/sent?${params}`);
+				sentItems = res.items;
+				items = [];
+				total = res.total;
+			} else {
+				params.set('filter', f);
+				const res = await apiFetch<InboxListResponse>(`${BASE}/inbox?${params}`);
+				items = res.items;
+				sentItems = [];
+				total = res.total;
+			}
 			listError = '';
 		} catch (e) {
 			listError = errorText(e, 'Die Nachrichten konnten nicht geladen werden.');
@@ -170,11 +200,12 @@
 
 	function selectMailbox(key: string | null) {
 		if (!key || key === mailbox) return;
+		if (key === 'unassigned' && filter === 'sent') filter = 'all';
 		mailbox = key;
 		offset = 0;
 	}
 	function selectFilter(v: string) {
-		filter = (INBOX_FILTERS as readonly string[]).includes(v) ? (v as InboxFilter) : 'all';
+		filter = (INBOX_VIEWS as readonly string[]).includes(v) ? (v as InboxView) : 'all';
 		offset = 0;
 	}
 
@@ -184,6 +215,7 @@
 			const res = await apiFetch<PollResult>(`${BASE}/inbox/poll`, { method: 'POST' });
 			toast.success(res.message);
 			await loadBoxes();
+			void refreshNavBadges();
 			if (mailbox) await loadList(mailbox, filter, query, offset, true);
 		} catch (e) {
 			toast.error(errorText(e, 'Der Abruf ist fehlgeschlagen.'));
@@ -195,7 +227,7 @@
 	const mailboxOptions = $derived(
 		(boxes?.mailboxes ?? []).map((b) => ({
 			value: b.key,
-			label: `${b.name}${b.address ? ` (${b.address})` : ''}${b.unread ? ` · ${b.unread} neu` : ''}`
+			label: `${b.name}${b.address ? ` (${b.address})` : ''}${b.unread ? ` · ${formatCount(b.unread)} neu` : ''}`
 		}))
 	);
 	const open = (id: string) => goto(`${BASE}/inbox/${id}`);
@@ -288,9 +320,7 @@
 											</span>
 										{/if}
 									</span>
-									{#if b.unread}
-										<Badge variant="info" class="tabular-nums">{b.unread}</Badge>
-									{/if}
+									<CountBadge count={b.unread} variant="info" class="mt-0.5" />
 								</button>
 							</li>
 						{/each}
@@ -301,8 +331,11 @@
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<Tabs.Root value={filter} onValueChange={selectFilter}>
 							<Tabs.List aria-label="Filter">
-								{#each INBOX_FILTERS as f (f)}
-									<Tabs.Trigger value={f}>{FILTER_LABELS[f]}</Tabs.Trigger>
+								{#each views as f (f)}
+									<Tabs.Trigger value={f}>
+										{#if f === 'sent'}<Send class="size-3.5" aria-hidden="true" />{/if}
+										{FILTER_LABELS[f]}
+									</Tabs.Trigger>
 								{/each}
 							</Tabs.List>
 						</Tabs.Root>
@@ -314,7 +347,7 @@
 							<Input
 								type="search"
 								class="pl-8"
-								placeholder="Betreff oder Absender …"
+								placeholder={showSent ? 'Betreff oder Empfänger …' : 'Betreff oder Absender …'}
 								aria-label="Nachrichten durchsuchen"
 								bind:value={searchText}
 							/>
@@ -323,26 +356,79 @@
 
 					<DataTable
 						mobile="cards"
-						caption={current ? `Nachrichten in ${current.name}` : 'Nachrichten'}
+						caption={current
+							? `${showSent ? 'Gesendet von' : 'Nachrichten in'} ${current.name}`
+							: 'Nachrichten'}
 						{loading}
 						error={listError}
 						onretry={() => void (mailbox && loadList(mailbox, filter, query, offset))}
-						empty={items.length === 0}
+						empty={showSent ? sentItems.length === 0 : items.length === 0}
 						emptyTitle={filter === 'unread'
 							? 'Keine ungelesenen Nachrichten.'
 							: filter === 'trash'
 								? 'Der Papierkorb ist leer.'
 								: filter === 'spam'
 									? 'Kein Spam.'
-									: 'Noch keine Nachrichten in diesem Postfach.'}
+									: filter === 'sent'
+										? 'Von dieser Adresse wurde noch nichts gesendet.'
+										: 'Noch keine Nachrichten in diesem Postfach.'}
 					>
 						{#snippet head()}
-							<Table.Row>
-								<Table.Head>Von</Table.Head>
-								<Table.Head>Betreff</Table.Head>
-								<Table.Head class="text-right">Eingang</Table.Head>
-							</Table.Row>
+							{#if showSent}
+								<Table.Row>
+									<Table.Head>An</Table.Head>
+									<Table.Head>Betreff</Table.Head>
+									<Table.Head>Von</Table.Head>
+									<Table.Head class="text-right">Gesendet</Table.Head>
+									<Table.Head>Status</Table.Head>
+								</Table.Row>
+							{:else}
+								<Table.Row>
+									<Table.Head>Von</Table.Head>
+									<Table.Head>Betreff</Table.Head>
+									<Table.Head class="text-right">Eingang</Table.Head>
+								</Table.Row>
+							{/if}
 						{/snippet}
+						{#each sentItems as s (s.id)}
+							{@const href = `${BASE}/${s.id}?mailbox=${encodeURIComponent(mailbox ?? '')}`}
+							<Table.Row class="cursor-pointer" onclick={() => goto(href)}>
+								<Table.Cell class="max-w-56">
+									<span class="block truncate" title={s.to}>{s.to || '–'}</span>
+									{#if s.recipients > 1}
+										<span class="text-xs text-muted-foreground">
+											und {s.recipients - 1} weitere
+										</span>
+									{/if}
+								</Table.Cell>
+								<Table.Cell class="max-w-[28rem]">
+									<div class="min-w-0 text-left">
+										<a
+											class="block truncate hover:underline"
+											{href}
+											onclick={(e) => e.stopPropagation()}
+										>
+											{s.subject}
+										</a>
+										{#if s.attachmentCount}
+											<Paperclip
+												class="inline size-3 text-muted-foreground"
+												aria-label={`${s.attachmentCount} Anhänge`}
+											/>
+										{/if}
+									</div>
+								</Table.Cell>
+								<Table.Cell class="max-w-40"
+									><span class="block truncate">{s.createdByName}</span></Table.Cell
+								>
+								<Table.Cell class="text-right whitespace-nowrap tabular-nums">
+									{formatDateTime(s.createdAt)}
+								</Table.Cell>
+								<Table.Cell>
+									<Badge variant={statusVariant(s.status)}>{MESSAGE_STATUS_LABELS[s.status]}</Badge>
+								</Table.Cell>
+							</Table.Row>
+						{/each}
 						{#each items as m (m.id)}
 							<Table.Row
 								class={cn('cursor-pointer', !m.read && 'bg-info-muted/40')}

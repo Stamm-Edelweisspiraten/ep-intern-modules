@@ -132,7 +132,13 @@ unzuordenbare Mails in „Nicht zugeordnet“ für die Verwaltung; nach dem Impo
   Inhalt (≤ 4000 Zeichen) und Link, ab 4 Mails je Abruf als Sammelmail; nicht bei Spam/Automatik/„Nicht zugeordnet“. `replied` „<Name> hat geantwortet/
   weitergeleitet“ an alle **anderen** Berechtigten eines gemeinsamen Postfachs. Je Person/Postfach/Ereignis abschaltbar im Profil („Posteingang“),
   gespeichert nur Abweichungen (`inbox_notification_prefs`).
-- **API** (alle `send`, sonst angegeben): GET `/mailboxes`, GET `/mailboxes/all` (manage), GET `/inbox?mailbox&filter=all|unread|spam|trash&search`,
+- **Gesendet je Postfach** (2026-10-23): Filterleiste Alle | Ungelesen | Spam | Papierkorb | **Gesendet** (nicht bei „Nicht zugeordnet“) →
+  `GET /mailboxes/sent?mailbox&search` (`listMailboxSent`): Nachrichten mit `mailbox_key` = Postfach, Altbestand ohne `mailbox_key` über die
+  Absenderadresse (persönlich nur eigene). **Gemeinsame Postfächer: alle Berechtigten sehen auch die Mails der anderen** und dürfen sie öffnen
+  (`getMessage` prüft zusätzlich `sentViaAccessibleMailbox`). Detail-Rücklink mit `?mailbox=` zurück ins Postfach.
+- **Zähler**: Ungelesen-Zahl je Postfach als runder `CountBadge` (ab 10 „9+“); Seitenleiste „Nachrichten“ über `navBadge` = `unreadTotal`
+  (alle eigenen Postfächer **ohne** „Nicht zugeordnet“), aktualisiert nach Lesen/Ungelesen/Löschen/Abruf (`refreshNavBadges`).
+- **API** (alle `send`, sonst angegeben): GET `/mailboxes`, GET `/mailboxes/sent`, GET `/mailboxes/all` (manage), GET `/inbox?mailbox&filter=all|unread|spam|trash&search`,
   GET `/inbox/:id` (markiert gelesen), GET `/inbox/:id/compose`, POST `/inbox/:id/read|unread|restore`, DELETE `/inbox/:id`, POST `/inbox/:id/assign` (manage,
   benachrichtigt), GET `/inbox/:id/attachments/:aid`, POST `/inbox/poll` (manage), POST `/inbox/test` (manage + settings.manage), GET/PUT `/me/notifications`.
 - **Aufbewahrung** (Job `cleanup`): Papierkorb und „Nicht zugeordnet“ nach 30 Tagen, sonst `messages.inbox.retentionDays` (365). Ablageordner auf dem Mailserver bleibt.
