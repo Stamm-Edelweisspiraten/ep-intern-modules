@@ -254,7 +254,8 @@ export interface RoleRef {
 export interface WebsiteOfficeHolder {
 	/** Stabile ID für Avatar-Abruf (`/website/offices/holders/:userId/avatar`) */
 	id: string;
-	name: string;
+	/** Nur der Vorname (erstes Wort des Kontonamens) – Nachnamen verlassen den Server nicht */
+	firstName: string;
 	bio: string | null;
 	since: string | null;
 	/** Relativer API-Pfad des Profilbilds oder `null` ohne Bild */

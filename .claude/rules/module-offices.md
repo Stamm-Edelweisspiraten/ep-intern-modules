@@ -135,11 +135,13 @@ await offices?.notify(ctx, [{ module: MODULE_ID, office: 'kasse', event: 'payabl
 - Nutzer: `treasury` (Amt `kasse`, Ereignisse `payable-created`, `accounting-closed`; Helfer `treasury/office-notify.ts`), siehe `module-treasury.md`.
 
 ## Website-Anbindung
-- `WebsiteOffice`: `id`, `name`, `description`, `position`, `emails` (`label`, `email` – Adressen des **Amts**), `holders` (`id`, `name`, `bio`, `since`,
+- `WebsiteOffice`: `id`, `name`, `description`, `position`, `emails` (`label`, `email` – Adressen des **Amts**), `holders` (`id`, `firstName`, `bio`, `since`,
   `avatarPath` = relativer API-Pfad oder `null`). **Keine** Benutzer-Mails, Rollen, Zeitstempel; deaktivierte Konten fehlen.
 - **Opt-in (#27)**: `holders` enthält nur Personen mit `show_on_website = true` (Schalter „Auf der Stammeswebsite zeigen“ in der Karte „Meine Beschreibung“,
   Profil „Meine Ämter“ und Ämterseite; speichert sofort, Standard aus). Ohne Zustimmung fehlen Name, Bio und Bild ganz – das Amt erscheint mit `holders: []`
-  (kein Hinweis „besetzt“). Die Stammeswebsite (`website/`) ruft den Endpunkt derzeit nicht ab (Ämter auf `/kontakt` statisch).
+  (kein Hinweis „besetzt“). Die Stammeswebsite zeigt die Daten auf `/team` („Unser Team“).
+- **Nur Vornamen** (2026-10-24, Nutzerwunsch): `WebsiteOfficeHolder.firstName` = erstes Wort des Kontonamens (`firstNameOf` in
+  `website.endpoints.ts`, „Anna-Lena Muster“ → „Anna-Lena“); `avatarPath` trägt `?v=` aus `user.image` (neues Bild → neue Adresse).
 - Einrichtung wie bei `events`: API-Key nur mit Scope `offices.website.read`, Abruf **serverseitig**; Profilbilder über `avatarPath` mit demselben Key abrufen und cachen.
   ```bash
   curl -H "Authorization: Bearer epk_…" https://intern.example.org/api/v1/modules/offices/website/offices

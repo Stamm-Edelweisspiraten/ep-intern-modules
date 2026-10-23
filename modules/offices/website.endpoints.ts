@@ -1,7 +1,7 @@
 /**
  * Website-Endpoints (API-Key der Stammeswebsite mit Scope `offices.website.read`).
- * Nur öffentliche Felder: Ämter, Amt-Adressen, Namen, Beschreibung und „seit“ der aktiven
- * Inhaber*innen – keine Benutzer-Mails, keine Rollen, keine Zeitstempel.
+ * Nur öffentliche Felder: Ämter, Amt-Adressen, **Vornamen**, Beschreibung und „seit“ der aktiven
+ * Inhaber*innen – keine Nachnamen, keine Benutzer-Mails, keine Rollen, keine Zeitstempel.
  * Personen erscheinen NUR mit ausdrücklicher Zustimmung (`holder_profiles.show_on_website`,
  * Opt-in im Profil, Standard aus); ohne Zustimmung fehlen sie ganz (auch kein Profilbild).
  */
@@ -19,6 +19,16 @@ import { userIdParams, type WebsiteOffice } from './schemas';
 const tags = ['Modul: offices'];
 const AVATAR_BASE = '/api/v1/modules/offices/website/offices/holders';
 
+/** Vorname = erstes Wort des Kontonamens („Anna-Lena Muster“ → „Anna-Lena“) */
+export function firstNameOf(name: string): string {
+	return name.trim().split(/\s+/)[0] ?? '';
+}
+
+/** Version des Profilbilds aus `user.image` (`/avatar/<id>?v=…`), damit die Website bei neuem Bild neu lädt */
+function avatarVersion(image: string): string {
+	return new URLSearchParams(image.split('?')[1] ?? '').get('v') ?? '';
+}
+
 const KEY_HINT =
 	'Der API-Key gehört nur auf den Server der Website (nie in den Browser ausliefern); ' +
 	'Profilbilder mit demselben Key über `avatarPath` laden und auf der Website zwischenspeichern.';
@@ -30,7 +40,7 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 		summary: 'Ämter für die Stammeswebsite (API-Key mit Scope offices.website.read)',
 		description:
 			'Liefert alle Ämter in der festgelegten Reihenfolge mit Beschreibung, E-Mail-Adressen des ' +
-			'Amts und den aktiven Inhaber*innen (Name, persönliche Beschreibung, „seit“, ' +
+			'Amts und den aktiven Inhaber*innen (nur Vorname, persönliche Beschreibung, „seit“, ' +
 			'`avatarPath` oder `null`). Es erscheinen nur Personen, die der Anzeige auf der Website ' +
 			'im Profil zugestimmt haben (Opt-in); ohne Zustimmung hat das Amt keine Einträge in ' +
 			'`holders`. Deaktivierte Konten erscheinen nicht. Keine Benutzer-Mails, ' +
@@ -61,10 +71,12 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 					return [
 						{
 							id: h.userId,
-							name: u.name,
+							firstName: firstNameOf(u.name),
 							bio: data.bios.get(h.userId) ?? null,
 							since: h.since,
-							avatarPath: u.image ? `${AVATAR_BASE}/${encodeURIComponent(h.userId)}/avatar` : null
+							avatarPath: u.image
+								? `${AVATAR_BASE}/${encodeURIComponent(h.userId)}/avatar?v=${encodeURIComponent(avatarVersion(u.image))}`
+								: null
 						}
 					];
 				})
