@@ -3,7 +3,7 @@ import { ApiClientError } from '$lib/sdk/client';
 export const BASE = '/modules/messages';
 
 /** Aktionen auf Ordnern im Posteingang (Baum, Kopfzeile) */
-export type FolderAction = 'create' | 'rename' | 'move' | 'delete';
+export type FolderAction = 'create' | 'rename' | 'move' | 'delete' | 'details';
 
 /** Schlüssel in `sessionStorage`, über den Mitglieder-/Gruppenliste die Auswahl an die Nachricht übergeben */
 export const COMPOSE_KEY = 'messages:compose';
@@ -28,6 +28,8 @@ export function errorText(e: unknown, fallback: string): string {
 }
 
 export function formatSize(bytes: number): string {
+	if (bytes >= 1024 * 1024 * 1024)
+		return `${(bytes / 1024 / 1024 / 1024).toFixed(1).replace('.', ',')} GB`;
 	if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`;
 	return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }

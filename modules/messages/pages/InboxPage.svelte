@@ -5,6 +5,7 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Folder from '@lucide/svelte/icons/folder';
+	import Info from '@lucide/svelte/icons/info';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
@@ -59,6 +60,7 @@
 		type MoveMailsResult,
 		type PollResult
 	} from '../schemas';
+	import FolderDetailsDialog from './FolderDetailsDialog.svelte';
 	import FolderDialog from './FolderDialog.svelte';
 	import MailboxTree from './MailboxTree.svelte';
 	import MessagesTabs from './MessagesTabs.svelte';
@@ -418,9 +420,17 @@
 		description: string;
 	}>({ open: false, box: null, folder: null, description: '' });
 
+	let detailsDialog = $state<{ open: boolean; mailbox: string | null; folderId: string | null }>({
+		open: false,
+		mailbox: null,
+		folderId: null
+	});
+
 	function onFolderAction(action: FolderAction, box: MailboxInfo, folder: InboxFolder | null) {
 		treeOpen = false;
-		if (action === 'create') {
+		if (action === 'details') {
+			detailsDialog = { open: true, mailbox: box.key, folderId: folder?.id ?? null };
+		} else if (action === 'create') {
 			folderDialog = {
 				open: true,
 				mode: 'create',
@@ -640,6 +650,12 @@
 				label: 'Verschieben nach …',
 				icon: FolderInput,
 				run: () => onFolderAction('move', box, folder)
+			},
+			{
+				key: 'details',
+				label: 'Details',
+				icon: Info,
+				run: () => onFolderAction('details', box, folder)
 			},
 			{
 				key: 'delete',
@@ -1115,6 +1131,11 @@
 	{/if}
 </div>
 
+<FolderDetailsDialog
+	bind:open={detailsDialog.open}
+	mailbox={detailsDialog.mailbox}
+	folderId={detailsDialog.folderId}
+/>
 <FolderDialog
 	bind:open={folderDialog.open}
 	mode={folderDialog.mode}

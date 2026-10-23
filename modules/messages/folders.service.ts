@@ -12,12 +12,18 @@ import {
 	isUniqueViolation,
 	moduleDb,
 	rowsOf,
+	toIso,
+	userLabel,
 	type RequestContext,
 	type Row,
 	type Tx
 } from '$lib/sdk/server';
 import { UNASSIGNED, isSharedMailbox } from './mailbox';
-import { accessibleMailboxes, type AccessibleMailbox } from './mailbox.service';
+import {
+	accessibleMailboxes,
+	loadMailboxDirectory,
+	type AccessibleMailbox
+} from './mailbox.service';
 import {
 	descendantIds,
 	folderDepth,
@@ -32,6 +38,7 @@ import {
 	MODULE_ID,
 	type BulkAction,
 	type DeleteFolderResult,
+	type FolderDetails,
 	type FolderCreateInput,
 	type FolderUpdateInput,
 	type InboxFolder,
@@ -406,4 +413,82 @@ export async function folderPathOf(
 	if (!folderId) return [];
 	const all = await mdb().transaction((tx) => foldersOfMailbox(tx, mailboxKey));
 	return folderPath(all, folderId).map((f) => ({ id: f.id, name: f.name }));
+}
+
+/** Details zu einem Postfach bzw. Ordner: Anzahl, Ungelesene, Größe, Anhänge, Zeitraum, Zugriff */
+export async function folderDetails(
+	ctx: RequestContext,
+	q: { mailbox: string; folder?: string }
+): Promise<FolderDetails> {
+	const box = (await accessibleMailboxes(ctx)).find((b) => b.key === q.mailbox);
+	if (!box) throw errors.notFound('Postfach nicht gefunden');
+	const userId = ctx.userId ?? '';
+	const data = await mdb().transaction(async (tx) => {
+		const all = await foldersOfMailbox(tx, box.key);
+		const folder = q.folder ? all.find((f) => f.id === q.folder) : undefined;
+		if (q.folder && !folder) throw errors.notFound(FOLDER_NOT_FOUND);
+		const ids = folder ? [folder.id, ...descendantIds(all, folder.id)] : [];
+		const scope = folder ? sql`AND i.folder_id IN (${inList(ids)})` : sql``;
+		const [stats] = await rowsOf(
+			tx,
+			sql`SELECT count(*)::int AS n,
+					count(*) FILTER (WHERE ${folder ? sql`i.folder_id = ${folder.id}` : sql`i.folder_id IS NULL`})::int AS direct,
+					count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM inbox_reads rd
+						WHERE rd.inbox_message_id = i.id AND rd.user_id = ${userId}))::int AS unread,
+					coalesce(sum(i.size), 0)::bigint AS size,
+					min(i.received_at) AS oldest, max(i.received_at) AS newest,
+					(SELECT count(*)::int FROM inbox_attachments a JOIN inbox_messages j ON j.id = a.inbox_message_id
+						WHERE j.mailbox_key = ${box.key} AND j.deleted_at IS NULL AND NOT j.spam AND NOT a.inline
+						${folder ? sql`AND j.folder_id IN (${inList(ids)})` : sql``}) AS attachments
+				FROM inbox_messages i
+				WHERE i.mailbox_key = ${box.key} AND i.deleted_at IS NULL AND NOT i.spam ${scope}`
+		);
+		const [other] = folder
+			? [undefined]
+			: await rowsOf(
+					tx,
+					sql`SELECT count(*) FILTER (WHERE deleted_at IS NULL AND spam)::int AS spam,
+							count(*) FILTER (WHERE deleted_at IS NOT NULL)::int AS trash
+						FROM inbox_messages WHERE mailbox_key = ${box.key}`
+				);
+		const [meta] = folder
+			? await rowsOf(
+					tx,
+					sql`SELECT created_at, created_by FROM inbox_folders WHERE id = ${folder.id}`
+				)
+			: [undefined];
+		return { all, folder, ids, stats, other, meta };
+	});
+	const createdBy = strOrNull(data.meta?.created_by);
+	let access: string[] = [];
+	if (box.shared && box.kind !== 'unassigned') {
+		const entry = (await loadMailboxDirectory()).find((e) => e.key === box.key);
+		const names = await core.users.byIds(ctx, entry?.userIds ?? []);
+		access = (entry?.userIds ?? [])
+			.map((id) => userLabel(names, id))
+			.sort((a, b) => a.localeCompare(b, 'de'));
+	}
+	const names = createdBy ? await core.users.byIds(ctx, [createdBy]) : null;
+	const s = data.stats;
+	return {
+		kind: data.folder ? 'folder' : 'mailbox',
+		name: data.folder?.name ?? box.name,
+		mailboxName: box.name,
+		address: box.address,
+		path: data.folder ? folderPath(data.all, data.folder.id).map((f) => f.name) : [],
+		shared: box.shared,
+		messages: Number(s?.n ?? 0),
+		direct: Number(s?.direct ?? 0),
+		unread: Number(s?.unread ?? 0),
+		size: Number(s?.size ?? 0),
+		attachments: Number(s?.attachments ?? 0),
+		folders: data.folder ? data.ids.length - 1 : data.all.length,
+		spam: data.other ? Number(data.other.spam ?? 0) : null,
+		trash: data.other ? Number(data.other.trash ?? 0) : null,
+		oldest: s?.oldest == null ? null : toIso(s.oldest),
+		newest: s?.newest == null ? null : toIso(s.newest),
+		createdAt: data.meta?.created_at == null ? null : toIso(data.meta.created_at),
+		createdByName: names && createdBy ? userLabel(names, createdBy) : null,
+		access
+	};
 }

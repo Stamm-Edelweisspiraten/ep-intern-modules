@@ -167,8 +167,11 @@ mit Zugriff** dieselben Ordner (gemeinsam sortieren), im persönlichen Postfach 
   → `{ deleted, movedMessages }`, POST `/inbox/move` `{ ids ≤ 200, folderId|null }` → `{ moved, previous }` (für Rückgängig), POST `/inbox/bulk`
   `{ ids, action: read|unread|delete|restore }`; GET `/inbox?folder=inbox|<id>` (bei `filter=spam|trash` postfachweit); GET `/mailboxes` liefert je
   Postfach `folders` (mit `unread`/`total`), `inboxUnread`, `spamCount`; Detail `folderId` + `folderPath`.
+  GET `/mailboxes/details?mailbox&folder?` (`folderDetails`) → Anzahl (inkl. Unterordner/direkt), Ungelesene, Größe (Summe `size`), Anhänge,
+  Ordner, Spam/Papierkorb (nur Postfach), Zeitraum, angelegt von/am (Ordner), Zugriff (Namen, nur gemeinsame Postfächer) – Rechtsklick → „Details“
+  auf Postfach, Posteingang und Ordner (`FolderDetailsDialog`).
 - **Oberfläche**: `MailboxTree` (Postfächer aufklappbar, Zustand in `localStorage` `messages:inbox-tree`; Posteingang, Ordner, gedämpft Gesendet/Spam/
-  Papierkorb, „Ordner anlegen“; Rechtsklick und „…“ (auch Shift+F10): Unterordner anlegen, Umbenennen, Verschieben nach …, Löschen; Ordner per
+  Papierkorb, „Ordner anlegen“; kein Hinweis „gemeinsam“ am Postfach (Nutzerwunsch); Rechtsklick und „…“ (auch Shift+F10): Unterordner anlegen, Umbenennen, Verschieben nach …, Löschen; Ordner per
   Ziehen in andere Ordner bzw. auf den Postfach-Kopf = oberste Ebene; zugeklappte Ziele öffnen nach 600 ms). Liste: Checkboxen, Sammelleiste
   (Verschieben nach / Gelesen / Ungelesen / Löschen bzw. Wiederherstellen), Zeilen ziehbar (markierte zusammen, Ziehbild „N Nachrichten“), Rechtsklick
   auf Zeilen, Rückgängig-Toast nach Verschieben/Löschen. Filter nur Alle | Ungelesen; URL `?mailbox=&folder=`. Mobil: Knopf mit Pfad → Sheet mit dem

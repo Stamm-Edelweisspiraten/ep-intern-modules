@@ -8,6 +8,7 @@
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import Inbox from '@lucide/svelte/icons/inbox';
+	import Info from '@lucide/svelte/icons/info';
 	import Landmark from '@lucide/svelte/icons/landmark';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -127,16 +128,24 @@
 	let menuOpenId = $state<string | null>(null);
 
 	function entriesFor(box: MailboxInfo, folder: InboxFolder | null): MenuEntry[] {
-		if (box.kind === 'unassigned') return [];
 		const act = (action: FolderAction, target: InboxFolder | null) => () => {
 			menuOpenId = null;
 			ctxOpen = false;
 			onfolderaction(action, box, target);
 		};
+		const details: MenuEntry = {
+			key: 'details',
+			label: 'Details',
+			icon: Info,
+			run: act('details', folder)
+		};
 		if (!folder) {
-			return [
-				{ key: 'create', label: 'Ordner anlegen', icon: FolderPlus, run: act('create', null) }
-			];
+			return box.kind === 'unassigned'
+				? [details]
+				: [
+						{ key: 'create', label: 'Ordner anlegen', icon: FolderPlus, run: act('create', null) },
+						details
+					];
 		}
 		const entries: MenuEntry[] = [];
 		if (folderDepth(box.folders, folder.id) < MAX_FOLDER_DEPTH) {
@@ -150,6 +159,7 @@
 		entries.push(
 			{ key: 'rename', label: 'Umbenennen', icon: Pencil, run: act('rename', folder) },
 			{ key: 'move', label: 'Verschieben nach …', icon: FolderInput, run: act('move', folder) },
+			details,
 			{
 				key: 'delete',
 				label: 'Ordner löschen …',
@@ -428,17 +438,7 @@
 								>
 									<Icon class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 									<span class="min-w-0 flex-1">
-										<span class="flex items-center gap-1.5">
-											<span class="truncate font-medium">{b.name}</span>
-											{#if b.shared && b.kind !== 'unassigned'}
-												<span
-													class="shrink-0 rounded-full bg-muted px-1.5 text-caption text-muted-foreground"
-													title="Ordner und Papierkorb sind für alle mit Zugriff gemeinsam"
-												>
-													gemeinsam
-												</span>
-											{/if}
-										</span>
+										<span class="block truncate font-medium">{b.name}</span>
 										{#if b.address}
 											<span class="block truncate text-xs text-muted-foreground">{b.address}</span>
 										{/if}

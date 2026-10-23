@@ -233,6 +233,12 @@ export const moveMailsInput = z.object({
 });
 export type MoveMailsInput = z.infer<typeof moveMailsInput>;
 
+export const detailsQuery = z.object({
+	mailbox: mailboxKey,
+	/** Ordner-ID; ohne Angabe = ganzes Postfach */
+	folder: z.uuid().optional()
+});
+
 export const BULK_ACTIONS = ['read', 'unread', 'delete', 'restore'] as const;
 export type BulkAction = (typeof BULK_ACTIONS)[number];
 export const bulkInput = z.object({ ids: mailIds, action: z.enum(BULK_ACTIONS) });
@@ -393,6 +399,36 @@ export interface InboxFolder {
 	unread: number;
 	/** Mails direkt in diesem Ordner (ohne Spam/Papierkorb) */
 	total: number;
+}
+
+/** Details zu einem Postfach oder Ordner (Rechtsklick → „Details“) */
+export interface FolderDetails {
+	kind: 'mailbox' | 'folder';
+	/** Name des Postfachs bzw. Ordners */
+	name: string;
+	mailboxName: string;
+	address: string;
+	/** Pfad des Ordners (ohne Postfach), leer beim Postfach */
+	path: string[];
+	shared: boolean;
+	/** Nachrichten (ohne Papierkorb/Spam; beim Ordner inkl. Unterordner) */
+	messages: number;
+	/** davon direkt im Ordner bzw. im Posteingang (ohne Ordner) */
+	direct: number;
+	unread: number;
+	/** Größe der Nachrichten in Bytes (Rohgröße inkl. Anhänge) */
+	size: number;
+	attachments: number;
+	/** Unterordner (beim Postfach: alle Ordner) */
+	folders: number;
+	spam: number | null;
+	trash: number | null;
+	oldest: string | null;
+	newest: string | null;
+	createdAt: string | null;
+	createdByName: string | null;
+	/** Personen mit Zugriff (nur gemeinsame Postfächer) */
+	access: string[];
 }
 
 export interface MoveMailsResult {

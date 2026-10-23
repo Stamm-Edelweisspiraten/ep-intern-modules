@@ -21,7 +21,14 @@ import {
 	setRead
 } from './inbox.service';
 import { pollInbox, testConnection } from './inbound.service';
-import { bulkAction, createFolder, deleteFolder, moveMails, updateFolder } from './folders.service';
+import {
+	bulkAction,
+	createFolder,
+	deleteFolder,
+	folderDetails,
+	moveMails,
+	updateFolder
+} from './folders.service';
 import {
 	PERM_INBOX_MANAGE,
 	PERM_SEND,
@@ -29,6 +36,7 @@ import {
 	attachmentParams,
 	bulkInput,
 	composeQuery,
+	detailsQuery,
 	folderCreateInput,
 	folderUpdateInput,
 	idParams,
@@ -62,6 +70,16 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 		permission: PERM_INBOX_MANAGE,
 		rateLimit: READ_LIMIT,
 		handler: () => listAssignTargets()
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/mailboxes/details',
+		summary: 'Details zu einem Postfach oder Ordner (Anzahl, Ungelesene, Größe, Zugriff)',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: READ_LIMIT,
+		query: detailsQuery,
+		handler: ({ ctx, query }) => folderDetails(ctx, query)
 	}),
 	defineEndpoint({
 		method: 'GET',
