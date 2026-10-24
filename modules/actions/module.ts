@@ -37,6 +37,7 @@ import m0017 from './migrations/0017_expense_batches.sql?raw';
 import m0018 from './migrations/0018_health_encryption.sql?raw';
 import m0019 from './migrations/0019_registration_optin.sql?raw';
 import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
+import m0021 from './migrations/0021_camp_fees.sql?raw';
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
@@ -46,7 +47,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.3.0',
+		version: '1.4.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -138,7 +139,8 @@ export default defineModule({
 		{ name: '0017_expense_batches', sql: m0017 },
 		{ name: '0018_health_encryption', sql: m0018 },
 		{ name: '0019_registration_optin', sql: m0019 },
-		{ name: '0020_link_token_hash_constraints', sql: m0020 }
+		{ name: '0020_link_token_hash_constraints', sql: m0020 },
+		{ name: '0021_camp_fees', sql: m0021 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [

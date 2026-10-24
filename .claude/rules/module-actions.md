@@ -71,6 +71,9 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
   deaktiviert). FK `accounting_refunds.entry_id` SET NULL, `action_refund_booking.entry_id` CASCADE, Index `expense_submissions(entry_id)`, CHECKs
   `starts_time`/`ends_time` HH:MM und `ends_on >= starts_on` (Altbestand bereinigt). **Kein** FK `accounting_refunds.participant_id`: manuelle
   Rückzahlungen speichern dort eigene UUIDs. Test `tests/integration/link-token-hash-migration.test.ts`.
+- **0021** CHECKs `calc_items_category_check`/`accounting_entries_category_check` um `camp_fee_gau|camp_fee_landesmark|camp_fee_bund` erweitert
+  (Lagerbeiträge an Gau/Landesmark/Bund; eigene Kategorien statt Ebenen-Spalte → Soll/Ist, PDF-Abschnitte, Export und Kasse ohne Sonderlogik).
+  Die Kategorien stehen **am Ende** von `CALC_CATEGORIES`, damit Belegnummern bestehender Abrechnungen gleich bleiben.
 - Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
@@ -115,7 +118,8 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 | `/actions/import` | POST | `actions.action.create`; multipart `file` ≤ 200 MB; 201 `{ id, name, counts, warnings }`; 422/413/503, 403 ohne `storage.write` bei Belegen |
 
 ## Kalkulation (`calculation.ts`, `calculate`)
-- Posten: Kategorien `food, lodging, lodging_extra, materials, other, travel, program`; Basis `flat` (einmalig),
+- Posten: Kategorien `food, lodging, lodging_extra, materials, other, travel, program` sowie **Lagerbeiträge an übergeordnete Ebenen**
+  `camp_fee_gau|camp_fee_landesmark|camp_fee_bund` (Gruppe „Lagerbeiträge“, Standard-Basis pro Person; Migr. 0021); Basis `flat` (einmalig),
   `per_person` (× Personen), `per_person_night` (× Personen × Nächte). Personen = zahlende Teilnehmende + Team.
 - Gewicht = Teilnehmende + Team × `teamPercent`/100 (Team zahlt X %, Rest auf Teilnehmende umgelegt; 0–100 %).
 - **Programm**: Pro-Kopf-Preis wird auf volle Euro **aufgerundet** (`ceilDiv`), Gesamt = Kopfpreis × Gewicht (kann Rohsumme überschreiten).

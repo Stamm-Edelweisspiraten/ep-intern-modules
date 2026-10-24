@@ -282,7 +282,11 @@ export const CALC_CATEGORIES = [
 	'materials',
 	'other',
 	'travel',
-	'program'
+	'program',
+	// Lagerbeiträge an übergeordnete Ebenen; am Ende, damit bestehende Belegnummern gleich bleiben
+	'camp_fee_gau',
+	'camp_fee_landesmark',
+	'camp_fee_bund'
 ] as const;
 export type CalcCategory = (typeof CALC_CATEGORIES)[number];
 
@@ -293,7 +297,10 @@ export const CALC_CATEGORY_LABELS: Record<CalcCategory, string> = {
 	materials: 'Material',
 	other: 'Sonstiges',
 	travel: 'Fahrtkosten',
-	program: 'Programm'
+	program: 'Programm',
+	camp_fee_gau: 'Lagerbeitrag Gau',
+	camp_fee_landesmark: 'Lagerbeitrag Landesmark',
+	camp_fee_bund: 'Lagerbeitrag Bund'
 };
 
 export const CALC_BASES = ['flat', 'per_person', 'per_person_night'] as const;
@@ -348,6 +355,13 @@ export const CALC_GROUPS: {
 		hint: 'Gesamtbetrag – der Preis pro Person wird auf volle Euro aufgerundet',
 		categories: ['program'],
 		defaultBasis: 'flat'
+	},
+	{
+		id: 'camp_fee',
+		label: 'Lagerbeiträge',
+		hint: 'Beiträge an Gau, Landesmark oder Bund – meist pro Person',
+		categories: ['camp_fee_gau', 'camp_fee_landesmark', 'camp_fee_bund'],
+		defaultBasis: 'per_person'
 	}
 ];
 
