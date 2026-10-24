@@ -39,6 +39,8 @@ export interface ParsedInbound {
 	attachments: InboundAttachment[];
 	/** Vom Mailserver als Spam markiert (`X-Spam-Flag`/`X-Spam-Status`) */
 	spam: boolean;
+	/** Spam-Wert des Mailservers (`X-Spam-Score`, `score=` in `X-Spam-Status`/`X-Rspamd-Score`) oder `null` */
+	serverSpamScore: number | null;
 	/** Automatische Mail (`Auto-Submitted`, Abwesenheitsnotiz) – löst keine Benachrichtigung aus */
 	autoSubmitted: boolean;
 	/** Eigene Benachrichtigung dieser App (`X-EP-Intern`) – wird nicht importiert (Schleifenschutz) */
@@ -122,6 +124,27 @@ export function authResultOf(lines: string[]): ParsedInbound['authResult'] {
 	return 'none';
 }
 
+/** Spam-Wert aus den üblichen Kopfzeilen (SpamAssassin, rspamd), sonst `null` */
+export function serverSpamScoreOf(headers: {
+	score?: string;
+	status?: string;
+	rspamd?: string;
+}): number | null {
+	const candidates = [
+		headers.score,
+		headers.rspamd,
+		/\bscore=(-?\d+(?:\.\d+)?)/i.exec(headers.status ?? '')?.[1]
+	];
+	for (const c of candidates) {
+		const m = /^\s*(-?\d+(?:[.,]\d+)?)/.exec(c ?? '');
+		if (m) {
+			const n = Number(m[1]!.replace(',', '.'));
+			if (Number.isFinite(n)) return n;
+		}
+	}
+	return null;
+}
+
 const MAX_TEXT = 500_000;
 const MAX_HTML = 2_000_000;
 
@@ -172,6 +195,11 @@ export async function parseInbound(source: Buffer): Promise<ParsedInbound> {
 			inline: a.contentDisposition === 'inline' || (!!a.cid && !!a.related)
 		})),
 		spam,
+		serverSpamScore: serverSpamScoreOf({
+			score: header('x-spam-score'),
+			status: header('x-spam-status'),
+			rspamd: header('x-rspamd-score')
+		}),
 		autoSubmitted:
 			(!!auto && auto !== 'no') || precedence === 'auto_reply' || precedence === 'junk',
 		ownNotification: header('x-ep-intern') !== '',

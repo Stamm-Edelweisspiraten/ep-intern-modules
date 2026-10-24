@@ -17,6 +17,8 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Reply from '@lucide/svelte/icons/reply';
 	import Search from '@lucide/svelte/icons/search';
+	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import X from '@lucide/svelte/icons/x';
@@ -58,6 +60,7 @@
 		type MailboxSentResponse,
 		type MessageStatus,
 		type MoveMailsResult,
+		type SpamMarkResult,
 		type PollResult
 	} from '../schemas';
 	import FolderDetailsDialog from './FolderDetailsDialog.svelte';
@@ -65,6 +68,7 @@
 	import MailboxTree from './MailboxTree.svelte';
 	import MessagesTabs from './MessagesTabs.svelte';
 	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
+	import SpamRulesDialog from './SpamRulesDialog.svelte';
 	import { BASE, errorText, formatDateTime, type FolderAction } from './helpers';
 	import { MAIL_DRAG_MIME, inboxDrag, setDragGhost } from './inbox-drag.svelte';
 
@@ -339,6 +343,37 @@
 		await refresh();
 	}
 
+	// ---------- Spam / Kein Spam (Absender kommt auf die Sperr- bzw. Vertrauensliste) ----------
+
+	let spamRulesOpen = $state(false);
+	async function markSpam(ids: string[], spam: boolean) {
+		if (!ids.length) return;
+		try {
+			const res = await apiFetch<SpamMarkResult>(`${BASE}/inbox/spam`, {
+				method: 'POST',
+				body: JSON.stringify({ ids, spam, remember: true })
+			});
+			selected = [];
+			const extra = res.changed - ids.length;
+			toast.success(
+				`${nachrichten(ids.length)} ${spam ? 'in den Spam verschoben' : 'als kein Spam markiert'}${
+					extra > 0 ? ` (dazu ${nachrichten(extra)} derselben Absender)` : ''
+				}`,
+				{
+					description: res.remembered
+						? spam
+							? 'Neue Mails dieser Absender landen direkt im Spam.'
+							: 'Diese Absender gelten jetzt als vertrauenswürdig.'
+						: undefined
+				}
+			);
+			void refreshNavBadges();
+		} catch (e) {
+			toast.error(errorText(e, 'Das hat nicht geklappt.'));
+		}
+		await refresh();
+	}
+
 	// ---------- Verschieben ----------
 
 	async function moveMails(boxKey: string, ids: string[], folderId: string | null) {
@@ -575,6 +610,23 @@
 				run: close(() => openMoveMails(ids))
 			});
 		}
+		if (view !== 'trash' && view !== 'sent') {
+			entries.push(
+				targets.every((m) => m.spam)
+					? {
+							key: 'not-spam',
+							label: 'Kein Spam',
+							icon: ShieldCheck,
+							run: close(() => void markSpam(ids, false))
+						}
+					: {
+							key: 'spam',
+							label: 'Spam',
+							icon: ShieldAlert,
+							run: close(() => void markSpam(ids, true))
+						}
+			);
+		}
 		entries.push(
 			view === 'trash'
 				? {
@@ -707,6 +759,11 @@
 		description="Antworten auf deine Mails und Post an deine Adressen."
 	>
 		{#snippet actions()}
+			{#if boxes?.canManage}
+				<Button variant="outline" onclick={() => (spamRulesOpen = true)}>
+					<ShieldAlert class="size-4" /> Spam-Schutz
+				</Button>
+			{/if}
 			{#if boxes?.canManage && boxes.enabled}
 				<Button variant="outline" onclick={pollNow} disabled={polling}>
 					<RefreshCw class={cn('size-4', polling && 'animate-spin')} />
@@ -883,6 +940,23 @@
 								>
 									<Mail class="size-4" /> Ungelesen
 								</Button>
+								{#if view === 'spam'}
+									<Button
+										size="sm"
+										variant="outline"
+										onclick={() => markSpam(selected.slice(), false)}
+									>
+										<ShieldCheck class="size-4" /> Kein Spam
+									</Button>
+								{:else}
+									<Button
+										size="sm"
+										variant="outline"
+										onclick={() => markSpam(selected.slice(), true)}
+									>
+										<ShieldAlert class="size-4" /> Spam
+									</Button>
+								{/if}
 								<Button
 									size="sm"
 									variant="outline"
@@ -1163,3 +1237,4 @@
 	destructive
 	onconfirm={deleteFolder}
 />
+<SpamRulesDialog bind:open={spamRulesOpen} />

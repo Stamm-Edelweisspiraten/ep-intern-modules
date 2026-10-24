@@ -31,11 +31,13 @@ import { notifyNewMail } from './inbox-notify.service';
 import { UNASSIGNED, buildAddressIndex, routeAddresses } from './mailbox';
 import { loadMailboxDirectory, type MailboxEntry } from './mailbox.service';
 import { isValidDomain } from './sender';
+import { evaluateSpam, loadSpamEnvironment, type SpamEnvironment } from './spam.service';
 import { loadSettings } from './sender.service';
 import {
 	INBOX_FETCH_LIMIT,
 	INBOX_MAX_BYTES,
 	INBOX_SETTING_KEYS,
+	INBOX_SPAM_DAYS,
 	INBOX_TRASH_DAYS,
 	MODULE_ID,
 	UNASSIGNED_DAYS,
@@ -186,10 +188,12 @@ async function removePaths(paths: string[]): Promise<void> {
 async function importOne(
 	msg: ImapMessage,
 	dir: Directory,
+	spamEnv: SpamEnvironment,
 	imported: ImportedMail[]
 ): Promise<'imported' | 'skipped'> {
 	const parsed = await parseInbound(msg.source);
 	if (parsed.ownNotification) return 'skipped';
+	const verdict = await evaluateSpam(spamEnv, parsed);
 	const candidates = [
 		...parsed.envelopeTo,
 		...parsed.to.map((a) => a.address),
@@ -234,17 +238,19 @@ async function importOne(
 					sql`INSERT INTO inbox_messages (id, mailbox_key, mailbox_address, dedupe_key, message_id_header,
 							in_reply_to, references_list, thread_id, from_address, from_name, reply_to, to_list, cc_list,
 							subject, body_html, body_text, received_at, size, spam, auto_submitted, auth_result,
-							unassigned_reason, truncated, skipped_attachments, blocked_images)
+							unassigned_reason, truncated, skipped_attachments, blocked_images,
+							spam_score, spam_reasons, spam_source)
 						VALUES (${id}, ${target.key}, ${target.address}, ${dedupeKey}, ${parsed.messageId},
 							${parsed.inReplyTo}, ${parsed.references.join(' ') || null}, ${threadId},
 							${from.address}, ${from.name}, ${parsed.replyTo},
 							${JSON.stringify(parsed.to)}::jsonb, ${JSON.stringify(parsed.cc)}::jsonb,
 							${parsed.subject}, ${bodyHtml}, ${bodyText}, ${receivedAt}::timestamptz, ${msg.size},
-							${parsed.spam}, ${parsed.autoSubmitted}, ${parsed.authResult},
+							${verdict.spam}, ${parsed.autoSubmitted}, ${parsed.authResult},
 							${target.key === UNASSIGNED ? (route.unassigned?.reason ?? 'unknown') : null},
 							${msg.truncated},
 							${JSON.stringify(files.skipped.map((s) => ({ filename: s.filename, contentType: s.contentType, size: s.size })))}::jsonb,
-							${sanitized.blockedImages})
+							${sanitized.blockedImages},
+							${verdict.score}, ${JSON.stringify(verdict.reasons)}::jsonb, ${verdict.source})
 						ON CONFLICT (mailbox_key, dedupe_key) DO NOTHING
 						RETURNING id`
 				);
@@ -275,7 +281,7 @@ async function importOne(
 			from,
 			subject: parsed.subject,
 			text: bodyText,
-			notify: !parsed.spam && !parsed.autoSubmitted
+			notify: !verdict.spam && !parsed.autoSubmitted
 		});
 	}
 	return 'imported';
@@ -338,9 +344,11 @@ async function runPoll(ctx: RequestContext): Promise<PollResult> {
 	try {
 		const messages = await session.fetch(INBOX_FETCH_LIMIT, INBOX_MAX_BYTES);
 		const done: number[] = [];
+		// Listen und bekannte Absender nur laden, wenn es etwas zu bewerten gibt (der Job läuft jede Minute)
+		const spamEnv = messages.length ? await loadSpamEnvironment(dir.ownDomains) : null;
 		for (const msg of messages) {
 			try {
-				const result = await importOne(msg, dir, imported);
+				const result = await importOne(msg, dir, spamEnv!, imported);
 				if (result === 'skipped') skipped++;
 				else mails++;
 				done.push(msg.uid);
@@ -386,12 +394,14 @@ export async function testConnection(): Promise<{ ok: true; message: string }> {
 }
 
 /**
- * Aufbewahrung im Posteingang (Job `cleanup`): Papierkorb nach `INBOX_TRASH_DAYS`, „Nicht zugeordnet“
+ * Aufbewahrung im Posteingang (Job `cleanup`): Papierkorb nach `INBOX_TRASH_DAYS`, Spam nach
+ * `INBOX_SPAM_DAYS` (ab Import bzw. Markierung), „Nicht zugeordnet“
  * nach `UNASSIGNED_DAYS`, alles nach `messages.inbox.retentionDays` Tagen löschen (inkl. Anhänge).
  */
 export async function cleanupInbox(): Promise<string> {
 	const { retentionDays } = await loadInboxConfig();
 	const expired = sql`(i.deleted_at IS NOT NULL AND i.deleted_at < now() - make_interval(days => ${INBOX_TRASH_DAYS}))
+		OR (i.spam AND i.deleted_at IS NULL AND COALESCE(i.spam_marked_at, i.imported_at) < now() - make_interval(days => ${INBOX_SPAM_DAYS}))
 		OR (i.mailbox_key = ${UNASSIGNED} AND i.imported_at < now() - make_interval(days => ${UNASSIGNED_DAYS}))
 		OR i.received_at < now() - make_interval(days => ${retentionDays})`;
 	const result = await mdb().transaction(async (tx) => {

@@ -25,6 +25,7 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_layout.sql?raw';
 import m0003 from './migrations/0003_inbox.sql?raw';
 import m0004 from './migrations/0004_inbox_folders.sql?raw';
+import m0005 from './migrations/0005_spam.sql?raw';
 
 /** IMAP-Ordnername: druckbar, ohne Steuerzeichen und Platzhalter */
 const folderName = z
@@ -41,7 +42,7 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
 		permissions: [PERM_SEND, PERM_VIEW_ALL, PERM_SETTINGS, PERM_INBOX_STAMM, PERM_INBOX_MANAGE],
@@ -70,7 +71,8 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_layout', sql: m0002 },
 		{ name: '0003_inbox', sql: m0003 },
-		{ name: '0004_inbox_folders', sql: m0004 }
+		{ name: '0004_inbox_folders', sql: m0004 },
+		{ name: '0005_spam', sql: m0005 }
 	],
 	settings: [
 		{
@@ -183,6 +185,14 @@ export default defineModule({
 				'Danach werden Mails samt Anhängen im Posteingang gelöscht (nicht im Ablageordner des Mailservers). Nicht zugeordnete Mails und der Papierkorb werden nach 30 Tagen gelöscht.',
 			schema: z.coerce.number().int().min(30).max(3650),
 			default: INBOX_RETENTION_DEFAULT
+		},
+		{
+			key: INBOX_SETTING_KEYS.spamFilter,
+			label: 'Posteingang: eigene Spam-Erkennung',
+			description:
+				'Prüft eingehende Mails zusätzlich zum Mailserver (gefälschte Absender, gefährliche Anhänge, irreführende Links, Massenversand …). Bekannte Absender (Mitglieder, Konten, schon angeschriebene Adressen) gelten nie als Spam. Sperr- und Vertrauensliste gelten immer.',
+			schema: z.boolean(),
+			default: true
 		}
 	],
 	jobs: [

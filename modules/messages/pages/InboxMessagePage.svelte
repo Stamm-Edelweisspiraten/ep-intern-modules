@@ -13,6 +13,7 @@
 	import ReplyAll from '@lucide/svelte/icons/reply-all';
 	import Send from '@lucide/svelte/icons/send';
 	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import { toast } from 'svelte-sonner';
@@ -34,7 +35,13 @@
 	} from '$lib/components/layout';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { cn } from '$lib/utils';
-	import type { InboxAddress, InboxDetail, MailboxesResponse, MailboxInfo } from '../schemas';
+	import type {
+		InboxAddress,
+		InboxDetail,
+		MailboxesResponse,
+		MailboxInfo,
+		SpamMarkResult
+	} from '../schemas';
 	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
 	import { BASE, errorText, formatDateTime, formatSize } from './helpers';
 
@@ -153,6 +160,37 @@
 		if (await action('/restore', 'POST', 'Wiederhergestellt')) await load();
 	}
 
+	// --- Spam / Kein Spam (Absender kommt auf die Sperr- bzw. Vertrauensliste) -----------------
+	async function setSpam(spam: boolean) {
+		if (!mail) return;
+		busy = true;
+		try {
+			const res = await apiFetch<SpamMarkResult>(`${BASE}/inbox/spam`, {
+				method: 'POST',
+				body: JSON.stringify({ ids: [mail.id], spam, remember: true })
+			});
+			const more = res.changed > 1 ? ` (mit ${res.changed - 1} weiteren dieses Absenders)` : '';
+			toast.success(
+				spam
+					? `In den Spam verschoben${more}${res.remembered ? ' – Absender gesperrt' : ''}`
+					: `Kein Spam${more}${res.remembered ? ' – Absender gilt als vertrauenswürdig' : ''}`
+			);
+			void refreshNavBadges();
+			if (spam) await goto(backHref.replace('&folder=spam', ''));
+			else await load();
+		} catch (e) {
+			toast.error(errorText(e, 'Das hat nicht geklappt.'));
+		} finally {
+			busy = false;
+		}
+	}
+	const SPAM_SOURCE_TEXT: Record<NonNullable<InboxDetail['spamSource']>, string> = {
+		server: 'Der Mailserver hat diese Nachricht als Spam markiert.',
+		rules: 'Die Spam-Erkennung hat diese Nachricht als Spam eingestuft.',
+		blocklist: 'Der Absender steht auf der Sperrliste.',
+		user: 'Diese Nachricht wurde als Spam markiert.'
+	};
+
 	// --- Zuordnen (nur „Nicht zugeordnet“, Verwaltung) ------------------------------------------
 	let targets = $state<{ value: string; label: string }[]>([]);
 	let target = $state<string | null>(null);
@@ -207,7 +245,7 @@
 		<PageHeader title={mail.subject || '(kein Betreff)'}>
 			{#snippet actions()}
 				{#if mail}
-					{#if mail.canReply && !mail.deleted}
+					{#if mail.canReply && !mail.deleted && !mail.spam}
 						<Button href={`${BASE}/new?reply=${mail.id}`}>
 							<Reply class="size-4" /> Antworten
 						</Button>
@@ -218,6 +256,11 @@
 						{/if}
 						<Button variant="outline" href={`${BASE}/new?forward=${mail.id}`}>
 							<Forward class="size-4" /> Weiterleiten
+						</Button>
+					{/if}
+					{#if mail.spam && !mail.deleted}
+						<Button variant="outline" onclick={() => setSpam(false)} disabled={busy}>
+							<ShieldCheck class="size-4" /> Kein Spam
 						</Button>
 					{/if}
 					{#if mail.deleted}
@@ -240,6 +283,11 @@
 								{#if mail.mailboxKey !== 'unassigned' && !mail.spam}
 									<DropdownMenu.Item onSelect={openMove} disabled={busy}>
 										<FolderInput class="size-4" /> Verschieben nach …
+									</DropdownMenu.Item>
+								{/if}
+								{#if !mail.spam}
+									<DropdownMenu.Item onSelect={() => setSpam(true)} disabled={busy}>
+										<ShieldAlert class="size-4" /> Spam
 									</DropdownMenu.Item>
 								{/if}
 								<DropdownMenu.Separator />
@@ -288,10 +336,22 @@
 		{/if}
 
 		{#if mail.spam}
+			{@const reasons = mail.spamReasons.filter((r) => r.points > 0 || r.code === 'blocked')}
 			<Alert variant="warning">
+				<ShieldAlert />
 				<AlertDescription>
-					Der Mailserver hat diese Nachricht als Spam markiert. Links und Anhänge nur öffnen, wenn
-					du den Absender kennst.
+					<p>
+						{SPAM_SOURCE_TEXT[mail.spamSource ?? 'server']} Links sind deaktiviert; Anhänge nur öffnen,
+						wenn du den Absender kennst. Mit „Kein Spam“ kommt der Absender auf die Vertrauensliste.
+					</p>
+					{#if reasons.length && mail.spamSource !== 'user'}
+						<ul class="mt-2 list-disc space-y-0.5 pl-5">
+							{#each reasons as r (r.code)}
+								<li>{r.label}</li>
+							{/each}
+						</ul>
+					{/if}
+					<p class="mt-2 text-xs">Spam wird nach 30 Tagen automatisch gelöscht.</p>
 				</AlertDescription>
 			</Alert>
 		{/if}

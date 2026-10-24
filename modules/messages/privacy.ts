@@ -1,7 +1,8 @@
 /**
  * Datenschutz im Modul `messages`:
  * - `onUserDeleted`: persönliches Postfach (inkl. Ordner und Anhänge im Speicher), Gelesen-Markierungen und
- *   Benachrichtigungs-Einstellungen der Person löschen; Verweise (`deleted_by`, `created_by`) → `NULL`.
+ *   Benachrichtigungs-Einstellungen der Person löschen; Verweise (`deleted_by`, `spam_marked_by`,
+ *   `created_by`, auch an der Sperr-/Vertrauensliste) → `NULL`.
  * - `subjectExport`: Datenauskunft für ein Konto (gesendete Nachrichten, persönliches Postfach als
  *   Metadaten, Einstellungen). Inhalte gemeinsamer Postfächer gehören nicht der Person und fehlen.
  * Keine Core-Dienste innerhalb der Transaktion (Speicher erst in `afterCommit`).
@@ -34,6 +35,10 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (tx, { use
 	await tx.execute(sql`DELETE FROM inbox_reads WHERE user_id = ${userId}`);
 	await tx.execute(sql`DELETE FROM inbox_notification_prefs WHERE user_id = ${userId}`);
 	await tx.execute(sql`UPDATE inbox_messages SET deleted_by = NULL WHERE deleted_by = ${userId}`);
+	await tx.execute(
+		sql`UPDATE inbox_messages SET spam_marked_by = NULL WHERE spam_marked_by = ${userId}`
+	);
+	await tx.execute(sql`UPDATE sender_rules SET created_by = NULL WHERE created_by = ${userId}`);
 	const paths = files.map((f) => String(f.storage_path));
 	return {
 		afterCommit: async () => {

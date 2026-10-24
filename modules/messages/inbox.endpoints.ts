@@ -21,6 +21,7 @@ import {
 	setRead
 } from './inbox.service';
 import { pollInbox, testConnection } from './inbound.service';
+import { createSenderRule, deleteSenderRule, listSenderRules, markSpam } from './spam.service';
 import {
 	bulkAction,
 	createFolder,
@@ -43,7 +44,9 @@ import {
 	inboxListQuery,
 	mailboxSentQuery,
 	moveMailsInput,
-	notificationPrefInput
+	notificationPrefInput,
+	senderRuleInput,
+	spamMarkInput
 } from './schemas';
 
 const folderParams = z.object({ id: z.uuid() });
@@ -177,6 +180,46 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 		rateLimit: WRITE_LIMIT,
 		body: bulkInput,
 		handler: ({ ctx, body }) => bulkAction(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/inbox/spam',
+		summary:
+			'Markierte Nachrichten als Spam bzw. kein Spam; mit `remember` kommt der Absender auf die Sperr- bzw. Vertrauensliste',
+		tags,
+		permission: PERM_SEND,
+		rateLimit: WRITE_LIMIT,
+		body: spamMarkInput,
+		handler: ({ ctx, body }) => markSpam(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/spam/rules',
+		summary: 'Sperr- und Vertrauensliste des Posteingangs (gilt für alle Postfächer)',
+		tags,
+		permission: PERM_INBOX_MANAGE,
+		rateLimit: READ_LIMIT,
+		handler: ({ ctx }) => listSenderRules(ctx)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/spam/rules',
+		summary: 'Adresse oder Domain sperren bzw. als vertrauenswürdig eintragen',
+		tags,
+		permission: PERM_INBOX_MANAGE,
+		rateLimit: WRITE_LIMIT,
+		body: senderRuleInput,
+		handler: ({ ctx, body }) => createSenderRule(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'DELETE',
+		path: '/spam/rules/:id',
+		summary: 'Eintrag der Sperr- bzw. Vertrauensliste löschen',
+		tags,
+		permission: PERM_INBOX_MANAGE,
+		rateLimit: WRITE_LIMIT,
+		params: folderParams,
+		handler: ({ ctx, params }) => deleteSenderRule(ctx, params.id)
 	}),
 	defineEndpoint({
 		method: 'GET',

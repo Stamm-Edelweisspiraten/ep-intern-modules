@@ -255,6 +255,26 @@ function decodeEntities(v: string): string {
 }
 
 /**
+ * Spam-Ansicht: Links werden nicht klickbar (Text bleibt, das Ziel steht im Tooltip), damit niemand
+ * versehentlich eine Betrugsseite öffnet. Eingabe ist bereits bereinigtes HTML (`sanitizeInbound`).
+ */
+export function neutralizeLinks(html: string): string {
+	return sanitizeHtml(html, {
+		allowedTags: false,
+		allowedAttributes: false,
+		transformTags: {
+			a: (_tag, attribs) => ({
+				tagName: 'span',
+				attribs: {
+					style: 'text-decoration:underline dotted',
+					...(attribs.href ? { title: `Link deaktiviert: ${attribs.href}` } : {})
+				}
+			})
+		}
+	});
+}
+
+/**
  * Vollständiges Dokument für `<iframe srcdoc sandbox>`: eigene CSP (nur `data:`-Bilder, Inline-Styles),
  * Links öffnen im neuen Tab, Grundschrift wie in einem Mailprogramm.
  */

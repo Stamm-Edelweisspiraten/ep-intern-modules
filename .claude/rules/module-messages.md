@@ -2,7 +2,7 @@
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.2.0,
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.3.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
 
 ## Dateien (`src/lib/modules/messages/`)
@@ -12,7 +12,9 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `module.ts` | Manifest (Rechte), Einstellungen `messages.*` inkl. `messages.imap.*`/`messages.inbox.retentionDays`, Jobs `resume` (stündlich), `inbox-poll` (jede Minute), `cleanup` (täglich), `onUserDeleted`/`subjectExport` (`privacy.ts`), Endpoints |
 | `mailbox.ts` (rein) | Postfach-Schlüssel, `buildAddressIndex`/`routeAddresses` (Zuordnung, Mehrdeutigkeit), `senderKeyFor`/`mailboxKeyForSender`, `prefixedSubject` |
 | `imap.client.ts` | Hülle um `imapflow` (`fetch`, `move`, `close`), Testersatz `setImapConnectorForTests` |
-| `inbound-parse.ts` | `parseInbound` (`mailparser`): Adressen, Zustell-Empfänger, Message-IDs, Spam/Automatik/`X-EP-Intern`, `Authentication-Results` |
+| `inbound-parse.ts` | `parseInbound` (`mailparser`): Adressen, Zustell-Empfänger, Message-IDs, Spam/Automatik/`X-EP-Intern`, `Authentication-Results`, `serverSpamScoreOf` (`X-Spam-Score`, `score=` in `X-Spam-Status`, `X-Rspamd-Score`) |
+| `spam-rules.ts` (rein) | Spam-Bewertung `scoreSpam` (Punkte + Gründe, Schwelle `SPAM_THRESHOLD` 5), `extractLinks`, `baseDomain`, `parseSenderPattern`, `matchSenderRule` |
+| `spam.service.ts` | `loadSpamEnvironment`/`evaluateSpam` (Abruf), `markSpam` („Spam“/„Kein Spam“), Sperr-/Vertrauensliste `listSenderRules`/`createSenderRule`/`deleteSenderRule`, `loadOwnDomains` |
 | `mailbox.service.ts` | `loadMailboxDirectory` (systemweit: Adresse → Postfach + berechtigte Konten), `accessibleMailboxes(ctx)`, `requireMailbox` |
 | `inbound.service.ts` | `pollInbox` (Abruf, Zuordnung, Speichern, erst danach IMAP-MOVE), `testConnection`, `cleanupInbox`, `loadInboxConfig` |
 | `inbox.service.ts` | Postfächer mit Ungelesen-Zähler, Liste, Detail (cid-Bilder als `data:`), gelesen/Papierkorb, Zuordnen, Anhänge, `composePrefill` |
@@ -27,7 +29,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `delivery.service.ts` | `createMessage`, `previewMessage`, `getMessage`, `listMessages`, `retryMessage`, Versand (`deliver`), `resumeDeliveries`, `cleanup` |
 | `messages.endpoints.ts` | REST (siehe unten) |
 | `pages/` | `InboxPage`, `MailboxTree` (Ordnerbaum mit Drag & Drop und Rechtsklick), `FolderDialog`, `MoveToFolderDialog`, `inbox-drag.svelte.ts`, `InboxMessagePage`, `InboxNotificationsCard`, `MessagesTabs`, `HistoryPage`, `ComposePage`, `MessageDetailPage`, `helpers.ts` |
-| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql`, `0004_inbox_folders.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`); Ordner (`inbox_folders`, `inbox_messages.folder_id`) |
+| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql`, `0004_inbox_folders.sql`, `0005_spam.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`); Ordner (`inbox_folders`, `inbox_messages.folder_id`) |
 
 ## Rechte
 | Schlüssel | Bedeutung |
@@ -180,6 +182,35 @@ mit Zugriff** dieselben Ordner (gemeinsam sortieren), im persönlichen Postfach 
   Zähler/`shared`, **keine Ordnernamen**. `onUserDeleted` löscht die persönlichen Ordner, `created_by` → `NULL`; `subjectExport` enthält `personalFolders`.
 - **Tests**: `tests/unit/messages-folders.test.ts`, `tests/integration/messages-inbox-folders.test.ts`, E2E `messages.spec.ts` (Ordner anlegen/
   umbenennen/löschen per Rechtsklick). Drag & Drop von Mails ist nur manuell geprüft (E2E hat keine Posteingangs-Mails).
+
+## Spam-Schutz (2026-10-24, v1.3.0, Migr. 0005)
+Nutzerentscheidungen: eindeutiger Spam kommt in den **Spam-Ordner** (nie verworfen); **eine** Sperr- und Vertrauensliste für alle
+Postfächer; „Spam“/„Kein Spam“ darf **jede*r mit Zugriff** auf das Postfach, das ändert die Liste.
+- **Bewertung beim Abruf** (`scoreSpam`, rein): Punkte je Regel, ab **5** Spam. Absenderprüfung fehlgeschlagen (4), gefälschte eigene Domain
+  bei fehlgeschlagener Prüfung (+4), Anzeigename mit fremder Adresse (3), Reply-To fremde Domain ohne `pass` (2), Server-Markierung (6) bzw.
+  Server-Wert ≥ 3 (2), ausführbarer/gefährlicher Anhang auch als doppelte Endung (5) bzw. Makro-Office (3), Link zeigt andere Domain als Ziel (3),
+  Link auf IP (3), Linkverkürzer (2), > 20 Links bei wenig Text (1), Betreff-Muster (2), Großbuchstaben (1), `!?$€` ×3 (1), keine Message-ID (1),
+  Datum > 1 Tag in der Zukunft (2), ≥ 10 Mails desselben Absenders in 60 min (3), bekannter/vertrauter Absender mit fehlgeschlagener Prüfung (+2).
+- **Vorrang**: Sperrliste → immer Spam (`blocklist`). Vertrauensliste **oder bekannter Absender** (Mitglieder-Adressen über `listMemberContacts`
+  ≤ 1000, Konten mit `send`, alle je angeschriebenen Adressen aus `message_recipients`, eigene Domains) → nie Spam, **außer** DMARC/DKIM/SPF schlägt fehl.
+  Domain-Einträge treffen Subdomains; Adresse vor Domain, genaueste Domain gewinnt.
+- **Einstellung** `messages.spam.enabled` (Standard an): aus → nur Server-Markierung + Listen/bekannte Absender. Listen gelten immer.
+- **Daten**: `inbox_messages.spam_score`, `spam_reasons` (jsonb `{code,label,points}[]`), `spam_source` `server|rules|blocklist|user` (Altbestand mit
+  `spam` → `server`), `spam_marked_by/at`; Tabelle `sender_rules(kind block|allow, match_type address|domain, pattern, note, origin manual|button,
+  created_by)` UNIQUE `(match_type, pattern)`, ≤ 2000 Einträge. Umgebung (Listen, bekannte Adressen) wird nur geladen, wenn der Abruf Mails hat.
+- **API** (`send`): POST `/inbox/spam` `{ ids ≤ 200, spam, remember = true }` → `{ changed, remembered }`: markiert (`user`), merkt Absender-**Adressen**
+  (nie eigene Domains) und verschiebt weitere nicht gelöschte Mails desselben Absenders **in den Postfächern der Person** mit; fremd → 404.
+  Verwaltung (`messages.inbox.manage`): GET/POST `/spam/rules` (`{ kind, value, note? }`, Adresse oder Domain/„@domain“; Duplikat oder andere Liste → 409,
+  ungültig oder eigene Domain sperren → 422), DELETE `/spam/rules/:id`.
+- **Anzeige**: Detail mit `spamScore`, `spamReasons`, `spamSource`; Hinweis mit Gründen, Links bei Spam **unklickbar** (`neutralizeLinks`, Ziel im Tooltip),
+  Knopf „Kein Spam“, Menü „Spam“; Liste: Sammelleiste und Rechtsklick „Spam“/„Kein Spam“; Seitenkopf „Spam-Schutz“ (nur Verwaltung) → `SpamRulesDialog`
+  (Reiter Gesperrt/Vertrauenswürdig, Eintragen, Entfernen mit Rückgängig). Spam löst keine Benachrichtigung aus und wird nach **30 Tagen** gelöscht
+  (`INBOX_SPAM_DAYS`, ab Markierung bzw. Import).
+- **Audit**: `messages.inbox.spam-marked` (`count`, `spam`, `remembered`), `messages.spam.rule-created|rule-deleted` (`kind`, `matchType`) – **keine Adressen**.
+  `onUserDeleted`: `spam_marked_by`, `sender_rules.created_by` → `NULL`.
+- **Tests**: `tests/unit/messages-spam.test.ts`, `tests/integration/messages-spam.test.ts`, Upgrade `messages-spam-migration.test.ts`.
+- **Grenzen**: keine externen Blocklisten/rspamd (bewusst, keine Daten an Dritte); bekannte Mitglieder-Adressen nur der ersten 1000 Mitglieder;
+  Phishing ohne die genannten Merkmale wird nicht erkannt; Schwelle/Punkte nur im Code einstellbar.
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.

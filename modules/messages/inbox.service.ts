@@ -18,7 +18,7 @@ import {
 	type RequestContext,
 	type Row
 } from '$lib/sdk/server';
-import { inboxDocument, inlineCidImages, quoteForEditor } from './html';
+import { inboxDocument, inlineCidImages, neutralizeLinks, quoteForEditor } from './html';
 import { UNASSIGNED, isSharedMailbox, prefixedSubject } from './mailbox';
 import { notifyNewMail } from './inbox-notify.service';
 import {
@@ -328,6 +328,25 @@ async function attachmentsOf(
 	}));
 }
 
+const SPAM_SOURCES = ['server', 'rules', 'blocklist', 'user'] as const;
+const spamSourceOf = (v: unknown): InboxDetail['spamSource'] => {
+	const s = str(v);
+	// Altbestand ohne Quelle: vom Mailserver markiert
+	return (SPAM_SOURCES as readonly string[]).includes(s)
+		? (s as InboxDetail['spamSource'])
+		: 'server';
+};
+
+function spamReasonsOf(v: unknown): InboxDetail['spamReasons'] {
+	const list = typeof v === 'string' ? (JSON.parse(v) as unknown) : v;
+	if (!Array.isArray(list)) return [];
+	return list.slice(0, 20).map((r: { code?: unknown; label?: unknown; points?: unknown }) => ({
+		code: str(r.code),
+		label: str(r.label),
+		points: Number(r.points ?? 0)
+	}));
+}
+
 export async function getInboxMessage(ctx: RequestContext, id: string): Promise<InboxDetail> {
 	const { row, box } = await loadInboxRow(ctx, id);
 	const userId = ctx.userId ?? '';
@@ -416,10 +435,19 @@ export async function getInboxMessage(ctx: RequestContext, id: string): Promise<
 		to: addresses(row.to_list),
 		cc: addresses(row.cc_list),
 		replyTo: strOrNull(row.reply_to),
-		document: inboxDocument(inlineCidImages(str(row.body_html), images)),
+		// Spam: Links nicht klickbar
+		document: inboxDocument(
+			inlineCidImages(
+				row.spam === true ? neutralizeLinks(str(row.body_html)) : str(row.body_html),
+				images
+			)
+		),
 		authResult: (['pass', 'fail'].includes(str(row.auth_result))
 			? str(row.auth_result)
 			: 'none') as InboxDetail['authResult'],
+		spamScore: row.spam_score == null ? null : Number(row.spam_score),
+		spamReasons: spamReasonsOf(row.spam_reasons),
+		spamSource: row.spam === true ? spamSourceOf(row.spam_source) : null,
 		truncated: row.truncated === true,
 		unassignedReason: (strOrNull(row.unassigned_reason) as InboxDetail['unassignedReason']) ?? null,
 		attachments: attachments

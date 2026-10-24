@@ -34,7 +34,8 @@ export const INBOX_SETTING_KEYS = {
 	password: 'messages.imap.password',
 	folder: 'messages.imap.folder',
 	processedFolder: 'messages.imap.processedFolder',
-	retentionDays: 'messages.inbox.retentionDays'
+	retentionDays: 'messages.inbox.retentionDays',
+	spamFilter: 'messages.spam.enabled'
 } as const;
 
 export const REPLY_TO_MODES = ['account', 'sender'] as const;
@@ -71,6 +72,8 @@ export const ATTACHMENT_DAYS = 30;
 export const INBOX_RETENTION_DEFAULT = 365;
 export const UNASSIGNED_DAYS = 30;
 export const INBOX_TRASH_DAYS = 30;
+/** Spam wird nach so vielen Tagen gelöscht */
+export const INBOX_SPAM_DAYS = 30;
 /** Größere Mails werden nur angeschnitten übernommen (Kopf + Anfang, ohne Anhänge) */
 export const INBOX_MAX_BYTES = 25 * 1024 * 1024;
 /** Mails je Abruf (der Rest folgt beim nächsten Lauf) */
@@ -242,6 +245,35 @@ export const detailsQuery = z.object({
 export const BULK_ACTIONS = ['read', 'unread', 'delete', 'restore'] as const;
 export type BulkAction = (typeof BULK_ACTIONS)[number];
 export const bulkInput = z.object({ ids: mailIds, action: z.enum(BULK_ACTIONS) });
+
+/** „Spam“ / „Kein Spam“ für markierte Mails; `remember` = Absender auf die Sperr- bzw. Vertrauensliste */
+export const spamMarkInput = z.object({
+	ids: mailIds,
+	spam: z.boolean(),
+	remember: z.boolean().default(true)
+});
+export type SpamMarkInput = z.infer<typeof spamMarkInput>;
+
+export const SENDER_RULE_KINDS = ['block', 'allow'] as const;
+export type SenderRuleKindValue = (typeof SENDER_RULE_KINDS)[number];
+export const SENDER_RULE_LABELS: Record<SenderRuleKindValue, string> = {
+	block: 'Gesperrt',
+	allow: 'Vertrauenswürdig'
+};
+export const MAX_SENDER_RULES = 2000;
+
+export const senderRuleInput = z.object({
+	kind: z.enum(SENDER_RULE_KINDS, 'Bitte „Gesperrt“ oder „Vertrauenswürdig“ wählen'),
+	/** Adresse („name@example.org“) oder Domain („example.org“, „@example.org“) */
+	value: z.string().trim().min(3, 'Bitte eine Adresse oder Domain eingeben').max(254, 'Zu lang'),
+	note: z
+		.string()
+		.trim()
+		.max(200, 'Höchstens 200 Zeichen')
+		.nullish()
+		.transform((v) => v || null)
+});
+export type SenderRuleInput = z.infer<typeof senderRuleInput>;
 
 export const INBOX_EVENTS = ['new', 'replied'] as const;
 export type InboxEvent = (typeof INBOX_EVENTS)[number];
@@ -476,6 +508,30 @@ export interface InboxSummary {
 	folderId: string | null;
 }
 
+export interface SpamReasonInfo {
+	code: string;
+	label: string;
+	points: number;
+}
+
+export interface SpamMarkResult {
+	/** Geänderte Mails (ausgewählte und weitere desselben Absenders in deinen Postfächern) */
+	changed: number;
+	/** Neu auf die Liste gesetzte Absender */
+	remembered: number;
+}
+
+export interface SenderRule {
+	id: string;
+	kind: SenderRuleKindValue;
+	matchType: 'address' | 'domain';
+	pattern: string;
+	note: string | null;
+	origin: 'manual' | 'button';
+	createdByName: string | null;
+	createdAt: string;
+}
+
 export interface InboxAttachmentInfo {
 	id: string;
 	filename: string;
@@ -514,6 +570,12 @@ export interface InboxDetail extends InboxSummary {
 	/** Vollständiges, bereinigtes HTML-Dokument für `<iframe srcdoc sandbox>` */
 	document: string;
 	authResult: 'pass' | 'fail' | 'none';
+	/** Punkte der Spam-Bewertung (`null` = vor der eigenen Erkennung importiert) */
+	spamScore: number | null;
+	/** Gründe der Bewertung (höchste Punkte zuerst) */
+	spamReasons: SpamReasonInfo[];
+	/** Wodurch die Mail Spam ist (`null` = kein Spam) */
+	spamSource: 'server' | 'rules' | 'blocklist' | 'user' | null;
 	truncated: boolean;
 	unassignedReason: 'unknown' | 'ambiguous' | null;
 	attachments: InboxAttachmentInfo[];
