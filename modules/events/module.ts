@@ -13,16 +13,19 @@ import { DEFAULT_STAMM_NAME, STAMM_NAME_SETTING } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_recurrence.sql?raw';
 import m0003 from './migrations/0003_checks.sql?raw';
+import m0004 from './migrations/0004_calendar_feeds.sql?raw';
+import { calendarEndpoints } from './calendar.endpoints';
+import { calendarFeedsBackup } from './calendar-feeds.service';
 
 export default defineModule({
 	manifest: {
 		id: 'events',
 		name: 'Termine',
 		description: 'Interne Termine und Termine für die Stammeswebsite',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: [],
 		/** Gruppen und Mitglieder für Zuordnung und Sichtbarkeit (ohne `members`: nur Stamm, Rollen, Benutzer) */
-		optionalDependencies: ['members'],
+		optionalDependencies: ['members', 'actions'],
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen die für sie sichtbaren Termine */
 		defaultRoleGrants: { Mitglied: ['events.event.view'] },
 		permissions: [
@@ -66,14 +69,17 @@ export default defineModule({
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_recurrence', sql: m0002 },
-		{ name: '0003_checks', sql: m0003 }
+		{ name: '0003_checks', sql: m0003 },
+		{ name: '0004_calendar_feeds', sql: m0004 }
 	],
 	search: eventsSearch,
 	resetAreas,
 	resetUsers,
 	onUserDeleted,
 	subjectExport,
+	/** Datensicherung: Link-Hashes der Kalender-Abos mit dem Zielschlüssel neu berechnen */
+	backup: calendarFeedsBackup,
 	/** Dienst für andere Module (`EventRefsService`, siehe `contract.ts`) */
 	provides: eventRefsService satisfies EventRefsService,
-	endpoints: [...websiteEndpoints, ...metaEndpoints, ...eventEndpoints]
+	endpoints: [...websiteEndpoints, ...calendarEndpoints, ...metaEndpoints, ...eventEndpoints]
 });

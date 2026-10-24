@@ -5,8 +5,8 @@ paths: ["src/lib/modules/events/**", "tests/**/events*", "src/lib/sdk/**/sharing
 # Modul `events` (Termine)
 
 Interne Termine des Stammes und Termine für die **Stammeswebsite**, auch als **Serien** (Wiederholungstermine).
-Schema `mod_events`, Version 1.2.0, keine harten
-Abhängigkeiten; `optionalDependencies: ['members']` (Gruppen für Zuordnung, Gruppen/Mitglieder als Freigabe-Ziele –
+Schema `mod_events`, Version 1.3.0, keine harten
+Abhängigkeiten; `optionalDependencies: ['members', 'actions']` (`actions` nur fürs Kalender-Abo) (Gruppen für Zuordnung, Gruppen/Mitglieder als Freigabe-Ziele –
 ohne `members` nur Stamm, Rollen, Benutzer*innen). Erstes Modul mit der generischen **Freigabe an Principals**
 (`$lib/sdk/server/sharing.ts`, siehe `architecture.md` → „Freigabe an Principals“). Navigation „Termine“ (Icon `calendar`)
 als eigener Eintrag (`order` 10, ganz oben nach dem Dashboard).
@@ -37,6 +37,11 @@ als eigener Eintrag (`order` 10, ganz oben nach dem Dashboard).
 | `pages/SeriesChoiceDialog.svelte` | Generische Auswahl (`options` mit `label`/`description`/`destructive`, `onchoose`) für „Nur diesen Termin / Ganze Serie“ |
 | `migrations/0001_init.sql` | Schema |
 | `migrations/0002_recurrence.sql` | Serien: `recurrence`, `recurrence_until`, `event_exceptions` |
+| `ical.ts` (rein) | iCalendar (RFC 5545): `buildCalendar`, `eventTimes`, `escapeText`, `foldLine` (75 Bytes, UTF-8-sicher), `utcStamp`; `TZID=Europe/Berlin` + `VTIMEZONE` |
+| `calendar-feeds.service.ts` | Kalender-Abos: `listFeeds`/`createFeed`/`updateFeed`/`rotateFeed`/`deleteFeed`, `renderFeed` (öffentlicher Abruf), `feedUrl`, Backup-Hook `calendarFeedsBackup.rehash` |
+| `calendar.endpoints.ts` | `/calendar-feeds[/:id[/rotate]]`, öffentlich `/public/calendar/:token` |
+| `pages/CalendarFeedsPanel.svelte`, `CalendarFeedDialog.svelte`, `CalendarFeedsCard.svelte` | Abos verwalten (Profilkarte „Kalender-Abo“ und Dialog „Kalender abonnieren“ auf der Terminseite) |
+| `migrations/0004_calendar_feeds.sql` | `calendar_feeds` |
 | `migrations/0003_checks.sql` | DB-CHECKs als Rückhalt zur Zod-Prüfung (#73): `starts_at`/`ends_at` `HH:MM`, Enduhrzeit nur mit Enddatum, `ends_on ≥ starts_on`, gleicher Tag `ends_at ≥ starts_at`; Altbestand vorher bereinigt (ungültige Werte → `NULL`), dann `VALIDATE`. Test `tests/integration/db-constraints.test.ts` |
 
 ## Datenmodell (0001)
@@ -219,7 +224,7 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   automatisch für deren Eltern sichtbar – dafür eine Freigabe an `group:<id>` setzen.
 - `everyone` heißt in der UI „Stamm“ (bzw. Stammesname), umfasst aber **alle** Konten mit `events.event.view`, auch Elternkonten.
 - Website-Termine sind öffentlich gemeint; Beschreibung/Ort daher ohne personenbezogene Daten pflegen.
-- Kein iCal-Export, keine Erinnerungen – mögliche Folgeschritte.
+- Keine Erinnerungen (VALARM) im Kalender-Abo – mögliche Folgeschritte.
 - **Offen (Serien):** Kein „diesen und alle folgenden“ – nur ein Vorkommen oder die ganze Serie (zum Teilen: Serie mit Ende
   versehen und neue anlegen). Verschobene Vorkommen, die **außerhalb des Serienzeitraums** landen (vor `starts_on` bzw. nach
   `recurrence_until` + Dauer), fallen durch den SQL-Vorfilter und erscheinen in Listen/Website-Abfragen für diesen Zeitraum
@@ -228,6 +233,30 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   erzeugen bis zu 2000 Vorkommen je Serie im Speicher. Kappung auf 2000 Vorkommen ist für Nutzer*innen nur am `total` erkennbar.
 - **Offen:** `actions` nutzt noch die alte Benutzer-Freigabe (`action_shares` mit `user_id`); nach Abschluss der parallelen
   `actions`-Arbeiten auf Principal-Freigabe umstellen (gleiches Tabellenmuster, `principalKeysFor`/`principalMatchSql`).
+
+## Kalender-Abo (iCal, 2026-10-24, v1.3.0, Migr. 0004)
+Nutzerentscheidung: Termine **und** Aktionen; **mehrere Abos je Person** mit Filter.
+- **Daten** `calendar_feeds(id, user_id, name ≤ 80, token_hash UNIQUE, token_enc, include_events, include_actions, group_ids jsonb, tags jsonb,
+  created_at, updated_at, last_used_at)`, CHECK Termine oder Aktionen. Token 32 Zufallsbytes base64url, nur als Hash (`core.crypto.forModule('events').hash`)
+  + verschlüsselt (Link wieder anzeigbar); Backup-Hook `backup.rehash` (nicht entschlüsselbar → toter Hash, Person erneuert). ≤ 10 Abos je Person
+  (`MAX_CALENDAR_FEEDS`, Advisory-Sperre je Person).
+- **API** (Recht `events.event.view`): GET `/calendar-feeds` → `{ feeds, actionsAvailable, max }` (je Abo `url` https und `webcalUrl`), POST (`calendarFeedInput`
+  strikt: `name`, `includeEvents`, `includeActions`, `groupIds` (geprüft, 422 `groupIds.<i>`), `tags`; weder noch → 422; > 10 → 409), PUT `/:id` (Link bleibt,
+  gespeicherte Gruppen bleiben gültig), POST `/:id/rotate` (alter Link sofort 404), DELETE `/:id`; fremde Abos → 404. Audit `events.calendar-feed.created|updated|
+  rotated|deleted` nur mit Zählern.
+- **Abruf** GET `/public/calendar/:token[.ics]` (`public: true`, 120/60 s, Token im `api_log` maskiert): Rechte der **Besitzer*in** (`core.auth.contextForUser`);
+  deaktiviert, gelöscht oder ohne `events.event.view` → 404 wie ein unbekannter Link. Fenster −90 bis +400 Tage. Termine wie `GET /events` (Freigaben, Serien
+  je Vorkommen als eigenes `VEVENT` mit UID `<id>-<datum>@events.<host>`, Absagen fehlen, Änderungen übernommen), Filter Gruppen/Tags (ODER innerhalb, UND
+  zwischen beiden). Aktionen über `ActionsService.listCalendarActions(ctx, window)` (neu in `actions/calendar.ts`): mit `actions.action.view` die sichtbaren,
+  mit `actions.own.view` die mit eigener Anmeldung (Konto oder verknüpfte Mitglieder) – dann **ohne Beschreibung und ohne Link**, aber „Angemeldet: <Namen>“.
+  `text/calendar; charset=utf-8`, `private, max-age=300`; `last_used_at` höchstens alle 10 min. Kategorien = Tags bzw. „Aktion“; Beschreibung mit Link in die App.
+- **UI**: Profil „Kalender-Abo“ und Knopf „Kalender abonnieren“ auf der Terminseite: Liste mit Link, Kopieren, „In Kalender-App öffnen“ (`webcal://`),
+  „Google Kalender“ (`calendar.google.com/calendar/r?cid=`), Menü Bearbeiten / Neuen Link erzeugen / Löschen (Bestätigung), Status „Aktiv“ + letzter Abruf.
+- **Datenschutz**: `onUserDeleted` löscht die Abos der Person, `resetUsers` die fremder Konten, Reset-Bereich `all` umfasst die Tabelle; Datenauskunft
+  `calendarFeeds` ohne Link. Wer den Link hat, sieht die Termine der Person – Hinweis in der UI, Erneuern jederzeit.
+- **Tests**: `tests/unit/events-ical.test.ts`, `tests/integration/events-calendar-feeds.test.ts`.
+- **Grenzen**: Kalender-Apps rufen selbst nur alle paar Stunden ab (Google bis zu 24 h); keine Erinnerungen; Gruppenfilter wirkt nur auf Termine;
+  Google Kalender braucht eine öffentlich erreichbare Adresse (`ORIGIN`).
 
 ## Datenauskunft (#30)
 - `subject-export.ts` (Hook `subjectExport` in `module.ts`): eigene bzw. angelegte Termine (mit Tags), Freigaben an `user:<id>` und `member:<id>` der Person, von ihr geänderte Serien-Vorkommen. Test `tests/integration/privacy-subject-export.test.ts`.

@@ -3,6 +3,7 @@
  * Abruf: `await core.modules.use<ActionsService>('actions', '<aufrufendes Modul>')`.
  * Die Funktionen prüfen KEINE Objektrechte – der Aufrufer verantwortet den Zugriff (z. B. Kasse).
  */
+import type { RequestContext } from '$lib/sdk/types';
 import type {
 	AccountingEntry,
 	AccountingPayee,
@@ -137,7 +138,34 @@ export interface ClosedAccountingDetail extends ClosedAccounting {
 	refund: { totalCents: number; count: number; remainderCents: number; bookedAt: string } | null;
 }
 
+/** Aktion im Kalender-Abo (Modul `events`) */
+export interface CalendarAction {
+	id: string;
+	name: string;
+	/** Nur mit Zugriff auf die Aktion, sonst `null` */
+	description: string | null;
+	location: string | null;
+	/** JJJJ-MM-TT */
+	startsOn: string;
+	endsOn: string | null;
+	/** HH:MM */
+	startsTime: string | null;
+	endsTime: string | null;
+	/** Namen der eigenen angemeldeten Personen (Konto oder verknüpfte Mitglieder) */
+	registered: string[];
+	/** Person darf die Aktion in der App öffnen */
+	canOpen: boolean;
+}
+
 export interface ActionsService {
+	/**
+	 * Aktionen im Zeitraum für das Kalender-Abo: sichtbare (`actions.action.view`) und solche mit eigener
+	 * Anmeldung (`actions.own.view`). Prüft die Rechte von `ctx` selbst (Ausnahme in diesem Vertrag).
+	 */
+	listCalendarActions(
+		ctx: RequestContext,
+		window: { from: string; to: string }
+	): Promise<CalendarAction[]>;
 	/** Aktionen mit übernommenem Beitrag (`fee_applied_at` gesetzt) inkl. Teilnehmender */
 	listReceivableSources(query?: { actionIds?: string[] }): Promise<ReceivableSource[]>;
 	/** Kurzdaten von Aktionen (Anzeige, Auswahl); `search` im Namen, max. 200 */
@@ -168,7 +196,7 @@ export interface ActionsService {
 		actionId: string,
 		interimId: string,
 		withBank: boolean,
-		auditCtx: import('$lib/sdk/types').RequestContext
+		auditCtx: RequestContext
 	): Promise<{ data: Uint8Array; fileName: string }>;
 	/** Einzelbeträge gebuchter Rückzahlungen des Überschusses */
 	listRefundItems(): Promise<RefundItemSource[]>;
@@ -208,6 +236,6 @@ export interface ActionsService {
 	accountingReportPdf(
 		actionId: string,
 		withBank: boolean,
-		auditCtx: import('$lib/sdk/types').RequestContext
+		auditCtx: RequestContext
 	): Promise<{ data: Uint8Array; fileName: string }>;
 }
