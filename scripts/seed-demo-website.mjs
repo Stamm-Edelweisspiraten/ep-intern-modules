@@ -30,7 +30,8 @@ const SCOPES = [
 	'galleries.website.read',
 	'offices.website.read',
 	'members.website.read',
-	'website.content.read'
+	'website.content.read',
+	'messages.website.contact'
 ];
 const ENV_FILE = fileURLToPath(new URL('../website/.env', import.meta.url));
 
@@ -513,7 +514,18 @@ for (const k of keys) {
 		if (r.status < 400) console.log(`Alten Key „${KEY_NAME}“ (${k.prefix}…) widerrufen.`);
 	}
 }
-const scopes = contentEnabled ? SCOPES : SCOPES.filter((x) => x !== 'website.content.read');
+// Kontaktformular → Posteingang: nur mit aktivem Modul `messages` (hängt von `members` ab)
+const contactEnabled = isEnabled('messages');
+if (!contactEnabled) {
+	console.log(
+		'Modul „Nachrichten“ ist nicht aktiv – Kontaktformular fällt auf SMTP bzw. den Hinweis zurück.'
+	);
+}
+const scopes = SCOPES.filter(
+	(x) =>
+		(contentEnabled || x !== 'website.content.read') &&
+		(contactEnabled || x !== 'messages.website.contact')
+);
 const created = await call('POST', '/api-keys', { name: KEY_NAME, scopes });
 const apiKey = created.data?.key;
 if (!apiKey) {

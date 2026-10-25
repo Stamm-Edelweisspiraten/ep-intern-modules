@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NOTIFY_NEW, NOTIFY_REPLIED, notificationScopesFor } from './inbox-notify.service';
 import { defineModule } from '$lib/sdk/server';
+import { contactEndpoints } from './contact.endpoints';
 import { cleanup, resumeDeliveries } from './delivery.service';
 import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
 import { inboxEndpoints } from './inbox.endpoints';
@@ -18,6 +19,7 @@ import {
 	PERM_SEND,
 	PERM_SETTINGS,
 	PERM_VIEW_ALL,
+	PERM_WEBSITE_CONTACT,
 	LAYOUTS,
 	REPLY_TO_MODES,
 	SETTING_KEYS
@@ -43,10 +45,17 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.3.0',
+		version: '1.4.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
-		permissions: [PERM_SEND, PERM_VIEW_ALL, PERM_SETTINGS, PERM_INBOX_STAMM, PERM_INBOX_MANAGE],
+		permissions: [
+			PERM_SEND,
+			PERM_VIEW_ALL,
+			PERM_SETTINGS,
+			PERM_INBOX_STAMM,
+			PERM_INBOX_MANAGE,
+			PERM_WEBSITE_CONTACT
+		],
 		permissionDescriptions: {
 			[PERM_SEND]:
 				'Nachrichten an Mitglieder und Gruppen senden (Gruppenleitungen nur an die Mitglieder ihrer Gruppen), die eigenen gesendeten Nachrichten ansehen und die Postfächer der eigenen Absenderadressen lesen (persönlich, Ämter, geleitete Gruppen)',
@@ -56,7 +65,9 @@ export default defineModule({
 			[PERM_INBOX_STAMM]:
 				'Das Postfach der Stamm-Adresse lesen und daraus antworten (zusätzlich zum Senden-Recht)',
 			[PERM_INBOX_MANAGE]:
-				'Nicht zugeordnete Mails des Posteingangs sehen, einem Postfach zuordnen oder löschen und den Abruf auslösen'
+				'Nicht zugeordnete Mails des Posteingangs sehen, einem Postfach zuordnen oder löschen und den Abruf auslösen',
+			[PERM_WEBSITE_CONTACT]:
+				'Nur Website-Endpunkt: Anfragen aus dem Kontaktformular der Stammeswebsite in das Stamm-Postfach legen (Scope für den API-Key der Website)'
 		},
 		navigation: [
 			{
@@ -238,5 +249,5 @@ export default defineModule({
 	navBadge: { count: unreadTotal },
 	onUserDeleted,
 	subjectExport,
-	endpoints: [...messageEndpoints, ...inboxEndpoints]
+	endpoints: [...contactEndpoints, ...messageEndpoints, ...inboxEndpoints]
 });

@@ -15,6 +15,37 @@ export const PERM_SETTINGS = 'messages.settings.manage';
 export const PERM_INBOX_STAMM = 'messages.inbox.stamm';
 /** Nicht zugeordnete Mails sehen/zuordnen/löschen, Abruf auslösen und testen */
 export const PERM_INBOX_MANAGE = 'messages.inbox.manage';
+/** Nur Website-Endpunkt Kontaktformular – Scope für den API-Key der Stammeswebsite */
+export const PERM_WEBSITE_CONTACT = 'messages.website.contact';
+
+/** Kontaktformular der Website (`POST /website/contact`): Grenzen wie auf der Website */
+export const CONTACT_LIMITS = { name: 100, email: 254, phone: 40, message: 5000 } as const;
+// eslint-disable-next-line no-control-regex
+const ONE_LINE = /^[^\u0000-\u001f\u007f]*$/;
+
+export const contactInput = z
+	.object({
+		name: z.string().trim().min(1).max(CONTACT_LIMITS.name).regex(ONE_LINE, 'Ungültige Zeichen'),
+		email: z.email().max(CONTACT_LIMITS.email).toLowerCase(),
+		phone: z
+			.string()
+			.trim()
+			.max(CONTACT_LIMITS.phone)
+			.regex(/^[0-9+()/ .-]*$/, 'Ungültige Telefonnummer')
+			.optional()
+			.default(''),
+		message: z.string().trim().min(1).max(CONTACT_LIMITS.message),
+		pow: z
+			.object({
+				salt: z.string().max(64),
+				challenge: z.string().max(64),
+				number: z.number().int().min(0),
+				signature: z.string().max(128)
+			})
+			.strict()
+	})
+	.strict();
+export type ContactInput = z.infer<typeof contactInput>;
 
 export const SETTING_KEYS = {
 	domain: 'messages.domain',

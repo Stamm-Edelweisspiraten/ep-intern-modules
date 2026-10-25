@@ -2,7 +2,7 @@
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.3.0,
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.4.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
 
 ## Dateien (`src/lib/modules/messages/`)
@@ -39,6 +39,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `messages.settings.manage` | Einstellungen ändern (Schreibrecht der Modul-Einstellungen), IMAP-Verbindung testen |
 | `messages.inbox.stamm` | Postfach der Stamm-Adresse lesen (zusätzlich zu `send`) |
 | `messages.inbox.manage` | „Nicht zugeordnet“ sehen/zuordnen/löschen, „Jetzt abrufen“ |
+| `messages.website.contact` | **nur** Website-Endpunkte des Kontaktformulars – Scope für den API-Key der Stammeswebsite |
 
 Keine `messages.storage.*`-Rechte: Anhänge liegen im Core-Storage und werden nur vom System (Versand/Aufräumen) gelesen, nie direkt ausgeliefert.
 
@@ -213,6 +214,20 @@ Postfächer; „Spam“/„Kein Spam“ darf **jede*r mit Zugriff** auf das Post
 - **Tests**: `tests/unit/messages-spam.test.ts`, `tests/integration/messages-spam.test.ts`, Upgrade `messages-spam-migration.test.ts`.
 - **Grenzen**: keine externen Blocklisten/rspamd (bewusst, keine Daten an Dritte); bekannte Mitglieder-Adressen nur der ersten 1000 Mitglieder;
   Phishing ohne die genannten Merkmale wird nicht erkannt; Schwelle/Punkte nur im Code einstellbar.
+
+## Kontaktformular der Website (2026-10-25, v1.4.0, keine Migration)
+Nutzerentscheidung: Anfragen von der Stammeswebsite landen **im Posteingang „Stamm“** (statt SMTP an eine feste Adresse); Spam-Schutz
+**Proof-of-Work (ALTCHA-artig, selbst gebaut, keine Dritten) + Zeitfalle + Formular-Token**, dazu Honeypot und Rate-Limits der Website.
+- Dateien: `contact-pow.ts` (rein: `createChallenge`, `verifySolution`, `contactDedupeKey`; `POW_MAX_NUMBER` 100 000, `MIN_FILL_MS` 3 s,
+  `MAX_AGE_MS` 2 h), `contact.service.ts` (`contactChallenge`, `receiveContact`, `contactText`), `contact.endpoints.ts`; Zod `contactInput` in `schemas.ts`.
+- **Aufgabe**: `salt = <24 hex>.<Ausstellungszeit ms>`, `challenge = SHA-256(salt + n)`, Signatur = `core.crypto.forModule('messages').hash`
+  (HMAC, kein gespeicherter Hash → kein `backup.rehash` nötig). Prüfung: Form, Signatur (zeitkonstant), Lösung, ≥ 3 s, ≤ 2 h.
+  **Einmalig** über `dedupe_key = contact:<challenge>` (UNIQUE je Postfach) → zweite Einlösung **409** (die Website wertet 409 als „schon angekommen“).
+- **Ablage**: wie eine eingegangene Mail in `inbox_messages` (`stamm`; ohne `core.organization.email` → `unassigned`, Grund `unknown`), Absender/Reply-To
+  = eingegebene Adresse (klein), Betreff „Kontaktanfrage über die Website“, Text mit Name/E-Mail/Telefon und Hinweis „nicht geprüft“, kein Spam-Flag.
+  Danach Audit `messages.inbox.contact-received` (`{ mailbox }`, keine Daten) und Benachrichtigung `inbox-new` an die Berechtigten des Postfachs.
+- API: GET `/website/contact/challenge` (300/60 s), POST `/website/contact` (60/3600 s, 201 `{ received: true }`, 422 mit `details.pow`).
+- Tests: `tests/unit/messages-contact.test.ts`, `tests/integration/messages-contact.test.ts`, Website-Solver `tests/unit/website-pow.test.ts`.
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.
