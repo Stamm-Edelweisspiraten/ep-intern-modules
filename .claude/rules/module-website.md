@@ -72,6 +72,10 @@ Keine `website.storage.*`-Rechte: Bilder werden nach der Objektprüfung mit dem 
   Abhängigkeit `@tiptap/extension-image` 3.32.0 (fest). `setEditable` ohne `update`-Ereignis (sonst galt ein frisch geladener Text als geändert).
 - Icon `globe`; `galleries` bietet `GalleryRefsService` (`searchPublicGalleryRefs`, `publicGalleryRefs`) über `provides`.
 
+## Benachrichtigungen (2026-10-25, `notify.ts`)
+- `post-invited` (neu hinzugekommene Mitschreib-Freigaben), `post-status` (veröffentlicht/geplant/zurückgezogen durch eine andere Person → Autor*in +
+  Mitschreibende mit `edit`), Empfänger mit `website.post.write`. Kein eigener Test.
+
 ## Tests
 `tests/integration/website-module.test.ts` (FAQ-Startdaten/Bereinigung/Reihenfolge, Banner-Zeitfenster und Website-Filter, Slugs, Zugriffsmatrix,
 Mitschreiben, Bild-Bereinigung und Aufräumen mit Fake-Storage, geplantes Veröffentlichen, Website-API gegen Schemas, Scope-Key 403 intern, Audit

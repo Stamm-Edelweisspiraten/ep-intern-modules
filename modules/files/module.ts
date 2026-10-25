@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NOTIFY_FILE_SHARED, NOTIFY_LINK_UPLOAD } from './schemas';
 import { defineModule } from '$lib/sdk/server';
 import { linksEndpoints } from './links.endpoints';
 import { metaEndpoints } from './meta.endpoints';
@@ -104,6 +105,25 @@ export default defineModule({
 		}
 	],
 	search: filesSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_FILE_SHARED,
+				label: 'Ordner oder Datei mit mir geteilt',
+				description:
+					'Wenn jemand etwas mit dir, deiner Gruppe, deinem Mitglied oder deiner Rolle teilt.',
+				digest: true,
+				permission: PERMISSIONS.view
+			},
+			{
+				key: NOTIFY_LINK_UPLOAD,
+				label: 'Neue Dateien über einen Upload-Link',
+				description: 'Wenn jemand über einen öffentlichen Link in deinen Ordner hochlädt.',
+				digest: true,
+				permission: PERMISSIONS.view
+			}
+		]
+	},
 	// Reihenfolge: erster Treffer gewinnt (öffentliche und feste Pfade vor `:id`)
 	endpoints: [
 		...linksEndpoints,

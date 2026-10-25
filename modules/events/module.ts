@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NOTIFY_EVENT_CANCELLED, NOTIFY_EVENT_CHANGED, NOTIFY_EVENT_NEW } from './schemas';
 import { defineModule } from '$lib/sdk/server';
 import { eventsSearch } from './search';
 import { eventEndpoints } from './events.endpoints';
@@ -73,6 +74,33 @@ export default defineModule({
 		{ name: '0004_calendar_feeds', sql: m0004 }
 	],
 	search: eventsSearch,
+	notifications: {
+		// Standard aus: wer will, schaltet es im Profil ein (sonst Mail an alle Eltern bei jedem Termin)
+		types: [
+			{
+				key: NOTIFY_EVENT_NEW,
+				label: 'Neuer Termin',
+				description: 'Wenn ein Termin angelegt oder für dich sichtbar wird.',
+				defaultChannel: 'off',
+				digest: true,
+				permission: 'events.event.view'
+			},
+			{
+				key: NOTIFY_EVENT_CHANGED,
+				label: 'Termin verschoben',
+				description: 'Nur bei geändertem Datum, Uhrzeit oder Ort.',
+				defaultChannel: 'off',
+				digest: true,
+				permission: 'events.event.view'
+			},
+			{
+				key: NOTIFY_EVENT_CANCELLED,
+				label: 'Termin abgesagt',
+				defaultChannel: 'off',
+				permission: 'events.event.view'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,

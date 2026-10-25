@@ -8,6 +8,11 @@ import type { FormDefinition } from '$lib/forms/types';
 export const MODULE_ID = 'actions';
 /** Benachrichtigung (core.notifications): neue Auslagen über den Kosten-Link an die Eigentümer*in */
 export const NOTIFY_EXPENSE_SUBMITTED = 'expense-submitted';
+/** Benachrichtigungen (core.notifications): neue Anmeldung, eigene Anmeldung, Freigabe, Abrechnung */
+export const NOTIFY_REGISTRATION_NEW = 'registration-new';
+export const NOTIFY_REGISTRATION_OWN = 'registration-own';
+export const NOTIFY_ACTION_SHARED = 'action-shared';
+export const NOTIFY_ACCOUNTING = 'accounting';
 
 // --- Konstanten -------------------------------------------------------------
 

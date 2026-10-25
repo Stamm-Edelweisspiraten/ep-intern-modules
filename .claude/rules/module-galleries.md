@@ -141,6 +141,9 @@ Audit: `galleries.gallery.created|updated|deleted|cover_changed|published|unpubl
 - Löschen (Galerie, Bild, Sammelaktion) nach der Transaktion über `removeFiles` → `core.storage.removeMany` (#24): S3 `DeleteObjects` in Paketen
   à 1000, Sammel-Löschung der Metadaten, **ein** Audit-Eintrag `core.storage.files_deleted` (statt einem je Variante). Test `storage-batch-images.test.ts`.
 
+## Benachrichtigungen (2026-10-25, `notify.ts`)
+- `gallery-shared`: neu hinzugekommene Freigaben (ohne „ganzer Stamm“) beim Anlegen/Speichern, Empfänger über `principalUserIds` mit `galleries.gallery.view`.
+
 ## Tests
 - Unit: `tests/unit/images.test.ts` (sharp-erzeugte Testbilder: EXIF-Drehung, Metadaten/GPS weg, Größen der Varianten,
   PNG mit Transparenz, falsches Format/Pixelgrenze, AVIF/GIF; HEIC abgelehnt), `galleries-schemas.test.ts`, `galleries-reset.test.ts`

@@ -242,6 +242,10 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
   **widerrufen**, jede fremde Ablage wandert in einen neuen Ordner **„Übernommen“** („Übernommen (2)“ …) in der Wurzel der behaltenen Person,
   Benutzer-Freigaben fremder Personen weg, `owner_id`/`created_by`/`deleted_by` umschreiben.
 
+## Benachrichtigungen (2026-10-25, `notify.ts`)
+- `file-shared`: neu hinzugekommene Freigaben (ohne „ganzer Stamm“) in `putShares`; `link-upload`: Dateien über einen öffentlichen Upload-Link → Eigentümer*in
+  des Ordners (eine Nachricht je Upload-Anfrage, mit optionalem Namen der Person). Beide mit „Täglich“ wählbar.
+
 ## Tests und Demo
 Unit `tests/unit/files-*.test.ts` (`files-upload-queue`, `files-names`, `files-schemas`, `files-helpers` inkl. `breakableName`/`folderMeta`), `icon-data.test.ts`;
 **neu** `files-style-quota.test.ts` (Aussehen inkl. Zugriff/Validierung/öffentlicher Link/Audit, Ordnergröße, Kontingent je Person inkl. Upload 413, Meta, Löschen); Integration `tests/integration/files.test.ts`

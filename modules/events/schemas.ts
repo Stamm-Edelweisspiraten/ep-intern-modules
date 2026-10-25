@@ -8,6 +8,10 @@ import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 import { daysBetween, minGapDays } from './recurrence';
 
 export const MODULE_ID = 'events';
+/** Benachrichtigungen (core.notifications): neuer, geänderter, abgesagter Termin */
+export const NOTIFY_EVENT_NEW = 'event-new';
+export const NOTIFY_EVENT_CHANGED = 'event-changed';
+export const NOTIFY_EVENT_CANCELLED = 'event-cancelled';
 
 /** Eigenes Recht zum Veröffentlichen auf der Stammeswebsite (#67, 01b-06) */
 export const PUBLISH_PERMISSION = 'events.event.publish';

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { notifyShared } from './notify';
 import {
 	type ApiEndpoint,
 	core,
@@ -333,14 +334,29 @@ export const actionEndpoints: ApiEndpoint[] = [
 			const users = await resolveUsers(ctx, [params.userId]);
 			const target = users.get(params.userId);
 			if (!target) throw errors.validation({ userId: 'Unbekannter oder inaktiver Benutzer' });
-			await moduleDb(MODULE).transaction(async (tx) => {
+			const shared = await moduleDb(MODULE).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, 'share');
+				const [prev] = await rowsOf(
+					tx,
+					sql`SELECT s.level, a.name FROM actions a
+						LEFT JOIN action_shares s ON s.action_id = a.id AND s.user_id = ${params.userId}
+						WHERE a.id = ${params.id}`
+				);
 				await tx.execute(
 					sql`INSERT INTO action_shares (action_id, user_id, level, created_by)
 						VALUES (${params.id}, ${params.userId}, ${body.level}, ${ctx.userId})
 						ON CONFLICT (action_id, user_id) DO UPDATE SET level = EXCLUDED.level`
 				);
+				return { changed: prev?.level !== body.level, name: String(prev?.name ?? 'Aktion') };
 			});
+			if (shared.changed) {
+				await notifyShared(ctx, {
+					actionId: params.id,
+					actionName: shared.name,
+					userId: params.userId,
+					level: body.level
+				});
+			}
 			const entry: ShareEntry = { ...target, level: body.level };
 			await core.audit.logFromContext(ctx, 'actions.action.shared', {
 				target: params.id,

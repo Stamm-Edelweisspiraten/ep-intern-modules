@@ -3,6 +3,7 @@
  * Autor*in und `edit`-Freigaben („Mitschreiben“) bearbeiten, `website.post.publish` sieht/bearbeitet alle und
  * veröffentlicht, zieht zurück und löscht. Fremde Beiträge → 404. Core-Dienste nie in der Transaktion.
  */
+import { notifyPostInvited, notifyPostStatus } from './notify';
 import { sql } from 'drizzle-orm';
 import {
 	core,
@@ -371,10 +372,12 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 				);
 				return detailOf(ctx, tx, params.id, keys);
 			});
+			const scheduled = !!body.publishedAt && Date.parse(body.publishedAt) > Date.now();
 			await core.audit.logFromContext(ctx, 'website.post.published', {
 				target: params.id,
-				metadata: { scheduled: !!body.publishedAt && Date.parse(body.publishedAt) > Date.now() }
+				metadata: { scheduled }
 			});
+			await notifyPostStatus(ctx, params.id, scheduled ? 'scheduled' : 'published');
 			return buildDetail(ctx, data);
 		}
 	}),
@@ -397,6 +400,7 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 				return detailOf(ctx, tx, params.id, keys);
 			});
 			await core.audit.logFromContext(ctx, 'website.post.unpublished', { target: params.id });
+			await notifyPostStatus(ctx, params.id, 'unpublished');
 			return buildDetail(ctx, data);
 		}
 	}),
@@ -457,6 +461,7 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 				target: params.id,
 				metadata: { shares: body.shares.length }
 			});
+			await notifyPostInvited(ctx, params.id, stored, body.shares);
 			return buildDetail(ctx, data);
 		}
 	}),

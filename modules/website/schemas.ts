@@ -6,6 +6,9 @@ import { z } from 'zod';
 import { SLUG_PATTERN } from '$lib/sdk/slug';
 
 export const MODULE_ID = 'website';
+/** Benachrichtigungen (core.notifications): zum Mitschreiben eingeladen, Beitrag veröffentlicht/zurückgezogen */
+export const NOTIFY_POST_INVITED = 'post-invited';
+export const NOTIFY_POST_STATUS = 'post-status';
 
 export const PERM = {
 	contentManage: 'website.content.manage',

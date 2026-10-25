@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { notifyGalleryShared } from './notify';
 import {
 	type ApiEndpoint,
 	core,
@@ -205,6 +206,12 @@ export const galleriesEndpoints = [
 			if (publishing) {
 				await core.audit.logFromContext(ctx, 'galleries.gallery.published', { target: id });
 			}
+			await notifyGalleryShared(ctx, {
+				galleryId: id,
+				title: body.title,
+				before: [],
+				after: body.shares
+			});
 			return detail;
 		}
 	}),
@@ -314,6 +321,12 @@ export const galleriesEndpoints = [
 					{ target: params.id }
 				);
 			}
+			await notifyGalleryShared(ctx, {
+				galleryId: params.id,
+				title: body.title,
+				before: stored.shares,
+				after: body.shares
+			});
 			return detail;
 		}
 	}),

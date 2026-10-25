@@ -4,6 +4,7 @@
  * Muster: `galleries` (`principalKeysFor`, `validatePrincipals`, `describePrincipals`, `searchPrincipals`
  * aus `$lib/sdk/server`, alle VOR bzw. NACH der Transaktion).
  */
+import { notifyNodeShared } from './notify';
 import { sql } from 'drizzle-orm';
 import {
 	core,
@@ -164,15 +165,23 @@ export async function putShares(
 		}
 	);
 	// 3. Liste ersetzen (Zugriff erneut prüfen, falls sich zwischenzeitlich etwas geändert hat)
-	const raw = await mdb().transaction(async (tx) => {
-		assertCanManageShares(ctx, await requireNode(tx, ctx, nodeId, keys, 'edit'));
+	const { raw, node } = await mdb().transaction(async (tx) => {
+		const access = await requireNode(tx, ctx, nodeId, keys, 'edit');
+		assertCanManageShares(ctx, access);
 		await replaceObjectShares(tx, ctx, NODE_SHARES, nodeId, shares);
 		await tx.execute(sql`UPDATE nodes SET updated_at = now() WHERE id = ${nodeId}`);
-		return loadRawShares(tx, ctx, nodeId, keys);
+		return { raw: await loadRawShares(tx, ctx, nodeId, keys), node: access.node };
 	});
 	await core.audit.logFromContext(ctx, 'files.share.updated', {
 		target: nodeId,
 		metadata: { nodeId, count: shares.length }
+	});
+	await notifyNodeShared(ctx, {
+		nodeId,
+		name: node.name,
+		kind: node.kind === 'folder' ? 'folder' : 'file',
+		before: stored,
+		after: shares
 	});
 	return describeRaw(ctx, raw);
 }

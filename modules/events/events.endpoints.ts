@@ -1,5 +1,12 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
+	eventSnapshot,
+	notifyEventCreated,
+	notifyEventDeleted,
+	notifyEventUpdated,
+	notifyOccurrence
+} from './notify';
+import {
 	type ApiEndpoint,
 	core,
 	defineEndpoint,
@@ -212,6 +219,10 @@ export const eventEndpoints = [
 					fields: Object.keys(body.override ?? {}).length
 				}
 			});
+			await notifyOccurrence(ctx, params.id, params.date, {
+				cancelled: body.cancelled,
+				override: (body.override ?? null) as Record<string, unknown> | null
+			});
 			return detail;
 		}
 	}),
@@ -297,6 +308,7 @@ export const eventEndpoints = [
 			if (body.onWebsite) {
 				await core.audit.logFromContext(ctx, 'events.event.published', { target: id });
 			}
+			await notifyEventCreated(ctx, id);
 			return detail;
 		}
 	}),
@@ -330,6 +342,7 @@ export const eventEndpoints = [
 			});
 			await validateGroupIds(ctx, body.groupIds, new Set(stored.groupIds));
 
+			const before = await eventSnapshot(params.id);
 			const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
 				// entfernt auch Ausnahmen, die kein Vorkommen mehr sind
@@ -354,6 +367,7 @@ export const eventEndpoints = [
 					{ target: params.id }
 				);
 			}
+			await notifyEventUpdated(ctx, before, params.id);
 			return detail;
 		}
 	}),
@@ -367,11 +381,17 @@ export const eventEndpoints = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const keys = await principalKeysFor(ctx, MODULE_ID);
+			// Empfänger der Absage vor dem Löschen ermitteln (nur mit Bearbeiten-Zugriff)
+			await moduleDb(MODULE_ID).transaction((tx) =>
+				requireAccess(tx, ctx, params.id, keys, 'edit')
+			);
+			const before = await eventSnapshot(params.id);
 			await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, params.id, keys, 'edit');
 				await tx.execute(sql`DELETE FROM events WHERE id = ${params.id}`);
 			});
 			await core.audit.logFromContext(ctx, 'events.event.deleted', { target: params.id });
+			await notifyEventDeleted(ctx, before);
 			return { id: params.id, deleted: true };
 		}
 	})

@@ -92,6 +92,10 @@ Amt verknüpfen (Modul `offices`), dann erhalten die Inhaber*innen die Rechte. K
 `GET/POST /supplier-orders`, `GET/PATCH /supplier-orders/:id`, `POST …/:id/receive|cancel-rest|close|reopen`, `PUT/DELETE …/:id/invoice`.
 Audit `orders.article.*`, `orders.order.created|cancelled|handed-out`, `orders.stock.corrected`, `orders.supplier-order.*` – nur IDs/Zähler/Beträge.
 
+## Benachrichtigungen an Bestellende (2026-10-25, `customer-notify.ts`)
+- `my-order`: angelegt (wenn jemand anderes bestellt), ausgegeben, (teilweise) storniert → bestellendes Konto + mit dem Mitglied verknüpfte Konten
+  (`listLinkedUserIds`), nur mit `orders.order.view`, nie die handelnde Person. Nur manuell geprüft über den Typcheck (kein eigener Test).
+
 ## Tests und Demo
 Unit `tests/unit/orders-stock.test.ts`; Integration `tests/integration/orders-articles.test.ts` (Fake-Storage), `orders.test.ts`, `orders-treasury.test.ts`,
 `treasury-orders.test.ts`; E2E `tests/e2e/orders.spec.ts` (Artikel anlegen, „Bestellung anlegen“ für ein Mitglied + Ausgabe, Einkauf mit Teillieferung).

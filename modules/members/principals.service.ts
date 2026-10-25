@@ -163,10 +163,34 @@ async function searchMemberPrincipals(
 	return searchMembers(query);
 }
 
+/** Siehe `PrincipalProvider.userIdsForPrincipals` */
+async function userIdsForPrincipals(input: {
+	memberIds: string[];
+	groupIds: string[];
+}): Promise<string[]> {
+	const memberIds = [...new Set(input.memberIds)].slice(0, 2000);
+	const groupIds = [...new Set(input.groupIds)].slice(0, 50);
+	if (!memberIds.length && !groupIds.length) return [];
+	const found = await moduleDb(MODULE_ID).transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT DISTINCT l.user_id FROM member_user_links l
+				JOIN members m ON m.id = l.member_id
+				WHERE m.anonymized_at IS NULL AND ${ACTIVE} AND (
+					l.member_id IN (${inList(memberIds)})
+					OR l.member_id IN (SELECT member_id FROM member_groups WHERE group_id IN (${inList(groupIds)}))
+					OR l.member_id IN (SELECT member_id FROM group_leaders WHERE group_id IN (${inList(groupIds)}))
+				)`
+		)
+	);
+	return found.map((r) => String(r.user_id));
+}
+
 export const principalsService = {
 	listGroups,
 	principalIdsForUser,
 	searchMembers,
-	searchMemberPrincipals
+	searchMemberPrincipals,
+	userIdsForPrincipals
 } satisfies PrincipalProvider &
 	Pick<MembersService, 'listGroups' | 'principalIdsForUser' | 'searchMembers'>;

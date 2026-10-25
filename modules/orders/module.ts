@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { NOTIFY_MY_ORDER } from './schemas';
 import { articlesEndpoints } from './articles.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { ordersEndpoints } from './orders.endpoints';
@@ -115,6 +116,17 @@ export default defineModule({
 		}
 	],
 	search: ordersSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_MY_ORDER,
+				label: 'Meine Bestellung: angelegt, ausgegeben, storniert',
+				description:
+					'Für Bestellungen deiner Mitglieder, wenn jemand anderes sie anlegt oder bearbeitet.',
+				permission: PERMISSIONS.view
+			}
+		]
+	},
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade vor `:id`)
 	endpoints: [
 		...imagesEndpoints,

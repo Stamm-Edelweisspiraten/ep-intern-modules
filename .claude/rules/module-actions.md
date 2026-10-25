@@ -284,6 +284,16 @@ Anmeldung, Teilnehmende (n), Abrechnung. Abrechnung: Summenkarten, Buchungstabel
 `actions.accounting.entry_created|entry_updated|entry_deleted|receipt_uploaded|receipt_deleted|payee_created|payee_updated|payee_deleted|iban_viewed|reimbursed|reimbursement_reverted|exported|closed|reopened|report|refund_booked|refund_reverted`.
 Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlung (Test prüft das).
 
+## Benachrichtigungen (2026-10-25, `notify.ts`, core.notifications)
+| Typ | Auslöser | Empfänger | Standard |
+|---|---|---|---|
+| `registration-new` | Anmeldung über den Anmeldelink (nach Double-Opt-in bzw. mit Mitglied) | Eigentümer*in + Bearbeiten-Freigaben (mit `actions.action.view`) | E-Mail, „Täglich“ wählbar |
+| `registration-own` | Anmeldung mit verknüpftem Mitglied | anmeldendes Konto + weitere mit dem Mitglied verknüpfte Konten | Push (`pushOnly`; Bestätigungsmail bleibt) |
+| `action-shared` | `PUT …/shares/:userId` (nur neu oder Stufe geändert) | die Person | E-Mail |
+| `accounting` | Abschluss, Zwischenabrechnung, Wieder-Öffnen | Eigentümer*in + Bearbeitende | E-Mail |
+| `expense-submitted` | Kosten-Link | Eigentümer*in | E-Mail |
+Nie an die handelnde Person. Test `tests/integration/notifications-modules.test.ts`.
+
 ## Tests
 Integration: `actions.test.ts` (Zugriffsmatrix), `actions-health-privacy` (Gesundheitsdaten), `actions-calculation`, `actions-form` (+`public-endpoints.test.ts`),
 `actions-accounting`, `actions-payouts` (Empfänger, Auszahlung, Abschluss, PDF), `actions-refund`, `actions-export-import`, `actions-past` (isPast, vorab erstattete Auslagen), `actions-past-fixes` (Rücknahme durch die Kasse, PUT-422, Archiv).

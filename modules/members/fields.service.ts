@@ -333,6 +333,7 @@ export const membersService: Omit<
 	| 'principalIdsForUser'
 	| 'searchMembers'
 	| 'searchMemberPrincipals'
+	| 'userIdsForPrincipals'
 	| 'listGroupMemberIds'
 	| 'listLedGroups'
 	| 'getOwnMemberName'

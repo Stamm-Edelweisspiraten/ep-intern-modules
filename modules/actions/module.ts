@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
-import { NOTIFY_EXPENSE_SUBMITTED } from './schemas';
+import {
+	NOTIFY_ACCOUNTING,
+	NOTIFY_ACTION_SHARED,
+	NOTIFY_EXPENSE_SUBMITTED,
+	NOTIFY_REGISTRATION_NEW,
+	NOTIFY_REGISTRATION_OWN
+} from './schemas';
 import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
 import { myEndpoints } from './my.endpoints';
@@ -122,6 +128,33 @@ export default defineModule({
 				label: 'Neue Auslagen über den Kosten-Link',
 				description: 'An die Eigentümer*in der Aktion, sobald jemand Auslagen einreicht.',
 				anyPermission: ['actions.action.create', 'actions.action.edit-all']
+			},
+			{
+				key: NOTIFY_REGISTRATION_NEW,
+				label: 'Neue Anmeldung über den Anmeldelink',
+				description: 'An Eigentümer*in und Personen mit Bearbeiten-Freigabe.',
+				digest: true,
+				permission: 'actions.action.view'
+			},
+			{
+				key: NOTIFY_REGISTRATION_OWN,
+				label: 'Anmeldung eingegangen (Push)',
+				description:
+					'Wenn du jemanden aus deinen Mitgliedern angemeldet hast. Die Bestätigung kommt immer per E-Mail.',
+				pushOnly: true,
+				defaultChannel: 'push',
+				permission: 'actions.own.view'
+			},
+			{
+				key: NOTIFY_ACTION_SHARED,
+				label: 'Aktion mit mir geteilt',
+				permission: 'actions.action.view'
+			},
+			{
+				key: NOTIFY_ACCOUNTING,
+				label: 'Abrechnung abgeschlossen, zwischenabgerechnet oder wieder geöffnet',
+				description: 'An Eigentümer*in und Bearbeitende, wenn eine andere Person das tut.',
+				permission: 'actions.action.view'
 			}
 		]
 	},

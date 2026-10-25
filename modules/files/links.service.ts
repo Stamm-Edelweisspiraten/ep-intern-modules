@@ -23,6 +23,7 @@
  * Ablaufdatum: gültig bis einschließlich `expires_on`, verglichen mit „heute“ in Europe/Berlin
  * (`todayBerlin`, nicht `CURRENT_DATE` der Datenbank, die in UTC läuft; beim Anlegen und Abruf dieselbe Quelle).
  */
+import { notifyLinkUpload } from './notify';
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { sql } from 'drizzle-orm';
@@ -807,6 +808,13 @@ export async function publicUpload(
 		}
 	} finally {
 		await auditUpload(ctx, link, uploaded.length, bytes);
+		await notifyLinkUpload(ctx, {
+			ownerId,
+			folderId: node.id,
+			folderName: node.name,
+			count: uploaded.length,
+			uploader: body.name ?? null
+		});
 	}
 	return { uploaded };
 }

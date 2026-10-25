@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'galleries';
+/** Benachrichtigung (core.notifications): Galerie mit mir geteilt */
+export const NOTIFY_GALLERY_SHARED = 'gallery-shared';
 
 /** Recht zum Veröffentlichen (Sichtbarkeit „öffentlich“ = Stammeswebsite), #67 01b-06 */
 export const PUBLISH_PERMISSION = 'galleries.gallery.publish';

@@ -7,6 +7,8 @@ import { isRealDate } from '$lib/sdk/dates';
 
 export const MODULE_ID = 'orders';
 export const BASE_PATH = '/modules/orders';
+/** Benachrichtigung (core.notifications): eigene Bestellung angelegt/ausgegeben/storniert */
+export const NOTIFY_MY_ORDER = 'my-order';
 
 /** Rolle mit allen Verwaltungsrechten (per `defaultRoleGrants`, im Amt „Kämmerer*in“ verknüpfen) */
 export const MANAGER_ROLE_NAME = 'Kämmerer*in';

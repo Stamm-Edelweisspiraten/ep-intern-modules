@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { NOTIFY_GALLERY_SHARED } from './schemas';
 import { galleriesSearch } from './search';
 import { galleriesEndpoints } from './galleries.endpoints';
 import { imagesEndpoints } from './images.endpoints';
@@ -61,6 +62,18 @@ export default defineModule({
 	/** Verweise auf öffentliche Galerien (z. B. Blog-Beiträge im Modul `website`) */
 	provides: galleryRefsService satisfies GalleryRefsService,
 	search: galleriesSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_GALLERY_SHARED,
+				label: 'Galerie mit mir geteilt',
+				description:
+					'Wenn eine Galerie mit dir, deiner Gruppe, deinem Mitglied oder deiner Rolle geteilt wird.',
+				digest: true,
+				permission: 'galleries.gallery.view'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,

@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { NOTIFY_POST_INVITED, NOTIFY_POST_STATUS } from './schemas';
 import { contentEndpoints } from './content.endpoints';
 import { postsEndpoints } from './posts.endpoints';
 import { websiteEndpoints } from './website.endpoints';
@@ -43,6 +44,21 @@ export default defineModule({
 	},
 	migrations: [{ name: '0001_init', sql: m0001 }],
 	search: websiteSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_POST_INVITED,
+				label: 'Zum Mitschreiben an einem Beitrag eingeladen',
+				permission: 'website.post.write'
+			},
+			{
+				key: NOTIFY_POST_STATUS,
+				label: 'Mein Beitrag veröffentlicht oder zurückgezogen',
+				description: 'Wenn eine andere Person deinen Beitrag veröffentlicht, einplant oder zurückzieht.',
+				permission: 'website.post.write'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,

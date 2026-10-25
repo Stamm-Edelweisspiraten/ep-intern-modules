@@ -7,6 +7,9 @@ import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalInfo } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'files';
+/** Benachrichtigungen (core.notifications): mit mir geteilt, neue Dateien über einen Upload-Link */
+export const NOTIFY_FILE_SHARED = 'file-shared';
+export const NOTIFY_LINK_UPLOAD = 'link-upload';
 export const BASE_PATH = '/modules/files';
 
 export const PERMISSIONS = {

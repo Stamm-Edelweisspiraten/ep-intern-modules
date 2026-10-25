@@ -204,6 +204,12 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   „Wieder ansetzen“.
 - E2E: `tests/e2e/events.spec.ts` (Monat als Standard, anlegen/ansehen/bearbeiten, Serie anzeigen und ein Vorkommen absagen).
 
+## Benachrichtigungen (2026-10-25, `notify.ts`, core.notifications)
+- Typen `event-new` (angelegt oder neu sichtbar geworden), `event-changed` (nur Datum/Uhrzeit/Ort/Wiederholung bzw. Vorkommen verschoben),
+  `event-cancelled` (Termin gelöscht oder Vorkommen abgesagt) – alle **Standard „Aus“** (sonst Mail an alle Eltern bei jedem Termin), neu/geändert mit „Täglich“.
+- Empfänger = wer den Termin sehen darf: Eigentümer*in + Freigaben über `principalUserIds` (`everyone` = alle mit `events.event.view`), nie die handelnde Person,
+  nur kommende Termine. `eventSnapshot` vor PUT/DELETE, Vergleich der Zielgruppen (neu sichtbar → „Neuer Termin“).
+
 ## Tests
 - Unit: `tests/unit/events-schemas.test.ts` (Daten, Tags, Freigaben, Query-Grenzen), `events-format.test.ts`,
   `events-reset.test.ts` (Tabellen aus Migrationen abgedeckt, Reihenfolge Kind vor Eltern), `sharing.test.ts`
