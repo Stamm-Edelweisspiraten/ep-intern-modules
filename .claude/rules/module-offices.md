@@ -108,7 +108,14 @@ als Benutzer-IDs) und `offices.profile.updated` (`hasBio`) – **keine** Beschre
   erreichen niemanden; wegen des Markers wird es **nicht neu angelegt** (Nutzerentscheidung). Umbenennen ändert die Zuordnung nicht (Schlüssel bleibt).
 - UI: Badge „Vorlage: <Modul>“ an der Karte, Hinweis mit Ereignisliste im Bearbeiten-Dialog (Tab Allgemein), Zusatzhinweis in der Lösch-Bestätigung.
 
-## Benachrichtigungen an Inhaber*innen (2026-10-19)
+## Benachrichtigungen an Inhaber*innen (2026-10-19, seit 2026-10-25 über `core.notifications`)
+> **Stand 2026-10-25:** `notify` versendet über `core.notifications` (Typ `offices.template`, `scoped` + `digest`, Bereich `<modul>:<amt>:<ereignis>`,
+> Einträge je eigenem Vorlagen-Amt über `forUser` = `notificationScopesFor`). Kanal Aus · E-Mail · Beides · Push und Sofort/Täglich im Core-Reiter
+> „Benachrichtigungen“; `NotificationPrefsCard`, `notifications.endpoints.ts` und `GET/PUT /me/notifications` sind entfernt. Alte `notification_prefs` werden
+> einmalig übernommen und gelöscht (`migrateLegacyPrefs`, im Job `sync-grants`, bei `notify` und `forUser`); der Job `notify-digest` arbeitet nur noch die alte
+> Warteschlange ab, neue Tageszusammenfassungen schickt `core.notifications-digest`. Einträge der Zusammenfassung werden nicht mehr nach Inhaberschaft
+> gefiltert (früher: nicht mehr Inhaber*in → verworfen). Der folgende Text beschreibt den früheren Stand.
+
 - Empfänger: die Inhaber*innen des Vorlagen-Amts (`source_module` + `source_key`), nur **aktive Konten**, an die **Konto-Adresse**
   (`core.users.directory`) – **nicht** an die Funktionsadressen des Amts.
 - Modus je Person **und** Ereignis: **Sofort** (Standard) / **Täglich (Zusammenfassung)** / **Aus**; einstellbar **nur im Profil** („Meine Ämter“ →
@@ -135,11 +142,13 @@ await offices?.notify(ctx, [{ module: MODULE_ID, office: 'kasse', event: 'payabl
 - Nutzer: `treasury` (Amt `kasse`, Ereignisse `payable-created`, `accounting-closed`; Helfer `treasury/office-notify.ts`), siehe `module-treasury.md`.
 
 ## Website-Anbindung
-- `WebsiteOffice`: `id`, `name`, `description`, `position`, `emails` (`label`, `email` – Adressen des **Amts**), `holders` (`id`, `name`, `bio`, `since`,
+- `WebsiteOffice`: `id`, `name`, `description`, `position`, `emails` (`label`, `email` – Adressen des **Amts**), `holders` (`id`, `firstName`, `bio`, `since`,
   `avatarPath` = relativer API-Pfad oder `null`). **Keine** Benutzer-Mails, Rollen, Zeitstempel; deaktivierte Konten fehlen.
 - **Opt-in (#27)**: `holders` enthält nur Personen mit `show_on_website = true` (Schalter „Auf der Stammeswebsite zeigen“ in der Karte „Meine Beschreibung“,
   Profil „Meine Ämter“ und Ämterseite; speichert sofort, Standard aus). Ohne Zustimmung fehlen Name, Bio und Bild ganz – das Amt erscheint mit `holders: []`
-  (kein Hinweis „besetzt“). Die Stammeswebsite (`website/`) ruft den Endpunkt derzeit nicht ab (Ämter auf `/kontakt` statisch).
+  (kein Hinweis „besetzt“). Die Stammeswebsite zeigt die Daten auf `/team` („Unser Team“).
+- **Nur Vornamen** (2026-10-24, Nutzerwunsch): `WebsiteOfficeHolder.firstName` = erstes Wort des Kontonamens (`firstNameOf` in
+  `website.endpoints.ts`, „Anna-Lena Muster“ → „Anna-Lena“); `avatarPath` trägt `?v=` aus `user.image` (neues Bild → neue Adresse).
 - Einrichtung wie bei `events`: API-Key nur mit Scope `offices.website.read`, Abruf **serverseitig**; Profilbilder über `avatarPath` mit demselben Key abrufen und cachen.
   ```bash
   curl -H "Authorization: Bearer epk_…" https://intern.example.org/api/v1/modules/offices/website/offices

@@ -5,26 +5,20 @@ import {
 	defineEndpoint,
 	errors,
 	moduleDb,
-	PRINCIPAL_SEARCH_RATE_LIMIT,
 	type RequestContext,
-	requireShareCapability,
 	rowsOf,
 	toIso,
 	type Tx
 } from '$lib/sdk/server';
-import { requireAccess, visibleActionsFilter } from './access';
+import { actionKeysOf, requireAccess, visibleActionsFilter } from './access';
+import { shareLevelsFor } from './shares.endpoints';
 import {
 	actionInput,
 	actionListQuery,
 	actionUpdateInput,
 	idParams,
-	shareInput,
-	shareParams,
-	userSearchQuery,
 	type ActionList,
 	type ActionSummary,
-	type ShareEntry,
-	type ShareLevel,
 	type UserRef
 } from './schemas';
 
@@ -73,22 +67,8 @@ async function loadSummaryData(
 	rows: Record<string, unknown>[]
 ): Promise<SummaryData> {
 	const ids = rows.map((r) => String(r.id));
-	const shareRows =
-		ctx.userId && ids.length
-			? await rowsOf(
-					tx,
-					sql`SELECT action_id, level FROM action_shares
-						WHERE user_id = ${ctx.userId}
-						AND action_id IN (${sql.join(
-							ids.map((i) => sql`${i}`),
-							sql`, `
-						)})`
-				)
-			: [];
-	return {
-		rows,
-		shareBy: new Map(shareRows.map((s) => [String(s.action_id), String(s.level)]))
-	};
+	const keys = hasEditAll(ctx) || !ctx.userId ? [] : actionKeysOf(ctx);
+	return { rows, shareBy: await shareLevelsFor(tx, ids, keys) };
 }
 
 async function buildSummaries(ctx: RequestContext, data: SummaryData): Promise<ActionSummary[]> {
@@ -278,116 +258,6 @@ export const actionEndpoints: ApiEndpoint[] = [
 				metadata: { name }
 			});
 			return { id: params.id };
-		}
-	}),
-	defineEndpoint({
-		method: 'GET',
-		path: '/actions/:id/shares',
-		summary: 'Freigaben einer Aktion auflisten',
-		tags,
-		permission: 'actions.action.view',
-		params: idParams,
-		handler: async ({ ctx, params }) => {
-			const { access, ownerId, shareRows } = await moduleDb(MODULE).transaction(async (tx) => {
-				const access = await requireAccess(tx, ctx, params.id, 'read');
-				const [action] = await rowsOf(
-					tx,
-					sql`SELECT owner_id FROM actions WHERE id = ${params.id}`
-				);
-				const shareRows = await rowsOf(
-					tx,
-					sql`SELECT user_id, level FROM action_shares WHERE action_id = ${params.id}
-						ORDER BY created_at`
-				);
-				return { access, ownerId: String(action?.owner_id), shareRows };
-			});
-			const users = await resolveUsers(ctx, [ownerId, ...shareRows.map((s) => String(s.user_id))]);
-			const shares: ShareEntry[] = shareRows.map((s) => ({
-				...userRef(users, String(s.user_id)),
-				level: String(s.level) as ShareLevel
-			}));
-			shares.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-			return { owner: userRef(users, ownerId), shares, canManage: access.canShare };
-		}
-	}),
-	defineEndpoint({
-		method: 'PUT',
-		path: '/actions/:id/shares/:userId',
-		summary: 'Aktion freigeben oder Freigabe ändern',
-		tags,
-		permission: 'actions.action.view',
-		params: shareParams,
-		body: shareInput,
-		handler: async ({ ctx, params, body }) => {
-			await moduleDb(MODULE).transaction(async (tx) => {
-				await requireAccess(tx, ctx, params.id, 'share');
-				const [action] = await rowsOf(
-					tx,
-					sql`SELECT owner_id FROM actions WHERE id = ${params.id}`
-				);
-				if (String(action?.owner_id) === params.userId) {
-					throw errors.badRequest('Die Aktion kann nicht mit der Eigentümer*in geteilt werden');
-				}
-			});
-			// Verzeichnis außerhalb der Modul-Transaktion abfragen (siehe loadSummaryData)
-			const users = await resolveUsers(ctx, [params.userId]);
-			const target = users.get(params.userId);
-			if (!target) throw errors.validation({ userId: 'Unbekannter oder inaktiver Benutzer' });
-			await moduleDb(MODULE).transaction(async (tx) => {
-				await requireAccess(tx, ctx, params.id, 'share');
-				await tx.execute(
-					sql`INSERT INTO action_shares (action_id, user_id, level, created_by)
-						VALUES (${params.id}, ${params.userId}, ${body.level}, ${ctx.userId})
-						ON CONFLICT (action_id, user_id) DO UPDATE SET level = EXCLUDED.level`
-				);
-			});
-			const entry: ShareEntry = { ...target, level: body.level };
-			await core.audit.logFromContext(ctx, 'actions.action.shared', {
-				target: params.id,
-				metadata: { userId: params.userId, level: body.level }
-			});
-			return entry;
-		}
-	}),
-	defineEndpoint({
-		method: 'DELETE',
-		path: '/actions/:id/shares/:userId',
-		summary: 'Freigabe entfernen',
-		description: 'Benutzer dürfen ihre eigene Freigabe entfernen (Aktion verlassen).',
-		tags,
-		permission: 'actions.action.view',
-		params: shareParams,
-		handler: async ({ ctx, params }) => {
-			await moduleDb(MODULE).transaction(async (tx) => {
-				const own = !!ctx.userId && ctx.userId === params.userId;
-				await requireAccess(tx, ctx, params.id, own ? 'read' : 'share');
-				await tx.execute(
-					sql`DELETE FROM action_shares WHERE action_id = ${params.id} AND user_id = ${params.userId}`
-				);
-			});
-			await core.audit.logFromContext(ctx, 'actions.action.unshared', {
-				target: params.id,
-				metadata: { userId: params.userId }
-			});
-			return { id: params.id, userId: params.userId };
-		}
-	}),
-	defineEndpoint({
-		method: 'GET',
-		path: '/users',
-		summary: 'Benutzerverzeichnis für Freigaben durchsuchen',
-		description:
-			'Nur für Personen, die Aktionen teilen können (`actions.action.edit-all` oder Eigentümer*in mindestens einer Aktion), sonst 403. E-Mail-Adressen nur mit `core.users.view` (sonst leer).',
-		tags,
-		permission: 'actions.action.view',
-		rateLimit: PRINCIPAL_SEARCH_RATE_LIMIT,
-		query: userSearchQuery,
-		handler: async ({ ctx, query }) => {
-			await requireShareCapability(ctx, MODULE, {
-				anyPermission: ['actions.action.edit-all'],
-				canShareSql: (userId) => sql`SELECT 1 FROM actions WHERE owner_id = ${userId}`
-			});
-			return core.users.directory(ctx, { search: query.search, limit: query.limit });
 		}
 	})
 ] as ApiEndpoint[];

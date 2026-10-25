@@ -115,7 +115,23 @@ export const DRAG_MIME = 'application/x-ep-files-nodes';
 
 /** Aktionen auf Einträgen (Menü, Tastatur, Mehrfachauswahl) */
 export type NodeAction =
-	'open' | 'download' | 'rename' | 'move' | 'share' | 'link' | 'info' | 'trash';
+	'open' | 'download' | 'rename' | 'style' | 'move' | 'share' | 'link' | 'info' | 'trash';
+
+/**
+ * Name in Stücke für weiche Umbrüche (`<wbr>` dazwischen): nach `_`, `-`, `.`, `/` und vor Ziffernfolgen nach
+ * Buchstaben – so bricht „Einladung_Stammesthing_2026.pdf“ an den Unterstrichen statt mitten im Wort.
+ */
+export function breakableName(name: string): string[] {
+	return name.split(/(?<=[_\-./])|(?<=[A-Za-zÄÖÜäöüß])(?=\d)/u).filter((p) => p.length > 0);
+}
+
+/** „Leer“, „1 Eintrag“, „12 Einträge · 4,1 MB“ */
+export function folderMeta(node: Pick<FileNode, 'childCount' | 'folderBytes'>): string {
+	const n = node.childCount ?? 0;
+	if (n === 0) return 'Leer';
+	const count = n === 1 ? '1 Eintrag' : `${n.toLocaleString('de-DE')} Einträge`;
+	return node.folderBytes ? `${count} · ${formatBytes(node.folderBytes)}` : count;
+}
 
 /** Minimale Form für die Vorschau (intern `FileNode`, öffentlich `PublicNode`) */
 export interface PreviewNode {

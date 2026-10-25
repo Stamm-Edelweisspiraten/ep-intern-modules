@@ -12,9 +12,9 @@ export const resetAreas: ResetArea[] = [
 		label: 'Alle Dateien',
 		description:
 			'Löscht alle Ordner und Dateien (auch die Inhalte im Speicher), den Papierkorb, alle ' +
-			'Freigaben (auch die an den ganzen Stamm) und alle öffentlichen Links.',
+			'Freigaben (auch die an den ganzen Stamm), alle öffentlichen Links und die Speicherkontingente einzelner Personen.',
 		// Kind vor Eltern
-		tables: ['share_links', 'node_shares', 'nodes'],
+		tables: ['share_links', 'node_shares', 'nodes', 'user_quotas'],
 		storagePrefixes: 'all',
 		rebuild: true
 	}
@@ -89,5 +89,11 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 	await tx.execute(
 		sql`UPDATE share_links SET created_by = ${keepUserId}
 			WHERE created_by IS NOT NULL AND created_by <> ${keepUserId}`
+	);
+	// Kontingente gelöschter Personen entfallen (die übernommene Ablage zählt jetzt bei `keepUserId`)
+	await tx.execute(sql`DELETE FROM user_quotas WHERE user_id <> ${keepUserId}`);
+	await tx.execute(
+		sql`UPDATE user_quotas SET updated_by = ${keepUserId}
+			WHERE updated_by IS NOT NULL AND updated_by <> ${keepUserId}`
 	);
 };

@@ -14,5 +14,14 @@ export default {
 			permission: 'events.event.view',
 			component: () => import('./pages/widgets/UpcomingEventsWidget.svelte')
 		}
+	],
+	profileSections: [
+		{
+			id: 'calendar-feeds',
+			title: 'Kalender-Abo',
+			order: 40,
+			permission: 'events.event.view',
+			component: () => import('./pages/CalendarFeedsCard.svelte')
+		}
 	]
 } satisfies ModuleUi;

@@ -7,6 +7,9 @@ import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalInfo } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'files';
+/** Benachrichtigungen (core.notifications): mit mir geteilt, neue Dateien über einen Upload-Link */
+export const NOTIFY_FILE_SHARED = 'file-shared';
+export const NOTIFY_LINK_UPLOAD = 'link-upload';
 export const BASE_PATH = '/modules/files';
 
 export const PERMISSIONS = {
@@ -15,7 +18,9 @@ export const PERMISSIONS = {
 	/** Öffentliche Links anlegen (nur für Knoten mit Bearbeiten-Zugriff) */
 	linkCreate: 'files.link.create',
 	/** Alles sehen und verwalten (auch fremde Dateien) */
-	manageAll: 'files.file.manage-all'
+	manageAll: 'files.file.manage-all',
+	/** Speicherkontingent einzelner Personen festlegen (Benutzer-Dialog der Verwaltung) */
+	quotaManage: 'files.quota.manage'
 } as const;
 
 export const SETTING_KEYS = {
@@ -80,6 +85,8 @@ export const MAX_PUBLIC_UPLOAD_FILES = 10;
 export const MAX_PUBLIC_UPLOAD_BYTES = 30 * 1024 * 1024;
 export const MAX_UPLOADER_NAME = 100;
 export const DEFAULT_QUOTA_MB = 1024;
+/** Obergrenze für ein eigenes Kontingent je Person (MB, ≈ 10 TB) */
+export const MAX_USER_QUOTA_MB = 10_000_000;
 export const DEFAULT_TRASH_DAYS = 30;
 export const DEFAULT_LINK_UPLOAD_MB = 500;
 /** Zugriffstoken nach Passwort-Eingabe (öffentlicher Link) */
@@ -185,6 +192,82 @@ export const folderCreateInput = z
 export type FolderCreateInput = z.input<typeof folderCreateInput>;
 
 export const renameInput = z.object({ name: nodeName }).strict();
+
+/** Vorschlagsfarben für Ordner (Schnellwahl im Menü und im Dialog „Aussehen ändern“) */
+export const FOLDER_COLORS: readonly { value: string; label: string }[] = [
+	{ value: '#2563eb', label: 'Blau' },
+	{ value: '#16a34a', label: 'Grün' },
+	{ value: '#0d9488', label: 'Türkis' },
+	{ value: '#ca8a04', label: 'Gelb' },
+	{ value: '#ea580c', label: 'Orange' },
+	{ value: '#dc2626', label: 'Rot' },
+	{ value: '#db2777', label: 'Pink' },
+	{ value: '#7c3aed', label: 'Lila' },
+	{ value: '#92400e', label: 'Braun' },
+	{ value: '#52525b', label: 'Grau' }
+];
+
+/** Farbe `#rrggbb` (wird klein gespeichert) */
+export const folderColor = z
+	.string()
+	.trim()
+	.regex(/^#[0-9a-fA-F]{6}$/, 'Farbe im Format #RRGGBB')
+	.transform((v) => v.toLowerCase());
+
+/** Icon-Name aus der Icon-Bibliothek (`tree-pine`); ob es das Icon gibt, prüft der Server */
+export const folderIcon = z
+	.string()
+	.trim()
+	.max(64, 'Ungültiges Icon')
+	.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Ungültiges Icon');
+
+/**
+ * POST `/nodes/style` – Aussehen eines oder mehrerer Ordner. Fehlendes Feld = unverändert, `null` = zurücksetzen.
+ */
+export const styleInput = z
+	.object({
+		ids: z.array(nodeId).min(1).max(MAX_BULK),
+		icon: folderIcon.nullable().optional(),
+		color: folderColor.nullable().optional()
+	})
+	.strict()
+	.refine((v) => v.icon !== undefined || v.color !== undefined, {
+		message: 'Icon oder Farbe angeben',
+		path: ['icon']
+	});
+export type StyleInput = z.input<typeof styleInput>;
+
+/** Kontingent einer Person: Standard (Einstellung), eigenes Limit in MB oder unbegrenzt */
+export const QUOTA_MODES = ['default', 'custom', 'unlimited'] as const;
+export type QuotaMode = (typeof QUOTA_MODES)[number];
+
+export const userIdParams = z.object({
+	userId: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[A-Za-z0-9_-]+$/, 'Ungültige ID')
+});
+
+export const userQuotaInput = z
+	.object({
+		mode: z.enum(QUOTA_MODES),
+		/** nur bei `custom` (Pflicht), ganze MB */
+		mb: z
+			.number()
+			.int('Bitte eine ganze Zahl angeben')
+			.min(1, 'Mindestens 1 MB')
+			.max(MAX_USER_QUOTA_MB, 'Zu groß')
+			.nullable()
+			.optional()
+	})
+	.strict()
+	.superRefine((v, c) => {
+		if (v.mode === 'custom' && (v.mb === null || v.mb === undefined)) {
+			c.addIssue({ code: 'custom', message: 'Bitte ein Limit angeben', path: ['mb'] });
+		}
+	});
+export type UserQuotaInput = z.input<typeof userQuotaInput>;
 
 export const moveInput = z
 	.object({
@@ -315,6 +398,12 @@ export interface FileNode {
 	linked: boolean;
 	/** Ordner: Anzahl direkter Einträge */
 	childCount: number | null;
+	/** Ordner: Summe aller Dateien im Teilbaum (ohne Papierkorb) */
+	folderBytes: number | null;
+	/** Ordner: Icon-Name aus der Icon-Bibliothek (`null` = Standard) */
+	icon: string | null;
+	/** Ordner: Farbe `#rrggbb` (`null` = Standard) */
+	color: string | null;
 	createdBy: UserRef | null;
 	/** Über einen Upload-Link hochgeladen: angegebener Name (oder leer = ohne Namen) */
 	uploadedByName: string | null;
@@ -388,6 +477,9 @@ export interface PublicNode {
 	id: string;
 	kind: NodeKind;
 	name: string;
+	/** Ordner: Icon und Farbe (sonst `null`) */
+	icon: string | null;
+	color: string | null;
 	contentType: string | null;
 	sizeBytes: number | null;
 	hasThumb: boolean;
@@ -420,6 +512,19 @@ export interface Quota {
 	usedBytes: number;
 	/** `null` = unbegrenzt */
 	limitBytes: number | null;
+}
+
+/** Kontingent einer Person für die Verwaltung (GET/PUT `/quotas/:userId`) */
+export interface UserQuota {
+	userId: string;
+	mode: QuotaMode;
+	/** eigenes Limit in MB (nur bei `custom`) */
+	customMb: number | null;
+	/** Standard aus den Einstellungen (`null` = unbegrenzt) */
+	defaultBytes: number | null;
+	/** wirksames Limit (`null` = unbegrenzt) */
+	limitBytes: number | null;
+	usedBytes: number;
 }
 
 export interface FilesMeta {

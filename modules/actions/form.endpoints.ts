@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { notifyRegistration } from './notify';
 import { todayBerlin } from '$lib/sdk/dates';
 import { sql } from 'drizzle-orm';
 import {
@@ -614,6 +615,12 @@ async function confirmRegistration(
 		memberLinked: false,
 		confirmed: true
 	});
+	await notifyRegistration(ctx, {
+		actionId: found.actionId,
+		actionName: found.action.name,
+		participantName: p.name,
+		memberId: null
+	});
 	return { actionName: found.action.name, name: p.name, emailSent, disclaimer };
 }
 
@@ -744,6 +751,12 @@ async function submit(ctx: RequestContext, token: string, input: PublicSubmitInp
 		participantId,
 		emailSent,
 		memberLinked: true
+	});
+	await notifyRegistration(ctx, {
+		actionId: loaded.id,
+		actionName: action.name,
+		participantName: m.name,
+		memberId: member.id
 	});
 	const result: PublicSubmitResult = { name: m.name, emailSent, disclaimer, memberUpdated };
 	return result;

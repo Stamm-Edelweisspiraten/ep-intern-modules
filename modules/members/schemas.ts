@@ -5,6 +5,8 @@ import { listSelectionInput } from '$lib/pdf-lists/schema';
 import { MEMBER_HEALTH_FIELD_KEYS } from '$lib/pdf-lists/member-columns';
 
 export const MODULE_ID = 'members';
+/** Benachrichtigung (core.notifications): weiteres Konto mit einem Mitglied verknüpft (Sicherheitshinweis) */
+export const NOTIFY_ACCOUNT_LINKED = 'account-linked';
 
 export const STAGES = [
 	'neuling-woelfling',

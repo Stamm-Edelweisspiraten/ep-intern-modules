@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PUSH_INVOICE, PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER } from './push-notify';
 import { defineModule } from '$lib/sdk/server';
 import { resetAreas, resetUsers } from './reset';
 import { subjectExport } from './subject-export';
@@ -308,6 +309,33 @@ export default defineModule({
 	backup: treasuryBackup,
 	resetUsers,
 	search: treasurySearch,
+	notifications: {
+		// Nur Push an die verknüpften Konten; die Mails an die Kontaktadressen der Mitglieder bleiben unverändert
+		types: [
+			{
+				key: PUSH_INVOICE,
+				label: 'Neue Rechnung (Push)',
+				description: 'Zusätzlich zur E-Mail an die Kontaktadressen.',
+				pushOnly: true,
+				defaultChannel: 'off',
+				permission: 'treasury.own.view'
+			},
+			{
+				key: PUSH_PAYMENT_CONFIRMATION,
+				label: 'Zahlung eingegangen (Push)',
+				pushOnly: true,
+				defaultChannel: 'off',
+				permission: 'treasury.own.view'
+			},
+			{
+				key: PUSH_REMINDER,
+				label: 'Zahlungserinnerung (Push)',
+				pushOnly: true,
+				defaultChannel: 'off',
+				permission: 'treasury.own.view'
+			}
+		]
+	},
 	/** Datenauskunft (`/admin/privacy`, #30) */
 	subjectExport,
 	endpoints: [

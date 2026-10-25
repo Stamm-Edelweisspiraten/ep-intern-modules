@@ -37,6 +37,7 @@ Bildverarbeitung serverseitig über den Core-Dienst `core.images` (sharp). Navig
 | `pages/EventPicker.svelte` | Terminsuche (`GET /events?search=`), Mehrfachauswahl – im `GalleryDialog` (Feld „Termine“) |
 | `pages/EventBadges.svelte` | Termine als Badges (Detailkopf; Karte mit `max={1} compact`) |
 | `pages/ImageBulkBar.svelte` | Sammelleiste im Auswahlmodus: Löschen |
+| `contract.ts`, `refs.service.ts` | Dienst `GalleryRefsService` über `provides` (2026-10-25, für `website`): `searchPublicGalleryRefs`, `publicGalleryRefs` – nur öffentliche Galerien, ohne Rechteprüfung |
 | `subject-export.ts` | Datenauskunft (`subjectExport`, Art. 15/20): eigene Galerien, hochgeladene Bilder (nur Metadaten), Freigaben an das Konto, Veröffentlichungs-Bestätigungen |
 | `migrations/0001_init.sql`, `0002_gallery_events.sql`, `0003_publish_confirmation.sql` | Schema; Termine je Galerie; Bestätigung beim Veröffentlichen |
 
@@ -139,6 +140,9 @@ Audit: `galleries.gallery.created|updated|deleted|cover_changed|published|unpubl
 - Reset `all` löscht Dateien per `storagePrefixes: 'all'` (`core.storage.purge`).
 - Löschen (Galerie, Bild, Sammelaktion) nach der Transaktion über `removeFiles` → `core.storage.removeMany` (#24): S3 `DeleteObjects` in Paketen
   à 1000, Sammel-Löschung der Metadaten, **ein** Audit-Eintrag `core.storage.files_deleted` (statt einem je Variante). Test `storage-batch-images.test.ts`.
+
+## Benachrichtigungen (2026-10-25, `notify.ts`)
+- `gallery-shared`: neu hinzugekommene Freigaben (ohne „ganzer Stamm“) beim Anlegen/Speichern, Empfänger über `principalUserIds` mit `galleries.gallery.view`.
 
 ## Tests
 - Unit: `tests/unit/images.test.ts` (sharp-erzeugte Testbilder: EXIF-Drehung, Metadaten/GPS weg, Größen der Varianten,

@@ -288,6 +288,11 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTo
 - Tab „Abrechnungen“: Aktionen mit ZA als „Zwischenabgerechnet (N)“, PDF ansehen/herunterladen je ZA
   (`GET /closed-accountings/:id/interims/:interimId/pdf`). Tests: `tests/integration/treasury-interim.test.ts`.
 
+## Push an verknüpfte Konten (2026-10-25)
+- `push-notify.ts`: zusätzlich zu den Mails an die Kontaktadressen (unverändert) Push an die mit den Mitgliedern der Rechnung verknüpften Konten
+  (`MembersService.listLinkedUserIds`): Typen `invoice` (neue Rechnung/Jahresbeitrag/Bestellung, nicht bei Änderung/Storno), `payment-confirmation`
+  (nur wenn die Bestätigung tatsächlich verschickt wird), `reminder` – alle `pushOnly`, Standard **Aus**, sichtbar mit `treasury.own.view`. Text ohne IBAN.
+
 ## Amt „Kasse“ und Benachrichtigungen (2026-10-19, Modul `offices` optional)
 - Manifest: `optionalDependencies` + `offices`; Vorlage `offices: [{ key: 'kasse', name: 'Kasse', notifications: [`payable-created` „Neue Überweisung
   steht an“, `accounting-closed` „Abrechnung abgeschlossen“ (inkl. Zwischenabrechnung)] }]`. Das Amt legt `offices` einmal an (danach normales Amt).

@@ -7,6 +7,7 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { formatEuro } from '$lib/components/layout/money';
+	import PdfEmbed from '$lib/components/layout/PdfEmbed.svelte';
 	import type { AnnualMailPreview, AnnualPreviewInvoice } from '../schemas';
 	import { BASE, errorMessage } from './helpers';
 
@@ -206,14 +207,12 @@
 					{#if pdfError}
 						<p class="text-sm text-destructive" role="alert">{pdfError}</p>
 					{:else if pdfUrl}
-						<iframe
+						<PdfEmbed
+							url={pdfUrl}
 							title="Rechnungs-PDF"
-							src={pdfUrl}
-							class="hidden h-[70dvh] w-full rounded-md border bg-white sm:block"
-						></iframe>
-						<p class="text-xs text-muted-foreground sm:hidden">
-							Auf dem Handy öffnet sich das PDF in einem neuen Fenster.
-						</p>
+							fileName="Rechnung.pdf"
+							class="h-[70dvh]"
+						/>
 					{:else}
 						<Skeleton class="h-[70dvh] w-full" />
 					{/if}

@@ -17,7 +17,9 @@
 	import FolderUp from '@lucide/svelte/icons/folder-up';
 	import Info from '@lucide/svelte/icons/info';
 	import Link from '@lucide/svelte/icons/link';
+	import Palette from '@lucide/svelte/icons/palette';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Shapes from '@lucide/svelte/icons/shapes';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Upload from '@lucide/svelte/icons/upload';
@@ -29,9 +31,12 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
 	import { DataTable, EmptyState } from '$lib/components/layout';
-	import type { FileNode } from '../schemas';
+	import { FOLDER_COLORS, type FileNode } from '../schemas';
+	import FolderGlyph from './FolderGlyph.svelte';
 	import {
 		DRAG_MIME,
+		breakableName,
+		folderMeta,
 		formatBytes,
 		formatDateTime,
 		iconFor,
@@ -53,7 +58,8 @@
 		onopen,
 		onaction,
 		onmove,
-		onbackground
+		onbackground,
+		oncolor
 	}: {
 		items: FileNode[];
 		view?: 'grid' | 'list';
@@ -77,6 +83,8 @@
 		onmove: (ids: string[], targetId: string) => void;
 		/** Kontextmenü auf leerer Fläche (nur mit `canCreate`) */
 		onbackground?: (action: BackgroundAction) => void;
+		/** Schnellwahl „Farbe“ im Menü für Ordner (`null` = Standard) */
+		oncolor?: (nodes: FileNode[], color: string | null) => void;
 	} = $props();
 
 	// ---------- Umgebung (Touch / schmale Ansicht) ----------
@@ -177,6 +185,8 @@
 		destructive?: boolean;
 		/** Trennlinie davor */
 		separator?: boolean;
+		/** Untermenü mit Vorschlagsfarben für diese Ordner */
+		colors?: FileNode[];
 	}
 
 	let menuOpenId = $state<string | null>(null);
@@ -200,6 +210,20 @@
 		if (one) add('open', 'Öffnen', FolderOpen, [one]);
 		if (one?.kind === 'file') add('download', 'Herunterladen', Download, [one]);
 		if (one?.access === 'edit') add('rename', 'Umbenennen', Pencil, [one]);
+		// Aussehen nur für Ordner mit Bearbeiten-Zugriff (Farbe auch für mehrere auf einmal)
+		const styleable = editable.filter((n) => n.kind === 'folder');
+		if (styleable.length && styleable.length === nodes.length) {
+			if (oncolor) {
+				entries.push({
+					key: 'color',
+					label: 'Farbe',
+					icon: Palette,
+					run: () => {},
+					colors: styleable
+				});
+			}
+			if (one) add('style', 'Aussehen ändern …', Shapes, [one]);
+		}
 		if (editable.length) add('move', 'Verschieben', FolderInput, editable);
 		// Freigaben/Links nur bereichsberechtigt (Bearbeiten über eine Freigabe reicht nicht)
 		if (one?.canShare) {
@@ -494,6 +518,19 @@
 		return node.kind === 'folder' ? entriesText(node.childCount) : formatBytes(node.sizeBytes);
 	}
 
+	function pickColor(nodes: FileNode[], color: string | null) {
+		menuOpenId = null;
+		ctxOpen = false;
+		oncolor?.(nodes, color);
+	}
+
+	/** Getönte Vorschaufläche eines farbigen Ordners */
+	function tint(node: FileNode): string | undefined {
+		return node.kind === 'folder' && node.color
+			? `color-mix(in srgb, ${node.color} 12%, transparent)`
+			: undefined;
+	}
+
 	function kindText(node: FileNode): string {
 		return node.kind === 'folder' ? 'Ordner' : 'Datei';
 	}
@@ -543,14 +580,53 @@
 	{/if}
 {/snippet}
 
+{#snippet swatch(color: string | null)}
+	<span
+		class={[
+			'size-3.5 shrink-0 rounded-full border',
+			color ? 'border-transparent' : 'border-muted-foreground/50 bg-background'
+		]}
+		style:background-color={color ?? undefined}
+		aria-hidden="true"
+	></span>
+{/snippet}
+
 {#snippet dropdownEntries(entries: MenuEntry[])}
 	{#each entries as entry (entry.key)}
 		{@const Icon = entry.icon}
 		{#if entry.separator}<DropdownMenu.Separator />{/if}
-		<DropdownMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
-			<Icon />
-			{entry.label}
-		</DropdownMenu.Item>
+		{#if entry.colors}
+			{@const targets = entry.colors}
+			{@const current = targets.length === 1 ? targets[0]!.color : undefined}
+			<DropdownMenu.Sub>
+				<DropdownMenu.SubTrigger>
+					<Icon />
+					{entry.label}
+				</DropdownMenu.SubTrigger>
+				<DropdownMenu.SubContent class="w-44">
+					{#each FOLDER_COLORS as c (c.value)}
+						<DropdownMenu.Item onclick={() => pickColor(targets, c.value)}>
+							{@render swatch(c.value)}
+							{c.label}
+							{#if current === c.value}<span class="sr-only">(aktuell)</span>{/if}
+						</DropdownMenu.Item>
+					{/each}
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item onclick={() => pickColor(targets, null)}>
+						{@render swatch(null)}
+						Keine Farbe
+					</DropdownMenu.Item>
+				</DropdownMenu.SubContent>
+			</DropdownMenu.Sub>
+		{:else}
+			<DropdownMenu.Item
+				variant={entry.destructive ? 'destructive' : 'default'}
+				onclick={entry.run}
+			>
+				<Icon />
+				{entry.label}
+			</DropdownMenu.Item>
+		{/if}
 	{/each}
 {/snippet}
 
@@ -558,10 +634,35 @@
 	{#each entries as entry (entry.key)}
 		{@const Icon = entry.icon}
 		{#if entry.separator}<ContextMenu.Separator />{/if}
-		<ContextMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
-			<Icon />
-			{entry.label}
-		</ContextMenu.Item>
+		{#if entry.colors}
+			{@const targets = entry.colors}
+			{@const current = targets.length === 1 ? targets[0]!.color : undefined}
+			<ContextMenu.Sub>
+				<ContextMenu.SubTrigger>
+					<Icon />
+					{entry.label}
+				</ContextMenu.SubTrigger>
+				<ContextMenu.SubContent class="w-44">
+					{#each FOLDER_COLORS as c (c.value)}
+						<ContextMenu.Item onclick={() => pickColor(targets, c.value)}>
+							{@render swatch(c.value)}
+							{c.label}
+							{#if current === c.value}<span class="sr-only">(aktuell)</span>{/if}
+						</ContextMenu.Item>
+					{/each}
+					<ContextMenu.Separator />
+					<ContextMenu.Item onclick={() => pickColor(targets, null)}>
+						{@render swatch(null)}
+						Keine Farbe
+					</ContextMenu.Item>
+				</ContextMenu.SubContent>
+			</ContextMenu.Sub>
+		{:else}
+			<ContextMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
+				<Icon />
+				{entry.label}
+			</ContextMenu.Item>
+		{/if}
 	{/each}
 {/snippet}
 
@@ -671,6 +772,7 @@
 								>
 									<div
 										class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
+										style:background-color={tint(node)}
 									>
 										{#if thumb}
 											<img
@@ -682,9 +784,13 @@
 												use:watchThumb
 											/>
 										{:else if node.kind === 'folder'}
-											<Icon class="size-14 text-link/80" aria-hidden="true" />
+											<FolderGlyph icon={node.icon} color={node.color} />
 										{:else}
-											<Icon class="size-10 text-muted-foreground" aria-hidden="true" />
+											<Icon
+												class="size-11 text-muted-foreground"
+												strokeWidth={1.75}
+												aria-hidden="true"
+											/>
 										{/if}
 										{@render selectBox(
 											node,
@@ -708,16 +814,19 @@
 											)}
 										</div>
 									</div>
-									<div class="flex min-w-0 flex-1 flex-col gap-0.5 p-2">
+									<div class="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 pt-2 pb-2.5">
+										<!-- feste Höhe für zwei Zeilen: alle Karten einer Reihe bleiben gleich gegliedert -->
 										<span
-											class="line-clamp-2 text-sm leading-snug font-medium break-words"
+											class="line-clamp-2 h-10 text-sm leading-5 font-medium break-words"
 											title={node.name}
 										>
-											{node.name}
+											{#each breakableName(node.name) as part, i (i)}{part}<wbr />{/each}
 										</span>
 										<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
 											<span class="truncate tabular-nums">
-												{sizeText(node)} · {formatDateTime(node.updatedAt)}
+												{node.kind === 'folder'
+													? folderMeta(node)
+													: `${formatBytes(node.sizeBytes)} · ${formatDateTime(node.updatedAt)}`}
 											</span>
 											<span class="ml-auto flex shrink-0 items-center gap-1"
 												>{@render badges(node)}</span
@@ -816,13 +925,10 @@
 														class="size-full object-cover"
 														use:watchThumb
 													/>
+												{:else if node.kind === 'folder'}
+													<FolderGlyph icon={node.icon} color={node.color} size="sm" />
 												{:else}
-													<Icon
-														class={node.kind === 'folder'
-															? 'size-5 text-link/80'
-															: 'size-5 text-muted-foreground'}
-														aria-hidden="true"
-													/>
+													<Icon class="size-5 text-muted-foreground" aria-hidden="true" />
 												{/if}
 											</span>
 											<span class="truncate font-medium" title={node.name}>{node.name}</span>

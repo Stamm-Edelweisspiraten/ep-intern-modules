@@ -229,13 +229,33 @@ export async function quotaUsed(tx: Tx, ownerId: string): Promise<number> {
 	return Number(row?.used ?? 0);
 }
 
-/** 413 „Dein Speicherplatz ist voll …“, wenn `used + addBytes > limitBytes` (`null` = unbegrenzt) */
+/**
+ * Wirksames Kontingent einer Person in der Transaktion: eigenes Limit aus `user_quotas` (Zeile mit
+ * `quota_mb NULL` = unbegrenzt), sonst `defaultBytes` aus den Einstellungen (`null` = unbegrenzt).
+ */
+export async function quotaLimitFor(
+	tx: Tx,
+	ownerId: string,
+	defaultBytes: number | null
+): Promise<number | null> {
+	const [row] = await rowsOf(tx, sql`SELECT quota_mb FROM user_quotas WHERE user_id = ${ownerId}`);
+	if (!row) return defaultBytes;
+	return row.quota_mb === null || row.quota_mb === undefined
+		? null
+		: Number(row.quota_mb) * 1024 * 1024;
+}
+
+/**
+ * 413 „Dein Speicherplatz ist voll …“, wenn `used + addBytes` das wirksame Kontingent übersteigt.
+ * `defaultBytes` = Standard aus `filesSettings()` (`null` = unbegrenzt); ein eigenes Limit der Person gewinnt.
+ */
 export async function assertQuota(
 	tx: Tx,
 	ownerId: string,
 	addBytes: number,
-	limitBytes: number | null
+	defaultBytes: number | null
 ): Promise<void> {
+	const limitBytes = await quotaLimitFor(tx, ownerId, defaultBytes);
 	if (limitBytes === null) return;
 	// Sperre je Eigentümer*in bis Transaktionsende: parallele Uploads (Client lädt 3 gleichzeitig,
 	// dazu Link-Uploads) sehen sonst die Belegung der anderen nicht (Check-then-insert, #72 06-12/07-05).

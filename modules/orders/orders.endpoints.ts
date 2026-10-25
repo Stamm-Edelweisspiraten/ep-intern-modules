@@ -2,6 +2,7 @@
  * Bestellungen von Mitgliedern: Auswahl der Mitglieder, Bestellen (Rechnung sofort über die Kasse),
  * Liste/Detail, Storno (auch teilweise) und Ausgabe aus dem Lager. Übersicht für die Verwaltung.
  */
+import { notifyCustomer } from './customer-notify';
 import { sql, type SQL } from 'drizzle-orm';
 import { core, defineEndpoint, errors, logBestEffort, type ApiEndpoint } from '$lib/sdk/server';
 import {
@@ -244,6 +245,7 @@ export const ordersEndpoints = [
 					invoicePending: push.pending
 				}
 			});
+			await notifyCustomer(ctx, orderId, 'created');
 			const order = await buildOne(ctx, orderId, new Set(linked.map((m) => m.id)));
 			return { order, mailed: push.mailed, invoicePending: push.pending };
 		}
@@ -408,6 +410,7 @@ export const ordersEndpoints = [
 				target: id,
 				metadata: { ...result, hasReason: !!input.reason }
 			});
+			await notifyCustomer(ctx, id, 'cancelled', { quantity: result.quantity, all: result.all });
 			return buildOne(ctx, id, linkedIds);
 		}
 	}),
@@ -486,6 +489,7 @@ export const ordersEndpoints = [
 				target: id,
 				metadata: result
 			});
+			await notifyCustomer(ctx, id, 'handed-out', { quantity: result.quantity });
 			return buildOne(ctx, id);
 		}
 	})

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NOTIFY_EVENT_CANCELLED, NOTIFY_EVENT_CHANGED, NOTIFY_EVENT_NEW } from './schemas';
 import { defineModule } from '$lib/sdk/server';
 import { eventsSearch } from './search';
 import { eventEndpoints } from './events.endpoints';
@@ -13,16 +14,19 @@ import { DEFAULT_STAMM_NAME, STAMM_NAME_SETTING } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_recurrence.sql?raw';
 import m0003 from './migrations/0003_checks.sql?raw';
+import m0004 from './migrations/0004_calendar_feeds.sql?raw';
+import { calendarEndpoints } from './calendar.endpoints';
+import { calendarFeedsBackup } from './calendar-feeds.service';
 
 export default defineModule({
 	manifest: {
 		id: 'events',
 		name: 'Termine',
 		description: 'Interne Termine und Termine für die Stammeswebsite',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: [],
 		/** Gruppen und Mitglieder für Zuordnung und Sichtbarkeit (ohne `members`: nur Stamm, Rollen, Benutzer) */
-		optionalDependencies: ['members'],
+		optionalDependencies: ['members', 'actions'],
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen die für sie sichtbaren Termine */
 		defaultRoleGrants: { Mitglied: ['events.event.view'] },
 		permissions: [
@@ -66,14 +70,44 @@ export default defineModule({
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_recurrence', sql: m0002 },
-		{ name: '0003_checks', sql: m0003 }
+		{ name: '0003_checks', sql: m0003 },
+		{ name: '0004_calendar_feeds', sql: m0004 }
 	],
 	search: eventsSearch,
+	notifications: {
+		// Standard aus: wer will, schaltet es im Profil ein (sonst Mail an alle Eltern bei jedem Termin)
+		types: [
+			{
+				key: NOTIFY_EVENT_NEW,
+				label: 'Neuer Termin',
+				description: 'Wenn ein Termin angelegt oder für dich sichtbar wird.',
+				defaultChannel: 'off',
+				digest: true,
+				permission: 'events.event.view'
+			},
+			{
+				key: NOTIFY_EVENT_CHANGED,
+				label: 'Termin verschoben',
+				description: 'Nur bei geändertem Datum, Uhrzeit oder Ort.',
+				defaultChannel: 'off',
+				digest: true,
+				permission: 'events.event.view'
+			},
+			{
+				key: NOTIFY_EVENT_CANCELLED,
+				label: 'Termin abgesagt',
+				defaultChannel: 'off',
+				permission: 'events.event.view'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,
 	subjectExport,
+	/** Datensicherung: Link-Hashes der Kalender-Abos mit dem Zielschlüssel neu berechnen */
+	backup: calendarFeedsBackup,
 	/** Dienst für andere Module (`EventRefsService`, siehe `contract.ts`) */
 	provides: eventRefsService satisfies EventRefsService,
-	endpoints: [...websiteEndpoints, ...metaEndpoints, ...eventEndpoints]
+	endpoints: [...websiteEndpoints, ...calendarEndpoints, ...metaEndpoints, ...eventEndpoints]
 });

@@ -117,9 +117,9 @@
 			<Label for={websiteId} class="flex flex-col items-start gap-0.5">
 				<span>Auf der Stammeswebsite zeigen</span>
 				<span id="{websiteId}-hint" class="text-xs font-normal text-muted-foreground">
-					Dein Name, dein Profilbild und diese Beschreibung erscheinen öffentlich bei deinen Ämtern
-					auf der Stammeswebsite. Ohne Zustimmung wirst du dort nicht genannt. Du kannst die
-					Zustimmung jederzeit widerrufen.
+					Dein Vorname (ohne Nachnamen), dein Profilbild und diese Beschreibung erscheinen
+					öffentlich bei deinen Ämtern auf der Stammeswebsite („Unser Team“). Ohne Zustimmung wirst
+					du dort nicht genannt. Du kannst die Zustimmung jederzeit widerrufen.
 				</span>
 			</Label>
 			<Switch

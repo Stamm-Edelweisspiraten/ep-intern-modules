@@ -5,6 +5,7 @@
  */
 import { sql, type SQL } from 'drizzle-orm';
 import { todayBerlin } from '$lib/sdk/dates';
+import { loadIconSet } from '$lib/sdk/icons';
 import {
 	core,
 	errors,
@@ -30,6 +31,7 @@ import {
 	descendantIds,
 	filesSettings,
 	loadNode,
+	loadNodes,
 	mdb,
 	NODE_COLUMNS,
 	nodeRowOf,
@@ -51,6 +53,7 @@ import {
 	type FolderListing,
 	type MoveInput,
 	type SearchResult,
+	type StyleInput,
 	type UserRef
 } from './schemas';
 
@@ -66,6 +69,8 @@ export interface NodeExtras {
 	shared: boolean;
 	linked: boolean;
 	childCount: number | null;
+	/** Ordner: Summe der Dateien im Teilbaum ohne Papierkorb */
+	folderBytes: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,8 +248,33 @@ export async function extrasForMany(
 				stamm: r.stamm === true || r.stamm === 't',
 				shared: r.shared === true || r.shared === 't',
 				linked: r.linked === true || r.linked === 't',
-				childCount: r.child_count == null ? null : Number(r.child_count)
+				childCount: r.child_count == null ? null : Number(r.child_count),
+				folderBytes: null
 			});
+		}
+		const folderIds = part.filter((id) => byId.get(id)?.kind === 'folder');
+		if (folderIds.length) {
+			// Größe je Ordner über den ganzen Teilbaum (Tiefe begrenzt, gelöschte Zweige ausgenommen)
+			const sizes = await rowsOf(
+				tx,
+				sql`WITH RECURSIVE t(root, id, d) AS (
+						SELECT n.id, n.id, 0 FROM nodes n WHERE n.id IN (${inList(folderIds)})
+						UNION ALL
+						SELECT t.root, c.id, t.d + 1 FROM nodes c JOIN t ON c.parent_id = t.id
+						WHERE c.deleted_at IS NULL AND t.d < ${MAX_DEPTH + 1}
+					)
+					SELECT t.root, COALESCE(sum(n.size_bytes), 0) AS bytes
+					FROM t JOIN nodes n ON n.id = t.id AND n.kind = 'file'
+					GROUP BY t.root`
+			);
+			for (const r of sizes) {
+				const e = out.get(String(r.root));
+				if (e) e.folderBytes = Number(r.bytes ?? 0);
+			}
+			for (const id of folderIds) {
+				const e = out.get(id);
+				if (e && e.folderBytes === null) e.folderBytes = 0;
+			}
 		}
 	}
 	// Fallback für Knoten ohne Treffer (sollte nicht vorkommen)
@@ -257,7 +287,8 @@ export async function extrasForMany(
 				stamm: false,
 				shared: false,
 				linked: false,
-				childCount: r.kind === 'folder' ? 0 : null
+				childCount: r.kind === 'folder' ? 0 : null,
+				folderBytes: r.kind === 'folder' ? 0 : null
 			});
 		}
 	}
@@ -288,6 +319,9 @@ export function toFileNode(
 		shared: extras.shared,
 		linked: extras.linked,
 		childCount: isFile ? null : (extras.childCount ?? 0),
+		folderBytes: isFile ? null : (extras.folderBytes ?? 0),
+		icon: isFile ? null : row.icon,
+		color: isFile ? null : row.color,
 		createdBy: row.createdBy
 			? (users.get(row.createdBy) ?? { id: row.createdBy, name: 'Unbekannt' })
 			: null,
@@ -514,6 +548,51 @@ export async function renameNode(ctx: RequestContext, id: string, name: string):
 		});
 	}
 	return result;
+}
+
+/**
+ * POST `/nodes/style`: Icon und/oder Farbe eines oder mehrerer Ordner setzen bzw. zurücksetzen (`null`).
+ * Bearbeiten-Zugriff auf jeden Ordner nötig (unbekannt/kein Zugriff → 404, nur Lesen → 403), Dateien → 422,
+ * unbekanntes Icon → 422. Ändert `updated_at` nicht (kein Inhalt).
+ */
+export async function setNodeStyle(ctx: RequestContext, input: StyleInput): Promise<BulkResult> {
+	const ids = [...new Set(input.ids)];
+	if (input.icon) {
+		const icons = await loadIconSet();
+		if (!icons.has(input.icon)) {
+			throw errors.validation([{ path: ['icon'], message: 'Unbekanntes Icon' }]);
+		}
+	}
+	const keys = await keysFor(ctx);
+	await mdb().transaction(async (tx) => {
+		const rows = await loadNodes(tx, ids);
+		const levels = await accessForMany(tx, ctx, rows, keys);
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		for (const id of ids) {
+			const row = byId.get(id);
+			const level = levels.get(id);
+			if (!row || !level) throw errors.notFound('Ordner nicht gefunden');
+			if (level !== 'edit') throw errors.forbidden('Du darfst diesen Ordner nicht bearbeiten');
+			if (row.kind !== 'folder') {
+				throw errors.validation([
+					{ path: ['ids'], message: 'Icon und Farbe gibt es nur für Ordner' }
+				]);
+			}
+		}
+		const sets: SQL[] = [];
+		if (input.icon !== undefined) sets.push(sql`icon = ${input.icon}`);
+		if (input.color !== undefined) sets.push(sql`color = ${input.color?.toLowerCase() ?? null}`);
+		await tx.execute(sql`UPDATE nodes SET ${sql.join(sets, sql`, `)} WHERE id IN (${inList(ids)})`);
+	});
+	await core.audit.logFromContext(ctx, 'files.node.styled', {
+		target: ids.length === 1 ? ids[0] : undefined,
+		metadata: {
+			count: ids.length,
+			icon: input.icon === undefined ? 'unchanged' : input.icon === null ? 'reset' : 'set',
+			color: input.color === undefined ? 'unchanged' : input.color === null ? 'reset' : 'set'
+		}
+	});
+	return { affected: ids.length };
 }
 
 /**

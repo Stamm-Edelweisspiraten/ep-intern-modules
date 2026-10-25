@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { notifyAccounting } from './notify';
 import { sql } from 'drizzle-orm';
 import {
 	type ApiEndpoint,
@@ -589,6 +590,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 				actionName: res.name,
 				kind: 'final'
 			});
+			await notifyAccounting(ctx, { actionId: id, actionName: res.name, kind: 'final' });
 			return { closedAt: res.closedAt };
 		}
 	} as ApiEndpoint,
@@ -601,7 +603,7 @@ export const payoutEndpoints: ApiEndpoint[] = [
 		params: idParams,
 		handler: async ({ ctx, params }) => {
 			const id = (params as { id: string }).id;
-			await moduleDb(MODULE_ID).transaction(async (tx) => {
+			const actionName = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'edit');
 				if (!access.isOwner && !core.permissions.has(ctx, 'actions.action.edit-all')) {
 					throw errors.forbidden('Nur Eigentümer*in darf die Abrechnung wieder öffnen');
@@ -609,11 +611,14 @@ export const payoutEndpoints: ApiEndpoint[] = [
 				await tx.execute(
 					sql`UPDATE action_accounting SET closed_at = NULL, closed_by = NULL WHERE action_id = ${id}`
 				);
+				const [a] = await rowsOf(tx, sql`SELECT name FROM actions WHERE id = ${id}`);
+				return String(a?.name ?? 'Aktion');
 			});
 			await core.audit.logFromContext(ctx, 'actions.accounting.reopened', {
 				target: id,
 				metadata: { actionId: id }
 			});
+			await notifyAccounting(ctx, { actionId: id, actionName, kind: 'reopened' });
 			return { closedAt: null };
 		}
 	} as ApiEndpoint,

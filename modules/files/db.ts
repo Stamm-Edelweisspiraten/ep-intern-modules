@@ -54,12 +54,15 @@ export interface NodeRow {
 	uploadedByName: string | null;
 	/** Öffentlicher Upload: ID des Links (Migration 0003) */
 	uploadedViaLink: string | null;
+	/** Ordner-Aussehen (Migration 0004) */
+	icon: string | null;
+	color: string | null;
 }
 
 /** Spaltenliste für `SELECT … FROM nodes n` (Alias `n`), passend zu `nodeRowOf` */
 export const NODE_COLUMNS: SQL = sql`n.id, n.parent_id, n.kind, n.space, n.owner_id, n.name, n.storage_path,
 	n.content_type, n.size_bytes, n.thumb_path, n.created_by, n.created_at, n.updated_at, n.deleted_at,
-	n.deleted_by, n.trash_root, n.uploaded_by_name, n.uploaded_via_link`;
+	n.deleted_by, n.trash_root, n.uploaded_by_name, n.uploaded_via_link, n.icon, n.color`;
 
 /** Schutz gegen Zyklen im Baum (MAX_DEPTH ist deutlich kleiner) */
 const MAX_WALK = 64;
@@ -86,7 +89,9 @@ export function nodeRowOf(r: Row): NodeRow {
 		deletedBy: str(r.deleted_by),
 		trashRoot: bool(r.trash_root),
 		uploadedByName: str(r.uploaded_by_name),
-		uploadedViaLink: str(r.uploaded_via_link)
+		uploadedViaLink: str(r.uploaded_via_link),
+		icon: str(r.icon),
+		color: str(r.color)
 	};
 }
 

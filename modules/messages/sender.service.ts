@@ -17,6 +17,7 @@ import {
 	MAX_RECIPIENTS_LIMIT,
 	MODULE_ID,
 	LAYOUTS,
+	INBOX_SETTING_KEYS,
 	REPLY_TO_MODES,
 	SETTING_KEYS,
 	type MessageLayout,
@@ -167,8 +168,10 @@ export async function listSenders(ctx: RequestContext): Promise<SendersResponse>
 		});
 	}
 
+	const inbox = await core.settings.getMany([INBOX_SETTING_KEYS.enabled]);
 	return {
 		senders,
+		inboxEnabled: inbox[INBOX_SETTING_KEYS.enabled] === true,
 		accountEmail: await accountEmail(ctx),
 		replyToDefault: settings.replyTo,
 		personalHint: personal.hint,

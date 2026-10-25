@@ -19,7 +19,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `fields.service.ts` / `fields.endpoints.ts` | Zusatzfelder: `loadFieldDefs`/`listFieldDefs`/`putFieldDefs`, `validateCustomValues`, `mergeCustom`, `loadMailOptOut`, Dienst `membersService`; `GET /fields` (`members.member.view`), `PUT /fields` (`members.field.manage`, Vorlagen bleiben) |
 | `address.service.ts` / `address.endpoints.ts` / `address-utils.ts` (rein) | Adress-Autovervollständigung (Mitglieder → OpenPLZ → Photon), `GET /address/suggest`, `GET /address/places` (PLZ aus `data/plz-de.json`); Hilfen `splitHouseNumber`, `matchesStreetName` … – Details unten |
 | `link.ts` (rein) / `link.service.ts` / `link.endpoints.ts` / `link-tokens.ts` | Konto-Verknüpfung: Code/Token erzeugen, Briefe (`buildLinkLetters`), manuell verknüpfen/lösen; Endpoints `/members/:id/link-*`, `/my/members…`, `/public/link/:token` (+ `/claim`, `/register`); Tokens nur als Hash + Chiffrat, `hashStoredLinkTokens`, Backup-Hook `membersBackup.rehash` |
-| `messaging.service.ts` | Dienste für das Modul `messages`: `listGroupMemberIds`, `listLedGroups` (geleitete Gruppen mit Kontakt-E-Mail), `getOwnMemberName` (eigenes Konto-Mitglied) – ohne Rechteprüfung |
+| `messaging.service.ts` | Dienste für das Modul `messages`: `listGroupMemberIds`, `listLedGroups` (geleitete Gruppen mit Kontakt-E-Mail), `getOwnMemberName` (eigenes Konto-Mitglied), `listGroupMailboxes`, `listWebsiteGroupRefs` (Website-Gruppen mit Altersangabe, für Probestunden) – ohne Rechteprüfung |
 | `slug.ts` (rein) | `slugFromName` – Vorschlag für die Website-Adresse einer Gruppe |
 | `website.endpoints.ts` / `website.schemas.ts` | `/website/groups[/:slug[/image]]` (Scope `members.website.read`, nur `on_website` + `slug`, Leitende nur mit Vornamen und Einwilligung); Zod-Vertrag `websiteGroupSchema` (#48, Typgleichheit zu `WebsiteGroup`) |
 | `search.ts` | Globale Suche (`membersSearch`): Mitglieder nach Vor-/Nach-/Pfadfindername (`members.member.view`), Gruppen nach Name (`members.group.view`); keine sensiblen Felder |
@@ -206,6 +206,10 @@ Audit: `members.link.code_created|created|registered|removed|letters_generated` 
 `registered` mit `notified`, `emailVerificationPending`). Tests: `tests/integration/members-links.test.ts`, `members-link-security.test.ts`.
 Offen: Die Verknüpfung eines unbestätigten Kontos besteht sofort (Zeile in `member_user_links`), wirkt aber erst mit der ersten Anmeldung –
 also nach Bestätigung; ein unbestätigtes Konto zählt als Nutzung. Die Verwaltung wird nicht zusätzlich benachrichtigt.
+
+### Benachrichtigungen (2026-10-25)
+- „Weiteres Konto verknüpft“ (`notifyLinkedAccounts`) geht über `core.notifications` (Typ `account-linked`, `mandatory`, sichtbar mit `members.own.view`).
+- Neuer Dienst `MembersService.listLinkedUserIds(memberIds)` (systemweit, ohne Rechteprüfung, ≤ 2000, ohne anonymisierte) – für Push der Kasse.
 
 ### Eigene Mitglieder im Profil (Migration 0008, 2026-10-17)
 Alle Endpoints: Session/API-Key, **nicht** öffentlich, Recht `members.own.*`; fremdes Mitglied → 404. Eltern ändern **nicht**: Name, Geburtsdatum, Stand, Gruppen,

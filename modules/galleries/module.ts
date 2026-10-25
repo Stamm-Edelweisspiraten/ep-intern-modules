@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { NOTIFY_GALLERY_SHARED } from './schemas';
 import { galleriesSearch } from './search';
 import { galleriesEndpoints } from './galleries.endpoints';
 import { imagesEndpoints } from './images.endpoints';
@@ -10,6 +11,8 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_gallery_events.sql?raw';
 import m0003 from './migrations/0003_publish_confirmation.sql?raw';
 import { subjectExport } from './subject-export';
+import { galleryRefsService } from './refs.service';
+import type { GalleryRefsService } from './contract';
 
 export default defineModule({
 	manifest: {
@@ -56,7 +59,21 @@ export default defineModule({
 		{ name: '0002_gallery_events', sql: m0002 },
 		{ name: '0003_publish_confirmation', sql: m0003 }
 	],
+	/** Verweise auf öffentliche Galerien (z. B. Blog-Beiträge im Modul `website`) */
+	provides: galleryRefsService satisfies GalleryRefsService,
 	search: galleriesSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_GALLERY_SHARED,
+				label: 'Galerie mit mir geteilt',
+				description:
+					'Wenn eine Galerie mit dir, deiner Gruppe, deinem Mitglied oder deiner Rolle geteilt wird.',
+				digest: true,
+				permission: 'galleries.gallery.view'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,

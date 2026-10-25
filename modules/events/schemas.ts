@@ -8,6 +8,10 @@ import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 import { daysBetween, minGapDays } from './recurrence';
 
 export const MODULE_ID = 'events';
+/** Benachrichtigungen (core.notifications): neuer, geänderter, abgesagter Termin */
+export const NOTIFY_EVENT_NEW = 'event-new';
+export const NOTIFY_EVENT_CHANGED = 'event-changed';
+export const NOTIFY_EVENT_CANCELLED = 'event-cancelled';
 
 /** Eigenes Recht zum Veröffentlichen auf der Stammeswebsite (#67, 01b-06) */
 export const PUBLISH_PERMISSION = 'events.event.publish';
@@ -434,4 +438,73 @@ export interface WebsiteEvent extends EventDates {
 	recurring: boolean;
 	/** Serie: ursprüngliches Datum (stabiler Schlüssel `id` + `occurrenceDate`) */
 	occurrenceDate: string | null;
+}
+
+// === Kalender-Abo (iCal) ====================================================
+
+/** Abos je Person */
+export const MAX_CALENDAR_FEEDS = 10;
+export const MAX_FEED_NAME = 80;
+/** Zeitraum des Abos: so viele Tage zurück und voraus */
+export const FEED_PAST_DAYS = 90;
+export const FEED_FUTURE_DAYS = 400;
+
+export const calendarFeedInput = z
+	.object({
+		name: z
+			.string()
+			.trim()
+			.min(1, 'Bitte einen Namen eingeben')
+			.max(MAX_FEED_NAME, `Höchstens ${MAX_FEED_NAME} Zeichen`),
+		includeEvents: z.boolean().default(true),
+		includeActions: z.boolean().default(true),
+		/** Nur Termine dieser Gruppen (`stamm` oder `members`-Gruppe); leer = alle */
+		groupIds: z
+			.array(refId)
+			.max(MAX_GROUPS)
+			.default([])
+			.transform((v) => [...new Set(v)]),
+		/** Nur Termine mit einem dieser Tags; leer = alle */
+		tags: z
+			.array(tag)
+			.max(MAX_TAGS, `Höchstens ${MAX_TAGS} Tags`)
+			.default([])
+			.transform(normalizeTags)
+	})
+	.strict()
+	.refine((v) => v.includeEvents || v.includeActions, {
+		message: 'Bitte Termine, Aktionen oder beides wählen',
+		path: ['includeEvents']
+	});
+export type CalendarFeedInput = z.infer<typeof calendarFeedInput>;
+
+/** Token im Abo-Link (Base64url, optional mit `.ics`) */
+export const feedTokenParams = z.object({
+	token: z
+		.string()
+		.regex(/^[A-Za-z0-9_-]{32,64}(\.ics)?$/, 'Unbekanntes Kalender-Abo')
+		.transform((v) => v.replace(/\.ics$/, ''))
+});
+
+export interface CalendarFeed {
+	id: string;
+	name: string;
+	includeEvents: boolean;
+	includeActions: boolean;
+	groupIds: string[];
+	tags: string[];
+	/** Abo-Adresse (https) – geheim halten; `null`, wenn nicht mehr entschlüsselbar (dann erneuern) */
+	url: string | null;
+	/** Gleiche Adresse mit `webcal://` (öffnet die Kalender-App) */
+	webcalUrl: string | null;
+	createdAt: string;
+	/** Letzter Abruf durch eine Kalender-App */
+	lastUsedAt: string | null;
+}
+
+export interface CalendarFeedList {
+	feeds: CalendarFeed[];
+	/** Modul Aktionen aktiv (Auswahl „Aktionen“ anzeigen) */
+	actionsAvailable: boolean;
+	max: number;
 }

@@ -31,6 +31,9 @@
 	import type { EventGroupRef, EventItem, EventList } from '../schemas';
 	import { formatEventRange } from '../format';
 	import EventDialog from './EventDialog.svelte';
+	import CalendarFeedsPanel from './CalendarFeedsPanel.svelte';
+	import CalendarSync from '@lucide/svelte/icons/calendar-sync';
+	import * as Dialog from '$lib/components/ui/dialog';
 
 	const PAGE_SIZE = 50;
 	const MONTH_LIMIT = 500;
@@ -243,12 +246,18 @@
 		reload();
 		void loadMeta();
 	}
+
+	// Kalender-Abo (iCal) direkt von der Terminseite aus
+	let feedsOpen = $state(false);
 </script>
 
 <PageTitle title="Termine" />
 
 <PageHeader title="Termine" description="Interne Termine und Termine für die Stammeswebsite">
 	{#snippet actions()}
+		<Button variant="outline" onclick={() => (feedsOpen = true)}>
+			<CalendarSync /> Kalender abonnieren
+		</Button>
 		{#if canCreate}
 			<Button onclick={() => openCreate()}><Plus /> Neuer Termin</Button>
 		{/if}
@@ -419,3 +428,21 @@
 	{onsaved}
 	{ondeleted}
 />
+
+<Dialog.Root bind:open={feedsOpen}>
+	<Dialog.Content class="sm:max-w-2xl">
+		<Dialog.Header>
+			<Dialog.Title>Kalender abonnieren</Dialog.Title>
+			<Dialog.Description>
+				Termine und Aktionen automatisch in deinem Kalender – auf dem Handy, in Outlook, Google oder
+				Apple Kalender. Du findest deine Abos auch im Profil.
+			</Dialog.Description>
+		</Dialog.Header>
+		{#if feedsOpen}
+			<CalendarFeedsPanel />
+		{/if}
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (feedsOpen = false)}>Schließen</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

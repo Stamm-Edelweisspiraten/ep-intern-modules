@@ -4,6 +4,7 @@
  * einer Zwischenabrechnung enthalten sind (`accounting_interim_entries`), gibt die Kasse sofort zur
  * Auszahlung frei (`ActionsService.listReimbursements`). Rückzahlung des Überschusses nur beim Abschluss.
  */
+import { notifyAccounting } from './notify';
 import { sql } from 'drizzle-orm';
 import {
 	type ApiEndpoint,
@@ -165,6 +166,12 @@ export const interimEndpoints = [
 				}
 			});
 			await notifyTreasuryAccountingClosed(ctx, {
+				actionId: id,
+				actionName,
+				kind: 'interim',
+				number: result.number
+			});
+			await notifyAccounting(ctx, {
 				actionId: id,
 				actionName,
 				kind: 'interim',

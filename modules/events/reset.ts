@@ -9,8 +9,15 @@ export const resetAreas: ResetArea[] = [
 		label: 'Alle Termine',
 		description:
 			'Löscht alle Termine samt Serien-Ausnahmen, Tags, Gruppen-Zuordnungen und Freigaben. ' +
-			'Termine auf der Stammeswebsite verschwinden ebenfalls.',
-		tables: ['event_exceptions', 'event_shares', 'event_groups', 'event_tags', 'events'],
+			'Termine auf der Stammeswebsite verschwinden ebenfalls. Kalender-Abos (iCal-Links) werden gelöscht.',
+		tables: [
+			'event_exceptions',
+			'event_shares',
+			'event_groups',
+			'event_tags',
+			'events',
+			'calendar_feeds'
+		],
 		rebuild: true
 	}
 ];
@@ -21,6 +28,7 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 		sql`DELETE FROM event_shares WHERE principal_type = 'user' AND principal_id <> ${keepUserId}`
 	);
 	await tx.execute(sql`UPDATE events SET owner_id = ${keepUserId} WHERE owner_id <> ${keepUserId}`);
+	await tx.execute(sql`DELETE FROM calendar_feeds WHERE user_id <> ${keepUserId}`);
 	await tx.execute(
 		sql`UPDATE events SET created_by = ${keepUserId}
 			WHERE created_by IS NOT NULL AND created_by <> ${keepUserId}`

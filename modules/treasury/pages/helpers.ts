@@ -78,24 +78,37 @@ export function statusText(s: Pick<InvoiceSummary, 'status' | 'overdue' | 'daysO
 
 /** Datei herunterladen/öffnen über die API (Session-Cookie) */
 export async function openApiFile(path: string, download = false): Promise<void> {
-	const res = await fetch(`/api/v1${path}`, { credentials: 'same-origin' });
-	if (!res.ok) {
-		const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-		throw new Error(body?.error?.message ?? 'Datei konnte nicht geladen werden');
+	// Fenster synchron im Klick öffnen: nach dem fetch blockieren Handy-Browser (iOS Safari,
+	// Android-Chrome) das Popup, die PDF-Ansicht blieb dann stumm aus.
+	const win = download ? null : window.open('', '_blank');
+	try {
+		const res = await fetch(`/api/v1${path}`, { credentials: 'same-origin' });
+		if (!res.ok) {
+			const body = (await res.json().catch(() => null)) as {
+				error?: { message?: string };
+			} | null;
+			throw new Error(body?.error?.message ?? 'Datei konnte nicht geladen werden');
+		}
+		const blob = await res.blob();
+		const url = URL.createObjectURL(blob);
+		const name =
+			/filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'datei';
+		if (win && !win.closed) {
+			win.opener = null;
+			win.location.href = url;
+		} else {
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = name;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+		}
+		setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	} catch (e) {
+		win?.close();
+		throw e;
 	}
-	const blob = await res.blob();
-	const url = URL.createObjectURL(blob);
-	const name =
-		/filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'datei';
-	if (download) {
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = name;
-		a.click();
-	} else {
-		window.open(url, '_blank', 'noopener');
-	}
-	setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export interface TreasuryPerms {

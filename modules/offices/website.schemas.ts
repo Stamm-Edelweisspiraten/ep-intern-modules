@@ -11,7 +11,7 @@ type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 export const websiteOfficeHolderSchema = z
 	.object({
 		id: z.string(),
-		name: z.string(),
+		firstName: z.string(),
 		bio: z.string().nullable(),
 		since: z.string().nullable(),
 		avatarPath: z.string().nullable()

@@ -26,7 +26,9 @@
 		PageTitle
 	} from '$lib/components/layout';
 	import {
+		type ComposePrefill,
 		emailAddress,
+		type InboxAttachmentInfo,
 		LAYOUTS,
 		LAYOUT_LABELS,
 		type MessageLayout,
@@ -74,6 +76,16 @@
 	let addresses = $state<string[]>([]);
 	let excluded = $state<string[]>([]);
 	let files = $state<File[]>([]);
+	/** Antwort/Weiterleitung aus dem Posteingang (`?reply=<id>&mode=…` bzw. `?forward=<id>`) */
+	let composeMode = $state<ComposePrefill['mode'] | null>(null);
+	let replyOf = $state<string | null>(null);
+	let forwardOf = $state<string | null>(null);
+	/** Anhänge der weitergeleiteten Mail, die mitgehen */
+	let forwarded = $state<InboxAttachmentInfo[]>([]);
+	const inboxRef = $derived(replyOf ?? forwardOf);
+	const pageTitle = $derived(
+		composeMode === 'forward' ? 'Weiterleiten' : composeMode ? 'Antworten' : 'Neue Nachricht'
+	);
 
 	let errors = $state<Record<string, string>>({});
 	let formError = $state('');
@@ -94,6 +106,7 @@
 			senderKey = s.senders[0]?.key ?? null;
 			layout = s.layoutDefault;
 			applyPreset();
+			await applyInboxPrefill(s);
 			loadError = '';
 		} catch (e) {
 			loadError = errorText(e, 'Die Absender konnten nicht geladen werden.');
@@ -118,6 +131,27 @@
 		const fromUrl = new URLSearchParams(location.search).get('group');
 		if (fromUrl && !groupIds.includes(fromUrl)) groupIds = [...groupIds, fromUrl];
 	}
+	/** Vorbelegung für Antworten/Weiterleiten aus dem Posteingang laden */
+	async function applyInboxPrefill(s: SendersResponse) {
+		const params = new URLSearchParams(location.search);
+		const reply = params.get('reply');
+		const forward = params.get('forward');
+		const id = forward ?? reply;
+		if (!id) return;
+		const mode = forward ? 'forward' : params.get('mode') === 'reply-all' ? 'reply-all' : 'reply';
+		const pre = await apiFetch<ComposePrefill>(
+			`${BASE}/inbox/${encodeURIComponent(id)}/compose?mode=${mode}`
+		);
+		composeMode = pre.mode;
+		replyOf = pre.replyOf;
+		forwardOf = pre.forwardOf;
+		forwarded = pre.attachments;
+		subject = pre.subject;
+		bodyHtml = pre.bodyHtml;
+		addresses = pre.addresses;
+		// Absender des Postfachs vorwählen (falls die Person ihn verwenden darf)
+		if (pre.senderKey && s.senders.some((x) => x.key === pre.senderKey)) senderKey = pre.senderKey;
+	}
 	void load();
 
 	// --- Absender / Antwortadresse -----------------------------------------------------------
@@ -126,7 +160,7 @@
 	);
 	const chosenSender = $derived(senders?.senders.find((s) => s.key === senderKey) ?? null);
 	const replyToPlaceholder = $derived(
-		senders?.replyToDefault === 'sender'
+		senders?.inboxEnabled || senders?.replyToDefault === 'sender'
 			? (chosenSender?.address ?? '')
 			: (senders?.accountEmail ?? chosenSender?.address ?? '')
 	);
@@ -336,7 +370,9 @@
 
 	// --- Anhänge ---------------------------------------------------------------------------------
 	let fileError = $state('');
-	const totalBytes = $derived(files.reduce((s, f) => s + f.size, 0));
+	const forwardedBytes = $derived(forwarded.reduce((s, f) => s + f.size, 0));
+	const totalBytes = $derived(files.reduce((s, f) => s + f.size, 0) + forwardedBytes);
+	const attachmentCount = $derived(files.length + forwarded.length);
 
 	function addFiles(list: FileList | null) {
 		fileError = '';
@@ -345,8 +381,9 @@
 			if (f.size === 0) fileError = `„${f.name}“ ist leer.`;
 			else if (f.size > MAX_FILE_BYTES)
 				fileError = `„${f.name}“ ist zu groß (höchstens ${formatSize(MAX_FILE_BYTES)}).`;
-			else if (next.length >= MAX_FILES) fileError = `Höchstens ${MAX_FILES} Anhänge.`;
-			else if (next.reduce((s, x) => s + x.size, 0) + f.size > MAX_TOTAL_BYTES)
+			else if (next.length + forwarded.length >= MAX_FILES)
+				fileError = `Höchstens ${MAX_FILES} Anhänge.`;
+			else if (next.reduce((s, x) => s + x.size, 0) + forwardedBytes + f.size > MAX_TOTAL_BYTES)
 				fileError = `Die Anhänge dürfen zusammen höchstens ${formatSize(MAX_TOTAL_BYTES)} groß sein.`;
 			else next.push(f);
 		}
@@ -355,7 +392,9 @@
 
 	const confirmText = $derived(
 		`Die Nachricht „${subject.trim()}“ geht als eigene Mail an ${preview?.recipients.length ?? 0} Adressen${
-			files.length ? `, mit ${files.length} ${files.length === 1 ? 'Anhang' : 'Anhängen'}` : ''
+			attachmentCount
+				? `, mit ${attachmentCount} ${attachmentCount === 1 ? 'Anhang' : 'Anhängen'}`
+				: ''
 		}. Das lässt sich nicht zurückholen.`
 	);
 
@@ -457,7 +496,9 @@
 					groupIds,
 					memberIds: members.map((m) => m.id),
 					excludeMemberIds: excluded,
-					addresses
+					addresses,
+					...(replyOf ? { replyOf } : {}),
+					...(forwardOf ? { forwardOf, forwardAttachmentIds: forwarded.map((a) => a.id) } : {})
 				})
 			);
 			for (const f of files) form.append('files', f);
@@ -476,17 +517,18 @@
 	}
 </script>
 
-<PageTitle title="Neue Nachricht" />
+<PageTitle title={pageTitle} />
 
 <div class="space-y-6">
 	<a
-		href={BASE}
+		href={inboxRef ? `${BASE}/inbox/${inboxRef}` : BASE}
 		class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
 	>
-		<ArrowLeft class="size-4" /> Zum Verlauf
+		<ArrowLeft class="size-4" />
+		{inboxRef ? 'Zur Nachricht' : 'Zum Posteingang'}
 	</a>
 	<PageHeader
-		title="Neue Nachricht"
+		title={pageTitle}
 		description="E-Mail an Mitglieder, Gruppen oder einzelne Adressen. Jede Person bekommt ihre eigene Mail – die Empfänger sehen einander nicht."
 	/>
 
@@ -734,8 +776,8 @@
 				<FormField
 					label="Antworten gehen an"
 					id="m-reply"
-					hint="Leer = {senders.replyToDefault === 'sender'
-						? 'Absenderadresse'
+					hint="Leer = {senders.inboxEnabled || senders.replyToDefault === 'sender'
+						? 'Absenderadresse (Antworten landen im Posteingang)'
 						: 'E-Mail-Adresse deines Kontos'}"
 				>
 					<Input
@@ -798,9 +840,11 @@
 							<dd class="min-w-0 font-medium break-words">
 								{subject.trim() || '(kein Betreff)'}
 							</dd>
-							{#if files.length}
+							{#if attachmentCount}
 								<dt class="text-muted-foreground">Anhänge</dt>
-								<dd class="min-w-0 break-words">{files.map((f) => f.name).join(', ')}</dd>
+								<dd class="min-w-0 break-words">
+									{[...forwarded.map((f) => f.filename), ...files.map((f) => f.name)].join(', ')}
+								</dd>
 							{/if}
 						</dl>
 						{#if mailPreviewError}
@@ -876,8 +920,29 @@
 							</span>
 						</div>
 						{#if fileError}<p class="text-xs text-destructive" role="alert">{fileError}</p>{/if}
-						{#if files.length}
+						{#if attachmentCount}
 							<ul class="divide-y rounded-md border" aria-label="Anhänge">
+								{#each forwarded as f (f.id)}
+									<li class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
+										<span class="flex min-w-0 items-center gap-2">
+											<span class="truncate">{f.filename}</span>
+											<Badge variant="secondary">aus der Nachricht</Badge>
+										</span>
+										<span class="flex shrink-0 items-center gap-2">
+											<span class="text-xs text-muted-foreground tabular-nums">
+												{formatSize(f.size)}
+											</span>
+											<button
+												type="button"
+												class="focus-ring rounded-sm"
+												aria-label={`${f.filename} entfernen`}
+												onclick={() => (forwarded = forwarded.filter((x) => x.id !== f.id))}
+											>
+												<X class="size-4" />
+											</button>
+										</span>
+									</li>
+								{/each}
 								{#each files as f, i (f.name + i)}
 									<li class="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
 										<span class="min-w-0 truncate">{f.name}</span>

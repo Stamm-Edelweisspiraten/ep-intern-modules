@@ -14,6 +14,8 @@ import {
 	loadTreasuryContributionsMany
 } from './accounting-core';
 import { buildAccountingReport } from './payouts.endpoints';
+import { listCalendarActions } from './calendar';
+import { accessibleActions } from './accessible';
 
 const MODULE_ID = 'actions';
 
@@ -49,6 +51,9 @@ const ref = (r: Row): ActionRef => ({
 });
 
 export const actionsService: ActionsService = {
+	listCalendarActions,
+	accessibleActions,
+
 	/** Kasse: Kategorie-Bezeichnungen ohne Laufzeit-Import aus `schemas.ts` (#44) */
 	accountingCategoryLabels() {
 		return { ...ACCOUNTING_CATEGORY_LABELS };

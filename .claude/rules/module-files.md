@@ -8,7 +8,7 @@ Cloud-Ablage des Stammes mit **einer Ansicht „Dateien“**: In der Wurzel steh
 was mir andere freigegeben haben (auch an den ganzen Stamm). Ordner und Dateien lassen sich hochladen (auch ganze Ordner per Drag & Drop),
 umbenennen, verschieben, in den Papierkorb legen, an **Principals** freigeben (Lesen/Bearbeiten, vererbt) und über **öffentliche Links** an
 Personen ohne Konto weitergeben – zum Ansehen, zum Hochladen oder beides. Aktionen per „…“-Menü **und Rechtsklick**. Vorschau für Bilder, PDFs
-und Text. Schema `mod_files`, Version 1.1.0, keine harten Abhängigkeiten, optional `members` (Gruppen/Mitglieder als Freigabe-Ziele).
+und Text. Ordner mit **Icon und Farbe**, **Speicherkontingent je Person**. Schema `mod_files`, Version 1.2.0, keine harten Abhängigkeiten, optional `members` (Gruppen/Mitglieder als Freigabe-Ziele).
 Navigation „Dateien“ (Icon `cloud`). Inhalte liegen im Core-Storage (S3, Modul `files`), Zugriff per Systemkontext `files-storage` **nach**
 der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 
@@ -23,12 +23,15 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 - Aktionen auch per **Rechtsklick** (Kontextmenü an der Mausposition, Long-Press auf Touch).
 - Drag & Drop für Dateien **und** Ordner (Upload von außen, Verschieben intern). Vorschau für **Bilder und PDFs** (+ Text).
 - **Nicht im Umfang**: Sync-Client, Versionen, gemeinsames Bearbeiten, Videos.
+- (2026-10-23) Ordner bekommen **Icon** (aus einer Icon-Bibliothek mit möglichst vielen Icons → alle Lucide-Icons, Auswahl über ein Menü)
+  und **Farbe** (vorhandener `ColorPicker` + Vorschläge); **für alle mit Zugriff gleich**, ändern darf, wer den Ordner bearbeiten darf.
+  Kontingent **je Person**, Standard bleibt 1 GB, einstellbar **im Dialog „Benutzer bearbeiten“** der Verwaltung.
 
 ## Dateien (`src/lib/modules/files/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (3 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0003, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Job `purge-trash` (täglich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → nodes (öffentliche/feste Pfade vor `:id`) |
-| `ui.ts` | Route `''` → `FilesPage`; `publicRoutes` `link/:token` → `PublicLinkPage` |
+| `module.ts` | Manifest (4 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0004, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Job `purge-trash` (täglich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → quota → nodes (öffentliche/feste Pfade vor `:id`) |
+| `ui.ts` | Route `''` → `FilesPage`; `publicRoutes` `link/:token` → `PublicLinkPage`; `userAdminSections` `quota` → `UserQuotaSection` |
 | `schemas.ts` | API-Vertrag (Server + UI): `PERMISSIONS`, `SETTING_KEYS`, `ROOT_LABEL` („Dateien“), `SPACES` (nur noch `personal`, intern), `LINK_MODES`/`LINK_MODE_LABELS`/`LINK_MODE_DESCRIPTIONS`, `linkCanView`/`linkCanUpload`, Grenzen (`MAX_NAME` 200, `MAX_DEPTH` 20, `MAX_BULK` 500, `MAX_SHARES` 200, `MAX_LINKS_PER_NODE` 20, `MAX_SEARCH_RESULTS` 100, `MIN_PASSWORD` 8, `MAX_UNLOCK_FAILURES` 10, `LINK_ACCESS_TTL_SEC` 900, `MAX_TEXT_PREVIEW_BYTES` 1 MB, `UPLOAD_CONCURRENCY` 3, `MAX_PUBLIC_UPLOAD_FILES` 10, `MAX_PUBLIC_UPLOAD_BYTES` 30 MB, `MAX_UPLOADER_NAME` 100), Vorschau-Typen, `NEVER_INLINE_TYPES`, `INVISIBLE_CHARS`, Zod (`nodeName`, `listQuery`, `folderCreateInput`, `moveInput`, `uploadFields`, `sharesInput`, `linkCreateInput` mit `mode`, `publicUploadFields`, …), DTOs `FileNode` (`owner`, `own`, `stamm`, `uploadedByName`, `viaLink`), `FolderListing`, `Breadcrumb`, `SearchResult`, `TrashItem`, `NodeShares`, `ShareLink` (`mode`, `url`), `PublicLinkInfo` (`mode`, `upload`), `PublicListing`, `PublicUploadResult`, `FilesMeta` |
 | `db.ts` | `mdb()`, `filesCtx()` (Systemkontext für Storage), `NodeRow`/`nodeRowOf`/`NODE_COLUMNS`, `loadNode(s)`, `ancestorsOf`/`descendantIds` (rekursive CTEs, Zyklenschutz 64), `userRefs` (nach der Tx), `filesSettings()` |
 | `access.ts` | Objektprüfung: `rootAccess` (Eigentümer*in / `manage-all`), `resolveAccess`, `requireNode` (404/403), `requireFolderTarget` (`null` = eigene Wurzel), `accessForMany` (Listen, ein CTE), `sharedWithMeRoots` (Wurzel-Einträge anderer), `visibleNodesFilter` (Suche), `stammSharedSql` (Badge „Stamm“), `canManageAll`, `NODE_SHARES` (Freigabe-Tabelle für die SDK-Bausteine `shareLevelOn`/`loadObjectShares`/`replaceObjectShares`, #35) |
@@ -54,8 +57,12 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 | `pages/ShareNodeDialog.svelte` | Oben Schalter **„Mit dem ganzen Stamm teilen“** (Sehen/Bearbeiten → `everyone:*`), darunter `SharePanel` für Einzelne (eigene + geerbte Freigaben) |
 | `pages/LinkDialog.svelte` | Neuer Link: **Art** (Segment Ansehen · Hochladen · Ansehen und hochladen; Upload nur bei Ordnern), Ablauf, Passwort; Liste zeigt **jederzeit die URL** mit „Kopieren“/„Öffnen“ und Widerrufen (alte Links ohne `token_enc`: „Link-Adresse nicht mehr abrufbar – neuen Link erstellen“) |
 | `pages/NameDialog`, `MoveDialog` (ein Baum ab „Dateien“: eigene + bearbeitbare freigegebene Ordner), `NodeInfoDialog` („Hochgeladen über Link von <Name>“), `TrashView`, `QuotaBar`, `helpers.ts` | Dialoge und Hilfen (`DRAG_MIME`, `VIEWS` = `files`/`trash`, `internalUrl`, `compareNodes`, `formatDateTime`, `errorText`) |
+| `quota.endpoints.ts` | `GET/PUT /quotas/:userId` (Recht `files.quota.manage`): Modus `default`/`custom`/`unlimited`, Belegung, wirksames Limit; Audit `files.quota.updated` (Modus, MB) |
+| `pages/FolderGlyph.svelte` | Ordnersymbol: gefüllt in der Ordnerfarbe (ohne Farbe neutral grau), ab `md` Icon darauf (Kontrastfarbe per `contrastTextColor`) |
+| `pages/FolderStyleDialog.svelte` | Dialog „Ordner gestalten“: Vorschau, Vorschlagsfarben + `ColorPicker`, `IconPicker` (alle Icons), „Kein Icon“, „Auf Standard zurücksetzen“ |
+| `pages/UserQuotaSection.svelte` | `userAdminSections`-Abschnitt im Benutzer-Dialog: `QuotaBar`, Auswahl Standard/Eigenes Limit (Zahl + MB/GB)/Unbegrenzt, Warnung unter der Belegung, eigener Speichern-Knopf |
 | `pages/PublicLinkPage.svelte` | Öffentliche Seite `/p/files/link/<token>` je `mode`: Passwortabfrage, Ordner blättern (`?folder=`), Vorschau, Download; bei Upload-Arten **Upload-Bereich** (Drag & Drop + Auswahl, mehrere Dateien, Fortschritt per XHR, Feld „Dein Name (optional)“, Grenzen, „Danke! N Dateien hochgeladen“); „Hochladen“ zeigt keinen Inhalt; Zugriffstoken in `sessionStorage` |
-| `migrations/0001_init.sql`, `0002_link_lockout.sql`, `0003_single_view_upload_links.sql` | Schema; Fehlversuchs-Zähler für Link-Passwörter; eine Ansicht + Link-Arten + `token_enc` + Upload-Herkunft |
+| `migrations/0001_init.sql`, `0002_link_lockout.sql`, `0003_single_view_upload_links.sql`, `0004_folder_style_user_quota.sql` | Schema; Fehlversuchs-Zähler für Link-Passwörter; eine Ansicht + Link-Arten + `token_enc` + Upload-Herkunft; `nodes.icon`/`color` + Tabelle `user_quotas` |
 
 Core-Baustein dazu: `src/lib/components/ui/context-menu/` (bits-ui `ContextMenu`, gleiche API wie `ui/dropdown-menu`, siehe `ui-design.md`).
 
@@ -77,6 +84,10 @@ Core-Baustein dazu: `src/lib/components/ui/context-menu/` (bits-ui `ContextMenu`
   last_access_at, access_count)`; 0002: `failed_count`, `failed_window_start`; 0003: `mode text NOT NULL DEFAULT 'view' CHECK (view|upload|view-upload)`,
   `token_enc text` (Token per `core.crypto.forModule('files').encrypt`, damit die URL wieder anzeigbar ist; gesucht wird weiter über `token_hash`).
   Alte Links (vor 0003) haben kein `token_enc` → `url = null`.
+- 0004: `nodes.icon text` (CHECK Format `[a-z0-9-]`, ≤ 64), `nodes.color text` (CHECK `#rrggbb` klein), CHECK nur Ordner tragen ein Aussehen
+  (`nodes_style_check`). `user_quotas(user_id PK, quota_mb integer NULL = unbegrenzt, CHECK 1–10 000 000, updated_by, updated_at)` – keine Zeile = Standard
+  `files.quota.mb`. `quotaLimitFor(tx, owner, defaultBytes)` (`storage.ts`) liefert das wirksame Limit; `assertQuota`, Link-Upload-Vorprüfung und `/meta`
+  nutzen es. `onUserDeleted` löscht die Zeile, `resetUsers` die Zeilen fremder Personen, Reset `all` die Tabelle; `subjectExport` → `storageQuota`.
 
 ### Migration 0003 (Stamm-Bereich auflösen)
 1. Namenskonflikt einer Stamm-Wurzel mit einer Wurzel der künftigen Eigentümer*in → Suffix „ (Stamm <erste 8 Zeichen der ID>)“ (immer eindeutig).
@@ -94,6 +105,7 @@ Core-Baustein dazu: `src/lib/components/ui/context-menu/` (bits-ui `ContextMenu`
 | `files.file.view` | Grundrecht: eigene Ablage, für mich (oder den ganzen Stamm) Freigegebenes; alle internen Endpunkte |
 | `files.link.create` | Öffentliche Links anlegen (zum Ansehen/Hochladen; zusätzlich Eigentümerschaft oder `manage-all` am Knoten nötig) |
 | `files.file.manage-all` | Alles sehen und verwalten, auch fremde Dateien (`GET /nodes?owner=`) |
+| `files.quota.manage` | Speicherkontingent einzelner Personen festlegen (Abschnitt im Dialog „Benutzer bearbeiten“) |
 
 `files.shared.view|edit` gibt es seit 0003 nicht mehr. `defaultRoleGrants`: „Mitglied“ → `files.file.view` (Verknüpfungs-Konten bekommen eine
 eigene Ablage und sehen Freigegebenes).
@@ -174,6 +186,8 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 | POST `/nodes/move` | `{ ids ≤ 500, targetId }` (`null` = eigene Wurzel) → `{ affected }`; Regeln siehe oben |
 | GET `/nodes/:id` | `FileNode` (404 ohne Zugriff) |
 | PATCH `/nodes/:id` | `{ name }` umbenennen (Konflikt 409 mit Vorschlag) |
+| POST `/nodes/style` | `{ ids ≤ 500, icon?, color? }` (fehlend = unverändert, `null` = zurücksetzen) → `{ affected }`; edit an jedem Ordner (fremd 404, nur Lesen 403), Dateien 422, unbekanntes Icon 422 (Prüfung gegen `$lib/sdk/icons`); `updated_at` bleibt; Audit `files.node.styled` nur mit Anzahl und `set`/`reset`/`unchanged` |
+| GET / PUT `/quotas/:userId` | Recht `files.quota.manage`; PUT `{ mode: default|custom|unlimited, mb? }` (custom: ganze MB 1–10 000 000) → `UserQuota`; kein Existenz-Check der ID (deaktivierte Konten bleiben bearbeitbar) |
 | POST `/nodes/:parent/upload` | multipart `file` + `relativePath?`, `conflict?`; `parent` = Ordner-ID oder `root` (eigene Wurzel); ein Request je Datei |
 | GET `/nodes/:id/content?download=1` | Inhalt mit Sicherheits-Headern (`private, max-age=60`) |
 | GET `/nodes/:id/thumb` | WebP 320 px (`private, max-age=3600`), 404 ohne Thumbnail; eigenes Rate-Limit `IMAGE_RATE_LIMIT` (1200/60 s, #23) |
@@ -210,12 +224,17 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 - **Link-Dialog**: Art wählen (Upload nur bei Ordnern), Ablauf, Passwort; Liste mit jederzeit sichtbarer URL, „Kopieren“, „Öffnen“, Widerrufen.
 - **Verschieben-Dialog**: ein Baum ab „Dateien“ (eigene + bearbeitbare freigegebene Ordner).
 - **Info-Dialog**: bei Uploads über einen Link „Hochgeladen über Link von <Name>“ (bzw. ohne Namen).
+- **Raster** (intern und öffentliche Seite): Karten einer Reihe gleich hoch, Name mit fester Höhe für zwei Zeilen, Umbruch bevorzugt nach `_ - . /` und vor
+  Ziffern (`breakableName` → `<wbr>`), voller Name im Tooltip; Ordner zeigen „12 Einträge · 4,1 MB“ (`folderMeta`, `FileNode.folderBytes` = Teilbaum ohne
+  Papierkorb), farbige Ordner mit getönter Vorschaufläche. Liste: kleines Ordnersymbol in der Farbe (ohne Icon).
+- **Aussehen**: Menü/Rechtsklick „Farbe“ (Untermenü mit Vorschlagsfarben, auch für mehrere Ordner, Rückgängig-Toast) und „Aussehen ändern …“
+  (`FolderStyleDialog`) – nur Ordner mit Bearbeiten-Zugriff. Öffentliche Links zeigen Icon/Farbe (`PublicNode.icon/color`).
 - **Öffentliche Seite** `/p/files/link/<token>`: Passwortabfrage; „Ansehen“: Ordner blättern, Vorschau, Download; „Hochladen“: nur Upload-Bereich
   (kein Inhalt); „Ansehen und hochladen“: beides. Upload-Bereich mit Drag & Drop/Auswahl, mehreren Dateien, Fortschritt (XHR), „Dein Name (optional)“,
   angezeigten Grenzen und Erfolgsliste. Zugriffstoken je Link in `sessionStorage`.
 
 ## Einstellungen, Job, Reset
-- `files.quota.mb` (Standard 1024, 0 = unbegrenzt; je Eigentümer*in), `files.trash.days` (Standard 30, 1–365),
+- `files.quota.mb` (Standard 1024, 0 = unbegrenzt; je Eigentümer*in, einzeln überschreibbar über `user_quotas`), `files.trash.days` (Standard 30, 1–365),
   `files.link.upload-mb` (Höchstmenge je Upload-Link, Standard 500, 0 = unbegrenzt).
   Größe/Typen kommen aus den Core-Storage-Einstellungen (`core.storage.maxFileSizeMb`, `core.storage.allowedContentTypes`).
 - Job `files.purge-trash` (täglich): abgelaufene Papierkorb-Wurzeln endgültig löschen (je Lauf ≤ 500, Rest beim nächsten Lauf), Storage danach.
@@ -223,8 +242,13 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
   **widerrufen**, jede fremde Ablage wandert in einen neuen Ordner **„Übernommen“** („Übernommen (2)“ …) in der Wurzel der behaltenen Person,
   Benutzer-Freigaben fremder Personen weg, `owner_id`/`created_by`/`deleted_by` umschreiben.
 
+## Benachrichtigungen (2026-10-25, `notify.ts`)
+- `file-shared`: neu hinzugekommene Freigaben (ohne „ganzer Stamm“) in `putShares`; `link-upload`: Dateien über einen öffentlichen Upload-Link → Eigentümer*in
+  des Ordners (eine Nachricht je Upload-Anfrage, mit optionalem Namen der Person). Beide mit „Täglich“ wählbar.
+
 ## Tests und Demo
-Unit `tests/unit/files-*.test.ts` (`files-upload-queue`, `files-names`, `files-schemas`, `files-helpers`); Integration `tests/integration/files.test.ts`
+Unit `tests/unit/files-*.test.ts` (`files-upload-queue`, `files-names`, `files-schemas`, `files-helpers` inkl. `breakableName`/`folderMeta`), `icon-data.test.ts`;
+**neu** `files-style-quota.test.ts` (Aussehen inkl. Zugriff/Validierung/öffentlicher Link/Audit, Ordnergröße, Kontingent je Person inkl. Upload 413, Meta, Löschen); Integration `tests/integration/files.test.ts`
 (Ablage, eine Wurzel mit Freigegebenem, Upload, Papierkorb, Kontingent, Auslieferung), `files-sharing.test.ts` (Freigaben inkl. Stamm, Vererbung, Links,
 URL wieder abrufbar, Fehlversuche), **neu** `files-upload-link.test.ts` (Link-Arten, öffentlicher Upload: Modus/Passwort/Grenzen/Kontingent/Namen/kein
 Überschreiben/Widerruf während des Uploads/Audit) und `files-migration.test.ts` (Migration 0003 mit Stamm-Daten: Eigentum, `everyone:*`, Namenskonflikte);

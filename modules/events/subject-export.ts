@@ -1,7 +1,8 @@
 /**
  * Datenauskunft (Art. 15/20 DSGVO, Core `/admin/privacy`): Daten einer Person im Modul Termine –
  * eigene bzw. angelegte Termine (Konto), Freigaben an das Konto oder an Mitglieder der Person und
- * von der Person geänderte Einzeltermine einer Serie. Gruppen-Zuordnungen sind keine Personendaten.
+ * von der Person geänderte Einzeltermine einer Serie, eigene Kalender-Abos (ohne Link). Gruppen-Zuordnungen
+ * sind keine Personendaten.
  * Eigene Modul-Transaktion, keine Core-Services darin.
  */
 import { sql } from 'drizzle-orm';
@@ -59,9 +60,18 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 						WHERE x.updated_by = ${userId} ORDER BY x.updated_at, x.event_id`
 				)
 			: [];
-		return { owned, shares, exceptions };
+		const feeds = userId
+			? await rowsOf(
+					tx,
+					sql`SELECT id, name, include_events, include_actions, group_ids, tags, created_at, last_used_at
+						FROM calendar_feeds WHERE user_id = ${userId} ORDER BY created_at, id`
+				)
+			: [];
+		return { owned, shares, exceptions, feeds };
 	});
-	if (!data.owned.length && !data.shares.length && !data.exceptions.length) return null;
+	if (!data.owned.length && !data.shares.length && !data.exceptions.length && !data.feeds.length) {
+		return null;
+	}
 	return {
 		events: data.owned.map((r) => ({
 			id: String(r.id),
@@ -95,6 +105,17 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 			occurrenceDate: String(r.occurrence_date),
 			cancelled: r.cancelled === true,
 			updatedAt: toIsoOrNull(r.updated_at)
+		})),
+		// Ohne Link/Token (geheim, nur in der App sichtbar)
+		calendarFeeds: data.feeds.map((r) => ({
+			id: String(r.id),
+			name: String(r.name),
+			includeEvents: r.include_events === true,
+			includeActions: r.include_actions === true,
+			groupIds: jsonList(r.group_ids),
+			tags: jsonList(r.tags),
+			createdAt: toIsoOrNull(r.created_at),
+			lastUsedAt: toIsoOrNull(r.last_used_at)
 		}))
 	};
 }

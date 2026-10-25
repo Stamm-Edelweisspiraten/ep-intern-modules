@@ -7,6 +7,14 @@ export default {
 	publicRoutes: {
 		'link/:token': () => import('./pages/PublicLinkPage.svelte')
 	},
+	userAdminSections: [
+		{
+			id: 'quota',
+			title: 'Speicherplatz',
+			permission: 'files.quota.manage',
+			component: () => import('./pages/UserQuotaSection.svelte')
+		}
+	],
 	dashboardWidgets: [
 		{
 			id: 'recent',

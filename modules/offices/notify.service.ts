@@ -5,10 +5,15 @@
  * immer außerhalb der Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
-import { core, type RequestContext } from '$lib/sdk/server';
-import type { NotifyResult, OfficeNotification, OfficesService, OwnOfficeEmails } from './contract';
+import { core, type NotificationScopeEntry, type RequestContext } from '$lib/sdk/server';
+import type {
+	NotifyResult,
+	OfficeMailbox,
+	OfficeNotification,
+	OfficesService,
+	OwnOfficeEmails
+} from './contract';
 import { inList, mdb, rowsOf, textOrNull, usersByIds, type DirectoryUserInfo } from './load';
-import { DEFAULT_NOTIFY_MODE, NOTIFY_MODES, type NotifyMode } from './schemas';
 import { registeredTemplates } from './templates';
 
 export const MAX_SUBJECT = 150;
@@ -144,17 +149,15 @@ async function sendTo(user: DirectoryUserInfo, mail: { subject: string; text: st
 
 const lookupCtx = () => core.auth.systemContext('offices');
 
-interface Target {
-	officeId: string;
-	officeName: string;
-	module: string;
-	key: string;
-	holders: string[];
-	/** `userId|event` → Modus (nur Abweichungen) */
-	prefs: Map<string, NotifyMode>;
-}
+/** Typ der Amts-Benachrichtigungen im Core (`offices.template`, Bereich `<modul>:<amt>:<ereignis>`) */
+export const TEMPLATE_TYPE = 'template';
+export const templateScope = (module: string, office: string, event: string) =>
+	`${module}:${office}:${event}`;
 
-/** Siehe `OfficesService.notify` – wirft nie */
+/**
+ * Siehe `OfficesService.notify` – wirft nie. Kanal (E-Mail/Push, sofort/täglich/aus) wählt jede Person im
+ * Profil; den Versand übernimmt `core.notifications`.
+ */
 export async function notify(
 	ctx: RequestContext,
 	items: OfficeNotification[]
@@ -186,11 +189,12 @@ export async function notify(
 			valid.push(item);
 		}
 		if (valid.length === 0) return result;
+		await migrateLegacyPrefs();
 
-		// 1) Ämter, Inhaber*innen und Einstellungen lesen
+		// 1) Ämter und Inhaber*innen lesen
 		const groups = [...new Set(valid.map((i) => `${i.module}:${i.office}`))];
 		const targets = await mdb().transaction(async (tx) => {
-			const map = new Map<string, Target>();
+			const map = new Map<string, { officeId: string; officeName: string; holders: string[] }>();
 			for (const g of groups) {
 				const [module, key] = g.split(':') as [string, string];
 				const [office] = await rowsOf(
@@ -205,40 +209,13 @@ export async function notify(
 							ORDER BY position, user_id`
 					)
 				).map((r) => String(r.user_id));
-				const prefs = new Map<string, NotifyMode>();
-				if (holders.length) {
-					const rows = await rowsOf(
-						tx,
-						sql`SELECT user_id, event_key, mode FROM notification_prefs
-							WHERE module_id = ${module} AND office_key = ${key}
-								AND user_id IN (${inList(holders)})`
-					);
-					for (const r of rows) {
-						const mode = String(r.mode) as NotifyMode;
-						if (NOTIFY_MODES.includes(mode)) {
-							prefs.set(`${String(r.user_id)}|${String(r.event_key)}`, mode);
-						}
-					}
-				}
-				map.set(g, {
-					officeId: String(office.id),
-					officeName: String(office.name),
-					module,
-					key,
-					holders,
-					prefs
-				});
+				map.set(g, { officeId: String(office.id), officeName: String(office.name), holders });
 			}
 			return map;
 		});
 
-		// 2) Aktive Konten (Konto-Adresse) – außerhalb der Transaktion
-		const allHolders = [...new Set([...targets.values()].flatMap((t) => t.holders))];
-		const users = allHolders.length ? await usersByIds(lookupCtx(), allHolders) : new Map();
-
-		// 3) Je Ereignis und Person den Modus bestimmen
-		const immediate = new Map<string, MailEvent[]>();
-		const queue: { userId: string; item: CleanItem }[] = [];
+		// 2) Versand über den Core (nach der Transaktion)
+		const sendItems = [];
 		const offices = new Set<string>();
 		for (const item of valid) {
 			const t = targets.get(`${item.module}:${item.office}`);
@@ -247,49 +224,21 @@ export async function notify(
 				continue;
 			}
 			offices.add(t.officeId);
-			for (const userId of t.holders) {
-				const mode = t.prefs.get(`${userId}|${item.event}`) ?? DEFAULT_NOTIFY_MODE;
-				if (mode === 'off' || !users.has(userId)) {
-					result.skipped++;
-				} else if (mode === 'daily') {
-					queue.push({ userId, item });
-				} else {
-					const ev = { officeName: t.officeName, ...item };
-					const list = immediate.get(userId);
-					if (list) list.push(ev);
-					else immediate.set(userId, [ev]);
-				}
-			}
+			sendItems.push({
+				type: TEMPLATE_TYPE,
+				scope: templateScope(item.module, item.office, item.event),
+				userIds: t.holders,
+				title: item.subject,
+				body: item.text,
+				link: item.link,
+				group: `Amt „${t.officeName}“`
+			});
 		}
-
-		// 4) Tageszusammenfassung vormerken
-		if (queue.length) {
-			try {
-				await mdb().transaction(async (tx) => {
-					for (const { userId, item } of queue) {
-						await tx.execute(
-							sql`INSERT INTO notification_queue
-								(id, user_id, module_id, office_key, event_key, subject, text, link)
-								VALUES (${crypto.randomUUID()}, ${userId}, ${item.module}, ${item.office},
-									${item.event}, ${item.subject}, ${item.text}, ${item.link})`
-						);
-					}
-				});
-				result.queued += queue.length;
-			} catch (e) {
-				console.warn(
-					'[offices] Warteschlange nicht gespeichert:',
-					e instanceof Error ? e.message : e
-				);
-				result.skipped += queue.length;
-			}
-		}
-
-		// 5) Sofort: eine Mail je Person
-		for (const [userId, events] of immediate) {
-			const user = users.get(userId)!;
-			if (await sendTo(user, composeMail(user.name, events, 'immediate'))) result.sent++;
-			else result.skipped += events.length;
+		if (sendItems.length) {
+			const r = await core.notifications.send(ctx, 'offices', sendItems);
+			result.sent += r.email + r.push;
+			result.queued += r.queued;
+			result.skipped += r.skipped;
 		}
 
 		if (result.sent || result.queued) {
@@ -311,6 +260,78 @@ export async function notify(
 		console.warn('[offices] notify fehlgeschlagen:', e instanceof Error ? e.message : e);
 	}
 	return result;
+}
+
+/**
+ * Bereiche für das Profil (`notifications.forUser`): je eigenem Vorlagen-Amt eines aktiven Moduls dessen
+ * Ereignisse.
+ */
+export async function notificationScopesFor(
+	ctx: RequestContext
+): Promise<NotificationScopeEntry[]> {
+	const userId = ctx.userId;
+	if (!userId) return [];
+	await migrateLegacyPrefs();
+	const rows = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT o.name, o.source_module, o.source_key
+				FROM office_holders h JOIN offices o ON o.id = h.office_id
+				WHERE h.user_id = ${userId} AND o.source_module IS NOT NULL
+				ORDER BY o.position, o.name, o.id`
+		)
+	);
+	const templates = registeredTemplates();
+	const out: NotificationScopeEntry[] = [];
+	for (const o of rows) {
+		const module = String(o.source_module);
+		const key = String(o.source_key);
+		const template = templates.get(module)?.templates.get(key);
+		if (!template || !(await core.modules.isEnabled(module))) continue;
+		for (const n of template.notifications) {
+			out.push({
+				key: TEMPLATE_TYPE,
+				scope: templateScope(module, key, n.key),
+				label: n.label,
+				description: n.description,
+				group: `Amt „${String(o.name)}“`
+			});
+		}
+	}
+	return out;
+}
+
+let legacyDone = false;
+
+/**
+ * Einmalige Übernahme der alten Einstellungen (`notification_prefs`, sofort/täglich/aus) in den Core;
+ * danach werden die Zeilen gelöscht (idempotent, auch bei mehreren Prozessen).
+ */
+export async function migrateLegacyPrefs(): Promise<number> {
+	if (legacyDone) return 0;
+	const rows = await mdb().transaction((tx) =>
+		rowsOf(tx, sql`SELECT user_id, module_id, office_key, event_key, mode FROM notification_prefs`)
+	);
+	if (rows.length) {
+		await core.notifications.migratePreferences(
+			'offices',
+			rows.map((r) => ({
+				userId: String(r.user_id),
+				type: TEMPLATE_TYPE,
+				scope: templateScope(String(r.module_id), String(r.office_key), String(r.event_key)),
+				channel: r.mode === 'off' ? ('off' as const) : ('email' as const),
+				delivery: r.mode === 'daily' ? ('daily' as const) : ('immediate' as const)
+			}))
+		);
+		await mdb().transaction((tx) => tx.execute(sql`DELETE FROM notification_prefs`));
+	}
+	legacyDone = true;
+	return rows.length;
+}
+
+/** Nur für Tests: Übernahme erneut prüfen */
+export function resetLegacyPrefsMigrationForTests(): void {
+	legacyDone = false;
 }
 
 export interface DigestResult {
@@ -484,4 +505,40 @@ async function listOwnOfficeEmails(ctx: RequestContext): Promise<OwnOfficeEmails
 	return [...byOffice.values()];
 }
 
-export const officesService: OfficesService = { notify, listOwnOfficeEmails };
+/** Alle Ämter mit Adressen und Inhaber*innen (Postfach-Zuordnung in `messages`), ohne Rechteprüfung */
+async function listOfficeMailboxes(): Promise<OfficeMailbox[]> {
+	const data = await mdb().transaction(async (tx) => ({
+		emails: await rowsOf(
+			tx,
+			sql`SELECT o.id, o.name, e.label, e.email FROM offices o
+				JOIN office_emails e ON e.office_id = o.id
+				ORDER BY o.position, o.name, e.position, e.id`
+		),
+		holders: await rowsOf(
+			tx,
+			sql`SELECT office_id, user_id FROM office_holders ORDER BY office_id, position, user_id`
+		)
+	}));
+	const byOffice = new Map<string, OfficeMailbox>();
+	for (const r of data.emails) {
+		const id = String(r.id);
+		const entry = byOffice.get(id) ?? {
+			officeId: id,
+			officeName: String(r.name),
+			emails: [],
+			holderUserIds: []
+		};
+		entry.emails.push({ label: textOrNull(r.label), email: String(r.email) });
+		byOffice.set(id, entry);
+	}
+	for (const h of data.holders) {
+		byOffice.get(String(h.office_id))?.holderUserIds.push(String(h.user_id));
+	}
+	return [...byOffice.values()];
+}
+
+export const officesService: OfficesService = {
+	notify,
+	listOwnOfficeEmails,
+	listOfficeMailboxes
+};

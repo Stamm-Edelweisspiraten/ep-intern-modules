@@ -1,7 +1,16 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import {
+	NOTIFY_ACCOUNTING,
+	NOTIFY_ACTION_SHARED,
+	NOTIFY_EXPENSE_SUBMITTED,
+	NOTIFY_REGISTRATION_NEW,
+	NOTIFY_REGISTRATION_OWN
+} from './schemas';
 import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
+import { shareEndpoints } from './shares.endpoints';
+import { withActionKeys } from './access';
 import { myEndpoints } from './my.endpoints';
 import { calculationEndpoints } from './calculation.endpoints';
 import { accountingEndpoints } from './accounting.endpoints';
@@ -37,6 +46,8 @@ import m0017 from './migrations/0017_expense_batches.sql?raw';
 import m0018 from './migrations/0018_health_encryption.sql?raw';
 import m0019 from './migrations/0019_registration_optin.sql?raw';
 import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
+import m0021 from './migrations/0021_camp_fees.sql?raw';
+import m0022 from './migrations/0022_principal_shares.sql?raw';
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
@@ -46,7 +57,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.3.0',
+		version: '1.5.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -113,6 +124,43 @@ export default defineModule({
 		healthRetentionSetting
 	],
 	search: actionsSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_EXPENSE_SUBMITTED,
+				label: 'Neue Auslagen über den Kosten-Link',
+				description: 'An die Eigentümer*in der Aktion, sobald jemand Auslagen einreicht.',
+				anyPermission: ['actions.action.create', 'actions.action.edit-all']
+			},
+			{
+				key: NOTIFY_REGISTRATION_NEW,
+				label: 'Neue Anmeldung über den Anmeldelink',
+				description: 'An Eigentümer*in und Personen mit Bearbeiten-Freigabe.',
+				digest: true,
+				permission: 'actions.action.view'
+			},
+			{
+				key: NOTIFY_REGISTRATION_OWN,
+				label: 'Anmeldung eingegangen (Push)',
+				description:
+					'Wenn du jemanden aus deinen Mitgliedern angemeldet hast. Die Bestätigung kommt immer per E-Mail.',
+				pushOnly: true,
+				defaultChannel: 'push',
+				permission: 'actions.own.view'
+			},
+			{
+				key: NOTIFY_ACTION_SHARED,
+				label: 'Aktion mit mir geteilt',
+				permission: 'actions.action.view'
+			},
+			{
+				key: NOTIFY_ACCOUNTING,
+				label: 'Abrechnung abgeschlossen, zwischenabgerechnet oder wieder geöffnet',
+				description: 'An Eigentümer*in und Bearbeitende, wenn eine andere Person das tut.',
+				permission: 'actions.action.view'
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,
@@ -138,7 +186,9 @@ export default defineModule({
 		{ name: '0017_expense_batches', sql: m0017 },
 		{ name: '0018_health_encryption', sql: m0018 },
 		{ name: '0019_registration_optin', sql: m0019 },
-		{ name: '0020_link_token_hash_constraints', sql: m0020 }
+		{ name: '0020_link_token_hash_constraints', sql: m0020 },
+		{ name: '0021_camp_fees', sql: m0021 },
+		{ name: '0022_principal_shares', sql: m0022 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [
@@ -178,18 +228,22 @@ export default defineModule({
 	/** Datensicherung: `token_hash` der Links mit dem Schlüssel des Zielservers neu berechnen */
 	backup: actionsBackup,
 	/** Kasse: nach schreibenden Vorgängen gezielt diese Aktion abgleichen (`treasury-sync.ts`) */
-	endpoints: withTreasurySync([
-		...myEndpoints,
-		...actionEndpoints,
-		...participantEndpoints,
-		...participantSheetEndpoints,
-		...calculationEndpoints,
-		...formEndpoints,
-		...accountingEndpoints,
-		...payoutEndpoints,
-		...refundEndpoints,
-		...exportImportEndpoints,
-		...interimEndpoints,
-		...expenseLinkEndpoints
-	])
+	/** Principal-Schlüssel vor jedem Handler ermitteln (`access.ts`) */
+	endpoints: withActionKeys(
+		withTreasurySync([
+			...myEndpoints,
+			...actionEndpoints,
+			...shareEndpoints,
+			...participantEndpoints,
+			...participantSheetEndpoints,
+			...calculationEndpoints,
+			...formEndpoints,
+			...accountingEndpoints,
+			...payoutEndpoints,
+			...refundEndpoints,
+			...exportImportEndpoints,
+			...interimEndpoints,
+			...expenseLinkEndpoints
+		])
+	)
 });
