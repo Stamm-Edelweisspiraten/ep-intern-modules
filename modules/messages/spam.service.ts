@@ -117,24 +117,44 @@ export async function evaluateSpam(
 	parsed: ParsedInbound
 ): Promise<SpamVerdict> {
 	const address = parsed.from?.address ?? '';
-	const [row] = address
-		? await mdb().transaction((tx) =>
-				rowsOf(
+	const refs = [parsed.inReplyTo, ...parsed.references].filter((r): r is string => !!r);
+	const { recent, ownSent, replyToUs } = await mdb().transaction(async (tx) => {
+		const [row] = address
+			? await rowsOf(
 					tx,
 					sql`SELECT count(DISTINCT dedupe_key) AS n FROM inbox_messages
 						WHERE from_address = ${address}
 							AND imported_at > now() - make_interval(mins => ${FLOOD_WINDOW_MINUTES})`
 				)
-			)
-		: [];
-	const known = !!address && (env.known.has(address) || env.ownDomains.has(domainOf(address)));
+			: [];
+		// Unsere eigene Mail (z. B. an ein eigenes Postfach): Message-ID wurde beim Versand vergeben
+		const own = parsed.messageId
+			? await rowsOf(
+					tx,
+					sql`SELECT 1 FROM message_recipients WHERE message_id_header = ${parsed.messageId} LIMIT 1`
+				)
+			: [];
+		// Antwort auf eine unserer Mails: der Absender kennt deren Message-ID
+		const reply = refs.length
+			? await rowsOf(
+					tx,
+					sql`SELECT 1 FROM message_recipients WHERE message_id_header IN (${inList(refs)}) LIMIT 1`
+				)
+			: [];
+		return { recent: Number(row?.n ?? 0), ownSent: own.length > 0, replyToUs: reply.length > 0 };
+	});
+	const isKnown = (a: string) => env.known.has(a) || env.ownDomains.has(domainOf(a));
+	const known = !!address && (isKnown(address) || replyToUs);
 	const rule = address ? matchSenderRule(address, env.rules) : null;
 	const verdict = scoreSpam(parsed, {
 		ownDomains: env.ownDomains,
 		rule,
 		known,
-		recentFromSender: Number(row?.n ?? 0)
+		ownSent,
+		knownReplyTo: !!parsed.replyTo && isKnown(parsed.replyTo),
+		recentFromSender: recent
 	});
+	if (ownSent) return verdict;
 	if (env.enabled || verdict.source === 'blocklist') return verdict;
 	// Eigene Erkennung aus: nur Listen, bekannte Absender und das Urteil des Mailservers
 	const trusted = (rule?.kind === 'allow' || known) && parsed.authResult !== 'fail';

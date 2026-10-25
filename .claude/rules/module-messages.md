@@ -198,6 +198,13 @@ Postfächer; „Spam“/„Kein Spam“ darf **jede*r mit Zugriff** auf das Post
 - **Vorrang**: Sperrliste → immer Spam (`blocklist`). Vertrauensliste **oder bekannter Absender** (Mitglieder-Adressen über `listMemberContacts`
   ≤ 1000, Konten mit `send`, alle je angeschriebenen Adressen aus `message_recipients`, eigene Domains) → nie Spam, **außer** DMARC/DKIM/SPF schlägt fehl.
   Domain-Einträge treffen Subdomains; Adresse vor Domain, genaueste Domain gewinnt.
+- **Gegen Fehlalarme (2026-10-25)**: **eigene Mails** (Message-ID steht in `message_recipients.message_id_header`) sind nie Spam;
+  **Antworten auf unsere Mails** (In-Reply-To/References auf eine eigene Message-ID) gelten als bekannter Absender; Reply-To auf eine
+  bekannte/eigene Adresse zählt nicht; Formmerkmale (Großbuchstaben, Satzzeichen, Message-ID, viele Links, Datum) zusammen höchstens
+  `FORM_POINTS_MAX` (2); bestandene Prüfung −2 (`auth-pass`, nicht gegen die Server-Markierung, in der UI ausgeblendet); Link-Abweichung
+  zählt nicht, wenn die angezeigte Domain die des bestätigten Absenders ist (Klickzähler in Newslettern).
+  `authResultOf` wertet nur die Zeilen des **obersten** Servers (`authserv-id`) und nur eindeutige Fehler: `dmarc=fail` (nicht bei `arc=pass`)
+  oder hartes `spf=fail` ohne bestandenes DKIM/SPF; `softfail`/`neutral`/`temperror`/DKIM-Fehler allein → `none`.
 - **Einstellung** `messages.spam.enabled` (Standard an): aus → nur Server-Markierung + Listen/bekannte Absender. Listen gelten immer.
 - **Daten**: `inbox_messages.spam_score`, `spam_reasons` (jsonb `{code,label,points}[]`), `spam_source` `server|rules|blocklist|user` (Altbestand mit
   `spam` → `server`), `spam_marked_by/at`; Tabelle `sender_rules(kind block|allow, match_type address|domain, pattern, note, origin manual|button,

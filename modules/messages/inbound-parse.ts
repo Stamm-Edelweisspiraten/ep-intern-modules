@@ -113,14 +113,34 @@ export function messageIds(value: unknown): string[] {
 	return [...new Set(ids.filter((id) => MESSAGE_ID_PATTERN.test(id)))];
 }
 
-/** Ergebnis aus `Authentication-Results` (DMARC hat Vorrang, sonst DKIM/SPF) */
+/** Kennung des prüfenden Servers (`authserv-id`, erstes Element vor dem ersten „;“) */
+const authservId = (line: string) => line.split(';')[0]!.trim().split(/\s+/)[0]!.toLowerCase();
+
+/**
+ * Ergebnis aus `Authentication-Results` (DMARC hat Vorrang, sonst DKIM/SPF).
+ *
+ * Gewertet werden nur die Kopfzeilen des **obersten** (= unseres) Mailservers: ältere Zeilen stammen von
+ * Zwischenstationen (Weiterleitung, Catch-all beim Provider) und schlagen dort oft fehl, ohne dass die Mail
+ * gefälscht ist. Nur ein eindeutiges Ergebnis zählt als „fail“: `dmarc=fail` (nicht bei `arc=pass`, also
+ * sauber weitergeleitet) oder hartes `spf=fail` ohne bestandenes DKIM/SPF. `softfail`, `neutral`,
+ * `temperror`/`permerror` und ein DKIM-Fehler allein (Mailinglisten ändern oft den Text) sind „none“.
+ */
 export function authResultOf(lines: string[]): ParsedInbound['authResult'] {
-	const text = lines.join(';').toLowerCase();
+	const relevant = lines.filter((l) => /\b(?:dmarc|dkim|spf)=/i.test(l));
+	if (!relevant.length) return 'none';
+	const top = authservId(relevant[0]!);
+	const text = relevant
+		.filter((l) => authservId(l) === top)
+		.join(';')
+		.toLowerCase();
+	const arcPass = /\barc=pass\b/.test(text);
 	const dmarc = /\bdmarc=(\w+)/.exec(text)?.[1];
-	if (dmarc) return dmarc === 'pass' ? 'pass' : dmarc === 'none' ? 'none' : 'fail';
-	const results = [...text.matchAll(/\b(?:dkim|spf)=(\w+)/g)].map((m) => m[1]);
-	if (results.includes('pass')) return 'pass';
-	if (results.some((r) => r === 'fail' || r === 'softfail')) return 'fail';
+	if (dmarc === 'pass') return 'pass';
+	if (dmarc === 'fail') return arcPass ? 'none' : 'fail';
+	const dkim = [...text.matchAll(/\bdkim=(\w+)/g)].map((m) => m[1]);
+	const spf = [...text.matchAll(/\bspf=(\w+)/g)].map((m) => m[1]);
+	if (dkim.includes('pass') || spf.includes('pass')) return 'pass';
+	if (spf.includes('fail') && !arcPass) return 'fail';
 	return 'none';
 }
 

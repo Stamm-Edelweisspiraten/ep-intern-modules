@@ -4,9 +4,14 @@
  * Jede Regel vergibt Punkte mit einem lesbaren Grund; ab `SPAM_THRESHOLD` Punkten gilt die Mail als Spam.
  * Vorrang vor den Punkten:
  * 1. Absender auf der **Sperrliste** (Adresse oder Domain) → immer Spam.
- * 2. Absender auf der **Vertrauensliste** oder **bekannt** (Mitglied, Konto, schon von uns angeschrieben)
- *    → kein Spam, solange die Absenderprüfung (DMARC/DKIM/SPF) nicht ausdrücklich fehlschlägt
- *    (sonst könnte jede*r eine bekannte Adresse fälschen).
+ * 2. **Eigene Mail** (Message-ID stammt aus unserem Versand) → nie Spam.
+ * 3. Absender auf der **Vertrauensliste** oder **bekannt** (Mitglied, Konto, eigene Domain, schon von uns
+ *    angeschrieben, Antwort auf eine unserer Mails) → kein Spam, solange die Absenderprüfung
+ *    (DMARC/DKIM/SPF) nicht ausdrücklich fehlschlägt (sonst könnte jede*r eine bekannte Adresse fälschen).
+ *
+ * Gegen Fehlalarme: Formmerkmale (Großbuchstaben, Satzzeichen, fehlende Message-ID, viele Links, Datum)
+ * zählen zusammen höchstens `FORM_POINTS_MAX`; eine bestandene Absenderprüfung zieht `AUTH_PASS_BONUS` ab
+ * (nicht gegen die Markierung des Mailservers). Ein einzelnes schwaches Merkmal macht so nie Spam.
  */
 import type { ParsedInbound } from './inbound-parse';
 
@@ -15,6 +20,10 @@ export const SPAM_THRESHOLD = 5;
 /** So viele Mails desselben Absenders in `FLOOD_WINDOW_MINUTES` gelten als Massenversand */
 export const FLOOD_LIMIT = 10;
 export const FLOOD_WINDOW_MINUTES = 60;
+/** Höchstpunktzahl aller Formmerkmale zusammen */
+export const FORM_POINTS_MAX = 2;
+/** Abzug für eine bestandene Absenderprüfung (DMARC bzw. DKIM/SPF) */
+export const AUTH_PASS_BONUS = 2;
 
 export type SpamSource = 'server' | 'rules' | 'blocklist' | 'user';
 
@@ -44,8 +53,12 @@ export interface SpamContext {
 	ownDomains: Set<string>;
 	/** Treffer auf der Sperr-/Vertrauensliste (Adresse vor Domain) oder `null` */
 	rule: SenderRuleMatch | null;
-	/** Bekannter Absender (Mitglied, Konto, schon angeschrieben) */
+	/** Bekannter Absender (Mitglied, Konto, eigene Domain, schon angeschrieben, Antwort auf unsere Mail) */
 	known: boolean;
+	/** Die Mail stammt aus unserem eigenen Versand (Message-ID wie beim Senden vergeben) */
+	ownSent?: boolean;
+	/** Die Antwortadresse ist bekannt oder gehört zu einer eigenen Domain */
+	knownReplyTo?: boolean;
 	/** Mails desselben Absenders im Zeitfenster vor dieser (inklusive bereits importierter) */
 	recentFromSender: number;
 	/** „Jetzt“ für die Datumsprüfung (Tests) */
@@ -230,6 +243,7 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 	if (
 		mail.replyTo &&
 		fromDomain &&
+		!ctx.knownReplyTo &&
 		baseDomain(domainOf(mail.replyTo)) !== baseDomain(fromDomain) &&
 		mail.authResult !== 'pass'
 	) {
@@ -253,10 +267,14 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 	// --- Links
 	const links = extractLinks(mail.html);
 	const hosts = links.map((l) => hostOf(l.href)).filter((h): h is string => !!h);
+	// Bestätigte Newsletter zeigen oft ihre eigene Adresse an und verlinken über einen Klickzähler –
+	// das ist kein Täuschungsversuch, solange die angezeigte Domain die des (bestätigten) Absenders ist.
+	const senderBase = fromDomain ? baseDomain(fromDomain) : '';
 	const mismatch = links.some((l) => {
 		const shown = hostInText(l.text);
 		const target = hostOf(l.href);
-		return !!shown && !!target && baseDomain(shown) !== baseDomain(target);
+		if (!shown || !target || baseDomain(shown) === baseDomain(target)) return false;
+		return !(mail.authResult === 'pass' && baseDomain(shown) === senderBase);
 	});
 	if (mismatch) add('link-mismatch', 'Ein Link zeigt eine andere Adresse an, als er öffnet', 3);
 	if (hosts.some((h) => IPV4_HOST.test(h))) {
@@ -266,8 +284,11 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 		add('shortener', 'Link über einen Linkverkürzer (Ziel verborgen)', 2);
 	}
 	const textLength = (mail.text ?? '').replace(/\s+/g, '').length;
+	const form: SpamReason[] = [];
+	const addForm = (code: string, label: string, points: number) =>
+		form.push({ code, label, points });
 	if (links.length > 20 && textLength < links.length * 40) {
-		add('many-links', 'Sehr viele Links bei wenig Text', 1);
+		addForm('many-links', 'Sehr viele Links bei wenig Text', 1);
 	}
 
 	// --- Betreff und Form
@@ -275,14 +296,21 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 	if (SUBJECT_PATTERNS.some((re) => re.test(subject))) {
 		add('subject-pattern', 'Betreff typisch für Betrugs- oder Werbemails', 2);
 	}
-	if (subjectShouts(mail.subject ?? '')) add('subject-caps', 'Betreff in Großbuchstaben', 1);
+	if (subjectShouts(mail.subject ?? '')) addForm('subject-caps', 'Betreff in Großbuchstaben', 1);
 	if (/[!?$€]{3,}/.test(mail.subject ?? ''))
-		add('subject-marks', 'Viele Satzzeichen im Betreff', 1);
+		addForm('subject-marks', 'Viele Satzzeichen im Betreff', 1);
 	if (!mail.messageId)
-		add('no-message-id', 'Keine Message-ID (ungewöhnlich für echte Mailprogramme)', 1);
+		addForm('no-message-id', 'Keine Message-ID (ungewöhnlich für echte Mailprogramme)', 1);
 	const now = (ctx.now ?? new Date()).getTime();
 	if (mail.date && mail.date.getTime() > now + 24 * 3600_000) {
-		add('future-date', 'Datum liegt in der Zukunft', 2);
+		addForm('future-date', 'Datum liegt in der Zukunft', 2);
+	}
+	// Formmerkmale zusammen höchstens FORM_POINTS_MAX (die Gründe bleiben sichtbar, die Punkte gekappt)
+	let formLeft = FORM_POINTS_MAX;
+	for (const r of form.sort((a, b) => b.points - a.points)) {
+		const points = Math.min(r.points, formLeft);
+		formLeft -= points;
+		reasons.push({ ...r, points });
 	}
 	if (ctx.recentFromSender >= FLOOD_LIMIT) {
 		add('flood', `Mehr als ${FLOOD_LIMIT} Mails dieses Absenders in einer Stunde`, 3);
@@ -293,8 +321,15 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 		add('forged-known', 'Gibt sich als bekannter Absender aus, ist aber nicht bestätigt', 2);
 	}
 
+	if (mail.authResult === 'pass' && !mail.spam && reasons.some((r) => r.points > 0)) {
+		add('auth-pass', 'Absender bestätigt (DMARC/DKIM/SPF)', -AUTH_PASS_BONUS);
+	}
+
 	reasons.sort((a, b) => b.points - a.points);
-	const score = reasons.reduce((s, r) => s + r.points, 0);
+	const score = Math.max(
+		0,
+		reasons.reduce((s, r) => s + r.points, 0)
+	);
 
 	// --- Listen und bekannte Absender haben Vorrang
 	if (ctx.rule?.kind === 'block') {
@@ -309,6 +344,7 @@ export function scoreSpam(mail: SpamInput, ctx: SpamContext): SpamVerdict {
 			reasons: [{ code: 'blocked', label, points: 0 }, ...reasons]
 		};
 	}
+	if (ctx.ownSent) return { spam: false, score, source: null, reasons };
 	if ((ctx.rule?.kind === 'allow' || ctx.known) && !authFailed) {
 		return { spam: false, score, source: null, reasons };
 	}
