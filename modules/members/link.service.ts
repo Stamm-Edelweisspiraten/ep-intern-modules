@@ -30,6 +30,7 @@ import {
 	LINK_MAX_USES_DEFAULT,
 	LINK_MAX_USES_SETTING,
 	MODULE_ID,
+	NOTIFY_ACCOUNT_LINKED,
 	SENSITIVE_FIELD_KEYS,
 	type ContactEntry,
 	type LinkedUser,
@@ -707,27 +708,20 @@ async function notifyLinkedAccounts(
 ): Promise<number> {
 	const others = await otherLinkedUserIds(memberId, newUserId);
 	if (!others.length) return 0;
-	const sys = core.auth.systemContext('members-link');
-	const users = await core.users.directory(sys, { ids: others, limit: 30, includeEmail: true });
 	const systemName = String((await core.settings.get('core.system.name')) ?? 'EP Intern');
-	let sent = 0;
-	for (const u of users) {
-		if (!u.email) continue;
-		try {
-			await core.mail.send({
-				to: u.email,
-				subject: `${systemName}: Weiteres Konto mit ${firstName} verknüpft`,
-				text: `Hallo ${u.name},\n\nüber den Verknüpfungsbrief wurde soeben ein weiteres Konto mit ${firstName} verknüpft. Dieses Konto kann Kontakte und weitere Angaben von ${firstName} sehen und ändern.\n\nWar das nicht abgesprochen, melde dich bitte umgehend bei der Stammesleitung, damit die Verknüpfung gelöst und ein neuer Brief erstellt wird.`
-			});
-			sent++;
-		} catch (err) {
-			console.error(
-				'[members] Hinweis zur neuen Verknüpfung fehlgeschlagen:',
-				(err as Error)?.message
-			);
+	const r = await core.notifications.send(core.auth.systemContext('members-link'), MODULE_ID, [
+		{
+			type: NOTIFY_ACCOUNT_LINKED,
+			userIds: others,
+			title: `${systemName}: Weiteres Konto mit ${firstName} verknüpft`,
+			body: `Über den Verknüpfungsbrief wurde soeben ein weiteres Konto mit ${firstName} verknüpft. Dieses Konto kann Kontakte und weitere Angaben von ${firstName} sehen und ändern.
+
+War das nicht abgesprochen, melde dich bitte umgehend bei der Stammesleitung, damit die Verknüpfung gelöst und ein neuer Brief erstellt wird.`,
+			pushBody: `Ein weiteres Konto kann jetzt die Angaben von ${firstName} sehen. Nicht abgesprochen? Bitte bei der Stammesleitung melden.`,
+			link: '/profile?tab=members%3Amembers'
 		}
-	}
-	return sent;
+	]);
+	return r.email + r.push;
 }
 
 async function addLink(memberId: string, userId: string, relation: string | null, by: string) {

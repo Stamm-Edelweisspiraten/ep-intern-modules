@@ -20,7 +20,7 @@ export default {
 		},
 		{
 			id: 'mail',
-			title: 'Benachrichtigungen',
+			title: 'Mails zu Mitgliedern',
 			order: 20,
 			permission: 'members.own.view',
 			component: () => import('./pages/ProfileMailPrefs.svelte')

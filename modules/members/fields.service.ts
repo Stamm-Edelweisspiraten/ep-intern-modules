@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
 	core,
 	errors,
+	inList,
 	moduleDb,
 	type RequestContext,
 	type Row,
@@ -340,6 +341,22 @@ export const membersService: Omit<
 > = {
 	listMemberContacts(query) {
 		return moduleDb(MODULE_ID).transaction((tx) => memberContacts(tx, query));
+	},
+
+	async listLinkedUserIds(memberIds) {
+		const ids = [...new Set(memberIds)].slice(0, 2000);
+		const out: Record<string, string[]> = {};
+		if (!ids.length) return out;
+		const rows = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
+				tx,
+				sql`SELECT l.member_id, l.user_id FROM member_user_links l
+					JOIN members m ON m.id = l.member_id
+					WHERE l.member_id IN (${inList(ids)}) AND m.anonymized_at IS NULL`
+			)
+		);
+		for (const r of rows) (out[String(r.member_id)] ??= []).push(String(r.user_id));
+		return out;
 	},
 
 	async listLinkedMembers(ctx) {

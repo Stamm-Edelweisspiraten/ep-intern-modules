@@ -6,6 +6,8 @@ import { formDefinitionSchema } from '$lib/forms/schema';
 import type { FormDefinition } from '$lib/forms/types';
 
 export const MODULE_ID = 'actions';
+/** Benachrichtigung (core.notifications): neue Auslagen über den Kosten-Link an die Eigentümer*in */
+export const NOTIFY_EXPENSE_SUBMITTED = 'expense-submitted';
 
 // --- Konstanten -------------------------------------------------------------
 

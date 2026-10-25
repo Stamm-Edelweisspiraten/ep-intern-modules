@@ -186,48 +186,6 @@ export interface Office {
 	updatedAt: string;
 }
 
-// ---------------------------------------------------------------------------
-// Benachrichtigungen (Profil)
-// ---------------------------------------------------------------------------
-
-export const NOTIFY_MODES = ['immediate', 'daily', 'off'] as const;
-export type NotifyMode = (typeof NOTIFY_MODES)[number];
-export const DEFAULT_NOTIFY_MODE: NotifyMode = 'immediate';
-export const NOTIFY_MODE_LABELS: Record<NotifyMode, string> = {
-	immediate: 'Sofort',
-	daily: 'Täglich (Zusammenfassung)',
-	off: 'Aus'
-};
-
-const keyPattern = z
-	.string()
-	.min(1)
-	.max(60)
-	.regex(/^[a-z][a-z0-9-]*$/, 'Ungültiger Schlüssel');
-
-/** `PUT /me/notifications`: Modus für ein Ereignis eines eigenen Vorlagen-Amts */
-export const notificationPrefInput = z.object({
-	module: keyPattern,
-	office: keyPattern,
-	event: keyPattern,
-	mode: z.enum(NOTIFY_MODES)
-});
-export type NotificationPrefInput = z.infer<typeof notificationPrefInput>;
-
-/** `GET /me/notifications` (und Antwort von `PUT`) */
-export interface MyNotifications {
-	/** Konto-Adresse, an die Benachrichtigungen gehen */
-	email: string | null;
-	offices: {
-		officeId: string;
-		officeName: string;
-		module: string;
-		moduleName: string;
-		officeKey: string;
-		events: (OfficeNotificationInfo & { mode: NotifyMode })[];
-	}[];
-}
-
 /** `GET /me`: eigene Ämter und Beschreibung */
 export interface MyOffices {
 	offices: { id: string; name: string }[];

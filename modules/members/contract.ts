@@ -169,6 +169,11 @@ export interface MembersService extends PrincipalProvider {
 	listSelfMemberNames(): Promise<{ userId: string; firstName: string; lastName: string }[]>;
 	/** Systemweit, ohne Rechteprüfung: alle Gruppen mit Kontakt-E-Mail und ihren Leitungs-Konten */
 	listGroupMailboxes(): Promise<GroupMailbox[]>;
+	/**
+	 * Systemweit, ohne Rechteprüfung: mit den Mitgliedern verknüpfte Konten (Mitglied → Konto-IDs), z. B. für
+	 * Push-Benachrichtigungen der Kasse. Höchstens 2000 Mitglieder; Mitglieder ohne Verknüpfung fehlen.
+	 */
+	listLinkedUserIds(memberIds: string[]): Promise<Record<string, string[]>>;
 	/** Aktive Zusatzfelder (für den Formular-Builder anderer Module) */
 	listFieldDefinitions(): Promise<MemberFieldDefinition[]>;
 	/**

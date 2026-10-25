@@ -26,6 +26,7 @@ import {
 	type MailInvoice
 } from './logic';
 import { composeMail } from './mail-compose';
+import { PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER, pushToLinkedAccounts } from './push-notify';
 import {
 	DEFAULT_PAID_BODY,
 	DEFAULT_PAID_SUBJECT,
@@ -169,6 +170,7 @@ export async function notifyPaid(
 				mode: 'paid'
 			})
 		);
+		await pushToLinkedAccounts(PUSH_PAYMENT_CONFIRMATION, paid);
 	}
 	// Erledigt: Mail raus, keine Adresse vorhanden oder Versand bewusst abgeschaltet
 	const done = items
@@ -267,6 +269,10 @@ async function sendReminderMails(
 		});
 	});
 	const sent = due.filter((d) => stats.delivered.has(String(d.inv.row.id)));
+	await pushToLinkedAccounts(
+		PUSH_REMINDER,
+		sent.map((d) => d.inv)
+	);
 	const failed = due.filter((d) => !stats.delivered.has(String(d.inv.row.id)));
 	// 3. Bestätigen bzw. Reservierung freigeben (nächster Lauf versucht es erneut). Scheitert diese
 	// Transaktion, bleiben die Reservierungen stehen – die Stufe wird dann nicht doppelt verschickt.

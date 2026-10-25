@@ -275,19 +275,6 @@ export const senderRuleInput = z.object({
 });
 export type SenderRuleInput = z.infer<typeof senderRuleInput>;
 
-export const INBOX_EVENTS = ['new', 'replied'] as const;
-export type InboxEvent = (typeof INBOX_EVENTS)[number];
-export const INBOX_EVENT_LABELS: Record<InboxEvent, string> = {
-	new: 'Neue Nachricht',
-	replied: 'Jemand anderes hat geantwortet'
-};
-
-export const notificationPrefInput = z.object({
-	mailbox: mailboxKey,
-	event: z.enum(INBOX_EVENTS),
-	enabled: z.boolean()
-});
-
 // --- DTOs -----------------------------------------------------------------------------------
 
 export type SenderKind = 'personal' | 'office' | 'group' | 'stamm';
@@ -629,17 +616,4 @@ export interface PollResult {
 	skipped: number;
 	failed: number;
 	message: string;
-}
-
-export interface MyInboxNotifications {
-	/** Konto-Adresse, an die Benachrichtigungen gehen */
-	email: string | null;
-	mailboxes: {
-		key: string;
-		name: string;
-		address: string;
-		kind: MailboxKind;
-		shared: boolean;
-		events: { event: InboxEvent; label: string; enabled: boolean }[];
-	}[];
 }

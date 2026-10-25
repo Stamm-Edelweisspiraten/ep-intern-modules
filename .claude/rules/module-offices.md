@@ -108,7 +108,14 @@ als Benutzer-IDs) und `offices.profile.updated` (`hasBio`) – **keine** Beschre
   erreichen niemanden; wegen des Markers wird es **nicht neu angelegt** (Nutzerentscheidung). Umbenennen ändert die Zuordnung nicht (Schlüssel bleibt).
 - UI: Badge „Vorlage: <Modul>“ an der Karte, Hinweis mit Ereignisliste im Bearbeiten-Dialog (Tab Allgemein), Zusatzhinweis in der Lösch-Bestätigung.
 
-## Benachrichtigungen an Inhaber*innen (2026-10-19)
+## Benachrichtigungen an Inhaber*innen (2026-10-19, seit 2026-10-25 über `core.notifications`)
+> **Stand 2026-10-25:** `notify` versendet über `core.notifications` (Typ `offices.template`, `scoped` + `digest`, Bereich `<modul>:<amt>:<ereignis>`,
+> Einträge je eigenem Vorlagen-Amt über `forUser` = `notificationScopesFor`). Kanal Aus · E-Mail · Beides · Push und Sofort/Täglich im Core-Reiter
+> „Benachrichtigungen“; `NotificationPrefsCard`, `notifications.endpoints.ts` und `GET/PUT /me/notifications` sind entfernt. Alte `notification_prefs` werden
+> einmalig übernommen und gelöscht (`migrateLegacyPrefs`, im Job `sync-grants`, bei `notify` und `forUser`); der Job `notify-digest` arbeitet nur noch die alte
+> Warteschlange ab, neue Tageszusammenfassungen schickt `core.notifications-digest`. Einträge der Zusammenfassung werden nicht mehr nach Inhaberschaft
+> gefiltert (früher: nicht mehr Inhaber*in → verworfen). Der folgende Text beschreibt den früheren Stand.
+
 - Empfänger: die Inhaber*innen des Vorlagen-Amts (`source_module` + `source_key`), nur **aktive Konten**, an die **Konto-Adresse**
   (`core.users.directory`) – **nicht** an die Funktionsadressen des Amts.
 - Modus je Person **und** Ereignis: **Sofort** (Standard) / **Täglich (Zusammenfassung)** / **Aus**; einstellbar **nur im Profil** („Meine Ämter“ →

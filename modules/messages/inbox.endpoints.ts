@@ -7,7 +7,6 @@
  */
 import { z } from 'zod';
 import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
-import { getMyNotifications, setMyNotification } from './inbox-notify.service';
 import {
 	assignMail,
 	composePrefill,
@@ -44,7 +43,6 @@ import {
 	inboxListQuery,
 	mailboxSentQuery,
 	moveMailsInput,
-	notificationPrefInput,
 	senderRuleInput,
 	spamMarkInput
 } from './schemas';
@@ -220,25 +218,6 @@ export const inboxEndpoints: AnyApiEndpoint[] = [
 		rateLimit: WRITE_LIMIT,
 		params: folderParams,
 		handler: ({ ctx, params }) => deleteSenderRule(ctx, params.id)
-	}),
-	defineEndpoint({
-		method: 'GET',
-		path: '/me/notifications',
-		summary: 'Eigene Benachrichtigungen zum Posteingang (je Postfach und Ereignis)',
-		tags,
-		permission: PERM_SEND,
-		rateLimit: READ_LIMIT,
-		handler: ({ ctx }) => getMyNotifications(ctx)
-	}),
-	defineEndpoint({
-		method: 'PUT',
-		path: '/me/notifications',
-		summary: 'Eigene Benachrichtigung ein- oder ausschalten',
-		tags,
-		permission: PERM_SEND,
-		rateLimit: WRITE_LIMIT,
-		body: notificationPrefInput,
-		handler: ({ ctx, body }) => setMyNotification(ctx, body)
 	}),
 	defineEndpoint({
 		method: 'GET',

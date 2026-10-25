@@ -18,7 +18,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `mailbox.service.ts` | `loadMailboxDirectory` (systemweit: Adresse → Postfach + berechtigte Konten), `accessibleMailboxes(ctx)`, `requireMailbox` |
 | `inbound.service.ts` | `pollInbox` (Abruf, Zuordnung, Speichern, erst danach IMAP-MOVE), `testConnection`, `cleanupInbox`, `loadInboxConfig` |
 | `inbox.service.ts` | Postfächer mit Ungelesen-Zähler, Liste, Detail (cid-Bilder als `data:`), gelesen/Papierkorb, Zuordnen, Anhänge, `composePrefill` |
-| `inbox-notify.service.ts` | Benachrichtigungen `new`/`replied` an die Konto-Adresse, Profil-Einstellungen |
+| `inbox-notify.service.ts` | Benachrichtigungen `inbox-new`/`inbox-replied` über `core.notifications`, `notificationScopesFor`, Übernahme alter Einstellungen |
 | `folders.ts` (rein), `folders.service.ts` | Ordner je Postfach: Baum/Pfad/Tiefe/Zyklus; Anlegen/Umbenennen/Verschieben/Löschen, `moveMails`, `bulkAction`, `mailboxStats` (Zähler je Ordner) |
 | `inbox.endpoints.ts`, `privacy.ts` | REST des Posteingangs; Löschen beim Konto-Löschen, Datenauskunft |
 | `schemas.ts` | Konstanten (Limits, Rechte-/Einstellungsschlüssel), Zod `recipientsInput`/`sendInput`, DTOs |
@@ -131,7 +131,9 @@ unzuordenbare Mails in „Nicht zugeordnet“ für die Verwaltung; nach dem Impo
   `sendInput.replyOf|forwardOf|forwardAttachmentIds` (Bezug 404 ohne Zugriff). Versand setzt `In-Reply-To`/`References` und eine eigene
   `Message-ID` **je Empfänger** (`message_recipients.message_id_header`) → eingehende Antworten landen im selben `thread_id` (Verlauf in der Detailansicht).
   Mit eingeschaltetem Posteingang ist die Antwortadresse standardmäßig die **Absenderadresse**. `messages.mailbox_key` merkt das Postfach des Absenders.
-- **Benachrichtigungen** (an die Konto-Adresse, `core.mail.send` mit `autoSubmitted` → `Auto-Submitted`/`X-EP-Intern`): `new` „Neue Nachricht von …“ mit
+- **Benachrichtigungen** (seit 2026-10-25 über `core.notifications`: Typen `inbox-new`/`inbox-replied`, `scoped` je Postfach über `forUser`, Kanal
+  Aus · E-Mail · Beides · Push im Core-Profilreiter; `InboxNotificationsCard` und `GET/PUT /me/notifications` entfernt, alte `inbox_notification_prefs`
+  einmalig übernommen und gelöscht; mehrere neue Mails eines Abrufs = eine Sammelmail je Person). Früherer Stand: `new` „Neue Nachricht von …“ mit
   Inhalt (≤ 4000 Zeichen) und Link, ab 4 Mails je Abruf als Sammelmail; nicht bei Spam/Automatik/„Nicht zugeordnet“. `replied` „<Name> hat geantwortet/
   weitergeleitet“ an alle **anderen** Berechtigten eines gemeinsamen Postfachs. Je Person/Postfach/Ereignis abschaltbar im Profil („Posteingang“),
   gespeichert nur Abweichungen (`inbox_notification_prefs`).

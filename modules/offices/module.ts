@@ -1,8 +1,13 @@
 import { defineModule } from '$lib/sdk/server';
 import { syncGrants } from './grants.service';
 import { holderEndpoints } from './holders.endpoints';
-import { notificationEndpoints } from './notifications.endpoints';
-import { officesService, sendDigest } from './notify.service';
+import {
+	migrateLegacyPrefs,
+	notificationScopesFor,
+	officesService,
+	sendDigest,
+	TEMPLATE_TYPE
+} from './notify.service';
 import type { OfficesService } from './contract';
 import { officeEndpoints } from './offices.endpoints';
 import { profileEndpoints } from './profile.endpoints';
@@ -61,6 +66,18 @@ export default defineModule({
 	onUserDeleted,
 	/** Datenauskunft (Art. 15/20): Ämter, Beschreibung, Website-Zustimmung, Benachrichtigungen */
 	subjectExport,
+	notifications: {
+		types: [
+			{
+				key: TEMPLATE_TYPE,
+				label: 'Benachrichtigung eines Amts',
+				description: 'Hinweise der Module an die Inhaber*innen ihrer Ämter.',
+				scoped: true,
+				digest: true
+			}
+		],
+		forUser: notificationScopesFor
+	},
 	jobs: [
 		{
 			id: 'sync-grants',
@@ -69,13 +86,15 @@ export default defineModule({
 			run: async (ctx) => {
 				const t = await applyTemplates(ctx);
 				const r = await syncGrants(ctx);
+				await migrateLegacyPrefs();
 				const created = t.created.length ? `, ${t.created.length} Ämter aus Vorlagen angelegt` : '';
 				return `${r.users} Personen, ${r.grants} Rollen-Zuweisungen${created}`;
 			}
 		},
 		{
 			id: 'notify-digest',
-			summary: 'Tageszusammenfassung der Amt-Benachrichtigungen versenden',
+			// Nur noch Altbestand der eigenen Warteschlange; neue Einträge sammelt der Core (`core.notifications-digest`)
+			summary: 'Alte Tageszusammenfassung der Amt-Benachrichtigungen abarbeiten',
 			schedule: 'daily',
 			run: async (ctx) => {
 				const r = await sendDigest(ctx);
@@ -85,11 +104,5 @@ export default defineModule({
 	],
 	search: officesSearch,
 	// Feste Pfade (`/offices/order`, `/me`, `/website/…`) vor den Parameter-Pfaden
-	endpoints: [
-		...websiteEndpoints,
-		...notificationEndpoints,
-		...profileEndpoints,
-		...holderEndpoints,
-		...officeEndpoints
-	]
+	endpoints: [...websiteEndpoints, ...profileEndpoints, ...holderEndpoints, ...officeEndpoints]
 });

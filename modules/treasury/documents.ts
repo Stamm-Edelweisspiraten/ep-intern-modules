@@ -4,6 +4,7 @@
  * bereits versendete Rechnung (Betrag, Rolle, Ermäßigung, Frist, Storno), geht automatisch eine neue
  * Fassung an dieselben Adressen. Core-Dienste (PDF, Mail, Audit) laufen außerhalb von Transaktionen.
  */
+import { PUSH_INVOICE, pushToLinkedAccounts } from './push-notify';
 import { sql } from 'drizzle-orm';
 import {
 	contentDisposition,
@@ -615,6 +616,7 @@ export async function sendDocuments(
 	const latest = await latestDocuments(invoiceIds);
 	const s = await core.settings.getMany([SETTING_KEYS.invoiceSubject, SETTING_KEYS.invoiceBody]);
 	const system = core.auth.systemContext('treasury-documents');
+	const pushed: RawInvoice[] = [];
 	for (const { inv, names } of loaded) {
 		const id = String(inv.row.id);
 		const snapshot = await buildSnapshot(inv, names, bank);
@@ -696,7 +698,9 @@ export async function sendDocuments(
 			delivered ? { recipients: delivered } : null
 		);
 		if (delivered) result.invoices++;
+		if (delivered && reason !== 'changed' && !snapshot.cancelled) pushed.push(inv);
 	}
+	await pushToLinkedAccounts(PUSH_INVOICE, pushed);
 	if (result.invoices || result.mailErrors) {
 		await core.audit.logFromContext(ctx, 'treasury.invoice.sent', {
 			metadata: { reason, ...result }

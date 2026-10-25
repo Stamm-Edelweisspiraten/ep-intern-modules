@@ -207,6 +207,10 @@ Audit: `members.link.code_created|created|registered|removed|letters_generated` 
 Offen: Die Verknüpfung eines unbestätigten Kontos besteht sofort (Zeile in `member_user_links`), wirkt aber erst mit der ersten Anmeldung –
 also nach Bestätigung; ein unbestätigtes Konto zählt als Nutzung. Die Verwaltung wird nicht zusätzlich benachrichtigt.
 
+### Benachrichtigungen (2026-10-25)
+- „Weiteres Konto verknüpft“ (`notifyLinkedAccounts`) geht über `core.notifications` (Typ `account-linked`, `mandatory`, sichtbar mit `members.own.view`).
+- Neuer Dienst `MembersService.listLinkedUserIds(memberIds)` (systemweit, ohne Rechteprüfung, ≤ 2000, ohne anonymisierte) – für Push der Kasse.
+
 ### Eigene Mitglieder im Profil (Migration 0008, 2026-10-17)
 Alle Endpoints: Session/API-Key, **nicht** öffentlich, Recht `members.own.*`; fremdes Mitglied → 404. Eltern ändern **nicht**: Name, Geburtsdatum, Stand, Gruppen,
 Einwilligungen, Ein-/Austritt, Adresse, Dokumente.

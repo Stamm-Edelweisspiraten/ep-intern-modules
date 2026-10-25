@@ -30,7 +30,8 @@ import {
 	LED_VIEW,
 	LINK_DEFAULT_ROLE,
 	LINK_MAX_USES_DEFAULT,
-	LINK_MAX_USES_SETTING
+	LINK_MAX_USES_SETTING,
+	NOTIFY_ACCOUNT_LINKED
 } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_members_v2.sql?raw';
@@ -209,6 +210,18 @@ export default defineModule({
 		{ name: '0015_leader_self_link', sql: m0015 }
 	],
 	search: membersSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_ACCOUNT_LINKED,
+				label: 'Weiteres Konto mit meinem Mitglied verknüpft',
+				description:
+					'Sicherheitshinweis, wenn jemand anderes ein Mitglied mit seinem Konto verknüpft.',
+				mandatory: true,
+				permission: 'members.own.view'
+			}
+		]
+	},
 	jobs: [
 		{
 			id: 'reprocess-group-images',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NOTIFY_NEW, NOTIFY_REPLIED, notificationScopesFor } from './inbox-notify.service';
 import { defineModule } from '$lib/sdk/server';
 import { cleanup, resumeDeliveries } from './delivery.service';
 import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
@@ -195,6 +196,21 @@ export default defineModule({
 			default: true
 		}
 	],
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_NEW,
+				label: 'Neue Nachricht im Posteingang',
+				scoped: true
+			},
+			{
+				key: NOTIFY_REPLIED,
+				label: 'Antwort aus einem gemeinsamen Postfach',
+				scoped: true
+			}
+		],
+		forUser: notificationScopesFor
+	},
 	jobs: [
 		{
 			id: 'resume',

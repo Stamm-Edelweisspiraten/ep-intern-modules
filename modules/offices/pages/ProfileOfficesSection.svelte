@@ -13,7 +13,6 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { MyOffices } from '../schemas';
 	import MyBioCard from './MyBioCard.svelte';
-	import NotificationPrefsCard from './NotificationPrefsCard.svelte';
 	import { BASE, errorText } from './helpers';
 
 	// `userId` wird nicht gebraucht: `/me` liefert immer die eigenen Ämter
@@ -99,8 +98,12 @@
 		{/if}
 
 		{#if my.offices.length > 0}
-			<!-- Blendet sich selbst aus, wenn keines der eigenen Ämter aus einer Modul-Vorlage stammt -->
-			<NotificationPrefsCard />
+			<p class="text-muted-foreground text-sm">
+				Ob du Hinweise zu deinen Ämtern per E-Mail, Push oder als Tageszusammenfassung bekommst,
+				stellst du unter <a class="text-link underline" href="/profile?tab=notifications"
+					>Benachrichtigungen</a
+				> ein.
+			</p>
 		{/if}
 	</div>
 {/if}

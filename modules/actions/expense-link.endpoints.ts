@@ -34,6 +34,7 @@ import {
 	MAX_EXPENSE_BATCH_ITEMS,
 	MAX_RECEIPT_BYTES,
 	MODULE_ID,
+	NOTIFY_EXPENSE_SUBMITTED,
 	expenseAcceptInput,
 	expenseLinkInput,
 	expenseRejectInput,
@@ -254,33 +255,26 @@ async function notifyOwner(
 	totalCents: number
 ): Promise<boolean> {
 	if (!ownerId) return false;
-	try {
-		const [owner] = await core.users.directory(systemCtx(), { ids: [ownerId], limit: 1 });
-		if (!owner?.email) return false;
-		const url = `${core.app.origin()}/modules/actions/${link.actionId}`;
-		const lines = [
-			`Hallo ${owner.name},`,
-			'',
-			`über den Kosten-Link von „${link.actionName}“ wurden neue Auslagen eingereicht:`,
-			'',
-			`Eingereicht von: ${neutralizeLinks(submitterName)}`,
-			`Anzahl: ${count}`,
-			`Summe: ${euro(totalCents)}`,
-			'',
-			`Bitte prüfe die Einreichung im Tab „Abrechnung“: ${url}`,
-			'',
-			'Diese E-Mail wurde automatisch erstellt.'
-		];
-		await core.mail.send({
-			to: owner.email,
-			subject: `Neue Auslagen für ${link.actionName}`,
-			text: lines.join('\n')
-		});
-		return true;
-	} catch (e) {
-		logBestEffort('actions.expense.owner-mail', e, { target: link.actionId });
-		return false;
-	}
+	const body = [
+		`Über den Kosten-Link von „${link.actionName}“ wurden neue Auslagen eingereicht:`,
+		'',
+		`Eingereicht von: ${neutralizeLinks(submitterName)}`,
+		`Anzahl: ${count}`,
+		`Summe: ${euro(totalCents)}`,
+		'',
+		'Bitte prüfe die Einreichung im Tab „Abrechnung“:'
+	].join('\n');
+	const r = await core.notifications.send(systemCtx(), MODULE_ID, [
+		{
+			type: NOTIFY_EXPENSE_SUBMITTED,
+			userIds: [ownerId],
+			title: `Neue Auslagen für ${link.actionName}`,
+			body,
+			pushBody: `${count} Auslage(n) über ${euro(totalCents)} – bitte prüfen`,
+			link: `/modules/actions/${link.actionId}?tab=accounting`
+		}
+	]);
+	return r.email + r.push + r.queued > 0;
 }
 
 interface CheckedReceipt {

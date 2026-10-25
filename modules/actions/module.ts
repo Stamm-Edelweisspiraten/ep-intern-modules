@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { NOTIFY_EXPENSE_SUBMITTED } from './schemas';
 import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
 import { myEndpoints } from './my.endpoints';
@@ -114,6 +115,16 @@ export default defineModule({
 		healthRetentionSetting
 	],
 	search: actionsSearch,
+	notifications: {
+		types: [
+			{
+				key: NOTIFY_EXPENSE_SUBMITTED,
+				label: 'Neue Auslagen über den Kosten-Link',
+				description: 'An die Eigentümer*in der Aktion, sobald jemand Auslagen einreicht.',
+				anyPermission: ['actions.action.create', 'actions.action.edit-all']
+			}
+		]
+	},
 	resetAreas,
 	resetUsers,
 	onUserDeleted,
