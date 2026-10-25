@@ -2,7 +2,7 @@
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.4.0,
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.5.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
 
 ## Dateien (`src/lib/modules/messages/`)
@@ -20,6 +20,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `inbox.service.ts` | Postfächer mit Ungelesen-Zähler, Liste, Detail (cid-Bilder als `data:`), gelesen/Papierkorb, Zuordnen, Anhänge, `composePrefill` |
 | `inbox-notify.service.ts` | Benachrichtigungen `inbox-new`/`inbox-replied` über `core.notifications`, `notificationScopesFor`, Übernahme alter Einstellungen |
 | `folders.ts` (rein), `folders.service.ts` | Ordner je Postfach: Baum/Pfad/Tiefe/Zyklus; Anlegen/Umbenennen/Verschieben/Löschen, `moveMails`, `bulkAction`, `mailboxStats` (Zähler je Ordner) |
+| `trial.service.ts`, `age-range.ts` (rein, Kopie `website/src/lib/age-range.ts`) | Probestunden-Formular der Website → Postfach der passenden Gruppe (siehe unten); Altersangaben lesen (`parseAgeRange`, `groupsForAge`) |
 | `inbox.endpoints.ts`, `privacy.ts` | REST des Posteingangs; Löschen beim Konto-Löschen, Datenauskunft |
 | `schemas.ts` | Konstanten (Limits, Rechte-/Einstellungsschlüssel), Zod `recipientsInput`/`sendInput`, DTOs |
 | `sender.ts` (rein) | `personalAddress`, `slugPart`, `firstGivenName`, `splitFullName`, `isValidDomain`, `dedupeAddresses` |
@@ -39,7 +40,7 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `messages.settings.manage` | Einstellungen ändern (Schreibrecht der Modul-Einstellungen), IMAP-Verbindung testen |
 | `messages.inbox.stamm` | Postfach der Stamm-Adresse lesen (zusätzlich zu `send`) |
 | `messages.inbox.manage` | „Nicht zugeordnet“ sehen/zuordnen/löschen, „Jetzt abrufen“ |
-| `messages.website.contact` | **nur** Website-Endpunkte des Kontaktformulars – Scope für den API-Key der Stammeswebsite |
+| `messages.website.contact` | **nur** Website-Endpunkte des Kontakt- und Probestunden-Formulars – Scope für den API-Key der Stammeswebsite |
 
 Keine `messages.storage.*`-Rechte: Anhänge liegen im Core-Storage und werden nur vom System (Versand/Aufräumen) gelesen, nie direkt ausgeliefert.
 
@@ -228,6 +229,21 @@ Nutzerentscheidung: Anfragen von der Stammeswebsite landen **im Posteingang „S
   Danach Audit `messages.inbox.contact-received` (`{ mailbox }`, keine Daten) und Benachrichtigung `inbox-new` an die Berechtigten des Postfachs.
 - API: GET `/website/contact/challenge` (300/60 s), POST `/website/contact` (60/3600 s, 201 `{ received: true }`, 422 mit `details.pow`).
 - Tests: `tests/unit/messages-contact.test.ts`, `tests/integration/messages-contact.test.ts`, Website-Solver `tests/unit/website-pow.test.ts`.
+
+## Probestunden-Formular der Website (2026-10-25, v1.5.0, keine Migration)
+Nutzerwunsch: Eltern fragen auf der Website (`/probestunde`) eine Probestunde an – Name und **Alter** des Kindes, Name, E-Mail, Telefon (Pflicht),
+Nachricht (freiwillig) –, die **passende Gruppe** bekommt die Nachricht.
+- API: POST `/website/trial` (Scope `messages.website.contact`, 60/3600 s, 201 `{ received: true, group: <slug>|null }`), Zod `trialInput`
+  (`childName`, `childAge` 3–30, `name`, `email`, `phone` Pflicht, `message` ≤ 2000, `groupSlug` optional, `pow`). Aufgabe wie beim Kontaktformular
+  (`/website/contact/challenge`); **eine Aufgabe gilt über alle Postfächer und beide Formulare nur einmal** (409).
+- Gruppe (`pickTrialGroup`): gewählter Website-Slug vor Alter; sonst `groupsForAge` über `MembersService.listWebsiteGroupRefs()` (neuer Dienst: Gruppen mit
+  `on_website` + Slug, Meute vor Sippe) und die Freitext-Altersangabe der Gruppe („6 bis 10 Jahre“, „ab 15“, „11–14“, „16+“, „bis 10“, „unter 10“);
+  passt keine genau, die nächstgelegene (Hinweis im Text). Gruppen ohne lesbare Altersangabe zählen nie.
+- Ablage (`storeWebsiteRequest` in `contact.service.ts`, gemeinsam mit dem Kontaktformular): Postfach `group:<id>`, wenn es im Verzeichnis steht
+  (Kontakt-E-Mail der Gruppe) **und** mindestens eine Leitung mit eigenem Konto und `send` mitliest; sonst Stamm-Postfach mit Hinweis „bitte weiterleiten“,
+  ohne Stamm-Adresse „Nicht zugeordnet“. Betreff „Probestunde: <Kind> (<Alter> Jahre)“, Antwort an die eingegebene Adresse, Benachrichtigung `inbox-new`.
+- Audit `messages.inbox.trial-received` nur `{ mailbox: group|stamm|unassigned }`.
+- Tests `tests/unit/messages-trial.test.ts` (Altersangaben, Auswahl, Kopie gleich), `tests/integration/messages-trial.test.ts`, Website-Parser in `website-contact.test.ts`.
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.

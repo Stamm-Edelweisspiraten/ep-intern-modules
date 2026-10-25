@@ -45,7 +45,7 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.4.0',
+		version: '1.5.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
 		permissions: [
@@ -67,7 +67,7 @@ export default defineModule({
 			[PERM_INBOX_MANAGE]:
 				'Nicht zugeordnete Mails des Posteingangs sehen, einem Postfach zuordnen oder löschen und den Abruf auslösen',
 			[PERM_WEBSITE_CONTACT]:
-				'Nur Website-Endpunkt: Anfragen aus dem Kontaktformular der Stammeswebsite in das Stamm-Postfach legen (Scope für den API-Key der Website)'
+				'Nur Website-Endpunkte: Anfragen aus dem Kontakt- und dem Probestunden-Formular der Stammeswebsite in den Posteingang legen (Scope für den API-Key der Website)'
 		},
 		navigation: [
 			{

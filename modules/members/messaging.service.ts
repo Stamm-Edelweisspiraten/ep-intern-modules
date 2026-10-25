@@ -5,7 +5,7 @@
 import { sql } from 'drizzle-orm';
 import { inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
-import type { GroupMailbox, LedGroupRef, MembersService } from './contract';
+import type { GroupMailbox, LedGroupRef, MembersService, WebsiteGroupRef } from './contract';
 import { activeLeader, ledGroupIds } from './leader.service';
 import { MODULE_ID } from './schemas';
 
@@ -19,6 +19,7 @@ export const messagingService: Pick<
 	| 'getOwnMemberName'
 	| 'listSelfMemberNames'
 	| 'listGroupMailboxes'
+	| 'listWebsiteGroupRefs'
 > = {
 	async listGroupMemberIds(groupIds) {
 		const ids = [...new Set(groupIds)].slice(0, GROUPS_MAX);
@@ -115,5 +116,23 @@ export const messagingService: Pick<
 			byId.set(id, entry);
 		}
 		return [...byId.values()];
+	},
+
+	async listWebsiteGroupRefs(): Promise<WebsiteGroupRef[]> {
+		const rows = await moduleDb(MODULE_ID).transaction((tx) =>
+			rowsOf(
+				tx,
+				sql`SELECT id, slug, name, type, age_range FROM groups
+					WHERE on_website = true AND slug IS NOT NULL
+					ORDER BY CASE type WHEN 'meute' THEN 0 ELSE 1 END, name, id`
+			)
+		);
+		return rows.map((r) => ({
+			id: String(r.id),
+			slug: String(r.slug),
+			name: String(r.name),
+			type: r.type === 'sippe' ? 'sippe' : 'meute',
+			ageRange: r.age_range == null || r.age_range === '' ? null : String(r.age_range)
+		}));
 	}
 };

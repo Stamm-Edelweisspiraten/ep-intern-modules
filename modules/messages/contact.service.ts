@@ -16,6 +16,7 @@ import {
 } from './contact-pow';
 import { textToHtml } from './html';
 import { notifyNewMail } from './inbox-notify.service';
+import type { MailboxEntry } from './mailbox.service';
 import { UNASSIGNED } from './mailbox';
 import { normalizeAddress } from './sender';
 import { MODULE_ID, type ContactInput } from './schemas';
@@ -52,38 +53,71 @@ export function contactText(
 	].join('\n');
 }
 
-export async function receiveContact(
-	ctx: RequestContext,
-	input: ContactInput
-): Promise<{ received: true }> {
-	const check = verifySolution(sign, input.pow);
+/** Ziel einer Website-Anfrage im Posteingang */
+export interface WebsiteMailbox {
+	key: string;
+	name: string;
+	address: string;
+}
+
+/** Stamm-Postfach, ohne Stamm-Adresse „Nicht zugeordnet“ */
+export async function stammMailbox(): Promise<WebsiteMailbox> {
+	const org = await core.settings.getMany(['core.organization.email', 'core.organization.name']);
+	const address = normalizeAddress(String(org['core.organization.email'] ?? ''));
+	const name = String(org['core.organization.name'] ?? '').trim() || 'Stamm';
+	return address
+		? { key: 'stamm', name, address }
+		: { key: UNASSIGNED, name: 'Nicht zugeordnet', address: '' };
+}
+
+/** Spam-Schutz prüfen (422 mit `details.pow`) */
+export function requirePow(pow: ContactInput['pow']): void {
+	const check = verifySolution(sign, pow);
 	if (!check.ok)
 		throw errors.validation({ pow: POW_MESSAGES[check.reason] }, POW_MESSAGES[check.reason]);
+}
 
-	const org = await core.settings.getMany(['core.organization.email', 'core.organization.name']);
-	const stammMail = normalizeAddress(String(org['core.organization.email'] ?? ''));
-	const stammName = String(org['core.organization.name'] ?? '').trim() || 'Stamm';
-	const mailboxKey = stammMail ? 'stamm' : UNASSIGNED;
-	const mailboxName = stammMail ? stammName : 'Nicht zugeordnet';
-
+/**
+ * Anfrage der Website wie eine eingegangene Mail ablegen, Audit schreiben, Berechtigte benachrichtigen.
+ * Jede Aufgabe (Proof-of-Work) gilt nur einmal – über alle Postfächer, sonst 409.
+ */
+export async function storeWebsiteRequest(
+	ctx: RequestContext,
+	request: {
+		mailbox: WebsiteMailbox;
+		pow: ContactInput['pow'];
+		from: { address: string; name: string };
+		subject: string;
+		text: string;
+		auditAction: string;
+		auditMailbox: string;
+		directory?: MailboxEntry[];
+	}
+): Promise<{ id: string }> {
+	const { mailbox, from, subject, text } = request;
 	const id = crypto.randomUUID();
-	const text = contactText(input);
 	const html = textToHtml(text);
-	const to = stammMail ? [{ address: stammMail, name: stammName }] : [];
-	const messageId = `<website-contact-${id}@${stammMail.split('@')[1] || 'website.invalid'}>`;
+	const to = mailbox.address ? [{ address: mailbox.address, name: mailbox.name }] : [];
+	const messageId = `<website-contact-${id}@${mailbox.address.split('@')[1] || 'website.invalid'}>`;
 	const size = Buffer.byteLength(text, 'utf8');
+	const dedupeKey = contactDedupeKey(request.pow);
 
 	const inserted = await mdb().transaction(async (tx) => {
+		const used = await rowsOf(
+			tx,
+			sql`SELECT 1 FROM inbox_messages WHERE dedupe_key = ${dedupeKey} LIMIT 1`
+		);
+		if (used.length) return false;
 		const rows = await rowsOf(
 			tx,
 			sql`INSERT INTO inbox_messages (id, mailbox_key, mailbox_address, dedupe_key, message_id_header,
 					thread_id, from_address, from_name, reply_to, to_list, cc_list, subject, body_html, body_text,
 					received_at, size, spam, auto_submitted, auth_result, unassigned_reason, spam_score, spam_reasons,
 					spam_source)
-				VALUES (${id}, ${mailboxKey}, ${stammMail}, ${contactDedupeKey(input.pow)}, ${messageId},
-					${id}, ${input.email}, ${input.name}, ${input.email}, ${JSON.stringify(to)}::jsonb, '[]'::jsonb,
-					${CONTACT_SUBJECT}, ${html}, ${text}, now(), ${size}, false, false, 'none',
-					${mailboxKey === UNASSIGNED ? 'unknown' : null}, 0, '[]'::jsonb, NULL)
+				VALUES (${id}, ${mailbox.key}, ${mailbox.address}, ${dedupeKey}, ${messageId},
+					${id}, ${from.address}, ${from.name}, ${from.address}, ${JSON.stringify(to)}::jsonb, '[]'::jsonb,
+					${subject}, ${html}, ${text}, now(), ${size}, false, false, 'none',
+					${mailbox.key === UNASSIGNED ? 'unknown' : null}, 0, '[]'::jsonb, NULL)
 				ON CONFLICT (mailbox_key, dedupe_key) DO NOTHING
 				RETURNING id`
 		);
@@ -92,21 +126,42 @@ export async function receiveContact(
 	// Dieselbe Aufgabe zweimal: Wiederholung der Website (Netzaussetzer) oder Wiederverwendung durch einen Bot
 	if (!inserted) throw errors.conflict('Diese Anfrage wurde bereits übermittelt.');
 
-	await core.audit.logFromContext(ctx, 'messages.inbox.contact-received', {
+	await core.audit.logFromContext(ctx, request.auditAction, {
 		target: id,
-		metadata: { mailbox: mailboxKey === UNASSIGNED ? UNASSIGNED : 'stamm' }
+		metadata: { mailbox: request.auditMailbox }
 	});
-	await notifyNewMail([
-		{
-			id,
-			mailboxKey,
-			mailboxName,
-			mailboxAddress: stammMail,
-			from: { address: input.email, name: input.name },
-			subject: CONTACT_SUBJECT,
-			text,
-			notify: true
-		}
-	]);
+	await notifyNewMail(
+		[
+			{
+				id,
+				mailboxKey: mailbox.key,
+				mailboxName: mailbox.name,
+				mailboxAddress: mailbox.address,
+				from,
+				subject,
+				text,
+				notify: true
+			}
+		],
+		request.directory
+	);
+	return { id };
+}
+
+export async function receiveContact(
+	ctx: RequestContext,
+	input: ContactInput
+): Promise<{ received: true }> {
+	requirePow(input.pow);
+	const mailbox = await stammMailbox();
+	await storeWebsiteRequest(ctx, {
+		mailbox,
+		pow: input.pow,
+		from: { address: input.email, name: input.name },
+		subject: CONTACT_SUBJECT,
+		text: contactText(input),
+		auditAction: 'messages.inbox.contact-received',
+		auditMailbox: mailbox.key === UNASSIGNED ? UNASSIGNED : 'stamm'
+	});
 	return { received: true };
 }

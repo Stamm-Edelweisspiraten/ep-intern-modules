@@ -47,6 +47,40 @@ export const contactInput = z
 	.strict();
 export type ContactInput = z.infer<typeof contactInput>;
 
+/** Probestunden-Formular der Website (`POST /website/trial`): Grenzen wie auf der Website */
+export const TRIAL_LIMITS = { childName: 100, ageMin: 3, ageMax: 30, message: 2000 } as const;
+
+export const trialInput = z
+	.object({
+		childName: z
+			.string()
+			.trim()
+			.min(1)
+			.max(TRIAL_LIMITS.childName)
+			.regex(ONE_LINE, 'Ungültige Zeichen'),
+		childAge: z.number().int().min(TRIAL_LIMITS.ageMin).max(TRIAL_LIMITS.ageMax),
+		name: contactInput.shape.name,
+		email: contactInput.shape.email,
+		phone: z
+			.string()
+			.trim()
+			.min(1)
+			.max(CONTACT_LIMITS.phone)
+			.regex(/^[0-9+()/ .-]*$/, 'Ungültige Telefonnummer'),
+		message: z.string().trim().max(TRIAL_LIMITS.message).optional().default(''),
+		/** Gewählte Gruppe (Slug der Website); ohne → passende Gruppe nach Alter */
+		groupSlug: z
+			.string()
+			.trim()
+			.max(100)
+			.regex(/^[a-z0-9-]*$/)
+			.optional()
+			.default(''),
+		pow: contactInput.shape.pow
+	})
+	.strict();
+export type TrialInput = z.infer<typeof trialInput>;
+
 export const SETTING_KEYS = {
 	domain: 'messages.domain',
 	personalEnabled: 'messages.personal.enabled',

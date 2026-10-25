@@ -339,6 +339,7 @@ export const membersService: Omit<
 	| 'getOwnMemberName'
 	| 'listSelfMemberNames'
 	| 'listGroupMailboxes'
+	| 'listWebsiteGroupRefs'
 > = {
 	listMemberContacts(query) {
 		return moduleDb(MODULE_ID).transaction((tx) => memberContacts(tx, query));

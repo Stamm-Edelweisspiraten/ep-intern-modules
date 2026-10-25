@@ -5,7 +5,8 @@
  */
 import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
 import { contactChallenge, receiveContact } from './contact.service';
-import { PERM_WEBSITE_CONTACT, contactInput } from './schemas';
+import { PERM_WEBSITE_CONTACT, contactInput, trialInput } from './schemas';
+import { receiveTrial } from './trial.service';
 
 const tags = ['Modul: messages'];
 
@@ -34,5 +35,19 @@ export const contactEndpoints: AnyApiEndpoint[] = [
 		rateLimit: { limit: 60, windowSec: 3600 },
 		body: contactInput,
 		handler: ({ ctx, body }) => receiveContact(ctx, body)
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/website/trial',
+		summary: 'Probestunden-Anfrage der Website in das Postfach der passenden Gruppe legen',
+		description:
+			'Gruppe = gewählter Website-Slug, sonst passend zum Alter (Altersangabe der Gruppe). Landet im Gruppen-Postfach, ' +
+			'wenn dort eine Leitung mit Konto mitliest, sonst im Stamm-Postfach. Spam-Schutz wie `/website/contact` ' +
+			'(Aufgabe von `/website/contact/challenge`); 422 `pow`, 409 = Aufgabe schon eingelöst.',
+		tags,
+		permission: PERM_WEBSITE_CONTACT,
+		rateLimit: { limit: 60, windowSec: 3600 },
+		body: trialInput,
+		handler: ({ ctx, body }) => receiveTrial(ctx, body)
 	})
 ];

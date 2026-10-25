@@ -95,6 +95,16 @@ export interface LedGroupRef {
 }
 
 /** Gruppe mit Kontakt-E-Mail und den Konten ihrer Leitungen (Postfach im Modul `messages`) */
+/** Gruppe auf der Stammeswebsite (für Probestunden-Anfragen in `messages`) */
+export interface WebsiteGroupRef {
+	id: string;
+	slug: string;
+	name: string;
+	type: 'meute' | 'sippe';
+	/** Freitext, z. B. „7 bis 10 Jahre“ */
+	ageRange: string | null;
+}
+
 export interface GroupMailbox {
 	id: string;
 	name: string;
@@ -169,6 +179,8 @@ export interface MembersService extends PrincipalProvider {
 	listSelfMemberNames(): Promise<{ userId: string; firstName: string; lastName: string }[]>;
 	/** Systemweit, ohne Rechteprüfung: alle Gruppen mit Kontakt-E-Mail und ihren Leitungs-Konten */
 	listGroupMailboxes(): Promise<GroupMailbox[]>;
+	/** Systemweit, ohne Rechteprüfung: Gruppen auf der Website (`on_website`, mit Slug), Meuten vor Sippen */
+	listWebsiteGroupRefs(): Promise<WebsiteGroupRef[]>;
 	/**
 	 * Systemweit, ohne Rechteprüfung: mit den Mitgliedern verknüpfte Konten (Mitglied → Konto-IDs), z. B. für
 	 * Push-Benachrichtigungen der Kasse. Höchstens 2000 Mitglieder; Mitglieder ohne Verknüpfung fehlen.
