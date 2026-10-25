@@ -3,41 +3,11 @@
  * schickt HTML, der Server vertraut ihm nie: Es bleiben nur einfache Formatierungen und http(s)/mailto-Links.
  */
 import sanitizeHtml from 'sanitize-html';
-
-const ALLOWED_TAGS = [
-	'p',
-	'br',
-	'strong',
-	'b',
-	'em',
-	'i',
-	'u',
-	's',
-	'ul',
-	'ol',
-	'li',
-	'blockquote',
-	'h2',
-	'h3',
-	'a',
-	'hr'
-];
+import { RICH_TEXT_TAGS, sanitizeRichText } from '$lib/sdk/server/html';
 
 /** Bereinigtes HTML-Fragment (Skripte, Event-Handler, fremde Tags und `javascript:`-Links entfallen) */
 export function sanitizeBody(html: string): string {
-	return sanitizeHtml(html, {
-		allowedTags: ALLOWED_TAGS,
-		allowedAttributes: { a: ['href', 'target', 'rel'] },
-		allowedSchemes: ['http', 'https', 'mailto'],
-		allowedSchemesAppliedToAttributes: ['href'],
-		allowProtocolRelative: false,
-		transformTags: {
-			a: (_tag, attribs) => ({
-				tagName: 'a',
-				attribs: { href: attribs.href ?? '', target: '_blank', rel: 'noopener noreferrer' }
-			})
-		}
-	}).trim();
+	return sanitizeRichText(html);
 }
 
 /** Schlankes HTML-Dokument für „Einfach“: kein Layout, keine Farben/Bilder, Schrift des Mailprogramms */
@@ -87,7 +57,7 @@ export function htmlToText(html: string): string {
 // --- Eingehende Mails ------------------------------------------------------------------------
 
 const INBOUND_TAGS = [
-	...ALLOWED_TAGS,
+	...RICH_TEXT_TAGS,
 	'div',
 	'span',
 	'h1',

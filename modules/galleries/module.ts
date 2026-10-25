@@ -10,6 +10,8 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_gallery_events.sql?raw';
 import m0003 from './migrations/0003_publish_confirmation.sql?raw';
 import { subjectExport } from './subject-export';
+import { galleryRefsService } from './refs.service';
+import type { GalleryRefsService } from './contract';
 
 export default defineModule({
 	manifest: {
@@ -56,6 +58,8 @@ export default defineModule({
 		{ name: '0002_gallery_events', sql: m0002 },
 		{ name: '0003_publish_confirmation', sql: m0003 }
 	],
+	/** Verweise auf öffentliche Galerien (z. B. Blog-Beiträge im Modul `website`) */
+	provides: galleryRefsService satisfies GalleryRefsService,
 	search: galleriesSearch,
 	resetAreas,
 	resetUsers,

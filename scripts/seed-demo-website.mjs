@@ -9,8 +9,11 @@
 //  3. legt Website-Termine an bzw. aktualisiert sie (gleicher Titel → PUT): Gruppenstunden als
 //     wöchentliche Serien, Termine mit Gruppe und für den ganzen Stamm, eine vergangene Fahrt,
 //  4. stellt eine vorhandene Galerie öffentlich und verknüpft sie mit der vergangenen Fahrt,
-//  5. widerruft einen vorhandenen Key „Stammeswebsite (Demo)“, legt ihn mit den vier
-//     Website-Scopes neu an und schreibt `website/.env` (WEBSITE_API_URL, WEBSITE_API_KEY, ORIGIN).
+//  5. aktiviert – falls registriert – das Modul `website` und legt einen Ferien-Hinweis für die Startseite
+//     sowie einen veröffentlichten Beispiel-Beitrag an (gleicher Text bzw. Titel → übersprungen),
+//  6. widerruft einen vorhandenen Key „Stammeswebsite (Demo)“, legt ihn mit den Website-Scopes neu an
+//     (`website.content.read` nur bei aktivem Modul `website`) und schreibt `website/.env`
+//     (WEBSITE_API_URL, WEBSITE_API_KEY, ORIGIN).
 //
 //   node scripts/seed-demo-website.mjs
 //   DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-website.mjs
@@ -26,7 +29,8 @@ const SCOPES = [
 	'events.website.read',
 	'galleries.website.read',
 	'offices.website.read',
-	'members.website.read'
+	'members.website.read',
+	'website.content.read'
 ];
 const ENV_FILE = fileURLToPath(new URL('../website/.env', import.meta.url));
 
@@ -106,7 +110,7 @@ if (!(await login())) {
 }
 
 const modules = (await call('GET', '/modules')).data ?? [];
-const isEnabled = (id) => modules.some((m) => m.id === id && m.enabled);
+const isEnabled = (id) => modules.some((m) => (m.manifest?.id ?? m.id) === id && m.enabled);
 let changed = false;
 for (const id of ['members', 'events', 'galleries', 'offices']) {
 	if (isEnabled(id)) continue;
@@ -440,7 +444,67 @@ if (!gallery) {
 	}
 }
 
-// --- 5. API-Key + website/.env -------------------------------------------------------------
+// --- 5. Inhalte der Website (Modul `website`): Hinweis + Beispiel-Beitrag ------------------------
+
+let contentEnabled = isEnabled('website');
+if (!contentEnabled && modules.some((m) => (m.manifest?.id ?? m.id) === 'website')) {
+	const r = await call('POST', '/modules/website/enable');
+	console.log('Modul website aktivieren:', r.status);
+	contentEnabled = r.status < 400;
+	if (contentEnabled && !(await login())) {
+		throw new Error(`Erneuter Login als ${EMAIL} fehlgeschlagen`);
+	}
+}
+if (!contentEnabled) {
+	console.log('Hinweis: Modul `website` nicht verfügbar – Banner/FAQ/Blog werden übersprungen.');
+} else {
+	const W = '/modules/website';
+	const bannerText =
+		'In den Herbstferien finden keine Gruppenstunden statt. Ab dem 3. November geht es wie gewohnt weiter.';
+	const banners = (await call('GET', `${W}/banners`)).data ?? [];
+	if (banners.some((b) => b.text === bannerText)) {
+		console.log('Banner „Ferien“ vorhanden – übersprungen.');
+	} else {
+		const r = await call('POST', `${W}/banners`, {
+			title: 'Ferien',
+			text: bannerText,
+			level: 'info',
+			placement: 'home',
+			linkUrl: '/termine',
+			linkLabel: 'Zu den Terminen',
+			dismissible: true,
+			active: true
+		});
+		if (r.status < 400) console.log('Banner „Ferien“ (Startseite) angelegt.');
+	}
+
+	const postTitle = 'Unser Herbstlager 2026';
+	const found = await call('GET', `${W}/posts?limit=50&search=${encodeURIComponent(postTitle)}`);
+	if ((found.data?.items ?? []).some((p) => p.title === postTitle)) {
+		console.log(`Beitrag „${postTitle}“ vorhanden – übersprungen.`);
+	} else {
+		const created = await call('POST', `${W}/posts`, { title: postTitle });
+		const id = created.data?.id;
+		if (id) {
+			await call('PATCH', `${W}/posts/${id}`, {
+				teaser:
+					'Ein Wochenende mit Zelten, Lagerfeuer und Geländespiel – so war unser Herbstlager am Zeltplatz Stühe.',
+				bodyHtml:
+					'<p>Am Freitagnachmittag ging es los: Zelte aufbauen, Feuerholz sammeln und das erste Abendessen über dem Feuer.</p>' +
+					'<h2>Geländespiel im Nebel</h2>' +
+					'<p>Am Samstag haben Meute und Sippen gemeinsam ein großes Geländespiel gespielt. Danach gab es ' +
+					'<strong>Stockbrot</strong> und viele Lieder am Lagerfeuer.</p>' +
+					'<ul><li>3 Tage draußen</li><li>2 Gruppen</li><li>1 sehr großer Topf Eintopf</li></ul>' +
+					'<p>Alle Termine findet ihr auf der <a href="/termine">Terminseite</a>.</p>',
+				tags: ['Lager', 'Stamm']
+			});
+			const r = await call('POST', `${W}/posts/${id}/publish`, {});
+			if (r.status < 400) console.log(`Beitrag „${postTitle}“ angelegt und veröffentlicht.`);
+		}
+	}
+}
+
+// --- 6. API-Key + website/.env -------------------------------------------------------------
 
 const keys = (await call('GET', '/api-keys')).data ?? [];
 for (const k of keys) {
@@ -449,7 +513,8 @@ for (const k of keys) {
 		if (r.status < 400) console.log(`Alten Key „${KEY_NAME}“ (${k.prefix}…) widerrufen.`);
 	}
 }
-const created = await call('POST', '/api-keys', { name: KEY_NAME, scopes: SCOPES });
+const scopes = contentEnabled ? SCOPES : SCOPES.filter((x) => x !== 'website.content.read');
+const created = await call('POST', '/api-keys', { name: KEY_NAME, scopes });
 const apiKey = created.data?.key;
 if (!apiKey) {
 	throw new Error(
@@ -477,7 +542,7 @@ while (out.length && out[out.length - 1] === '') out.pop();
 for (const [k, v] of Object.entries(values)) if (!seen.has(k)) out.push(`${k}=${v}`);
 writeFileSync(ENV_FILE, out.join('\n') + '\n', 'utf8');
 
-console.log(`API-Key „${KEY_NAME}“ angelegt (Scopes: ${SCOPES.join(' ')}).`);
+console.log(`API-Key „${KEY_NAME}“ angelegt (Scopes: ${scopes.join(' ')}).`);
 console.log(`Geschrieben: ${ENV_FILE}`);
 console.log(
 	`Prüfen: curl -H "Authorization: Bearer <key>" ${BASE}/api/v1/modules/events/website/events`

@@ -37,6 +37,7 @@ Bildverarbeitung serverseitig über den Core-Dienst `core.images` (sharp). Navig
 | `pages/EventPicker.svelte` | Terminsuche (`GET /events?search=`), Mehrfachauswahl – im `GalleryDialog` (Feld „Termine“) |
 | `pages/EventBadges.svelte` | Termine als Badges (Detailkopf; Karte mit `max={1} compact`) |
 | `pages/ImageBulkBar.svelte` | Sammelleiste im Auswahlmodus: Löschen |
+| `contract.ts`, `refs.service.ts` | Dienst `GalleryRefsService` über `provides` (2026-10-25, für `website`): `searchPublicGalleryRefs`, `publicGalleryRefs` – nur öffentliche Galerien, ohne Rechteprüfung |
 | `subject-export.ts` | Datenauskunft (`subjectExport`, Art. 15/20): eigene Galerien, hochgeladene Bilder (nur Metadaten), Freigaben an das Konto, Veröffentlichungs-Bestätigungen |
 | `migrations/0001_init.sql`, `0002_gallery_events.sql`, `0003_publish_confirmation.sql` | Schema; Termine je Galerie; Bestätigung beim Veröffentlichen |
 
