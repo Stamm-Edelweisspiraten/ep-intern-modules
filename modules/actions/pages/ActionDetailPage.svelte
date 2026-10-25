@@ -21,8 +21,11 @@
 		PageHeader,
 		PdfExportDialog,
 		ShareMenu,
-		type ShareCandidate
+		type ShareCandidate,
+		type ShareEntry
 	} from '$lib/components/layout';
+	import { shareKey } from '$lib/components/layout/share-types';
+	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
 		SHARE_LEVELS,
 		SHARE_LEVEL_LABELS,
@@ -41,6 +44,7 @@
 	import AccountingTab from './AccountingTab.svelte';
 	import CalculationTab from './CalculationTab.svelte';
 	import RegistrationTab from './RegistrationTab.svelte';
+	import ActionTasksCard from './ActionTasksCard.svelte';
 
 	let { params }: ModulePageProps = $props();
 	const id = $derived(params.id ?? '');
@@ -226,31 +230,56 @@
 	// Freigaben
 	const shareLevels = SHARE_LEVELS.map((l) => ({ value: l, label: SHARE_LEVEL_LABELS[l] }));
 
-	async function searchUsers(q: string): Promise<ShareCandidate[]> {
-		const res = await apiFetch<ShareCandidate[]>(
-			`/modules/actions/users?search=${encodeURIComponent(q)}`
+	async function searchPrincipals(q: string): Promise<ShareCandidate[]> {
+		const found = await apiFetch<PrincipalInfo[]>(
+			`/modules/actions/principals?search=${encodeURIComponent(q)}`
 		);
 		const ownerId = shares?.owner.userId;
-		return res.filter((u) => u.id !== ownerId);
+		return found
+			.filter((p) => !(p.type === 'user' && p.id === ownerId))
+			.map((p) => ({
+				id: p.id,
+				type: p.type,
+				name: p.name,
+				detail: p.detail ?? null,
+				color: p.color ?? null,
+				image: p.image ?? null
+			}));
 	}
-	async function putShare(userId: string, level: string) {
+	/** PUT ersetzt alle Freigaben der Aktion */
+	async function saveShares(next: ShareEntry[]) {
 		try {
-			await apiFetch(`${base}/shares/${userId}`, {
+			shares = await apiFetch<ActionShares>(`${base}/shares`, {
 				method: 'PUT',
-				body: JSON.stringify({ level })
+				body: JSON.stringify({
+					shares: next.map((s) => ({ type: s.type ?? 'user', id: s.userId, level: s.level }))
+				})
 			});
 		} catch (e) {
 			throw new Error(errMsg(e, 'Freigabe fehlgeschlagen'), { cause: e });
 		}
-		await loadShares();
 	}
-	async function removeShare(userId: string) {
-		try {
-			await apiFetch(`${base}/shares/${userId}`, { method: 'DELETE' });
-		} catch (e) {
-			throw new Error(errMsg(e, 'Entfernen fehlgeschlagen'), { cause: e });
-		}
-		await loadShares();
+	async function addShare(c: ShareCandidate, level: string) {
+		const current = shares?.shares ?? [];
+		const entry: ShareEntry = {
+			userId: c.id,
+			type: c.type ?? 'user',
+			name: c.name,
+			detail: c.detail ?? null,
+			color: c.color ?? null,
+			image: c.image ?? null,
+			level
+		};
+		if (current.some((s) => shareKey(s) === shareKey(entry))) return;
+		await saveShares([...current, entry]);
+	}
+	async function changeShare(key: string, level: string) {
+		await saveShares(
+			(shares?.shares ?? []).map((s) => (shareKey(s) === key ? { ...s, level } : s))
+		);
+	}
+	async function removeShare(key: string) {
+		await saveShares((shares?.shares ?? []).filter((s) => shareKey(s) !== key));
 	}
 
 	function levelLabel(l: ShareLevel) {
@@ -301,10 +330,14 @@
 					levels={shareLevels}
 					defaultLevel="read"
 					canManage={shares.canManage}
-					search={searchUsers}
-					onadd={(user, level) => putShare(user.id, level)}
-					onchange={putShare}
+					search={searchPrincipals}
+					onadd={addShare}
+					onchange={changeShare}
 					onremove={removeShare}
+					everyoneLabel={shares.everyoneLabel}
+					placeholder="Gruppe, Rolle, Person suchen …"
+					searchLabel="Freigabe hinzufügen"
+					emptyResultText="Niemand gefunden"
 				/>
 			{:else if sharesLoading}
 				<Skeleton class="h-9 w-28" />
@@ -425,6 +458,9 @@
 					{/if}
 				</Card.Content>
 			</Card.Root>
+			{#if can(permissions, 'tasks.board.view')}
+				<ActionTasksCard actionId={action.id} actionName={action.name} />
+			{/if}
 		</Tabs.Content>
 
 		<Tabs.Content value="participants">

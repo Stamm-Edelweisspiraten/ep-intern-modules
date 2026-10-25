@@ -4,7 +4,15 @@
  * neue Person, Anmeldebestätigung als Push an das anmeldende Konto. Immer nach der Transaktion, wirft nie.
  */
 import { sql } from 'drizzle-orm';
-import { bestEffort, core, moduleDb, rowsOf, type RequestContext } from '$lib/sdk/server';
+import {
+	bestEffort,
+	core,
+	moduleDb,
+	principalUserIds,
+	rowsOf,
+	type RequestContext,
+	type StoredShare
+} from '$lib/sdk/server';
 import {
 	MODULE_ID,
 	NOTIFY_ACCOUNTING,
@@ -19,18 +27,23 @@ const actionLink = (id: string, tab?: string) =>
 
 /** Eigentümer*in und Personen mit Bearbeiten-Freigabe, mit Leserecht des Moduls, ohne `exclude` */
 async function editorsOf(actionId: string, exclude: (string | null)[]): Promise<string[]> {
-	const rows = await moduleDb(MODULE_ID).transaction((tx) =>
-		rowsOf(
+	const { owner, shares } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const [action] = await rowsOf(tx, sql`SELECT owner_id FROM actions WHERE id = ${actionId}`);
+		const shares = await rowsOf(
 			tx,
-			sql`SELECT owner_id AS user_id FROM actions WHERE id = ${actionId}
-				UNION SELECT user_id FROM action_shares WHERE action_id = ${actionId} AND level = 'edit'`
-		)
-	);
-	const allowed = new Set(await core.permissions.usersWith(VIEW));
-	const skip = new Set(exclude.filter((x): x is string => !!x));
-	return [...new Set(rows.map((r) => String(r.user_id)))].filter(
-		(id) => allowed.has(id) && !skip.has(id)
-	);
+			sql`SELECT principal_type, principal_id FROM action_shares
+				WHERE action_id = ${actionId} AND level = 'edit'`
+		);
+		return { owner: action ? String(action.owner_id) : null, shares };
+	});
+	const principals = [
+		...(owner ? [{ type: 'user' as const, id: owner }] : []),
+		...shares.map((r) => ({
+			type: String(r.principal_type) as StoredShare['type'],
+			id: String(r.principal_id)
+		}))
+	];
+	return principalUserIds(MODULE_ID, principals, { permission: VIEW, exclude });
 }
 
 /** Neue Anmeldung (über den Anmeldelink, nach Double-Opt-in bzw. mit verknüpftem Mitglied) */
@@ -81,28 +94,45 @@ export async function notifyRegistration(
 	);
 }
 
-/** Aktion mit einer Person geteilt bzw. ihre Rechte geändert */
+/**
+ * Aktion neu geteilt oder auf „Bearbeiten“ hochgestuft: an die Konten hinter den Freigaben
+ * (Gruppen, Rollen, Mitglieder, Benutzer*innen; „ganzer Stamm“ bewusst ohne Nachricht).
+ */
 export async function notifyShared(
 	ctx: RequestContext,
-	input: { actionId: string; actionName: string; userId: string; level: 'read' | 'edit' }
+	input: { actionId: string; actionName: string; ownerId: string; principals: StoredShare[] }
 ): Promise<void> {
-	if (input.userId === ctx.userId) return;
 	await bestEffort(
 		'actions.notify.shared',
 		async () => {
+			const exclude = [ctx.userId, input.ownerId];
+			const editIds = await principalUserIds(
+				MODULE_ID,
+				input.principals.filter((p) => p.level === 'edit'),
+				{ permission: VIEW, exclude }
+			);
+			const readIds = (
+				await principalUserIds(
+					MODULE_ID,
+					input.principals.filter((p) => p.level === 'read'),
+					{ permission: VIEW, exclude }
+				)
+			).filter((id) => !editIds.includes(id));
+			if (!editIds.length && !readIds.length) return;
 			const me = ctx.userId ? (await core.users.byIds(ctx, [ctx.userId])).get(ctx.userId) : null;
 			const who = me?.name ?? 'Jemand';
+			const item = (userIds: string[], edit: boolean) => ({
+				type: NOTIFY_ACTION_SHARED,
+				userIds,
+				title: `${who} hat „${input.actionName}“ mit dir geteilt`,
+				body: edit
+					? `Du kannst die Aktion „${input.actionName}“ jetzt ansehen und bearbeiten.`
+					: `Du kannst die Aktion „${input.actionName}“ jetzt ansehen.`,
+				link: actionLink(input.actionId)
+			});
 			await core.notifications.send(ctx, MODULE_ID, [
-				{
-					type: NOTIFY_ACTION_SHARED,
-					userIds: [input.userId],
-					title: `${who} hat „${input.actionName}“ mit dir geteilt`,
-					body:
-						input.level === 'edit'
-							? `Du kannst die Aktion „${input.actionName}“ jetzt ansehen und bearbeiten.`
-							: `Du kannst die Aktion „${input.actionName}“ jetzt ansehen.`,
-					link: actionLink(input.actionId)
-				}
+				...(editIds.length ? [item(editIds, true)] : []),
+				...(readIds.length ? [item(readIds, false)] : [])
 			]);
 		},
 		{ ctx, target: input.actionId }

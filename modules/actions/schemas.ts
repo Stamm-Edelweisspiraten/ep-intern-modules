@@ -4,6 +4,7 @@ import { isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { isValidIban, normalizeIban } from './iban';
 import { formDefinitionSchema } from '$lib/forms/schema';
 import type { FormDefinition } from '$lib/forms/types';
+import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'actions';
 /** Benachrichtigung (core.notifications): neue Auslagen über den Kosten-Link an die Eigentümer*in */
@@ -168,6 +169,40 @@ export const shareParams = z.object({ id, userId: id });
 export const participantParams = z.object({ id, participantId: id });
 
 export const shareInput = z.object({ level: z.enum(SHARE_LEVELS) });
+
+/** Höchstzahl der Freigaben je Aktion */
+export const MAX_SHARES = 200;
+
+const principalShare = z
+	.object({
+		type: z.enum(PRINCIPAL_TYPES),
+		id: z.string().trim().min(1).max(64),
+		level: z.enum(SHARE_LEVELS)
+	})
+	.strict();
+
+/** PUT `/actions/:id/shares` – ersetzt alle Freigaben (Stamm, Gruppe, Rolle, Mitglied, Benutzer*in) */
+export const sharesInput = z
+	.object({ shares: z.array(principalShare).max(MAX_SHARES, `Höchstens ${MAX_SHARES} Freigaben`) })
+	.strict()
+	.superRefine((v, ctx) => {
+		const seen = new Set<string>();
+		v.shares.forEach((s, i) => {
+			const key = `${s.type}:${s.id}`;
+			if (seen.has(key)) {
+				ctx.addIssue({ code: 'custom', path: ['shares', i, 'id'], message: 'Doppelte Freigabe' });
+			}
+			seen.add(key);
+			if (s.type === 'everyone' && s.id !== '*') {
+				ctx.addIssue({ code: 'custom', path: ['shares', i, 'id'], message: 'Ungültige ID' });
+			}
+		});
+	});
+export type SharesInput = z.infer<typeof sharesInput>;
+
+export const principalSearchQuery = z.object({
+	search: z.string().trim().min(2, 'Mindestens 2 Zeichen').max(100)
+});
 export const userSearchQuery = z.object({
 	search: z.string().trim().min(2, 'Mindestens 2 Zeichen').max(100),
 	limit: z.coerce.number().int().min(1).max(30).default(20)
@@ -206,7 +241,15 @@ export interface UserRef {
 	email: string | null;
 }
 
-export interface ShareEntry extends UserRef {
+/** Eine Freigabe; `userId` = ID des Principals (bei `type: 'user'` die Benutzer-ID) */
+export interface ShareEntry {
+	type: PrincipalType;
+	userId: string;
+	name: string;
+	/** Unterzeile, z. B. E-Mail (nur mit `core.users.view`) */
+	detail: string | null;
+	color: string | null;
+	image: string | null;
 	level: ShareLevel;
 }
 
@@ -245,6 +288,8 @@ export interface ActionList {
 export interface ActionShares {
 	owner: UserRef;
 	shares: ShareEntry[];
+	/** Anzeigename für „ganzer Stamm“ */
+	everyoneLabel: string;
 	/** Darf der aktuelle Benutzer Freigaben ändern? */
 	canManage: boolean;
 }

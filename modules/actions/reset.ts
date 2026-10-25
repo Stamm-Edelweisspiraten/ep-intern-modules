@@ -89,7 +89,9 @@ export const resetAreas: ResetArea[] = [
 
 /** Verweise auf gelöschte Benutzer bereinigen (läuft im Modulschema). */
 export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId) => {
-	await tx.execute(sql`DELETE FROM action_shares`);
+	await tx.execute(
+		sql`DELETE FROM action_shares WHERE principal_type = 'user' AND principal_id <> ${keepUserId}`
+	);
 	await tx.execute(
 		sql`UPDATE actions SET owner_id = ${keepUserId} WHERE owner_id <> ${keepUserId}`
 	);

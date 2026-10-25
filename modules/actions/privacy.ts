@@ -168,7 +168,8 @@ export const subjectExport: ModuleSubjectExport = {
 				? await rowsOf(
 						tx,
 						sql`SELECT s.action_id, a.name, s.level FROM action_shares s
-							JOIN actions a ON a.id = s.action_id WHERE s.user_id = ${userId}`
+							JOIN actions a ON a.id = s.action_id
+							WHERE s.principal_type = 'user' AND s.principal_id = ${userId}`
 					)
 				: [];
 			if (!participants.length && !owned.length && !shares.length) return null;

@@ -8,7 +8,7 @@
 import { sql } from 'drizzle-orm';
 import { core, inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import type { MembersService } from '$lib/modules/members/contract';
-import { visibleActionsFilter } from './access';
+import { loadActionKeys, visibleActionsFilter } from './access';
 import type { CalendarAction } from './contract';
 import { MODULE_ID } from './schemas';
 
@@ -33,6 +33,7 @@ export async function listCalendarActions(
 	const mine = canOwn
 		? sql`(p.user_id = ${userId} OR ${memberIds.length ? sql`p.member_id IN (${inList(memberIds)})` : sql`FALSE`})`
 		: sql`FALSE`;
+	if (canView) await loadActionKeys(ctx);
 	const visible = canView ? visibleActionsFilter(ctx) : sql`FALSE`;
 	const rows = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(

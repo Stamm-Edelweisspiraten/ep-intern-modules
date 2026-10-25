@@ -5,7 +5,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { moduleDb, type ModuleSearchProvider, rowsOf, type SearchHit } from '$lib/sdk/server';
-import { visibleActionsFilter } from './access';
+import { loadActionKeys, visibleActionsFilter } from './access';
 import { MODULE_ID } from './schemas';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -20,6 +20,7 @@ export const actionsSearch: ModuleSearchProvider = {
 	permission: 'actions.action.view',
 	async run(ctx, query, limit) {
 		const p = like(query);
+		await loadActionKeys(ctx);
 		const found = await moduleDb(MODULE_ID).transaction((tx) =>
 			rowsOf(
 				tx,

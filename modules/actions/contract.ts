@@ -157,7 +157,18 @@ export interface CalendarAction {
 	canOpen: boolean;
 }
 
+/** Aktion mit Zugriffsstufe des Kontexts (`accessibleActions`) */
+export interface AccessibleAction extends ActionRef {
+	level: 'read' | 'edit';
+}
+
 export interface ActionsService {
+	/**
+	 * Aktionen, die `ctx` sehen darf (wie `GET /actions`), mit Stufe `read`/`edit`; ohne `actions.action.view`
+	 * leer. `ids` schränkt ein. Prüft die Rechte von `ctx` selbst (Ausnahme in diesem Vertrag), nie in einer
+	 * offenen Transaktion aufrufen. Nutzer: Aufgaben-Boards an Aktionen (`tasks`).
+	 */
+	accessibleActions(ctx: RequestContext, query?: { ids?: string[] }): Promise<AccessibleAction[]>;
 	/**
 	 * Aktionen im Zeitraum für das Kalender-Abo: sichtbare (`actions.action.view`) und solche mit eigener
 	 * Anmeldung (`actions.own.view`). Prüft die Rechte von `ctx` selbst (Ausnahme in diesem Vertrag).

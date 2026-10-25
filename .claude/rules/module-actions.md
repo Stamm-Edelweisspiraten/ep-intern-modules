@@ -14,8 +14,10 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 |---|---|
 | `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `actions.bank.*`, `actions.payment.purposeTemplate`, `actions.health.retentionDays`; Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `onMemberDeleted`, `subjectExport`, `backup` (`actionsBackup`), `provides`; Endpoints in `withTreasurySync([...])`; Routen `''`, `:id`, öffentlich `anmeldung/:token`, `anmeldung-bestaetigen/:token`, `auslagen/:token` |
 | `schemas.ts` | Zod + DTO-Typen + Konstanten (`CALC_CATEGORIES`, `ACCOUNTING_CATEGORIES`, `CHECKLIST_ITEMS`, `FORM_PUBLIC_PREFIX`, `STANDARD_FORM_KEYS`) |
-| `access.ts` | `resolveAccess`/`requireAccess`/`visibleActionsFilter` (Objektzugriff) |
-| `actions.endpoints.ts`, `participants.endpoints.ts` | Aktionen, Freigaben, Benutzersuche, Teilnehmende |
+| `access.ts` | `resolveAccess`/`requireAccess`/`visibleActionsFilter`/`editableActionsFilter` (Objektzugriff über `createShareAccess`), `loadActionKeys`/`withActionKeys` (Principal-Schlüssel vor der Transaktion) |
+| `shares.endpoints.ts` | Freigaben an Principals (`GET/PUT /actions/:id/shares`, Kurzform `PUT/DELETE …/shares/:userId`), `/principals`, `/users`, `shareLevelsFor` |
+| `accessible.ts` | Dienst `accessibleActions(ctx, { ids? })` → sichtbare Aktionen mit Stufe (für Boards im Modul `tasks`) |
+| `actions.endpoints.ts`, `participants.endpoints.ts` | Aktionen, Teilnehmende |
 | `calculation.ts` (rein), `calculation.endpoints.ts` | Kalkulation, Vorschläge, Beitrag übernehmen |
 | `subsidy.ts` (rein) | Zuschuss/Taschengeld Richtlinie 2026 |
 | `subsidy-eligibility.ts` (rein) | `effectiveSubsidyEligible`, `deriveSubsidyCounts` (EINE Klassifikation für Vorschläge und Abrechnung) |
@@ -75,6 +77,8 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 - **0021** CHECKs `calc_items_category_check`/`accounting_entries_category_check` um `camp_fee_gau|camp_fee_landesmark|camp_fee_bund` erweitert
   (Lagerbeiträge an Gau/Landesmark/Bund; eigene Kategorien statt Ebenen-Spalte → Soll/Ist, PDF-Abschnitte, Export und Kasse ohne Sonderlogik).
   Die Kategorien stehen **am Ende** von `CALC_CATEGORIES`, damit Belegnummern bestehender Abrechnungen gleich bleiben.
+- **0022** (2026-10-25) `action_shares`: `user_id` → `principal_id`, neue Spalte `principal_type` (CHECK everyone|group|role|user|member), PK
+  `(action_id, principal_type, principal_id)`, Index `(principal_type, principal_id)`; Bestand wird `user`. Upgrade-Test in `module-data-migrations.test.ts`.
 - Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
@@ -89,14 +93,17 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 | `actions.storage.read/write/delete` | Core-Storage (Belege, Beleg-Anhänge im PDF brauchen `read`) |
 
 Objektzugriff (`resolveAccess`): Eigentümer*in, `edit-all`, System → bearbeiten+teilen; Freigabe `edit` → bearbeiten;
-Freigabe `read` oder `view-all` → lesen; sonst **404**. Lesende bekommen bei Schreibzugriff **403**. Teilen: nur
+Freigabe `read` oder `view-all` → lesen; sonst **404**. Freigaben gehen seit 2026-10-25 an **Principals** (wie `events`): Gruppe = verknüpfte Konten der
+Mitglieder und Leitungen, Rolle, Mitglied, Stamm (`everyone`), Benutzer*in. Schlüssel per `loadActionKeys(ctx)` vor der Transaktion – alle Endpoints
+über `withActionKeys` (module.ts), Suche/Kalender/`accessibleActions` selbst; fehlen sie, wirft `actionKeysOf` (Programmierfehler). Lesende bekommen bei Schreibzugriff **403**. Teilen: nur
 Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + freigegebene, oder alle).
 
 ## API (Auszug, alle `actions.action.view` + Objektzugriff; Schreiben = `edit`)
 | Pfad | Methode | Besonderheiten |
 |---|---|---|
 | `/actions`, `/actions/:id` | GET/POST(create)/PUT/DELETE | Name ≤ 150, Ende ≥ Start; Detail inkl. `fee`, `participantCount` |
-| `/actions/:id/shares[/:userId]`, `/users` | GET/PUT/DELETE, GET | Freigabe `read|edit`, nicht an Eigentümer*in; `/users` = Verzeichnissuche |
+| `/actions/:id/shares` | GET/PUT | PUT `{ shares: [{ type, id, level }] }` ersetzt alle Freigaben (Stamm, Gruppe, Rolle, Mitglied, Benutzer*in; `validatePrincipals`, Eigentümer*in → 422); Antwort `ActionShares` mit `everyoneLabel` |
+| `/actions/:id/shares/:userId`, `/principals`, `/users` | PUT/DELETE, GET, GET | Kurzform für Benutzer-Freigaben (eigene löschen = Aktion verlassen); `/principals` = Freigabe-Suche (nur Teilende) |
 | `/actions/:id/participants[/:pid]` | GET/POST/PUT/DELETE | `participants.csv` unter `/actions/:id/participants.csv` (Formel-Schutz); `participants.pdf` = Teilnehmendenliste (A4 quer, eine Zeile je Person, wählbare Spalten: `GET` = Voreinstellung „Fahrt“, `POST { selection }`; `GET /actions/:id/participants/pdf-columns` = Katalog; braucht zusätzlich `members.data.export`, Audit `actions.participants.sheet_generated` mit `count`, `columns`) |
 | `/actions/:id/calculation` | GET/PUT | PUT ersetzt alle Posten (≤ 100), Checkliste nur bekannte Schlüssel |
 | `/actions/:id/calculation/suggestions` | GET | Zählt Teilnehmende/Team/Bremen-Kinder/-Jugend aus der Liste, `incomplete[]`, Nächte aus Datum |
@@ -289,7 +296,7 @@ Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlu
 |---|---|---|---|
 | `registration-new` | Anmeldung über den Anmeldelink (nach Double-Opt-in bzw. mit Mitglied) | Eigentümer*in + Bearbeiten-Freigaben (mit `actions.action.view`) | E-Mail, „Täglich“ wählbar |
 | `registration-own` | Anmeldung mit verknüpftem Mitglied | anmeldendes Konto + weitere mit dem Mitglied verknüpfte Konten | Push (`pushOnly`; Bestätigungsmail bleibt) |
-| `action-shared` | `PUT …/shares/:userId` (nur neu oder Stufe geändert) | die Person | E-Mail |
+| `action-shared` | Freigabe neu oder auf „Bearbeiten“ hochgestuft | Konten hinter den Freigaben (`principalUserIds`, ohne „Stamm“) | E-Mail |
 | `accounting` | Abschluss, Zwischenabrechnung, Wieder-Öffnen | Eigentümer*in + Bearbeitende | E-Mail |
 | `expense-submitted` | Kosten-Link | Eigentümer*in | E-Mail |
 Nie an die handelnde Person. Test `tests/integration/notifications-modules.test.ts`.
@@ -407,4 +414,6 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
   **Reset `members:all`** impliziert **keinen** `actions`-Bereich und ruft `onMemberDeleted` nicht auf: `member_id` bleibt als hängender Verweis
   stehen (die Bereichsbeschreibung in `members/reset.ts` nennt das „verlieren den Bezug zum Mitglied“). Wer das vermeiden will, setzt
   zusätzlich `actions:participants` zurück.
-- `action_shares.user_id` / `owner_id` / `user_id`: `onUserDeleted` bzw. `resetUsers` (Benutzerkonten, nicht Mitglieder).
+- `action_shares` (`principal_type = 'user'`) / `owner_id` / `user_id`: `onUserDeleted` bzw. `resetUsers` (Benutzerkonten). Gruppen-/Mitglieds-Freigaben bleiben
+  beim Löschen einer Gruppe/eines Mitglieds stehen (wie bei `events`, Anzeige „Unbekannt“).
+- **Aufgaben** (`tasks`): Karte `pages/ActionTasksCard.svelte` in der Übersicht (nur REST, ohne Import), Details `module-tasks.md`.

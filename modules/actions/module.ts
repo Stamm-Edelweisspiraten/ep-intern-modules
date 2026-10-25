@@ -9,6 +9,8 @@ import {
 } from './schemas';
 import { actionsSearch } from './search';
 import { actionEndpoints } from './actions.endpoints';
+import { shareEndpoints } from './shares.endpoints';
+import { withActionKeys } from './access';
 import { myEndpoints } from './my.endpoints';
 import { calculationEndpoints } from './calculation.endpoints';
 import { accountingEndpoints } from './accounting.endpoints';
@@ -45,6 +47,7 @@ import m0018 from './migrations/0018_health_encryption.sql?raw';
 import m0019 from './migrations/0019_registration_optin.sql?raw';
 import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
 import m0021 from './migrations/0021_camp_fees.sql?raw';
+import m0022 from './migrations/0022_principal_shares.sql?raw';
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
@@ -54,7 +57,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.4.0',
+		version: '1.5.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -184,7 +187,8 @@ export default defineModule({
 		{ name: '0018_health_encryption', sql: m0018 },
 		{ name: '0019_registration_optin', sql: m0019 },
 		{ name: '0020_link_token_hash_constraints', sql: m0020 },
-		{ name: '0021_camp_fees', sql: m0021 }
+		{ name: '0021_camp_fees', sql: m0021 },
+		{ name: '0022_principal_shares', sql: m0022 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [
@@ -224,18 +228,22 @@ export default defineModule({
 	/** Datensicherung: `token_hash` der Links mit dem Schlüssel des Zielservers neu berechnen */
 	backup: actionsBackup,
 	/** Kasse: nach schreibenden Vorgängen gezielt diese Aktion abgleichen (`treasury-sync.ts`) */
-	endpoints: withTreasurySync([
-		...myEndpoints,
-		...actionEndpoints,
-		...participantEndpoints,
-		...participantSheetEndpoints,
-		...calculationEndpoints,
-		...formEndpoints,
-		...accountingEndpoints,
-		...payoutEndpoints,
-		...refundEndpoints,
-		...exportImportEndpoints,
-		...interimEndpoints,
-		...expenseLinkEndpoints
-	])
+	/** Principal-Schlüssel vor jedem Handler ermitteln (`access.ts`) */
+	endpoints: withActionKeys(
+		withTreasurySync([
+			...myEndpoints,
+			...actionEndpoints,
+			...shareEndpoints,
+			...participantEndpoints,
+			...participantSheetEndpoints,
+			...calculationEndpoints,
+			...formEndpoints,
+			...accountingEndpoints,
+			...payoutEndpoints,
+			...refundEndpoints,
+			...exportImportEndpoints,
+			...interimEndpoints,
+			...expenseLinkEndpoints
+		])
+	)
 });

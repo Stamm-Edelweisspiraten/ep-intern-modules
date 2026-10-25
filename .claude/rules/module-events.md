@@ -237,8 +237,7 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   nicht (`expandRow` könnte sie liefern, bekommt die Zeile aber nicht). Speicher/Rechenzeit: alle Kandidaten-Zeilen
   (≤ 5000) werden expandiert, bevor auf `MAX_OCCURRENCES` gekappt wird – viele offene Tagesserien in langen Zeiträumen
   erzeugen bis zu 2000 Vorkommen je Serie im Speicher. Kappung auf 2000 Vorkommen ist für Nutzer*innen nur am `total` erkennbar.
-- **Offen:** `actions` nutzt noch die alte Benutzer-Freigabe (`action_shares` mit `user_id`); nach Abschluss der parallelen
-  `actions`-Arbeiten auf Principal-Freigabe umstellen (gleiches Tabellenmuster, `principalKeysFor`/`principalMatchSql`).
+- `actions` nutzt seit 2026-10-25 dasselbe Muster (`action_shares` mit `principal_type`/`principal_id`, Migr. 0022).
 
 ## Kalender-Abo (iCal, 2026-10-24, v1.3.0, Migr. 0004)
 Nutzerentscheidung: Termine **und** Aktionen; **mehrere Abos je Person** mit Filter.

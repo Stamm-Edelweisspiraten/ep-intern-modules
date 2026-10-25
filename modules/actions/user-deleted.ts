@@ -11,7 +11,9 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
 	tx,
 	{ userId, transferTo }
 ) => {
-	await tx.execute(sql`DELETE FROM action_shares WHERE user_id = ${userId}`);
+	await tx.execute(
+		sql`DELETE FROM action_shares WHERE principal_type = 'user' AND principal_id = ${userId}`
+	);
 	if (transferTo) {
 		await tx.execute(sql`UPDATE actions SET owner_id = ${transferTo} WHERE owner_id = ${userId}`);
 	}
