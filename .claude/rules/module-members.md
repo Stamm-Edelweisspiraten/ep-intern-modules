@@ -328,7 +328,7 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
   Gruppen als Farb-Badges, Dokumente nur als Link; Footer „Verknüpfte Konten (n)“ (`link.view`), „Schließen“, „Bearbeiten“
   (`member.edit`, schaltet im selben Dialog frei, Tab bleibt). Früheres Sheet `MemberView` ist entfallen (2026-10-17, Wunsch des Nutzers).
 - `GroupsPage`: Tabelle Name, Typ, Leiter, Mitglieder, Treffpunkt, Treffen; Dialog mit `ColorPicker`, `MultiSelect`
-  Leiter, `FileField` Bild. Buttons nach `can(permissions, …)` ein-/ausgeblendet.
+  Leiter, `FileField` Bild mit Zuschnitt (`crop`, quadratisch, 1200 px; Original bis 25 MB, hochgeladen wird nur der Ausschnitt). Buttons nach `can(permissions, …)` ein-/ausgeblendet.
 
 ## Audit
 `members.member.created|updated|deleted` (**ohne** Metadaten – Person nur über `target`), `members.group.created|updated|deleted` (metadata `name` = Gruppenname),

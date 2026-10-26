@@ -176,7 +176,6 @@
 	}
 
 	const imageAccept = GROUP_IMAGE_CONTENT_TYPES.join(',');
-	const maxImageMb = MAX_GROUP_IMAGE_BYTES / 1024 / 1024;
 	const typeOptions = GROUP_TYPES.map((t) => ({ value: t, label: GROUP_TYPE_LABELS[t] }));
 	const weekdayOptions = WEEKDAYS.map((d) => ({
 		value: String(d),
@@ -805,6 +804,7 @@
 							bind:file={imageFile}
 							accept={imageAccept}
 							maxBytes={MAX_GROUP_IMAGE_BYTES}
+							crop={{ aspect: 1, maxEdge: 1200, title: 'Gruppenbild zuschneiden' }}
 							existingName={editing?.hasImage && !removeImage && !imageFile
 								? 'Aktuelles Gruppenbild'
 								: null}
@@ -813,9 +813,9 @@
 							onremove={() => (removeImage = true)}
 						/>
 						<p class="text-xs text-muted-foreground">
-							JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
+							JPEG, PNG oder WebP. Nach der Auswahl wählst du den quadratischen Ausschnitt{editing
 								? ''
-								: '; wird nach dem Anlegen hochgeladen'}.
+								: '; das Bild wird nach dem Anlegen hochgeladen'}.
 						</p>
 					</div>
 				</Tabs.Content>
