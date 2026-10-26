@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/messages/**", "tests/**/messages*", "scripts/seed-demo-inbox.mjs", "website/src/lib/age-range.ts"]
+paths: ["src/lib/modules/messages/**", "tests/**/messages*", "scripts/seed-demo-inbox.mjs", "website/src/lib/age-range.ts", "website/src/routes/kontakt/**", "website/src/routes/probestunde/**"]
 ---
 
 # Modul `messages` (Nachrichten)
@@ -145,10 +145,7 @@ unzuordenbare Mails in „Nicht zugeordnet“ für die Verwaltung; nach dem Impo
   Mit eingeschaltetem Posteingang ist die Antwortadresse standardmäßig die **Absenderadresse**. `messages.mailbox_key` merkt das Postfach des Absenders.
 - **Benachrichtigungen** (seit 2026-10-25 über `core.notifications`: Typen `inbox-new`/`inbox-replied`, `scoped` je Postfach über `forUser`, Kanal
   Aus · E-Mail · Beides · Push im Core-Profilreiter; `InboxNotificationsCard` und `GET/PUT /me/notifications` entfernt, alte `inbox_notification_prefs`
-  einmalig übernommen und gelöscht; mehrere neue Mails eines Abrufs = eine Sammelmail je Person). Früherer Stand: `new` „Neue Nachricht von …“ mit
-  Inhalt (≤ 4000 Zeichen) und Link, ab 4 Mails je Abruf als Sammelmail; nicht bei Spam/Automatik/„Nicht zugeordnet“. `replied` „<Name> hat geantwortet/
-  weitergeleitet“ an alle **anderen** Berechtigten eines gemeinsamen Postfachs. Je Person/Postfach/Ereignis abschaltbar im Profil („Posteingang“),
-  gespeichert nur Abweichungen (`inbox_notification_prefs`).
+  einmalig übernommen und gelöscht; mehrere neue Mails eines Abrufs = eine Sammelmail je Person). Nicht bei Spam/Automatik/„Nicht zugeordnet“; `inbox-replied` an alle **anderen** Berechtigten eines gemeinsamen Postfachs.
 - **Gesendet je Postfach** (2026-10-23): Filterleiste Alle | Ungelesen | Spam | Papierkorb | **Gesendet** (nicht bei „Nicht zugeordnet“) →
   `GET /mailboxes/sent?mailbox&search` (`listMailboxSent`): Nachrichten mit `mailbox_key` = Postfach, Altbestand ohne `mailbox_key` über die
   Absenderadresse (persönlich nur eigene). **Gemeinsame Postfächer: alle Berechtigten sehen auch die Mails der anderen** und dürfen sie öffnen

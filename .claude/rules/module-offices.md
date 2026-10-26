@@ -113,23 +113,11 @@ als Benutzer-IDs) und `offices.profile.updated` (`hasBio`) – **keine** Beschre
 - UI: Badge „Vorlage: <Modul>“ an der Karte, Hinweis mit Ereignisliste im Bearbeiten-Dialog (Tab Allgemein), Zusatzhinweis in der Lösch-Bestätigung.
 
 ## Benachrichtigungen an Inhaber*innen (2026-10-19, seit 2026-10-25 über `core.notifications`)
-> **Stand 2026-10-25:** `notify` versendet über `core.notifications` (Typ `offices.template`, `scoped` + `digest`, Bereich `<modul>:<amt>:<ereignis>`,
-> Einträge je eigenem Vorlagen-Amt über `forUser` = `notificationScopesFor`). Kanal Aus · E-Mail · Beides · Push und Sofort/Täglich im Core-Reiter
-> „Benachrichtigungen“; `NotificationPrefsCard`, `notifications.endpoints.ts` und `GET/PUT /me/notifications` sind entfernt. Alte `notification_prefs` werden
-> einmalig übernommen und gelöscht (`migrateLegacyPrefs`, im Job `sync-grants`, bei `notify` und `forUser`); der Job `notify-digest` arbeitet nur noch die alte
-> Warteschlange ab, neue Tageszusammenfassungen schickt `core.notifications-digest`. Einträge der Zusammenfassung werden nicht mehr nach Inhaberschaft
-> gefiltert (früher: nicht mehr Inhaber*in → verworfen). Der folgende Text beschreibt den früheren Stand.
-
-- Empfänger: die Inhaber*innen des Vorlagen-Amts (`source_module` + `source_key`), nur **aktive Konten**, an die **Konto-Adresse**
-  (`core.users.directory`) – **nicht** an die Funktionsadressen des Amts.
-- Modus je Person **und** Ereignis: **Sofort** (Standard) / **Täglich (Zusammenfassung)** / **Aus**; einstellbar **nur im Profil** („Meine Ämter“ →
-  Karte „Benachrichtigungen“), nicht auf der Ämterseite. Gespeichert werden nur Abweichungen (`notification_prefs`).
-- **Sofort**: alle Ereignisse **eines** `notify`-Aufrufs gehen je Person als **eine** Mail raus (Bündelung). **Täglich**: Einträge in
-  `notification_queue`; Job `offices.notify-digest` (`daily`) fasst je Person zu einer Mail zusammen und leert danach die Warteschlange. **Aus**: nichts.
-  Fehlgeschlagener Versand zählt `attempts` hoch (Migr. 0003); Einträge älter als 14 Tage (`QUEUE_MAX_AGE_DAYS`) oder nach 5 Fehlversuchen
-  (`QUEUE_MAX_ATTEMPTS`) werden verworfen (`DigestResult.expired`, Audit `offices.notification.sent` mit `expired`, Joblaufmeldung).
-- Mails über `core.mail.send` (Core-Layout), Link als absolute URL (`app.origin`). Keine sensiblen Daten (IBAN) in Betreff/Text – Verantwortung des
-  aufrufenden Moduls.
+- `notify` versendet über `core.notifications` (Typ `offices.template`, `scoped` + `digest`, Bereich `<modul>:<amt>:<ereignis>`, Einträge je eigenem
+  Vorlagen-Amt über `forUser` = `notificationScopesFor`). Empfänger: Inhaber*innen des Vorlagen-Amts (`source_module` + `source_key`), nur aktive Konten,
+  an die **Konto-Adresse** (nicht die Amts-Adressen). Kanal und Sofort/Täglich im Core-Profilreiter „Benachrichtigungen“; Ereignisse eines `notify`-Aufrufs
+  werden je Person gebündelt. Alte `notification_prefs` übernimmt `migrateLegacyPrefs` einmalig; Job `notify-digest` arbeitet nur noch die alte Warteschlange ab.
+- Keine sensiblen Daten (IBAN) in Betreff/Text – Verantwortung des aufrufenden Moduls.
 
 ### Vertrag für Modul-Entwickler*innen (`offices/contract.ts`)
 ```ts
