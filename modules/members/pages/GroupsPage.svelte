@@ -804,7 +804,12 @@
 							bind:file={imageFile}
 							accept={imageAccept}
 							maxBytes={MAX_GROUP_IMAGE_BYTES}
-							crop={{ aspect: 1, maxEdge: 1200, title: 'Gruppenbild zuschneiden' }}
+							crop={{
+								shape: 'circle',
+								maxEdge: 1200,
+								title: 'Gruppenbild zuschneiden',
+								background: color ?? '#ffffff'
+							}}
 							existingName={editing?.hasImage && !removeImage && !imageFile
 								? 'Aktuelles Gruppenbild'
 								: null}
@@ -813,7 +818,7 @@
 							onremove={() => (removeImage = true)}
 						/>
 						<p class="text-xs text-muted-foreground">
-							JPEG, PNG oder WebP. Nach der Auswahl wählst du den quadratischen Ausschnitt{editing
+							JPEG, PNG oder WebP. Nach der Auswahl wählst du den Ausschnitt{editing
 								? ''
 								: '; das Bild wird nach dem Anlegen hochgeladen'}.
 						</p>
