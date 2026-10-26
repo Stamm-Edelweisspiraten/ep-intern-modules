@@ -10,6 +10,7 @@
 	import { SummaryList, type SummaryRow } from '$lib/components/layout';
 	import type { FileNode } from '../schemas';
 	import { formatBytes, formatDateTime, iconFor, thumbUrl } from './helpers';
+	import FileTypeGlyph from './FileTypeGlyph.svelte';
 
 	let {
 		open = $bindable(false),
@@ -128,6 +129,13 @@
 				>
 					{#if thumb && failedThumb !== thumb}
 						<img src={thumb} alt="" class="size-full object-cover" loading="lazy" use:watchError />
+					{:else if node.kind === 'file'}
+						<FileTypeGlyph
+							contentType={node.contentType}
+							name={node.name}
+							size="sm"
+							class="size-7"
+						/>
 					{:else if Icon}
 						<Icon class="size-7" aria-hidden="true" />
 					{/if}

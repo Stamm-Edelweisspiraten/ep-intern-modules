@@ -1,3 +1,7 @@
+---
+paths: ["src/lib/modules/tasks/**", "tests/**/tasks*"]
+---
+
 # Modul `tasks` (Aufgaben, Kanban)
 
 Kanban-Boards mit frei benennbaren Spalten, Aufgaben (Titel, Beschreibung, Priorität, Fälligkeit, **mehrere Zuständige**) und
@@ -21,6 +25,7 @@ Erledigt, genau eine Erledigt-Spalte); Unteraufgaben als **Checkliste** (keine v
 | `notify.ts` | `notifyAssigned`, `notifyBoardShared`, `sendDueReminders` (Job), `boardLink` |
 | `privacy.ts` | `onUserDeleted`, `resetAreas` (`all`, `rebuild`), `resetUsers`, `subjectExport` |
 | `search.ts` | Globale Suche: Boards und Aufgaben (sichtbar wie `GET /boards`), Link `?task=` |
+| `contract.ts`, `refs.service.ts` | Dienst `TaskRefsService` (`provides`, 2026-10-26): `searchBoardRefs`/`describeBoardRefs`/`searchTaskRefs`/`describeTaskRefs` – sichtbar wie `GET /boards`, prüft `tasks.board.view` selbst; Nutzer: Karten im `whiteboard` |
 | `ui.ts`, `pages/` | `''` → `BoardsPage` (Karten mit Fortschritt), `:id` → `BoardPage` (Spalten, Ziehen & Ablegen, Filter, Schnell-Anlegen); `TaskDialog`, `TaskCardView`, `BoardDialog`, `helpers.ts`; Kachel `widgets/MyTasksWidget` („Meine Aufgaben“) |
 | `migrations/0001_init.sql` | `boards` (UNIQUE `action_id`), `board_shares`, `board_columns`, `tasks` (`column_id` RESTRICT, `completed_at`, `reminded_on`), `task_assignees`, `task_checklist` |
 

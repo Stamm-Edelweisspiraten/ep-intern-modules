@@ -5,6 +5,8 @@ import { taskEndpoints } from './tasks.endpoints';
 import { sendDueReminders } from './notify';
 import { onUserDeleted, resetAreas, resetUsers, subjectExport } from './privacy';
 import { tasksSearch } from './search';
+import { taskRefsService } from './refs.service';
+import type { TaskRefsService } from './contract';
 import { NOTIFY_BOARD_SHARED, NOTIFY_TASK_ASSIGNED, NOTIFY_TASK_DUE, PERM } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 
@@ -38,6 +40,8 @@ export default defineModule({
 	},
 	migrations: [{ name: '0001_init', sql: m0001 }],
 	search: tasksSearch,
+	/** Verweise auf Boards/Aufgaben für andere Module (z. B. Whiteboard-Karten) */
+	provides: taskRefsService satisfies TaskRefsService,
 	notifications: {
 		types: [
 			{

@@ -5,7 +5,15 @@
  */
 import { sql } from 'drizzle-orm';
 import { DEFAULT_ALLOWED_CONTENT_TYPES, EXTENSION_CONTENT_TYPES } from '$lib/sdk/content-types';
-import { contentDisposition, core, errors, isCoreError, rowsOf, type Tx } from '$lib/sdk/server';
+import {
+	contentDisposition,
+	core,
+	errors,
+	isCoreError,
+	logBestEffort,
+	rowsOf,
+	type Tx
+} from '$lib/sdk/server';
 import { filesCtx } from './db';
 import {
 	MODULE_ID,
@@ -28,6 +36,54 @@ const ACTIVE_CONTENT_TYPES = new Set<string>(NEVER_INLINE_TYPES);
 const OCTET = 'application/octet-stream';
 
 const THUMB_SPEC = { name: 'thumb', maxEdge: 320, format: 'webp', quality: 75 } as const;
+/** PDF-Seiten etwas größer, damit Text auf der Karte erkennbar bleibt */
+const PDF_THUMB_SPEC = { name: 'thumb', maxEdge: 480, format: 'webp', quality: 75 } as const;
+
+/** Typen, für die ein Vorschaubild erzeugt wird */
+export function canThumbnail(contentType: string | null | undefined): boolean {
+	const ct = cleanType(contentType);
+	return !!ct && (includes(PREVIEW_IMAGE_TYPES, ct) || ct === PREVIEW_PDF);
+}
+
+/** Pfad des Vorschaubilds zu einem Inhalt */
+export const thumbPathFor = (storagePath: string) => `${storagePath}-thumb.webp`;
+
+/**
+ * Vorschaubild (WebP) für Bilder (`core.images.process`) und PDFs (erste Seite per `core.pdf.renderPage`,
+ * danach ebenfalls durch `core.images.process`) unter `thumbPathFor(storagePath)` ablegen.
+ * Fehler sind kein Abbruch → `null`. Nur außerhalb offener Transaktionen aufrufen.
+ */
+export async function createThumbnail(
+	storagePath: string,
+	bytes: Uint8Array,
+	contentType: string
+): Promise<string | null> {
+	const ct = cleanType(contentType);
+	if (!ct || !canThumbnail(ct)) return null;
+	const path = thumbPathFor(storagePath);
+	try {
+		let source = bytes;
+		let spec: typeof THUMB_SPEC | typeof PDF_THUMB_SPEC = THUMB_SPEC;
+		if (ct === PREVIEW_PDF) {
+			source = (await core.pdf.renderPage(bytes, { page: 1, maxEdge: PDF_THUMB_SPEC.maxEdge })).png;
+			spec = PDF_THUMB_SPEC;
+		}
+		const processed = await core.images.process(source, { variants: [spec] });
+		const thumb = processed.variants[0];
+		if (!thumb) return null;
+		await core.storage.upload(filesCtx(), {
+			module: MODULE_ID,
+			path,
+			file: thumb.bytes,
+			contentType: thumb.contentType,
+			name: 'thumb.webp'
+		});
+		return path;
+	} catch (e) {
+		logBestEffort('files.thumbnail', e, { target: storagePath });
+		return null;
+	}
+}
 
 const includes = (list: readonly string[], v: string) => list.includes(v);
 
@@ -94,8 +150,8 @@ export async function storageLimits(): Promise<{
 /**
  * Inhalt ablegen: Pfad `<nodeId>/<uuid>`; Typ normalisieren (Browser-Typ, sonst nach Endung, sonst
  * `application/octet-stream`), Größe/Typ prüfen (413/422 mit deutscher Meldung), für `PREVIEW_IMAGE_TYPES`
- * ein Thumbnail per `core.images.process` (320 px, WebP) unter `<nodeId>/<uuid>-thumb.webp` – Fehler beim
- * Thumbnail sind kein Abbruch (`thumbPath = null`). Original bleibt unverändert.
+ * und PDFs (erste Seite) ein Thumbnail per `createThumbnail` (WebP) unter `<nodeId>/<uuid>-thumb.webp` – Fehler
+ * beim Thumbnail sind kein Abbruch (`thumbPath = null`). Original bleibt unverändert.
  */
 export async function storeContent(input: {
 	nodeId: string;
@@ -127,26 +183,7 @@ export async function storeContent(input: {
 		name: input.name
 	});
 
-	let thumbPath: string | null = null;
-	if (includes(PREVIEW_IMAGE_TYPES, contentType)) {
-		const path = `${input.nodeId}/${id}-thumb.webp`;
-		try {
-			const processed = await core.images.process(input.bytes, { variants: [THUMB_SPEC] });
-			const thumb = processed.variants[0];
-			if (thumb) {
-				await core.storage.upload(ctx, {
-					module: MODULE_ID,
-					path,
-					file: thumb.bytes,
-					contentType: thumb.contentType,
-					name: 'thumb.webp'
-				});
-				thumbPath = path;
-			}
-		} catch {
-			thumbPath = null;
-		}
-	}
+	const thumbPath = await createThumbnail(storagePath, input.bytes, contentType);
 
 	return { storagePath, thumbPath, contentType, sizeBytes };
 }

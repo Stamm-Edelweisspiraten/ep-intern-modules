@@ -7,7 +7,8 @@
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { DashboardCard } from '$lib/components/layout';
 	import { BASE_PATH, type RecentFile } from '../../schemas';
-	import { errorText, formatBytes, formatDateTime, iconFor } from '../helpers';
+	import { errorText, formatBytes, formatDateTime } from '../helpers';
+	import FileTypeGlyph from '../FileTypeGlyph.svelte';
 
 	let { onstatus }: DashboardWidgetProps = $props();
 
@@ -52,13 +53,12 @@
 >
 	<ul class="divide-y">
 		{#each items as f (f.id)}
-			{@const Icon = iconFor('file', f.mime)}
 			<li class="py-2">
 				<a
 					href={hrefOf(f)}
 					class="flex items-center gap-2 rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<Icon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+					<FileTypeGlyph contentType={f.mime} name={f.name} size="sm" class="size-4" />
 					<span class="min-w-0 flex-1">
 						<span class="block truncate font-medium">{f.name}</span>
 						<span class="block truncate text-xs text-muted-foreground tabular-nums">

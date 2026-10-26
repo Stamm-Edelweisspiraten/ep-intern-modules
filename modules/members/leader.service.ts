@@ -1,6 +1,7 @@
 /**
  * Gruppenleitung: Konten, deren **eigenes** Mitglied (Verknüpfung mit `is_self`, nur von der
- * Verwaltung gesetzt) eine Gruppe leitet, sehen und bearbeiten die Mitglieder dieser Gruppen.
+ * Verwaltung gesetzt) eine Gruppe leitet, und Konten, die direkt als Leitung eingetragen sind
+ * (`group_leader_users`), sehen und bearbeiten die Mitglieder dieser Gruppen.
  *
  * - Bereich (`ledGroupIds`) wird bei jedem Aufruf frisch aus der Datenbank bestimmt: Austritt,
  *   Leitungswechsel oder gelöste Verknüpfung wirken sofort.
@@ -30,18 +31,20 @@ export const activeLeader = (alias: string) => {
 	return sql`${a}.anonymized_at IS NULL AND (${a}.exit_date IS NULL OR ${a}.exit_date > ${todayBerlin()}::date)`;
 };
 
-/** Gruppen, die das Konto über sein eigenes, aktives Mitglied leitet (sortiert, ohne Konto leer) */
+/** Gruppen, die das Konto direkt oder über sein eigenes, aktives Mitglied leitet (sortiert) */
 export async function ledGroupIds(ctx: RequestContext): Promise<string[]> {
 	if (!ctx.userId) return [];
 	const userId = ctx.userId;
 	const rows = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
-			sql`SELECT DISTINCT gl.group_id FROM member_user_links l
+			sql`SELECT gl.group_id FROM member_user_links l
 				JOIN group_leaders gl ON gl.member_id = l.member_id
 				JOIN members m ON m.id = l.member_id
 				WHERE l.user_id = ${userId} AND l.is_self AND ${activeLeader('m')}
-				ORDER BY gl.group_id`
+				UNION
+				SELECT group_id FROM group_leader_users WHERE user_id = ${userId}
+				ORDER BY 1`
 		)
 	);
 	return rows.map((r) => String(r.group_id));
@@ -73,11 +76,13 @@ export async function syncLeaderGrants(): Promise<{ users: number }> {
 	const rows = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
-			sql`SELECT DISTINCT l.user_id FROM member_user_links l
+			sql`SELECT l.user_id FROM member_user_links l
 				JOIN group_leaders gl ON gl.member_id = l.member_id
 				JOIN members m ON m.id = l.member_id
 				WHERE l.is_self AND ${activeLeader('m')}
-				ORDER BY l.user_id`
+				UNION
+				SELECT user_id FROM group_leader_users
+				ORDER BY 1`
 		)
 	);
 	const users = rows.map((r) => String(r.user_id));
@@ -96,17 +101,23 @@ export async function syncLeaderGrantsAfterChange(ctx?: RequestContext): Promise
 /**
  * Schutz vor Rechteausweitung: Wer bewirkt, dass ein Konto die Rolle „Gruppenleitung“ erhält, braucht
  * alle Rechte dieser Rolle selbst (403). `memberIds` = Mitglieder, die neu Leitung werden
- * (`becomesLeader`) bzw. deren Konto neu als eigenes markiert wird (`becomesSelf`). Nur nötig, wenn
- * dadurch tatsächlich ein Konto die Rolle bekommt. Vor der Transaktion aufrufen.
+ * (`becomesLeader`) bzw. deren Konto neu als eigenes markiert wird (`becomesSelf`); `userIds` = Konten,
+ * die neu direkt als Leitung eingetragen werden (bekommen die Rolle immer). Nur nötig, wenn dadurch
+ * tatsächlich ein Konto die Rolle bekommt. Vor der Transaktion aufrufen.
  */
 export async function assertCanGrantLeader(
 	ctx: RequestContext,
 	memberIds: readonly string[],
-	reason: 'becomesLeader' | 'becomesSelf'
+	reason: 'becomesLeader' | 'becomesSelf',
+	userIds: readonly string[] = []
 ): Promise<void> {
-	if (!memberIds.length) return;
+	if (!memberIds.length && !userIds.length) return;
 	const roleId = await core.roles.defaultRoleId(LEADER_ROLE_NAME);
 	if (!roleId) return;
+	if (userIds.length) {
+		await core.roles.assertCanGrant(ctx, [roleId]);
+		return;
+	}
 	const ids = inList([...memberIds]);
 	const affected = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(

@@ -48,6 +48,18 @@ export const subjectExport: ModuleSubjectExport = {
 
 	run: async ({ userId, memberIds }) => {
 		if (!memberIds.length && !userId) return null;
+		// Gruppen, die das Konto direkt (ohne Mitglied) leitet
+		const accountLeaderOf = userId
+			? (
+					await moduleDb(MODULE_ID).transaction((tx) =>
+						rowsOf(
+							tx,
+							sql`SELECT g.id, g.name FROM group_leader_users u JOIN groups g ON g.id = u.group_id
+								WHERE u.user_id = ${userId} ORDER BY g.name`
+						)
+					)
+				).map((r) => ({ id: String(r.id), name: String(r.name) }))
+			: [];
 		const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 			const members = memberIds.length ? await loadMembersByIds(tx, memberIds) : [];
 			if (!members.length) return null;
@@ -91,6 +103,10 @@ export const subjectExport: ModuleSubjectExport = {
 					}))
 			}));
 		});
-		return data ? { members: data } : null;
+		if (!data && !accountLeaderOf.length) return null;
+		return {
+			...(data ? { members: data } : {}),
+			...(accountLeaderOf.length ? { accountLeaderOf } : {})
+		};
 	}
 };

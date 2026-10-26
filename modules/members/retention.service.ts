@@ -141,7 +141,8 @@ export async function anonymizeMembers(
 					sql`SELECT gl.member_id, g.name FROM group_leaders gl JOIN groups g ON g.id = gl.group_id
 						WHERE gl.member_id IN (${list})
 						AND NOT EXISTS (SELECT 1 FROM group_leaders o
-							WHERE o.group_id = gl.group_id AND o.member_id <> gl.member_id)`
+							WHERE o.group_id = gl.group_id AND o.member_id <> gl.member_id)
+						AND NOT EXISTS (SELECT 1 FROM group_leader_users u WHERE u.group_id = gl.group_id)`
 				)
 			).map((r) => [String(r.member_id), String(r.name)])
 		);

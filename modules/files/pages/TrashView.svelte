@@ -18,6 +18,7 @@
 		type TrashItem
 	} from '../schemas';
 	import { API, errorText, formatBytes, formatDateTime, iconFor } from './helpers';
+	import FileTypeGlyph from './FileTypeGlyph.svelte';
 
 	let {
 		meta,
@@ -201,7 +202,11 @@
 				</Table.Cell>
 				<Table.Cell class="font-medium">
 					<div class="flex min-w-0 items-center gap-2">
-						<Icon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						{#if item.kind === 'file'}
+							<FileTypeGlyph contentType={null} name={item.name} size="sm" class="size-4" />
+						{:else}
+							<Icon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+						{/if}
 						<span class="max-w-xs truncate" title={item.name}>{item.name}</span>
 					</div>
 				</Table.Cell>

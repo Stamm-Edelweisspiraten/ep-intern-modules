@@ -573,7 +573,8 @@ export async function deleteMember(ctx: RequestContext, id: string): Promise<voi
 			tx,
 			sql`SELECT g.name FROM group_leaders gl JOIN groups g ON g.id = gl.group_id
 				WHERE gl.member_id = ${id}
-				AND NOT EXISTS (SELECT 1 FROM group_leaders o WHERE o.group_id = gl.group_id AND o.member_id <> ${id})`
+				AND NOT EXISTS (SELECT 1 FROM group_leaders o WHERE o.group_id = gl.group_id AND o.member_id <> ${id})
+				AND NOT EXISTS (SELECT 1 FROM group_leader_users u WHERE u.group_id = gl.group_id)`
 		);
 		if (sole.length) {
 			throw errors.conflict(

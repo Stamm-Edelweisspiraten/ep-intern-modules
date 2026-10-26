@@ -49,12 +49,13 @@
 		RAW_API,
 		breakableName,
 		formatBytes,
-		iconFor,
 		previewKind,
 		type ContentUrlFn,
 		type PreviewNode
 	} from './helpers';
 	import FolderGlyph from './FolderGlyph.svelte';
+	import FileTypeGlyph from './FileTypeGlyph.svelte';
+	import { fileTint } from './file-types';
 
 	let { params }: { params: Record<string, string> } = $props();
 
@@ -319,9 +320,14 @@
 		return failedImages.has(url) ? null : url;
 	}
 
-	/** Bild für die Karte eines Datei-Links: Thumbnail, sonst das Bild selbst */
+	/** Bild für die Karte eines Datei-Links: Thumbnail (Bild, erste PDF-Seite), sonst das Bild selbst */
 	function heroImageOf(node: PublicNode): string | null {
-		if (previewKind(node.contentType) !== 'image') return null;
+		const kind = previewKind(node.contentType);
+		if (kind === 'pdf' && node.hasThumb) {
+			const url = urlFor(node, { thumb: true });
+			return failedImages.has(url) ? null : url;
+		}
+		if (kind !== 'image') return null;
 		const url = node.hasThumb ? urlFor(node, { thumb: true }) : urlFor(node, {});
 		return failedImages.has(url) ? null : url;
 	}
@@ -745,7 +751,6 @@
 		<!-- Datei-Link -->
 		{#if info.node}
 			{@const node = info.node}
-			{@const Icon = iconFor('file', node.contentType)}
 			{@const hero = heroImageOf(node)}
 			{@const canPreview = previewKind(node.contentType) !== null}
 			<Card.Root class="overflow-hidden pt-0">
@@ -764,8 +769,13 @@
 						/>
 					</button>
 				{:else}
-					<div class="flex items-center justify-center bg-muted/50 py-10">
-						<Icon class="size-16 text-muted-foreground" aria-hidden="true" />
+					<div
+						class={[
+							'flex items-center justify-center py-10',
+							fileTint(node.contentType, node.name)
+						]}
+					>
+						<FileTypeGlyph contentType={node.contentType} name={node.name} size="lg" />
 					</div>
 				{/if}
 				<Card.Header>
@@ -927,8 +937,8 @@
 			{:else if listing}
 				<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
 					{#each listing.items as node (node.id)}
-						{@const Icon = iconFor(node.kind, node.contentType)}
 						{@const thumb = thumbOf(node)}
+						{@const isPdfThumb = !!thumb && previewKind(node.contentType) === 'pdf'}
 						<li class="flex min-w-0">
 							<button
 								type="button"
@@ -940,7 +950,13 @@
 									: `${node.name} ansehen`}
 							>
 								<span
-									class="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-muted/50"
+									class={[
+										'relative flex aspect-[4/3] w-full justify-center overflow-hidden',
+										isPdfThumb ? 'items-start px-[12%] pt-3' : 'items-center',
+										node.kind === 'file' && !(thumb && !isPdfThumb)
+											? fileTint(node.contentType, node.name)
+											: 'bg-muted/50'
+									]}
 									style:background-color={node.kind === 'folder' && node.color
 										? `color-mix(in srgb, ${node.color} 12%, transparent)`
 										: undefined}
@@ -952,17 +968,23 @@
 											loading="lazy"
 											decoding="async"
 											draggable="false"
-											class="size-full object-cover"
+											class={isPdfThumb
+												? 'h-full w-full rounded-t-sm object-cover object-top shadow-sm ring-1 ring-border'
+												: 'size-full object-cover'}
 											use:watchImage
 										/>
+										{#if isPdfThumb}
+											<span
+												class="absolute right-1.5 bottom-1.5 rounded border border-current/25 bg-card px-1.5 py-px text-xs leading-4 font-semibold tracking-wide text-file-pdf"
+												aria-hidden="true"
+											>
+												PDF
+											</span>
+										{/if}
 									{:else if node.kind === 'folder'}
 										<FolderGlyph icon={node.icon} color={node.color} />
 									{:else}
-										<Icon
-											class="size-11 text-muted-foreground"
-											strokeWidth={1.75}
-											aria-hidden="true"
-										/>
+										<FileTypeGlyph contentType={node.contentType} name={node.name} />
 									{/if}
 								</span>
 								<span class="flex flex-col gap-0.5 px-2.5 pt-2 pb-2.5">

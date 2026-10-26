@@ -5,6 +5,7 @@ export default {
 		'': () => import('./pages/InboxPage.svelte'),
 		sent: () => import('./pages/HistoryPage.svelte'),
 		new: () => import('./pages/ComposePage.svelte'),
+		admin: () => import('./pages/MailboxAdminPage.svelte'),
 		'inbox/:id': () => import('./pages/InboxMessagePage.svelte'),
 		':id': () => import('./pages/MessageDetailPage.svelte')
 	}

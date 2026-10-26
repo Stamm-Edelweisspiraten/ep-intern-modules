@@ -17,6 +17,8 @@ export const PERM_INBOX_STAMM = 'messages.inbox.stamm';
 export const PERM_INBOX_MANAGE = 'messages.inbox.manage';
 /** Nur Website-Endpunkt Kontaktformular – Scope für den API-Key der Stammeswebsite */
 export const PERM_WEBSITE_CONTACT = 'messages.website.contact';
+/** Zusätzliche Postfächer und Weiterleitungen verwalten (Verwaltungsseite „Postfächer“) */
+export const PERM_MAILBOX_MANAGE = 'messages.mailbox.manage';
 
 /** Kontaktformular der Website (`POST /website/contact`): Grenzen wie auf der Website */
 export const CONTACT_LIMITS = { name: 100, email: 254, phone: 40, message: 5000 } as const;
@@ -342,10 +344,10 @@ export type SenderRuleInput = z.infer<typeof senderRuleInput>;
 
 // --- DTOs -----------------------------------------------------------------------------------
 
-export type SenderKind = 'personal' | 'office' | 'group' | 'stamm';
+export type SenderKind = 'personal' | 'office' | 'group' | 'stamm' | 'extra';
 
 export interface Sender {
-	/** Stabiler Schlüssel: `personal`, `stamm`, `office:<id>:<adresse>`, `group:<id>` */
+	/** Stabiler Schlüssel: `personal`, `stamm`, `office:<id>:<adresse>`, `group:<id>`, `extra:<id>` */
 	key: string;
 	kind: SenderKind;
 	address: string;
@@ -637,7 +639,7 @@ export interface InboxDetail extends InboxSummary {
 	skippedAttachments: { filename: string; contentType: string; size: number }[];
 	replies: InboxReplyInfo[];
 	thread: ThreadEntry[];
-	/** Antworten möglich (Absender des Postfachs verfügbar) */
+	/** Antworten möglich (nicht aus „Nicht zugeordnet“; aus Nur-Lesen-Postfächern mit eigenem Absender) */
 	canReply: boolean;
 }
 
@@ -682,3 +684,140 @@ export interface PollResult {
 	failed: number;
 	message: string;
 }
+
+// --- Zusätzliche Postfächer und Weiterleitungen (Verwaltung) ---------------------------------
+
+/** Freigabe-Typen zusätzlicher Postfächer (Gruppe = alle verknüpften Konten der Gruppe) */
+export const EXTRA_SHARE_TYPES = ['group', 'member', 'user'] as const;
+export type ExtraShareType = (typeof EXTRA_SHARE_TYPES)[number];
+/** `read` = lesen, `edit` = lesen und als Absender verwenden */
+export const EXTRA_SHARE_LEVELS = ['read', 'edit'] as const;
+export type ExtraShareLevel = (typeof EXTRA_SHARE_LEVELS)[number];
+export const EXTRA_SHARE_LEVEL_LABELS: Record<ExtraShareLevel, string> = {
+	read: 'Lesen',
+	edit: 'Lesen und senden'
+};
+export const MAX_EXTRA_MAILBOXES = 200;
+export const MAX_EXTRA_SHARES = 100;
+export const MAX_ALIASES = 500;
+export const MAX_EXTRA_NAME = 100;
+export const MAX_EXTRA_DESCRIPTION = 500;
+
+const extraShare = z.object({
+	type: z.enum(EXTRA_SHARE_TYPES, 'Bitte Benutzer*in, Mitglied oder Gruppe wählen'),
+	id: z.string().trim().min(1).max(200),
+	level: z.enum(EXTRA_SHARE_LEVELS, 'Bitte „Lesen“ oder „Lesen und senden“ wählen')
+});
+
+const extraShares = z
+	.array(extraShare)
+	.max(MAX_EXTRA_SHARES, `Höchstens ${MAX_EXTRA_SHARES} Freigaben`)
+	.superRefine((list, c) => {
+		const seen = new Set<string>();
+		list.forEach((s, i) => {
+			const key = `${s.type}:${s.id}`;
+			if (seen.has(key)) c.addIssue({ code: 'custom', path: [i, 'id'], message: 'Doppelt' });
+			seen.add(key);
+		});
+	});
+
+const extraName = z.string().trim().min(1, 'Bitte einen Namen eingeben').max(MAX_EXTRA_NAME);
+const extraDescription = z
+	.string()
+	.trim()
+	.max(MAX_EXTRA_DESCRIPTION)
+	.transform((v) => v || null)
+	.nullable();
+
+export const extraMailboxInput = z
+	.object({
+		name: extraName,
+		address: emailAddress,
+		description: extraDescription.optional().default(null),
+		shares: extraShares.default([])
+	})
+	.strict();
+export type ExtraMailboxInput = z.infer<typeof extraMailboxInput>;
+
+export const extraMailboxUpdateInput = z
+	.object({
+		name: extraName.optional(),
+		address: emailAddress.optional(),
+		description: extraDescription.optional(),
+		shares: extraShares.optional()
+	})
+	.strict();
+export type ExtraMailboxUpdateInput = z.infer<typeof extraMailboxUpdateInput>;
+
+export const aliasInput = z
+	.object({
+		address: emailAddress,
+		targetKey: z
+			.string()
+			.trim()
+			.min(1, 'Bitte ein Postfach wählen')
+			.max(400)
+			.regex(MAILBOX_KEY_PATTERN, 'Unbekanntes Postfach')
+	})
+	.strict();
+export type AliasInput = z.infer<typeof aliasInput>;
+
+export const principalSearchQuery = z.object({
+	search: z.string().trim().max(100).optional().default('')
+});
+
+/** Freigabe eines zusätzlichen Postfachs mit Anzeigedaten */
+export interface ExtraMailboxShare {
+	type: ExtraShareType;
+	id: string;
+	level: ExtraShareLevel;
+	name: string;
+	detail?: string | null;
+	color?: string | null;
+	image?: string | null;
+}
+
+export interface ExtraMailbox {
+	id: string;
+	/** Postfach-Schlüssel `extra:<id>` */
+	key: string;
+	name: string;
+	address: string;
+	description: string | null;
+	shares: ExtraMailboxShare[];
+	/** Mails im Postfach (ohne Papierkorb) */
+	messages: number;
+	createdAt: string;
+}
+
+/** Ziel einer Weiterleitung (alle Postfächer aus dem Verzeichnis, ohne Weiterleitungen) */
+export interface AliasTarget {
+	key: string;
+	kind: MailboxKind;
+	name: string;
+	address: string;
+}
+
+export interface MailboxAlias {
+	id: string;
+	address: string;
+	targetKey: string;
+	/** `null`, wenn das Ziel nicht mehr existiert (Mails landen dann in „Nicht zugeordnet“) */
+	target: AliasTarget | null;
+	createdAt: string;
+}
+
+export interface AliasesResponse {
+	aliases: MailboxAlias[];
+	targets: AliasTarget[];
+}
+
+/** Überschriften der Postfach-Arten (Auswahl der Weiterleitungsziele) */
+export const MAILBOX_KIND_LABELS: Record<MailboxKind, string> = {
+	personal: 'Persönlich',
+	office: 'Amt',
+	group: 'Gruppe',
+	stamm: 'Stamm',
+	extra: 'Zusätzlich',
+	unassigned: 'Nicht zugeordnet'
+};

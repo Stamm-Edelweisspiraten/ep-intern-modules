@@ -32,6 +32,7 @@
 	} from '$lib/components/layout';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { downloadPdf } from './download';
+	import LeaderUserPicker from './LeaderUserPicker.svelte';
 	import { slugFromName } from '../slug';
 	import {
 		GROUP_IMAGE_CONTENT_TYPES,
@@ -44,6 +45,7 @@
 		groupInput,
 		type GroupFormInput,
 		type Group,
+		type GroupLeaderUser,
 		type GroupType,
 		type MemberList,
 		type MemberRef
@@ -142,6 +144,7 @@
 	let name = $state('');
 	let type = $state<string | null>(null);
 	let leaderIds = $state<string[]>([]);
+	let leaderUsers = $state<GroupLeaderUser[]>([]);
 	let description = $state('');
 	let meetingPlace = $state('');
 	let meetingTime = $state('');
@@ -173,7 +176,6 @@
 	}
 
 	const imageAccept = GROUP_IMAGE_CONTENT_TYPES.join(',');
-	const maxImageMb = MAX_GROUP_IMAGE_BYTES / 1024 / 1024;
 	const typeOptions = GROUP_TYPES.map((t) => ({ value: t, label: GROUP_TYPE_LABELS[t] }));
 	const weekdayOptions = WEEKDAYS.map((d) => ({
 		value: String(d),
@@ -189,6 +191,11 @@
 	}
 
 	const leaderOptions = $derived(members.map((m) => ({ value: m.id, label: personName(m) })));
+
+	/** Leitende Mitglieder und Konten für die Tabelle */
+	function leaderText(g: Group) {
+		return [...g.leaders.map(personName), ...g.leaderUsers.map((u) => u.name)].join(', ') || '–';
+	}
 
 	function imageUrl(g: Group) {
 		return `/api/v1/modules/members/groups/${g.id}/image?v=${encodeURIComponent(g.imageVersion ?? '')}`;
@@ -266,6 +273,7 @@
 		name = '';
 		type = null;
 		leaderIds = [];
+		leaderUsers = [];
 		description = '';
 		meetingPlace = '';
 		meetingTime = '';
@@ -294,6 +302,7 @@
 		name = g.name;
 		type = g.type;
 		leaderIds = g.leaders.map((l) => l.id);
+		leaderUsers = g.leaderUsers.map((u) => ({ ...u }));
 		description = g.description ?? '';
 		meetingPlace = g.meetingPlace ?? '';
 		meetingTime = g.meetingTime ?? '';
@@ -317,6 +326,7 @@
 		name: 'g-name',
 		type: 'g-type',
 		leaderIds: 'g-leaders',
+		leaderUserIds: 'g-leader-users',
 		description: 'g-desc',
 		meetingPlace: 'g-place',
 		meetingWeekday: 'g-weekday',
@@ -372,6 +382,7 @@
 			name,
 			type: type as GroupType,
 			leaderIds,
+			leaderUserIds: leaderUsers.map((u) => u.id),
 			description: description || null,
 			meetingPlace: meetingPlace || null,
 			meetingWeekday: meetingWeekday ? Number(meetingWeekday) : null,
@@ -482,11 +493,6 @@
 		emptyDescription="Lege die erste Sippe oder Meute an."
 	>
 		{#snippet toolbar()}
-			{#if !loading && !loadError && members.length === 0}
-				<p class="w-full rounded-md border bg-muted/40 p-3 text-sm" role="status">
-					Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
-				</p>
-			{/if}
 			<MobileActionBar
 				show={canSelect && selected.length > 0}
 				label="Sammelaktionen"
@@ -528,7 +534,7 @@
 				{/if}
 				<Table.Head>Name</Table.Head>
 				<Table.Head>Typ</Table.Head>
-				<Table.Head>Leiter</Table.Head>
+				<Table.Head>Leitung</Table.Head>
 				<Table.Head class="text-right">Mitglieder</Table.Head>
 				<Table.Head>Treffpunkt</Table.Head>
 				<Table.Head>Treffen</Table.Head>
@@ -570,7 +576,7 @@
 						{GROUP_TYPE_LABELS[g.type]}
 					</Badge>
 				</Table.Cell>
-				<Table.Cell>{g.leaders.map(personName).join(', ') || '–'}</Table.Cell>
+				<Table.Cell>{leaderText(g)}</Table.Cell>
 				<Table.Cell class="text-right">{g.memberCount}</Table.Cell>
 				<Table.Cell>{g.meetingPlace ?? '–'}</Table.Cell>
 				<Table.Cell>{meetingText(g)}</Table.Cell>
@@ -682,28 +688,41 @@
 						/>
 					</FormField>
 
-					<div class="space-y-1.5">
-						{#if members.length === 0}
-							<p class="text-sm font-medium">Gruppenleiter *</p>
-							<p class="text-sm text-muted-foreground">
-								Lege zuerst ein Mitglied an, das Gruppenleiter werden kann.
-							</p>
-						{:else}
+					<fieldset class="min-w-0 space-y-3">
+						<legend class="text-sm font-medium">Gruppenleitung *</legend>
+						<p class="-mt-1 text-xs text-muted-foreground">
+							Mindestens eine Leitung – ein Mitglied oder ein Benutzerkonto. Leitungen mit Konto
+							sehen die Mitglieder der Gruppe{contactEmail.trim()
+								? ` und bekommen das Postfach ${contactEmail.trim()}`
+								: ''}.
+						</p>
+						{#if members.length}
 							<MultiSelect
 								id="g-leaders"
-								label="Gruppenleiter *"
+								label="Mitglieder"
 								options={leaderOptions}
 								bind:value={leaderIds}
-								placeholder="Leiter auswählen"
+								placeholder="Mitglieder auswählen"
 								searchPlaceholder="Mitglieder durchsuchen …"
 								emptyText="Keine Treffer."
 								invalid={!!fieldErrors.leaderIds}
 							/>
 						{/if}
+						<div class="space-y-1.5">
+							<label for="g-leader-users" class="text-sm font-medium">Benutzerkonten</label>
+							<LeaderUserPicker
+								id="g-leader-users"
+								bind:value={leaderUsers}
+								invalid={!!fieldErrors.leaderIds || !!fieldErrors.leaderUserIds}
+							/>
+						</div>
 						{#if fieldErrors.leaderIds}
 							<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderIds}</p>
 						{/if}
-					</div>
+						{#if fieldErrors.leaderUserIds}
+							<p role="alert" class="text-xs text-destructive">{fieldErrors.leaderUserIds}</p>
+						{/if}
+					</fieldset>
 
 					<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
 						<Textarea
@@ -785,6 +804,12 @@
 							bind:file={imageFile}
 							accept={imageAccept}
 							maxBytes={MAX_GROUP_IMAGE_BYTES}
+							crop={{
+								shape: 'circle',
+								maxEdge: 1200,
+								title: 'Gruppenbild zuschneiden',
+								background: color ?? '#ffffff'
+							}}
 							existingName={editing?.hasImage && !removeImage && !imageFile
 								? 'Aktuelles Gruppenbild'
 								: null}
@@ -793,9 +818,9 @@
 							onremove={() => (removeImage = true)}
 						/>
 						<p class="text-xs text-muted-foreground">
-							JPEG, PNG oder WebP, max. {maxImageMb} MB{editing
+							JPEG, PNG oder WebP. Nach der Auswahl wählst du den Ausschnitt{editing
 								? ''
-								: '; wird nach dem Anlegen hochgeladen'}.
+								: '; das Bild wird nach dem Anlegen hochgeladen'}.
 						</p>
 					</div>
 				</Tabs.Content>
@@ -803,7 +828,7 @@
 				<Tabs.Content value="website" class="space-y-4">
 					<p class="text-sm text-muted-foreground">
 						Steckbrief für die Stammeswebsite. Gezeigt werden Name, Typ, Text, Alter, Treffen,
-						Farbe, Gruppenbild, Kontakt-E-Mail und die Vornamen der Leitenden.
+						Farbe, Gruppenbild, E-Mail-Adresse und die Vornamen der leitenden Mitglieder.
 					</p>
 					<div class="flex items-center gap-2">
 						<Checkbox id="g-web-on" bind:checked={onWebsite} />
@@ -876,9 +901,10 @@
 							/>
 						</FormField>
 						<FormField
-							label="Kontakt-E-Mail"
+							label="E-Mail-Adresse der Gruppe"
 							id="g-web-mail"
 							error={fieldErrors['website.contactEmail']}
+							hint="Zugleich das Postfach der Gruppenleitungen unter Nachrichten."
 						>
 							<Input
 								id="g-web-mail"
@@ -890,7 +916,7 @@
 								aria-invalid={!!fieldErrors['website.contactEmail']}
 								aria-describedby={fieldErrors['website.contactEmail']
 									? 'g-web-mail-error'
-									: undefined}
+									: 'g-web-mail-hint'}
 							/>
 						</FormField>
 					</div>
