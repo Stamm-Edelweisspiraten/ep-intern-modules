@@ -24,6 +24,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import FileTypeGlyph from './FileTypeGlyph.svelte';
 	import {
 		ConfirmDialog,
 		EmptyState,
@@ -819,13 +820,11 @@
 						class="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 						onclick={() => openNode(hit, searchResult?.items ?? [])}
 					>
-						<Icon
-							class={[
-								'size-5 shrink-0',
-								hit.kind === 'folder' ? 'text-link' : 'text-muted-foreground'
-							]}
-							aria-hidden="true"
-						/>
+						{#if hit.kind === 'folder'}
+							<Icon class="size-5 shrink-0 text-link" aria-hidden="true" />
+						{:else}
+							<FileTypeGlyph contentType={hit.contentType} name={hit.name} size="sm" />
+						{/if}
 						<span class="min-w-0">
 							<span class="block truncate font-medium">{hit.name}</span>
 							<span class="block truncate text-xs text-muted-foreground">

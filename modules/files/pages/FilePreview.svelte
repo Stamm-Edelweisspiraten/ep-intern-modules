@@ -14,6 +14,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { MAX_TEXT_PREVIEW_BYTES } from '../schemas';
+	import { FILE_KIND_CLASSES, fileTypeOf } from './file-types';
 	import {
 		formatBytes,
 		iconFor,
@@ -42,7 +43,10 @@
 	/** Schlüssel des angezeigten Inhalts (neu laden bei anderer Datei oder neuer Version) */
 	const nodeKey = $derived(current ? `${current.id}|${current.updatedAt}` : '');
 	const typeLabel = $derived(current?.contentType?.split(';')[0]?.trim() || 'Unbekannter Typ');
-	const FileIcon = $derived(iconFor('file', current?.contentType));
+	const FileIcon = $derived(iconFor('file', current?.contentType, current?.name));
+	const fileColor = $derived(
+		FILE_KIND_CLASSES[fileTypeOf(current?.contentType, current?.name).kind].text
+	);
 	const textTooLarge = $derived(
 		kind === 'text' && (current?.sizeBytes ?? 0) > MAX_TEXT_PREVIEW_BYTES
 	);
@@ -320,10 +324,7 @@
 		{#if current}
 			<!-- Kopfzeile -->
 			<header class="bg-background flex shrink-0 items-center gap-2 border-b px-2 py-2 sm:px-4">
-				<FileIcon
-					class="text-muted-foreground hidden size-5 shrink-0 sm:block"
-					aria-hidden="true"
-				/>
+				<FileIcon class={['hidden size-5 shrink-0 sm:block', fileColor]} aria-hidden="true" />
 				<div class="min-w-0 flex-1">
 					<Dialog.Title class="truncate text-sm font-semibold" title={current.name}>
 						{current.name}
@@ -460,7 +461,7 @@
 							<div
 								class="bg-card flex max-w-sm flex-col items-center gap-3 rounded-lg border p-6 text-center"
 							>
-								<FileIcon class="text-muted-foreground size-12" aria-hidden="true" />
+								<FileIcon class={['size-12', fileColor]} aria-hidden="true" />
 								<p class="text-sm">
 									Dein Browser kann PDFs hier nicht direkt anzeigen. Öffne die Datei in einem neuen
 									Tab oder lade sie herunter.
@@ -502,7 +503,7 @@
 					<div
 						class="bg-card mx-4 flex w-full max-w-sm flex-col items-center gap-3 rounded-lg border p-6 text-center"
 					>
-						<FileIcon class="text-muted-foreground size-16" aria-hidden="true" />
+						<FileIcon class={['size-16', fileColor]} aria-hidden="true" />
 						<div class="min-w-0 space-y-1">
 							<p class="font-semibold break-words">{current.name}</p>
 							<p class="text-muted-foreground text-xs">

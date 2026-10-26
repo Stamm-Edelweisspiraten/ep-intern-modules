@@ -195,7 +195,7 @@ export async function storeIntoFolder(input: StoreIntoFolderInput): Promise<Stor
 			if (plan.replaceId && old) {
 				await tx.execute(
 					sql`UPDATE nodes SET storage_path = ${stored.storagePath},
-						thumb_path = ${stored.thumbPath}, content_type = ${stored.contentType},
+						thumb_path = ${stored.thumbPath}, thumb_attempted_at = now(), content_type = ${stored.contentType},
 						size_bytes = ${stored.sizeBytes}, uploaded_by_name = ${uploadedByName},
 						uploaded_via_link = ${viaLinkId}, updated_at = now()
 						WHERE id = ${plan.replaceId}`
@@ -217,9 +217,10 @@ export async function storeIntoFolder(input: StoreIntoFolderInput): Promise<Stor
 			if (names.some((n) => sameKey(n, name))) name = uniqueName(names, name);
 			await tx.execute(
 				sql`INSERT INTO nodes (id, parent_id, kind, space, owner_id, name, storage_path,
-						thumb_path, content_type, size_bytes, created_by, uploaded_by_name, uploaded_via_link)
+						thumb_path, thumb_attempted_at, content_type, size_bytes, created_by, uploaded_by_name,
+						uploaded_via_link)
 					VALUES (${insertId}, ${plan.parentId}, 'file', 'personal', ${plan.ownerId},
-						${name}, ${stored.storagePath}, ${stored.thumbPath}, ${stored.contentType},
+						${name}, ${stored.storagePath}, ${stored.thumbPath}, now(), ${stored.contentType},
 						${stored.sizeBytes}, ${input.createdBy}, ${uploadedByName}, ${viaLinkId})`
 			);
 			return { id: insertId, name, replaced: false, old: [] as (string | null)[] };

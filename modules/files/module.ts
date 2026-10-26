@@ -15,6 +15,7 @@ import { subjectExport } from './subject-export';
 import { filesBackup } from './backup';
 import { filesSearch } from './search';
 import { purgeExpired } from './trash.service';
+import { backfillThumbnails } from './thumbs.service';
 import {
 	DEFAULT_LINK_UPLOAD_MB,
 	DEFAULT_QUOTA_MB,
@@ -26,6 +27,7 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_link_lockout.sql?raw';
 import m0003 from './migrations/0003_single_view_upload_links.sql?raw';
 import m0004 from './migrations/0004_folder_style_user_quota.sql?raw';
+import m0005 from './migrations/0005_thumb_state.sql?raw';
 
 /** Dateien: eine Ansicht (eigene + freigegebene), Freigaben an Principals, öffentliche Ansicht-/Upload-Links, Papierkorb */
 export default defineModule({
@@ -33,7 +35,7 @@ export default defineModule({
 		id: 'files',
 		name: 'Dateien',
 		description: 'Cloud-Ablage mit Ordnern, Vorschau, Freigaben und öffentlichen Links',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele */
 		optionalDependencies: ['members'],
@@ -89,7 +91,8 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_link_lockout', sql: m0002 },
 		{ name: '0003_single_view_upload_links', sql: m0003 },
-		{ name: '0004_folder_style_user_quota', sql: m0004 }
+		{ name: '0004_folder_style_user_quota', sql: m0004 },
+		{ name: '0005_thumb_state', sql: m0005 }
 	],
 	resetAreas,
 	backup: filesBackup,
@@ -102,6 +105,12 @@ export default defineModule({
 			summary: 'Abgelaufene Einträge im Papierkorb endgültig löschen',
 			schedule: 'daily',
 			run: (ctx) => purgeExpired(ctx)
+		},
+		{
+			id: 'thumbs-backfill',
+			summary: 'Fehlende Vorschaubilder (Bilder, PDFs) für vorhandene Dateien erzeugen',
+			schedule: 'hourly',
+			run: () => backfillThumbnails()
 		}
 	],
 	search: filesSearch,

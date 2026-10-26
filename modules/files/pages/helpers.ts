@@ -1,14 +1,9 @@
 /**
  * Hilfen für die Oberfläche des Moduls `files` (ohne Server-Imports).
  */
-import File from '@lucide/svelte/icons/file';
-import FileArchive from '@lucide/svelte/icons/file-archive';
-import FileImage from '@lucide/svelte/icons/file-image';
-import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
-import FileText from '@lucide/svelte/icons/file-text';
 import Folder from '@lucide/svelte/icons/folder';
-import Presentation from '@lucide/svelte/icons/presentation';
 import { ApiClientError } from '$lib/sdk/client';
+import { FILE_KIND_ICONS, fileTypeOf } from './file-types';
 import { formatDateTimeDe } from '$lib/sdk/dates';
 import {
 	BASE_PATH,
@@ -49,35 +44,10 @@ export function formatBytes(bytes: number | null | undefined): string {
 	return `${v.toLocaleString('de-DE', { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`;
 }
 
-/** Icon-Komponente für Ordner bzw. Dateityp */
-export function iconFor(kind: NodeKind, contentType: string | null | undefined) {
+/** Icon-Komponente für Ordner bzw. Dateityp (Typ über Content-Type, sonst Endung des Namens) */
+export function iconFor(kind: NodeKind, contentType: string | null | undefined, name?: string) {
 	if (kind === 'folder') return Folder;
-	const t = (contentType ?? '').toLowerCase();
-	if (t.startsWith('image/')) return FileImage;
-	if (t === 'text/csv') return FileSpreadsheet;
-	if (
-		t === 'application/pdf' ||
-		t.startsWith('text/') ||
-		t.includes('wordprocessingml') ||
-		t === 'application/msword' ||
-		t === 'application/rtf' ||
-		t.startsWith('application/vnd.oasis.opendocument.text')
-	)
-		return FileText;
-	if (
-		t.includes('spreadsheetml') ||
-		t === 'application/vnd.ms-excel' ||
-		t.startsWith('application/vnd.oasis.opendocument.spreadsheet')
-	)
-		return FileSpreadsheet;
-	if (
-		t.includes('presentationml') ||
-		t === 'application/vnd.ms-powerpoint' ||
-		t.startsWith('application/vnd.oasis.opendocument.presentation')
-	)
-		return Presentation;
-	if (t === 'application/zip') return FileArchive;
-	return File;
+	return FILE_KIND_ICONS[fileTypeOf(contentType, name).kind];
 }
 
 /** Inhalt (inline bzw. Download) eines Knotens */

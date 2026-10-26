@@ -33,13 +33,15 @@
 	import { DataTable, EmptyState } from '$lib/components/layout';
 	import { FOLDER_COLORS, type FileNode } from '../schemas';
 	import FolderGlyph from './FolderGlyph.svelte';
+	import FileTypeGlyph from './FileTypeGlyph.svelte';
+	import { fileTint } from './file-types';
 	import {
 		DRAG_MIME,
 		breakableName,
 		folderMeta,
 		formatBytes,
 		formatDateTime,
-		iconFor,
+		previewKind,
 		thumbUrl,
 		type NodeAction
 	} from './helpers';
@@ -742,8 +744,8 @@
 							class:opacity-60={loading}
 						>
 							{#each items as node (node.id)}
-								{@const Icon = iconFor(node.kind, node.contentType)}
 								{@const thumb = thumbOf(node)}
+								{@const isPdfThumb = !!thumb && previewKind(node.contentType) === 'pdf'}
 								{@const isSel = selectedSet.has(node.id)}
 								{@const isActive = node.id === activeId}
 								<div
@@ -771,7 +773,13 @@
 									ondrop={(e) => onDrop(e, node)}
 								>
 									<div
-										class="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-muted/50"
+										class={[
+											'relative flex aspect-[4/3] justify-center overflow-hidden',
+											isPdfThumb ? 'items-start px-[12%] pt-3' : 'items-center',
+											node.kind === 'file' && !(thumb && !isPdfThumb)
+												? fileTint(node.contentType, node.name)
+												: 'bg-muted/50'
+										]}
 										style:background-color={tint(node)}
 									>
 										{#if thumb}
@@ -780,17 +788,23 @@
 												alt=""
 												loading="lazy"
 												draggable="false"
-												class="size-full object-cover"
+												class={isPdfThumb
+													? 'h-full w-full rounded-t-sm object-cover object-top shadow-sm ring-1 ring-border'
+													: 'size-full object-cover'}
 												use:watchThumb
 											/>
+											{#if isPdfThumb}
+												<span
+													class="absolute right-1.5 bottom-1.5 rounded border border-current/25 bg-card px-1.5 py-px text-xs leading-4 font-semibold tracking-wide text-file-pdf"
+													aria-hidden="true"
+												>
+													PDF
+												</span>
+											{/if}
 										{:else if node.kind === 'folder'}
 											<FolderGlyph icon={node.icon} color={node.color} />
 										{:else}
-											<Icon
-												class="size-11 text-muted-foreground"
-												strokeWidth={1.75}
-												aria-hidden="true"
-											/>
+											<FileTypeGlyph contentType={node.contentType} name={node.name} />
 										{/if}
 										{@render selectBox(
 											node,
@@ -882,7 +896,6 @@
 								</Table.Row>
 							{/snippet}
 							{#each items as node (node.id)}
-								{@const Icon = iconFor(node.kind, node.contentType)}
 								{@const thumb = thumbOf(node)}
 								{@const isSel = selectedSet.has(node.id)}
 								{@const isActive = node.id === activeId}
@@ -914,7 +927,12 @@
 									<Table.Cell class="max-w-0 min-w-40 sm:w-full">
 										<span class="flex min-w-0 items-center gap-2">
 											<span
-												class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded bg-muted/50"
+												class={[
+													'flex size-8 shrink-0 items-center justify-center overflow-hidden rounded',
+													node.kind === 'file' && !thumb
+														? fileTint(node.contentType, node.name)
+														: 'bg-muted/50'
+												]}
 											>
 												{#if thumb}
 													<img
@@ -928,7 +946,11 @@
 												{:else if node.kind === 'folder'}
 													<FolderGlyph icon={node.icon} color={node.color} size="sm" />
 												{:else}
-													<Icon class="size-5 text-muted-foreground" aria-hidden="true" />
+													<FileTypeGlyph
+														contentType={node.contentType}
+														name={node.name}
+														size="sm"
+													/>
 												{/if}
 											</span>
 											<span class="truncate font-medium" title={node.name}>{node.name}</span>

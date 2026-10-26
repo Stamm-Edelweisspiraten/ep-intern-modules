@@ -8,7 +8,7 @@ Cloud-Ablage des Stammes mit **einer Ansicht „Dateien“**: In der Wurzel steh
 was mir andere freigegeben haben (auch an den ganzen Stamm). Ordner und Dateien lassen sich hochladen (auch ganze Ordner per Drag & Drop),
 umbenennen, verschieben, in den Papierkorb legen, an **Principals** freigeben (Lesen/Bearbeiten, vererbt) und über **öffentliche Links** an
 Personen ohne Konto weitergeben – zum Ansehen, zum Hochladen oder beides. Aktionen per „…“-Menü **und Rechtsklick**. Vorschau für Bilder, PDFs
-und Text. Ordner mit **Icon und Farbe**, **Speicherkontingent je Person**. Schema `mod_files`, Version 1.2.0, keine harten Abhängigkeiten, optional `members` (Gruppen/Mitglieder als Freigabe-Ziele).
+und Text. Ordner mit **Icon und Farbe**, **Speicherkontingent je Person**. Schema `mod_files`, Version 1.3.0, keine harten Abhängigkeiten, optional `members` (Gruppen/Mitglieder als Freigabe-Ziele).
 Navigation „Dateien“ (Icon `cloud`). Inhalte liegen im Core-Storage (S3, Modul `files`), Zugriff per Systemkontext `files-storage` **nach**
 der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 
@@ -30,7 +30,7 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 ## Dateien (`src/lib/modules/files/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (4 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0004, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Job `purge-trash` (täglich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → quota → nodes (öffentliche/feste Pfade vor `:id`) |
+| `module.ts` | Manifest (4 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0005, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Jobs `purge-trash` (täglich) und `thumbs-backfill` (stündlich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → quota → nodes (öffentliche/feste Pfade vor `:id`) |
 | `ui.ts` | Route `''` → `FilesPage`; `publicRoutes` `link/:token` → `PublicLinkPage`; `userAdminSections` `quota` → `UserQuotaSection` |
 | `schemas.ts` | API-Vertrag (Server + UI): `PERMISSIONS`, `SETTING_KEYS`, `ROOT_LABEL` („Dateien“), `SPACES` (nur noch `personal`, intern), `LINK_MODES`/`LINK_MODE_LABELS`/`LINK_MODE_DESCRIPTIONS`, `linkCanView`/`linkCanUpload`, Grenzen (`MAX_NAME` 200, `MAX_DEPTH` 20, `MAX_BULK` 500, `MAX_SHARES` 200, `MAX_LINKS_PER_NODE` 20, `MAX_SEARCH_RESULTS` 100, `MIN_PASSWORD` 8, `MAX_UNLOCK_FAILURES` 10, `LINK_ACCESS_TTL_SEC` 900, `MAX_TEXT_PREVIEW_BYTES` 1 MB, `UPLOAD_CONCURRENCY` 3, `MAX_PUBLIC_UPLOAD_FILES` 10, `MAX_PUBLIC_UPLOAD_BYTES` 30 MB, `MAX_UPLOADER_NAME` 100), Vorschau-Typen, `NEVER_INLINE_TYPES`, `INVISIBLE_CHARS`, Zod (`nodeName`, `listQuery`, `folderCreateInput`, `moveInput`, `uploadFields`, `sharesInput`, `linkCreateInput` mit `mode`, `publicUploadFields`, …), DTOs `FileNode` (`owner`, `own`, `stamm`, `uploadedByName`, `viaLink`), `FolderListing`, `Breadcrumb`, `SearchResult`, `TrashItem`, `NodeShares`, `ShareLink` (`mode`, `url`), `PublicLinkInfo` (`mode`, `upload`), `PublicListing`, `PublicUploadResult`, `FilesMeta` |
 | `db.ts` | `mdb()`, `filesCtx()` (Systemkontext für Storage), `NodeRow`/`nodeRowOf`/`NODE_COLUMNS`, `loadNode(s)`, `ancestorsOf`/`descendantIds` (rekursive CTEs, Zyklenschutz 64), `userRefs` (nach der Tx), `filesSettings()` |
@@ -39,7 +39,8 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 | `nodes.service.ts` / `nodes.endpoints.ts` | Auflisten (Wurzel = eigene + freigegebene), Breadcrumbs, Suche, Ordner anlegen, `ensureFolderPath` (Ordner-Upload), `siblingNames`, Umbenennen, Verschieben (Advisory-Lock, Zyklus-/Tiefenprüfung, Eigentümerwechsel, Kontingent), DTO-Aufbau (`extrasForMany`, `toFileNode`) |
 | `upload.service.ts` | `storeIntoFolder(input)` – gemeinsamer Upload-Ablauf für intern **und** öffentlich (Tx 1 → Storage → Tx 2, `recheck` in beiden Transaktionen, Kontingent der Eigentümer*in, Konflikt `rename`/`replace`, Aufräumen bei Fehlern), `cleanUploaderName`; kein Audit (macht der Aufrufer) |
 | `upload.endpoints.ts` | Interner Upload (Multipart, Vorprüfungen, dann `storeIntoFolder`), Inhalt, Thumbnail |
-| `storage.ts` | `storeContent` (Typ normalisieren/prüfen, Thumbnail 320 px WebP per `core.images.process`), `contentResponse`/`thumbResponse` (Sicherheits-Header, gestreamt über `core.storage.downloadStream`), `removeObjects` (Sammel-Löschung `core.storage.removeMany`: S3 DeleteObjects à 1000, ein Audit `core.storage.files_deleted`; #24), `storageLimits`, `quotaUsed`/`assertQuota` |
+| `storage.ts` | `storeContent` (Typ normalisieren/prüfen, Vorschaubild über `createThumbnail`: Bilder 320 px, PDFs erste Seite 480 px per `core.pdf.renderPage`, beides WebP über `core.images.process`; `canThumbnail`, `thumbPathFor`), `contentResponse`/`thumbResponse` (Sicherheits-Header, gestreamt über `core.storage.downloadStream`), `removeObjects` (Sammel-Löschung `core.storage.removeMany`: S3 DeleteObjects à 1000, ein Audit `core.storage.files_deleted`; #24), `storageLimits`, `quotaUsed`/`assertQuota` |
+| `thumbs.service.ts` | Job `thumbs-backfill` (`runBackfill`, ≤ 50 Dateien je Lauf, ≤ 50 MB): Bestand ohne Vorschau (Bild/PDF, `thumb_attempted_at IS NULL`) einmal versuchen; andere Typen nur markieren; Speicher nicht erreichbar → Abbruch ohne Markierung; Ersetzen-Upload dazwischen → neues Vorschaubild wird verworfen |
 | `shares.service.ts` / `shares.endpoints.ts` | Freigaben lesen (eigene + geerbte) / ersetzen, Principal-Suche (`everyoneLabel` „Stamm“), `keysFor`, `canManageShares`/`assertCanManageShares` |
 | `links.service.ts` / `links.endpoints.ts` | Öffentliche Links: anlegen (mit Art)/auflisten (mit URL)/widerrufen (intern); Info, Freischalten, Ordnerinhalt, Inhalt, **Upload** (öffentlich) |
 | `trash.service.ts` / `trash.endpoints.ts` | Papierkorb: löschen, Liste, wiederherstellen, endgültig löschen, Ablauf-Job `purgeExpired` |
@@ -58,11 +59,12 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 | `pages/LinkDialog.svelte` | Neuer Link: **Art** (Segment Ansehen · Hochladen · Ansehen und hochladen; Upload nur bei Ordnern), Ablauf, Passwort; Liste zeigt **jederzeit die URL** mit „Kopieren“/„Öffnen“ und Widerrufen (alte Links ohne `token_enc`: „Link-Adresse nicht mehr abrufbar – neuen Link erstellen“) |
 | `pages/NameDialog`, `MoveDialog` (ein Baum ab „Dateien“: eigene + bearbeitbare freigegebene Ordner), `NodeInfoDialog` („Hochgeladen über Link von <Name>“), `TrashView`, `QuotaBar`, `helpers.ts` | Dialoge und Hilfen (`DRAG_MIME`, `VIEWS` = `files`/`trash`, `internalUrl`, `compareNodes`, `formatDateTime`, `errorText`) |
 | `quota.endpoints.ts` | `GET/PUT /quotas/:userId` (Recht `files.quota.manage`): Modus `default`/`custom`/`unlimited`, Belegung, wirksames Limit; Audit `files.quota.updated` (Modus, MB) |
+| `pages/file-types.ts` (rein), `pages/FileTypeGlyph.svelte` | Dateityp für die Anzeige: `fileTypeOf(contentType, name)` → Art (`pdf`, `word`, `sheet`, `slides`, `image`, `text`, `code`, `archive`, `audio`, `video`, `other`; Content-Type, Rückfall Endung), Kürzel („DOCX“), Beschreibung; `FILE_KIND_ICONS`, `FILE_KIND_CLASSES` (Tokens `text-file-<art>`/`bg-file-<art>-muted`), `fileTint`; Glyph = Symbol in Typfarbe, ab `md` mit Kürzel. `iconFor(kind, type, name?)` nutzt es |
 | `pages/FolderGlyph.svelte` | Ordnersymbol: gefüllt in der Ordnerfarbe (ohne Farbe neutral grau), ab `md` Icon darauf (Kontrastfarbe per `contrastTextColor`) |
 | `pages/FolderStyleDialog.svelte` | Dialog „Ordner gestalten“: Vorschau, Vorschlagsfarben + `ColorPicker`, `IconPicker` (alle Icons), „Kein Icon“, „Auf Standard zurücksetzen“ |
 | `pages/UserQuotaSection.svelte` | `userAdminSections`-Abschnitt im Benutzer-Dialog: `QuotaBar`, Auswahl Standard/Eigenes Limit (Zahl + MB/GB)/Unbegrenzt, Warnung unter der Belegung, eigener Speichern-Knopf |
 | `pages/PublicLinkPage.svelte` | Öffentliche Seite `/p/files/link/<token>` je `mode`: Passwortabfrage, Ordner blättern (`?folder=`), Vorschau, Download; bei Upload-Arten **Upload-Bereich** (Drag & Drop + Auswahl, mehrere Dateien, Fortschritt per XHR, Feld „Dein Name (optional)“, Grenzen, „Danke! N Dateien hochgeladen“); „Hochladen“ zeigt keinen Inhalt; Zugriffstoken in `sessionStorage` |
-| `migrations/0001_init.sql`, `0002_link_lockout.sql`, `0003_single_view_upload_links.sql`, `0004_folder_style_user_quota.sql` | Schema; Fehlversuchs-Zähler für Link-Passwörter; eine Ansicht + Link-Arten + `token_enc` + Upload-Herkunft; `nodes.icon`/`color` + Tabelle `user_quotas` |
+| `migrations/0001_init.sql`, `0002_link_lockout.sql`, `0003_single_view_upload_links.sql`, `0004_folder_style_user_quota.sql`, `0005_thumb_state.sql` | Schema; Fehlversuchs-Zähler für Link-Passwörter; eine Ansicht + Link-Arten + `token_enc` + Upload-Herkunft; `nodes.icon`/`color` + Tabelle `user_quotas`; `nodes.thumb_attempted_at` (+ Teilindex offener Vorschauen) |
 
 Core-Baustein dazu: `src/lib/components/ui/context-menu/` (bits-ui `ContextMenu`, gleiche API wie `ui/dropdown-menu`, siehe `ui-design.md`).
 
@@ -84,6 +86,7 @@ Core-Baustein dazu: `src/lib/components/ui/context-menu/` (bits-ui `ContextMenu`
   last_access_at, access_count)`; 0002: `failed_count`, `failed_window_start`; 0003: `mode text NOT NULL DEFAULT 'view' CHECK (view|upload|view-upload)`,
   `token_enc text` (Token per `core.crypto.forModule('files').encrypt`, damit die URL wieder anzeigbar ist; gesucht wird weiter über `token_hash`).
   Alte Links (vor 0003) haben kein `token_enc` → `url = null`.
+- 0005: `nodes.thumb_attempted_at timestamptz` – Zeitpunkt des Vorschau-Versuchs; Uploads setzen ihn immer, `NULL` = Bestand vor 0005 → Job `thumbs-backfill`.
 - 0004: `nodes.icon text` (CHECK Format `[a-z0-9-]`, ≤ 64), `nodes.color text` (CHECK `#rrggbb` klein), CHECK nur Ordner tragen ein Aussehen
   (`nodes_style_check`). `user_quotas(user_id PK, quota_mb integer NULL = unbegrenzt, CHECK 1–10 000 000, updated_by, updated_at)` – keine Zeile = Standard
   `files.quota.mb`. `quotaLimitFor(tx, owner, defaultBytes)` (`storage.ts`) liefert das wirksame Limit; `assertQuota`, Link-Upload-Vorprüfung und `/meta`
@@ -190,7 +193,7 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 | GET / PUT `/quotas/:userId` | Recht `files.quota.manage`; PUT `{ mode: default|custom|unlimited, mb? }` (custom: ganze MB 1–10 000 000) → `UserQuota`; kein Existenz-Check der ID (deaktivierte Konten bleiben bearbeitbar) |
 | POST `/nodes/:parent/upload` | multipart `file` + `relativePath?`, `conflict?`; `parent` = Ordner-ID oder `root` (eigene Wurzel); ein Request je Datei |
 | GET `/nodes/:id/content?download=1` | Inhalt mit Sicherheits-Headern (`private, max-age=60`) |
-| GET `/nodes/:id/thumb` | WebP 320 px (`private, max-age=3600`), 404 ohne Thumbnail; eigenes Rate-Limit `IMAGE_RATE_LIMIT` (1200/60 s, #23) |
+| GET `/nodes/:id/thumb` | WebP (Bilder 320 px, PDF erste Seite 480 px) (`private, max-age=3600`), 404 ohne Thumbnail; eigenes Rate-Limit `IMAGE_RATE_LIMIT` (1200/60 s, #23) |
 | GET / PUT `/nodes/:id/shares` | lesen (read) / Liste ersetzen (`canShare`, ≤ 200, keine Duplikate, unbekannte Ziele 422); Stamm = `{ type: 'everyone', id: '*' }` |
 | GET `/principals?q=` | Freigabe-Ziele (`everyoneLabel` „Stamm“); nur mit `manage-all` oder eigenem Knoten (sonst 403), 60/60 s; Mitglieder nur mit `members.member.view`, E-Mail nur mit `core.users.view` |
 | GET / POST `/nodes/:id/links` | Links auflisten (mit `url`) / anlegen `{ expiresOn, password, mode }` (`canShare` + `files.link.create`; `expiresOn` echtes Datum, nicht vergangen; Upload-Art bei Datei → 422 Pfad `mode`; ≤ 20 aktive je Knoten → 409) |
@@ -227,6 +230,10 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 - **Raster** (intern und öffentliche Seite): Karten einer Reihe gleich hoch, Name mit fester Höhe für zwei Zeilen, Umbruch bevorzugt nach `_ - . /` und vor
   Ziffern (`breakableName` → `<wbr>`), voller Name im Tooltip; Ordner zeigen „12 Einträge · 4,1 MB“ (`folderMeta`, `FileNode.folderBytes` = Teilbaum ohne
   Papierkorb), farbige Ordner mit getönter Vorschaufläche. Liste: kleines Ordnersymbol in der Farbe (ohne Icon).
+- **Dateitypen** (2026-10-26, Nutzerwunsch): Dateien ohne Vorschaubild zeigen ein Symbol in der Typfarbe (PDF rot, Word blau, Tabelle grün,
+  Präsentation orange, Bild violett, Archiv amber, Audio/Video pink, Code cyan, Rest grau) auf getönter Fläche plus Endungs-Kürzel („DOCX“) –
+  Raster, Liste, Suche, Info, Vorschau, Papierkorb, Dashboard-Kachel, öffentliche Seite. **Bilder und PDFs** zeigen eine echte Vorschau; PDFs als
+  „Blatt“ (oberer Teil der ersten Seite) mit Abzeichen „PDF“, auch als Titelbild eines Datei-Links.
 - **Aussehen**: Menü/Rechtsklick „Farbe“ (Untermenü mit Vorschlagsfarben, auch für mehrere Ordner, Rückgängig-Toast) und „Aussehen ändern …“
   (`FolderStyleDialog`) – nur Ordner mit Bearbeiten-Zugriff. Öffentliche Links zeigen Icon/Farbe (`PublicNode.icon/color`).
 - **Öffentliche Seite** `/p/files/link/<token>`: Passwortabfrage; „Ansehen“: Ordner blättern, Vorschau, Download; „Hochladen“: nur Upload-Bereich
@@ -237,6 +244,7 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
 - `files.quota.mb` (Standard 1024, 0 = unbegrenzt; je Eigentümer*in, einzeln überschreibbar über `user_quotas`), `files.trash.days` (Standard 30, 1–365),
   `files.link.upload-mb` (Höchstmenge je Upload-Link, Standard 500, 0 = unbegrenzt).
   Größe/Typen kommen aus den Core-Storage-Einstellungen (`core.storage.maxFileSizeMb`, `core.storage.allowedContentTypes`).
+- Job `files.thumbs-backfill` (stündlich): fehlende Vorschaubilder für den Bestand (siehe `thumbs.service.ts`).
 - Job `files.purge-trash` (täglich): abgelaufene Papierkorb-Wurzeln endgültig löschen (je Lauf ≤ 500, Rest beim nächsten Lauf), Storage danach.
 - Reset: Bereich `all` (alle Tabellen inkl. Stamm-Freigaben und Links, alle Storage-Objekte, `rebuild`). `resetUsers`: öffentliche Links auf fremde Ablagen
   **widerrufen**, jede fremde Ablage wandert in einen neuen Ordner **„Übernommen“** („Übernommen (2)“ …) in der Wurzel der behaltenen Person,
@@ -247,11 +255,12 @@ Alle internen Endpunkte: Recht `files.file.view`, die Objektprüfung macht der H
   des Ordners (eine Nachricht je Upload-Anfrage, mit optionalem Namen der Person). Beide mit „Täglich“ wählbar.
 
 ## Tests und Demo
-Unit `tests/unit/files-*.test.ts` (`files-upload-queue`, `files-names`, `files-schemas`, `files-helpers` inkl. `breakableName`/`folderMeta`), `icon-data.test.ts`;
+Unit `tests/unit/files-*.test.ts` (`files-file-types`, `files-upload-queue`, `files-names`, `files-schemas`, `files-helpers` inkl. `breakableName`/`folderMeta`), `icon-data.test.ts`;
 **neu** `files-style-quota.test.ts` (Aussehen inkl. Zugriff/Validierung/öffentlicher Link/Audit, Ordnergröße, Kontingent je Person inkl. Upload 413, Meta, Löschen); Integration `tests/integration/files.test.ts`
 (Ablage, eine Wurzel mit Freigegebenem, Upload, Papierkorb, Kontingent, Auslieferung), `files-sharing.test.ts` (Freigaben inkl. Stamm, Vererbung, Links,
 URL wieder abrufbar, Fehlversuche), **neu** `files-upload-link.test.ts` (Link-Arten, öffentlicher Upload: Modus/Passwort/Grenzen/Kontingent/Namen/kein
 Überschreiben/Widerruf während des Uploads/Audit) und `files-migration.test.ts` (Migration 0003 mit Stamm-Daten: Eigentum, `everyone:*`, Namenskonflikte);
+Integration `files-thumbs.test.ts` (`core.pdf.renderPage`, PDF-Vorschau beim Upload, kaputtes PDF, Backfill genau einmal);
 E2E `tests/e2e/files.spec.ts` (eine Ansicht, Rechtsklick, Upload-Link ohne Login); S3-Ersatz `tests/helpers/s3-mock.ts`.
 Demo: `node scripts/seed-demo-files.mjs` (braucht MinIO).
 
@@ -271,7 +280,9 @@ Demo: `node scripts/seed-demo-files.mjs` (braucht MinIO).
 - Standard-Allowlist und Endung → Typ stehen **einmal** in `$lib/sdk/content-types.ts` (Core + `files`, 2026-10-21): PDF, Bilder (inkl. AVIF), Text/CSV/
   Markdown/JSON, ZIP, Word/Excel/PowerPoint inkl. **Vorlagen** (`dot/dotx`, `xlt/xltx`, `pot/potx`, `pps/ppsx`), RTF, OpenDocument inkl. Vorlagen
   (`ott/ots/otp`). **Makro-Formate** (`docm`, `dotm`, `xlsm` …) bewusst nicht – nur per Einstellung `core.storage.allowedContentTypes`.
-- Ungeprüft: PDF-Einbettung im echten Browser/mobil, echtes S3 bei großen Dateien, öffentlicher Upload mit echtem S3.
+- PDF-Vorschaubilder: pdf.js (`pdfjs-dist` 6.4.299) + `@napi-rs/canvas` 1.0.11 (fest gepinnt, Linux-glibc-Binärdatei im Docker-Image `bookworm-slim`); Schriften
+  nicht eingebetteter PDFs aus `pdfjs-dist/standard_fonts`. Keine Vorschau für Word/Excel/PowerPoint (bräuchte LibreOffice) – dafür Typ-Symbol.
+- Ungeprüft: PDF-Einbettung im echten Browser/mobil, PDF-Vorschaubilder im Produktions-Container, echtes S3 bei großen Dateien, öffentlicher Upload mit echtem S3.
 
 ## Dashboard (2026-10-20)
 - `GET /recent?limit=1–20` (Std. 8, `files.file.view`, `recent.endpoints.ts`): eigene und freigegebene **Dateien** (keine Ordner, kein Papierkorb),
