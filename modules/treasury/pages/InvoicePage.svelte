@@ -1,13 +1,18 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Ban from '@lucide/svelte/icons/ban';
 	import Bell from '@lucide/svelte/icons/bell';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import HandCoins from '@lucide/svelte/icons/hand-coins';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Send from '@lucide/svelte/icons/send';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { Badge } from '$lib/components/ui/badge';
@@ -17,10 +22,13 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
 	import {
+		BottomSheet,
 		ConfirmDialog,
 		EmptyState,
 		PageHeader,
+		SheetAction,
 		SummaryList,
+		deviceLayout,
 		toastWithUndo
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
@@ -44,9 +52,26 @@
 	import InvoiceDialog from './InvoiceDialog.svelte';
 	import LineDialog from './LineDialog.svelte';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
+	import PaymentCapture from './PaymentCapture.svelte';
 	import HistoryCard from './HistoryCard.svelte';
 
 	let { params }: ModulePageProps = $props();
+	/** Handy: feste Aktionsleiste unten, Seltenes im Blatt hinter ⋯ */
+	const layout = $derived(deviceLayout());
+	let moreOpen = $state(false);
+	// „Zurück“ führt in die Liste mit gleichem Filter, wenn wir aus der Kasse kommen
+	let fromTreasury = false;
+	afterNavigate(({ from }) => {
+		fromTreasury = !!from?.url.pathname.startsWith('/modules/treasury');
+	});
+	function back() {
+		if (fromTreasury) history.back();
+		else void goto('/modules/treasury?tab=invoices');
+	}
+	function fromSheet(run: () => void) {
+		moreOpen = false;
+		run();
+	}
 	const id = $derived(params.id ?? '');
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canEdit = $derived(can(permissions, 'treasury.invoice.edit'));
@@ -230,13 +255,37 @@
 	});
 </script>
 
-<div class="space-y-6">
-	<a
-		href="/modules/treasury?tab=invoices"
-		class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-	>
-		<ArrowLeft class="size-4" /> Alle Rechnungen
-	</a>
+<div class="space-y-6 {layout === 'phone' && inv ? 'pb-24' : ''}">
+	{#if layout === 'phone'}
+		<div class="-mx-4 -mt-4 flex items-center gap-1 border-b py-1.5 pr-1.5 pl-1">
+			<Button variant="ghost" size="icon" class="size-11" aria-label="Zurück" onclick={back}>
+				<ChevronLeft class="size-5" />
+			</Button>
+			<div class="flex min-w-0 flex-1 flex-col">
+				<strong class="truncate text-lg">{inv ? inv.number : 'Rechnung'}</strong>
+				{#if inv}<span class="truncate text-xs text-muted-foreground">{inv.recipientName}</span
+					>{/if}
+			</div>
+			{#if inv && (canSend || canEdit || canDelete)}
+				<Button
+					variant="ghost"
+					size="icon"
+					class="size-11"
+					aria-label="Rechnungsaktionen"
+					onclick={() => (moreOpen = true)}
+				>
+					<Ellipsis class="size-5" />
+				</Button>
+			{/if}
+		</div>
+	{:else}
+		<a
+			href="/modules/treasury?tab=invoices"
+			class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+		>
+			<ArrowLeft class="size-4" /> Alle Rechnungen
+		</a>
+	{/if}
 
 	{#if loading}
 		<Skeleton class="h-10 w-72" />
@@ -250,59 +299,76 @@
 		<p class="text-sm text-destructive" role="alert">{error}</p>
 		<Button variant="outline" onclick={load}>Erneut versuchen</Button>
 	{:else if inv}
-		<PageHeader
-			title={`Rechnung ${inv.number}`}
-			description={`${inv.recipientName}${inv.action ? ` · ${inv.action.name}` : ''}`}
-		>
-			{#snippet actions()}
-				{#if canPay && inv && inv.openCents > 0 && editable}
-					<Button onclick={() => (payOpen = true)}>Zahlung erfassen</Button>
-				{/if}
-				<Button variant="outline" onclick={pdf}><FileText /> PDF</Button>
-				{#if canSend && inv && editable}
-					<Button variant="outline" onclick={send} disabled={busy}><Send /> Rechnung senden</Button>
-				{/if}
-				{#if canSend && inv && inv.openCents > 0 && editable}
-					<Button variant="outline" onclick={remind} disabled={busy}><Bell /> Erinnern</Button>
-				{/if}
-				{#if canEdit || canDelete}
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button {...props} variant="outline" size="icon" aria-label="Weitere Aktionen">
-									<Ellipsis />
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="end">
-							{#if canEdit && editable}
-								<DropdownMenu.Item onclick={() => (editOpen = true)}>
-									<Pencil /> Bearbeiten
-								</DropdownMenu.Item>
-								<DropdownMenu.Item onclick={() => (cancelOpen = true)}>Stornieren</DropdownMenu.Item
-								>
-							{/if}
-							{#if canEdit && inv?.status === 'cancelled'}
-								<DropdownMenu.Item
-									onclick={() => post('/reactivate', {}, 'Stornierung zurückgenommen')}
-								>
-									Stornierung zurücknehmen
-								</DropdownMenu.Item>
-							{/if}
-							{#if canDelete && inv?.source === 'manual' && inv.paidCents === 0}
-								<DropdownMenu.Separator />
-								<DropdownMenu.Item class="text-destructive" onclick={() => (deleteOpen = true)}>
-									Löschen
-								</DropdownMenu.Item>
-							{/if}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				{/if}
-			{/snippet}
-		</PageHeader>
+		{#if layout === 'phone'}
+			<div class="flex flex-col items-start gap-1.5 rounded-xl border bg-card p-4">
+				<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>
+				<div class="text-4xl font-bold tracking-tight tabular-nums">
+					{formatEuro(inv.openCents > 0 ? inv.openCents : inv.totalCents)}
+				</div>
+				<div class="text-sm text-muted-foreground">
+					{inv.openCents > 0 ? `offen · fällig ${fmtDate(inv.dueOn)}` : 'gesamt'}{inv.action
+						? ` · ${inv.action.name}`
+						: ''}
+				</div>
+			</div>
+		{:else}
+			<PageHeader
+				title={`Rechnung ${inv.number}`}
+				description={`${inv.recipientName}${inv.action ? ` · ${inv.action.name}` : ''}`}
+			>
+				{#snippet actions()}
+					{#if canPay && inv && inv.openCents > 0 && editable}
+						<Button onclick={() => (payOpen = true)}>Zahlung erfassen</Button>
+					{/if}
+					<Button variant="outline" onclick={pdf}><FileText /> PDF</Button>
+					{#if canSend && inv && editable}
+						<Button variant="outline" onclick={send} disabled={busy}
+							><Send /> Rechnung senden</Button
+						>
+					{/if}
+					{#if canSend && inv && inv.openCents > 0 && editable}
+						<Button variant="outline" onclick={remind} disabled={busy}><Bell /> Erinnern</Button>
+					{/if}
+					{#if canEdit || canDelete}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button {...props} variant="outline" size="icon" aria-label="Weitere Aktionen">
+										<Ellipsis />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end">
+								{#if canEdit && editable}
+									<DropdownMenu.Item onclick={() => (editOpen = true)}>
+										<Pencil /> Bearbeiten
+									</DropdownMenu.Item>
+									<DropdownMenu.Item onclick={() => (cancelOpen = true)}
+										>Stornieren</DropdownMenu.Item
+									>
+								{/if}
+								{#if canEdit && inv?.status === 'cancelled'}
+									<DropdownMenu.Item
+										onclick={() => post('/reactivate', {}, 'Stornierung zurückgenommen')}
+									>
+										Stornierung zurücknehmen
+									</DropdownMenu.Item>
+								{/if}
+								{#if canDelete && inv?.source === 'manual' && inv.paidCents === 0}
+									<DropdownMenu.Separator />
+									<DropdownMenu.Item class="text-destructive" onclick={() => (deleteOpen = true)}>
+										Löschen
+									</DropdownMenu.Item>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					{/if}
+				{/snippet}
+			</PageHeader>
+		{/if}
 
 		<div class="flex flex-wrap items-center gap-2">
-			<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>
+			{#if layout !== 'phone'}<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>{/if}
 			<Badge variant="outline"
 				>{inv.source === 'action' ? 'Aus Aktion' : INVOICE_SOURCE_LABELS[inv.source]}</Badge
 			>
@@ -530,7 +596,88 @@
 			inv = saved;
 		}}
 	/>
-	<MarkPaidDialog bind:open={payOpen} invoice={inv} {accounts} onsaved={load} />
+	{#if layout === 'phone'}
+		<PaymentCapture
+			bind:open={payOpen}
+			variant="sheet"
+			preset={{ invoiceId: inv.id }}
+			{accounts}
+			onsaved={load}
+		/>
+		<div
+			role="toolbar"
+			aria-label="Aktionen zur Rechnung"
+			class="safe-bottom fixed inset-x-0 bottom-0 z-40 flex gap-2.5 border-t bg-background px-4 pt-2.5"
+		>
+			<Button variant="outline" class="h-12 px-4" onclick={pdf}><FileText /> PDF</Button>
+			{#if canPay && inv.openCents > 0 && editable}
+				<Button class="h-12 flex-1 text-base" onclick={() => (payOpen = true)}>
+					<HandCoins /> Zahlung erfassen
+				</Button>
+			{:else if canSend && editable}
+				<Button variant="outline" class="h-12 flex-1" onclick={send} disabled={busy}>
+					<Send /> Rechnung senden
+				</Button>
+			{/if}
+		</div>
+		<BottomSheet bind:open={moreOpen} title={inv.number} description={inv.recipientName}>
+			{#if canSend && editable}
+				<SheetAction
+					icon={Send}
+					title="Rechnung senden"
+					description="mit PDF an die hinterlegten Adressen"
+					onclick={() => fromSheet(() => void send())}
+				/>
+			{/if}
+			{#if canSend && inv.openCents > 0 && editable}
+				<SheetAction
+					icon={Bell}
+					title="Erinnerung senden"
+					description={`Stufe ${inv.reminderLevel + 1}`}
+					onclick={() => fromSheet(() => void remind())}
+				/>
+			{/if}
+			{#if canEdit && editable}
+				<SheetAction
+					icon={Pencil}
+					title="Bearbeiten"
+					description="Empfänger*in, Frist, Notiz"
+					onclick={() => fromSheet(() => (editOpen = true))}
+				/>
+			{/if}
+			{#if canEdit && inv.status === 'cancelled'}
+				<SheetAction
+					icon={RotateCcw}
+					title="Stornierung zurücknehmen"
+					onclick={() =>
+						fromSheet(() => void post('/reactivate', {}, 'Stornierung zurückgenommen'))}
+				/>
+			{/if}
+			{#if (canEdit && editable) || (canDelete && inv.source === 'manual' && inv.paidCents === 0)}
+				<div class="mx-5 my-1.5 h-px bg-border"></div>
+			{/if}
+			{#if canEdit && editable}
+				<SheetAction
+					icon={Ban}
+					variant="danger"
+					title="Stornieren"
+					description="Bezahltes wird Guthaben"
+					onclick={() => fromSheet(() => (cancelOpen = true))}
+				/>
+			{/if}
+			{#if canDelete && inv.source === 'manual' && inv.paidCents === 0}
+				<SheetAction
+					icon={Trash2}
+					variant="danger"
+					title="Löschen"
+					description="dauerhaft entfernen"
+					onclick={() => fromSheet(() => (deleteOpen = true))}
+				/>
+			{/if}
+		</BottomSheet>
+	{:else}
+		<MarkPaidDialog bind:open={payOpen} invoice={inv} {accounts} onsaved={load} />
+	{/if}
 	<LineDialog bind:open={lineOpen} invoiceId={inv.id} line={lineEdit} {members} onsaved={load} />
 {/if}
 <ConfirmDialog

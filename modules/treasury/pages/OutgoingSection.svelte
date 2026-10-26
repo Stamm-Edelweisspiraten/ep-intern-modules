@@ -1,6 +1,7 @@
 <script lang="ts">
 	// Bereich „Ausgänge“: Auszahlungen · Abrechnungen (nur mit Berichtsrecht)
 	import type { SharedData } from './helpers';
+	import { ScrollPills } from '$lib/components/layout';
 	import FilterChips from './FilterChips.svelte';
 	import AccountingsTab from './AccountingsTab.svelte';
 	import PayablesTab from './PayablesTab.svelte';
@@ -40,7 +41,9 @@
 </script>
 
 <div class="space-y-4">
-	{#if options.length > 1}
+	{#if options.length > 1 && shared.layout && shared.layout !== 'desktop'}
+		<ScrollPills label="Ansicht der Ausgänge" {options} value={current} onchange={onview} />
+	{:else if options.length > 1}
 		<FilterChips label="Ansicht der Ausgänge" {options} value={current} onchange={onview} />
 	{/if}
 

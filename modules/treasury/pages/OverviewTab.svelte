@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -21,7 +22,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, FormField, BUSY_SAVE } from '$lib/components/layout';
+	import { EmptyState, FormField, ListRow, TouchList, BUSY_SAVE } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		ACCOUNT_KIND_LABELS,
@@ -45,6 +46,7 @@
 	let {
 		perm,
 		version,
+		layout,
 		onopen,
 		onallocate,
 		onsuggestions,
@@ -233,6 +235,155 @@
 	<span class="block truncate text-xs text-muted-foreground tabular-nums">{k.sub}</span>
 {/snippet}
 
+{#snippet phoneView(d: Overview)}
+	<div class="flex flex-col gap-5">
+		<TouchList heading="Heute zu tun">
+			{#if !d.tasks.length}
+				<div class="flex items-center gap-3 px-3.5 py-3 text-sm" role="status">
+					<CircleCheck class="size-5 shrink-0 text-success" aria-hidden="true" />
+					<span
+						><strong class="font-medium">Alles erledigt.</strong>
+						<span class="text-muted-foreground">Im Moment ist nichts offen.</span></span
+					>
+				</div>
+			{:else}
+				{#each d.tasks as t (t.kind)}
+					{@const v = overviewTaskView(t)}
+					<ListRow
+						wrap
+						title={v.title}
+						subtitle={v.hint}
+						onclick={() =>
+							t.kind === 'bank-missing' ? goto('/modules/treasury/settings') : runTask(t)}
+					>
+						{#snippet leading()}
+							<span
+								class="flex size-9 shrink-0 items-center justify-center rounded-full {t.severity ===
+								'critical'
+									? 'bg-destructive-muted text-destructive'
+									: t.severity === 'warning'
+										? 'bg-warning-muted text-warning'
+										: 'bg-info-muted text-info'}"
+							>
+								{#if t.severity === 'critical'}
+									<CircleAlert class="size-4.5" aria-label="Dringend" />
+								{:else if t.severity === 'warning'}
+									<TriangleAlert class="size-4.5" aria-label="Wichtig" />
+								{:else}
+									<Info class="size-4.5" aria-label="Hinweis" />
+								{/if}
+							</span>
+						{/snippet}
+						{#snippet trailing()}
+							<ChevronRight class="size-4.5 text-muted-foreground" aria-hidden="true" />
+						{/snippet}
+					</ListRow>
+				{/each}
+			{/if}
+		</TouchList>
+
+		<section aria-label="Kennzahlen">
+			<ul
+				class="relative -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			>
+				{#each kpis as k (k.id)}
+					<li class="w-40 shrink-0">
+						<button
+							type="button"
+							class="block h-full w-full rounded-xl border bg-card px-3.5 py-3 text-left active:bg-muted {k.tone ===
+							'critical'
+								? 'border-destructive-border'
+								: k.tone === 'warning'
+									? 'border-warning-border'
+									: ''}"
+							onclick={k.run}
+							aria-label={`${k.label}: ${k.value}, ${k.sub}${k.target ? ` – ${k.target}` : ''}`}
+						>
+							{@render kpiBody(k)}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+
+		{#if d.accounts.length}
+			<TouchList heading="Konten">
+				{#each d.accounts as a (a.id)}
+					<ListRow
+						title={a.name}
+						subtitle={`${ACCOUNT_KIND_LABELS[a.kind]}${a.isDefault ? ' · Standardkonto' : ''} · letzte Buchung ${fmtDate(a.lastBookedOn)}`}
+						amount={formatEuro(a.balanceCents)}
+						onclick={() => onopen('transactions')}
+					>
+						{#snippet leading()}
+							<span
+								class="flex size-9 shrink-0 items-center justify-center rounded-full bg-link/10 text-link"
+							>
+								{#if a.kind === 'cash'}<Wallet
+										class="size-4.5"
+										aria-hidden="true"
+									/>{:else}<Landmark class="size-4.5" aria-hidden="true" />{/if}
+							</span>
+						{/snippet}
+					</ListRow>
+				{/each}
+			</TouchList>
+		{/if}
+
+		{#if receivables.some((a) => !a.excluded)}
+			<TouchList heading="Beiträge aus Aktionen">
+				{#each receivables.filter((a) => !a.excluded) as a (a.actionId)}
+					<div class="flex flex-col gap-2 border-b px-3.5 py-3 last:border-b-0">
+						<div class="flex items-baseline justify-between gap-2">
+							<strong class="truncate">{a.name}</strong>
+							<span class="shrink-0 text-sm text-muted-foreground tabular-nums">
+								{formatEuro(a.paidCents)} von {formatEuro(a.totalCents)}
+							</span>
+						</div>
+						<div
+							class="h-1.5 overflow-hidden rounded-full bg-muted"
+							role="progressbar"
+							aria-valuemin={0}
+							aria-valuemax={100}
+							aria-valuenow={pct(a)}
+							aria-label={`${a.name}: ${pct(a)} % bezahlt`}
+						>
+							<div class="h-full bg-primary" style="width: {pct(a)}%"></div>
+						</div>
+						{#if a.overdueCents > 0}
+							<span class="text-xs text-destructive tabular-nums"
+								>{formatEuro(a.overdueCents)} überfällig</span
+							>
+						{/if}
+					</div>
+				{/each}
+			</TouchList>
+		{/if}
+
+		{#if d.recent.length}
+			<TouchList heading="Letzte Buchungen">
+				{#each d.recent as t (t.id)}
+					<ListRow
+						title={transactionTitle(t)}
+						subtitle={`${fmtDate(t.bookedOn)} · ${t.accountName}`}
+						amount={signedEuro(t.amountCents)}
+						amountClass={t.amountCents > 0 ? 'text-success' : ''}
+						onclick={() =>
+							t.needsAllocation && perm.editTx ? onallocate(t) : onopen('transactions')}
+					>
+						{#snippet trailing()}
+							{#if t.needsAllocation}<Badge variant="warning">offen</Badge>{/if}
+						{/snippet}
+					</ListRow>
+				{/each}
+			</TouchList>
+		{/if}
+		<p class="text-center text-xs text-muted-foreground">
+			Stand des letzten Abgleichs: {d.lastSyncAt ? fmtDateTime(d.lastSyncAt) : 'noch keiner'}
+		</p>
+	</div>
+{/snippet}
+
 {#if loading}
 	<div class="space-y-4">
 		<Skeleton class="h-32" />
@@ -247,6 +398,8 @@
 			<Button variant="outline" onclick={load}>Erneut versuchen</Button>
 		</Card.Content>
 	</Card.Root>
+{:else if data && layout === 'phone'}
+	{@render phoneView(data)}
 {:else if data}
 	<div class="space-y-6">
 		<section aria-labelledby="ov-todo" class="space-y-3">

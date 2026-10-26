@@ -50,6 +50,7 @@ Aktion; erste Version **mit** Freihand, Live-Cursor/Anwesenheit, Rahmen, Version
 | `refs.service.ts` | Karten **je Betrachter*in** über die Verträge (`ActionsService`, `TaskRefsService`, `EventRefsService`, `GalleryRefsService`, `FileRefsService`); gespeichert wird nur Typ + ID |
 | `snapshots.service.ts` / `snapshots.endpoints.ts` | Versionen (auto ≤ 50, benannt ≤ 100), Wiederherstellen (sichert vorher „Vor dem Wiederherstellen“, schreibt per `writeOps`, dann `reset`), Jobs `runAutoSnapshots`, `runCleanup` (Grabsteine > 30 Tage → `purged_seq`; ungenutzte Dateien > 24 h); dazu `/refs`, `/refs/describe` |
 | `archive.ts` | `.epwhiteboard` (ZIP: `board.json` + `assets/<uuid>`), `parseArchive` mit Grenzen, keine ZIP64, Pfad-Allowlist |
+| `prefs.endpoints.ts` | Persönliche Ansicht-Einstellungen `GET/PUT /me/prefs` (je Konto, für alle Whiteboards, z. B. feste Flächenfarbe) |
 | `transfer.endpoints.ts` | Export (Archiv), Import (immer neues Board, Bilder neu verarbeitet, Dateien neu geprüft, IDs der Dateien neu), PDF aus Browser-Seiten (`page0…`, Deckblatt + je Seite eine Bild-Anlage über `core.pdf`, ≤ 20 Seiten, 8 MB/55 MB) |
 | `privacy.ts`, `search.ts`, `notify.ts` | Löschen/Reset/Auskunft, Suche (Boards + Rahmentitel, `?focus=`), `board-shared` |
 | `pages/BoardsPage.svelte`, `BoardDialog.svelte`, `BoardPage.svelte`, `widgets/RecentBoardsWidget.svelte` | Übersicht + Import, Anlegen/Eigenschaften (Aktion nur Eigentümer*in), Laden, Dashboard-Kachel |

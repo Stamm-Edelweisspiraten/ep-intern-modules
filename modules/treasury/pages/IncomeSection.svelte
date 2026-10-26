@@ -1,7 +1,9 @@
 <script lang="ts">
 	// Bereich „Eingänge“: Offene Posten · Rechnungen · Familien · Jahresbeitrag
 	import type { SharedData } from './helpers';
+	import { ScrollPills } from '$lib/components/layout';
 	import FilterChips from './FilterChips.svelte';
+	import type { PaymentPreset } from './PaymentCapture.svelte';
 	import AnnualFeeTab from './AnnualFeeTab.svelte';
 	import InvoicesTab from './InvoicesTab.svelte';
 	import OpenItemsTab from './OpenItemsTab.svelte';
@@ -15,6 +17,7 @@
 		onview,
 		onopen,
 		oncreateinvoice,
+		onpay,
 		onchanged,
 		onfamily,
 		...shared
@@ -30,6 +33,8 @@
 		/** Anderen (alten) Tab der Kasse öffnen, z. B. aus dem Jahresbeitrag */
 		onopen: (tab: string) => void;
 		oncreateinvoice: () => void;
+		/** Zahlung erfassen (Handy/Tablet, vorbelegt) */
+		onpay?: (preset: PaymentPreset) => void;
 		onchanged: () => void | Promise<void>;
 		/** Familienansicht öffnen */
 		onfamily: (ref: FamilyRef) => void;
@@ -47,10 +52,14 @@
 </script>
 
 <div class="space-y-4">
-	<FilterChips label="Ansicht der Eingänge" {options} value={current} onchange={onview} />
+	{#if shared.layout && shared.layout !== 'desktop'}
+		<ScrollPills label="Ansicht der Eingänge" {options} value={current} onchange={onview} />
+	{:else}
+		<FilterChips label="Ansicht der Eingänge" {options} value={current} onchange={onview} />
+	{/if}
 
 	{#if current === 'open'}
-		<OpenItemsTab {...tabProps} {onchanged} />
+		<OpenItemsTab {...tabProps} {onpay} {onchanged} />
 	{:else if current === 'invoices'}
 		<InvoicesTab {...tabProps} oncreate={oncreateinvoice} {onchanged} />
 	{:else if current === 'families'}

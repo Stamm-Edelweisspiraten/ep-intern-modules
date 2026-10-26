@@ -135,6 +135,8 @@ export interface SharedData {
 	perm: TreasuryPerms;
 	/** steigt nach jeder Änderung – Tabs laden dann neu */
 	version: number;
+	/** Handy: Listen + Blätter; Tablet: Liste | Details; Desktop: Tabellen (unverändert) */
+	layout?: import('$lib/components/layout').DeviceLayout;
 }
 
 /** Anzeigetitel einer Buchung; Umbuchungen mit Richtung */

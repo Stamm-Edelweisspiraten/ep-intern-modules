@@ -372,3 +372,24 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTo
   eigene Posten/Jahresbeitrags-Aufschlüsselung), Zahlungen je Posten, offen/Guthaben, Erinnerungen, Fassungen (nur Liste), Zahler (IBAN maskiert,
   andere Mitglieder nur als Anzahl), Auszahlungen an Mitglied/Zahler. Nie Hash/Chiffrat. Benachrichtigungs-Einstellungen gibt es in der Kasse nicht.
   Test `tests/integration/privacy-subject-export-treasury.test.ts`.
+
+## Handy und Tablet (2026-10-26, Konzept „Kasse mobil – Bedienkonzept“)
+- Geräteklasse über `deviceLayout()` (`SharedData.layout`): **Handy** < 640 px, **Tablet** 640–1366 px mit Touch, sonst **Desktop (unverändert)**.
+  Jeder Tab hat dafür einen eigenen Zweig `compactView` (Handy + Tablet) neben der Desktop-Tabelle; Logik/Dialoge werden geteilt.
+- **Handy** (`TreasuryPage`): kompakter Kopf (Bereich, Kontostand, ⋯), **Bereichsleiste unten** (`MobileTabBar`: Übersicht · Eingänge · Neu · Ausgänge ·
+  Buchungen), Unteransichten als `ScrollPills`, Berichte über ⋯. Blatt „Neu erfassen“ (Zahlung erfassen, Buchung, Überweisung als bezahlt, Kontoauszug,
+  Umbuchung) und Blatt ⋯ (Zuordnungsvorschläge, Neue Rechnung, Jetzt abgleichen, Berichte, Einstellungen). Besuchte Bereiche bleiben geladen (Filter,
+  Unteransicht), Scrollstand je Bereich. Listen (`OpenItemsTab`, `InvoicesTab`, `PayablesTab`, `TransactionsTab`) als `TouchList` mit Suche + Filterblatt
+  (`CompactFilter`), Antippen → Aktionsblatt der Zeile, **lange drücken → Auswahlmodus** (`SelectionBar`, Sammelaktionen ersetzen die Bereichsleiste).
+  Übersicht als Aufgabenliste + Kennzahlen zum Wischen. Rechnungsseite mit fester Aktionsleiste unten (PDF + Zahlung erfassen), Rest im Blatt hinter ⋯;
+  „Zurück“ führt per `history.back()` in die Liste, wenn man aus der Kasse kam.
+- **Tablet**: Reiter oben wie am Desktop, „Neu“ und ⋯ als Menüs (Popover); Offene Posten, Auszahlungen und Buchungen als **Liste | Details**
+  (rechts die angetippte Zeile mit Hauptaktion); Filter als Popover; Auswahl über lange drücken oder „Auswählen“.
+- **Zahlung erfassen** (`PaymentCapture.svelte`, Logik `payment-capture.ts`): Handy = Blatt in 3 Schritten (Betrag per Tastenfeld + Konto + Datum → Wer
+  (offene Posten nach Familie/Person, passender Betrag zuerst, Badge „passt“) → Zuordnen (älteste Fälligkeit zuerst, beim Start aus einer Rechnung deren
+  Posten zuerst; Rest bleibt ohne Zuordnung)); Tablet = ein zweispaltiger Dialog. Bucht über `POST /transactions` mit `allocations`, `payerId`,
+  `notify`; danach „Rückgängig“ (löscht die Buchung), außer es ging schon eine Bestätigung raus. „Danach weitere Zahlung erfassen“ lässt Konto/Datum stehen.
+- Entscheidungen aus dem Konzept (Empfehlungen übernommen): Bereichsleiste unten; **keine Wischgesten** auf Karten; Zahlung in 3 Schritten; ＋ als Blatt mit
+  5 Wegen; Kontostand dauerhaft im Kopf. Toasts bleiben oben (nicht über der Leiste). Kein Sammel-„Als bezahlt“ für Rechnungen (es gibt keinen Endpunkt).
+- Tests: Unit `treasury-payment-capture.test.ts`, E2E `treasury-mobile.spec.ts` (Handy, Tablet, Desktop unverändert).
+
