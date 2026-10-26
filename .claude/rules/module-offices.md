@@ -1,3 +1,7 @@
+---
+paths: ["src/lib/modules/offices/**", "tests/**/offices*", "scripts/seed-demo-offices.mjs"]
+---
+
 # Modul `offices` (Ämter)
 
 Ämter des Stammes (Stammesführung, Kasse, Materialwart …) mit Beschreibung, eigener Reihenfolge, E-Mail-Adressen,

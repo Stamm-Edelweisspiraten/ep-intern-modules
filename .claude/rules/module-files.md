@@ -48,6 +48,7 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
 | `reset.ts` | Reset-Bereich `all` (`rebuild`, alle Storage-Objekte, keine `implies`), `resetUsers` (Übernahme fremder Ablagen) |
 | `recent.endpoints.ts` | `GET /recent` („Zuletzt geändert“ fürs Dashboard): eigene + freigegebene Dateien (keine Ordner, kein Papierkorb), neueste zuerst; auch mit `manage-all` keine fremden Ablagen; ohne Audit |
 | `search.ts` | Globale Suche (`filesSearch`) über `searchNodes` (gleiche Sichtbarkeit wie `GET /search`, nie Papierkorb); Dateien verlinken auf ihren Ordner, sonst auf die Wurzel |
+| `contract.ts`, `refs.service.ts` | Dienst `FileRefsService` (`provides`, 2026-10-26): `searchFileRefs` (über `searchNodes`, ab 2 Zeichen) / `describeFileRefs` (`resolveAccess` je ID, nie Papierkorb) mit `href` und `contentUrl`; prüft `files.file.view` selbst; Nutzer: Karten im `whiteboard` (keine Kopie, Zugriff bleibt bei „Dateien“) |
 | `backup.ts` | `filesBackup.rehash`: `share_links.token_hash` aus `token_enc` mit dem Ziel-Schlüssel neu berechnen; ohne entschlüsselbares `token_enc` → Link widerrufen (`unrecoverable`) |
 | `user-deleted.ts` | `onUserDeleted`: Ablage der Person **löschen** (nicht übergeben), übrige von ihr angelegte Links widerrufen, `user:`-Freigaben löschen, `created_by`/`deleted_by` → `NULL`; Storage-Objekte nach dem Commit |
 | `subject-export.ts` | Datenauskunft (`subjectExport`): Metadaten der eigenen Ablage (ohne Inhalte/Pfade), Uploads in fremde Ordner, Freigaben an Konto/Mitglieder, eigene Links (ohne Token/Hash) |

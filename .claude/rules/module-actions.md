@@ -417,3 +417,7 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 - `action_shares` (`principal_type = 'user'`) / `owner_id` / `user_id`: `onUserDeleted` bzw. `resetUsers` (Benutzerkonten). Gruppen-/Mitglieds-Freigaben bleiben
   beim Löschen einer Gruppe/eines Mitglieds stehen (wie bei `events`, Anzeige „Unbekannt“).
 - **Aufgaben** (`tasks`): Karte `pages/ActionTasksCard.svelte` in der Übersicht (nur REST, ohne Import), Details `module-tasks.md`.
+
+## Whiteboards an der Aktion (2026-10-26)
+Karte `pages/ActionWhiteboardsCard.svelte` in der Übersicht (mit `whiteboard.board.view`, nur REST `GET /modules/whiteboard/boards/by-action/:id`):
+Liste der Whiteboards der Aktion + „Whiteboard“ anlegen (mehrere je Aktion). Zugriff der Aktion vererbt sich (`accessibleActions`). Details `module-whiteboard.md`.

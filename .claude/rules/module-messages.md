@@ -1,3 +1,7 @@
+---
+paths: ["src/lib/modules/messages/**", "tests/**/messages*", "scripts/seed-demo-inbox.mjs", "website/src/lib/age-range.ts"]
+---
+
 # Modul `messages` (Nachrichten)
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender

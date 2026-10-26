@@ -176,3 +176,8 @@ Audit: `galleries.gallery.created|updated|deleted|cover_changed|published|unpubl
   kein Ereignis beim Löschen von Gruppen/Terminen; Reset `members:all` bzw. `events:all` impliziert keinen `galleries`-Bereich – die Zeilen bleiben.
   Anzeige: unbekannte Freigaben „Unbekannt“ (`describePrincipals`), Termine nur, soweit der `events`-Dienst sie noch kennt.
 - Benutzerkonten: `onUserDeleted` (`user-deleted.ts`) bzw. `resetUsers`.
+
+## Verweis-Dienst für andere Module (2026-10-26)
+`GalleryRefsService` (`contract.ts`, `refs.service.ts`) bietet zusätzlich `searchGalleryCards(ctx, …)` / `describeGalleryCards(ctx, ids)`: Galerien,
+die `ctx` sehen darf (wie `GET /galleries`, prüft `galleries.gallery.view` selbst), mit `visibility`, `coverUrl` (Thumb des Titelbilds bzw. ersten Bilds) und `href`.
+Nutzer: Karten im `whiteboard`.

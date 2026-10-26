@@ -1,3 +1,7 @@
+---
+paths: ["src/lib/modules/website/**", "tests/**/website-module*", "src/lib/sdk/server/html.ts", "src/lib/sdk/slug.ts"]
+---
+
 # Modul `website` (Inhalte der Stammeswebsite)
 
 Pflege der öffentlichen Stammeswebsite (`website/`, siehe `website.md`) aus dem Intern-Bereich: **Banner/Hinweise**, **häufige Fragen**

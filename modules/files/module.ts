@@ -14,6 +14,8 @@ import { onUserDeleted } from './user-deleted';
 import { subjectExport } from './subject-export';
 import { filesBackup } from './backup';
 import { filesSearch } from './search';
+import { fileRefsService } from './refs.service';
+import type { FileRefsService } from './contract';
 import { purgeExpired } from './trash.service';
 import { backfillThumbnails } from './thumbs.service';
 import {
@@ -114,6 +116,8 @@ export default defineModule({
 		}
 	],
 	search: filesSearch,
+	/** Verweise auf Dateien/Ordner für andere Module (z. B. Whiteboard-Karten) */
+	provides: fileRefsService satisfies FileRefsService,
 	notifications: {
 		types: [
 			{
