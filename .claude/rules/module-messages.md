@@ -2,13 +2,13 @@
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.5.0,
-`dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70).
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.6.0,
+`dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70) und „Postfächer“ (`admin: true`, Verwaltung, siehe unten).
 
 ## Dateien (`src/lib/modules/messages/`)
 | Datei | Inhalt |
 |---|---|
-| `ui.ts` | Routen `''` → `InboxPage`, `sent` → `HistoryPage`, `new` → `ComposePage` (`?reply=<id>[&mode=reply-all]`, `?forward=<id>`), `inbox/:id` → `InboxMessagePage`, `:id` → `MessageDetailPage`; `profileSections` „Posteingang“ (`InboxNotificationsCard`) |
+| `ui.ts` | Routen `''` → `InboxPage`, `sent` → `HistoryPage`, `new` → `ComposePage` (`?reply=<id>[&mode=reply-all]`, `?forward=<id>`), `admin` → `MailboxAdminPage`, `inbox/:id` → `InboxMessagePage`, `:id` → `MessageDetailPage`; `profileSections` „Posteingang“ (`InboxNotificationsCard`) |
 | `module.ts` | Manifest (Rechte), Einstellungen `messages.*` inkl. `messages.imap.*`/`messages.inbox.retentionDays`, Jobs `resume` (stündlich), `inbox-poll` (jede Minute), `cleanup` (täglich), `onUserDeleted`/`subjectExport` (`privacy.ts`), Endpoints |
 | `mailbox.ts` (rein) | Postfach-Schlüssel, `buildAddressIndex`/`routeAddresses` (Zuordnung, Mehrdeutigkeit), `senderKeyFor`/`mailboxKeyForSender`, `prefixedSubject` |
 | `imap.client.ts` | Hülle um `imapflow` (`fetch`, `move`, `close`), Testersatz `setImapConnectorForTests` |
@@ -19,6 +19,8 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `inbound.service.ts` | `pollInbox` (Abruf, Zuordnung, Speichern, erst danach IMAP-MOVE), `testConnection`, `cleanupInbox`, `loadInboxConfig` |
 | `inbox.service.ts` | Postfächer mit Ungelesen-Zähler, Liste, Detail (cid-Bilder als `data:`), gelesen/Papierkorb, Zuordnen, Anhänge, `composePrefill` |
 | `inbox-notify.service.ts` | Benachrichtigungen `inbox-new`/`inbox-replied` über `core.notifications`, `notificationScopesFor`, Übernahme alter Einstellungen |
+| `extra-mailbox.service.ts` | Zusätzliche Postfächer und Weiterleitungen: Verzeichnis-Einträge (`extraDirectoryEntries`, `loadAliasRows`), `myExtraMailboxes(ctx)`, Verwaltung (CRUD, Adresskonflikt 409, Löschen → „Nicht zugeordnet“), Freigabe-Suche |
+| `mailboxes-admin.endpoints.ts` | REST der Verwaltung `/admin/…` (Recht `messages.mailbox.manage`) |
 | `folders.ts` (rein), `folders.service.ts` | Ordner je Postfach: Baum/Pfad/Tiefe/Zyklus; Anlegen/Umbenennen/Verschieben/Löschen, `moveMails`, `bulkAction`, `mailboxStats` (Zähler je Ordner) |
 | `trial.service.ts`, `age-range.ts` (rein, Kopie `website/src/lib/age-range.ts`) | Probestunden-Formular der Website → Postfach der passenden Gruppe (siehe unten); Altersangaben lesen (`parseAgeRange`, `groupsForAge`) |
 | `inbox.endpoints.ts`, `privacy.ts` | REST des Posteingangs; Löschen beim Konto-Löschen, Datenauskunft |
@@ -29,8 +31,8 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `recipients.service.ts` | `resolveRecipients(ctx, input)`: Mitglieder/Gruppen → eindeutige Adressen, Bereichsprüfung; freie Adressen (`addresses`) zuletzt angehängt |
 | `delivery.service.ts` | `createMessage`, `previewMessage`, `getMessage`, `listMessages`, `retryMessage`, Versand (`deliver`), `resumeDeliveries`, `cleanup` |
 | `messages.endpoints.ts` | REST (siehe unten) |
-| `pages/` | `InboxPage`, `MailboxTree` (Ordnerbaum mit Drag & Drop und Rechtsklick), `FolderDialog`, `MoveToFolderDialog`, `inbox-drag.svelte.ts`, `InboxMessagePage`, `InboxNotificationsCard`, `MessagesTabs`, `HistoryPage`, `ComposePage`, `MessageDetailPage`, `helpers.ts` |
-| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql`, `0004_inbox_folders.sql`, `0005_spam.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`); Ordner (`inbox_folders`, `inbox_messages.folder_id`) |
+| `pages/` | `InboxPage`, `MailboxTree` (Ordnerbaum mit Drag & Drop und Rechtsklick), `FolderDialog`, `MoveToFolderDialog`, `inbox-drag.svelte.ts`, `InboxMessagePage`, `InboxNotificationsCard`, `MessagesTabs`, `HistoryPage`, `ComposePage`, `MessageDetailPage`, `MailboxAdminPage` (Reiter Postfächer | Weiterleitungen), `ExtraMailboxDialog`, `helpers.ts` |
+| `migrations/0001_init.sql`, `0002_layout.sql`, `0003_inbox.sql`, `0004_inbox_folders.sql`, `0005_spam.sql`, `0006_extra_mailboxes.sql` | `messages`, `message_recipients`, `message_attachments`; Layout; Posteingang (`inbox_messages`, `inbox_attachments`, `inbox_reads`, `inbox_notification_prefs`, `inbox_poll_state`, Spalten für Verlauf/Message-IDs an `messages`/`message_recipients`); Ordner (`inbox_folders`, `inbox_messages.folder_id`); Spam; Zusatzpostfächer (`extra_mailboxes`, `extra_mailbox_shares`, `mailbox_aliases`) |
 
 ## Rechte
 | Schlüssel | Bedeutung |
@@ -40,7 +42,10 @@ Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **
 | `messages.settings.manage` | Einstellungen ändern (Schreibrecht der Modul-Einstellungen), IMAP-Verbindung testen |
 | `messages.inbox.stamm` | Postfach der Stamm-Adresse lesen (zusätzlich zu `send`) |
 | `messages.inbox.manage` | „Nicht zugeordnet“ sehen/zuordnen/löschen, „Jetzt abrufen“ |
+| `messages.mailbox.manage` | Verwaltungsseite „Postfächer“: zusätzliche Postfächer anlegen/ändern/löschen/freigeben, Weiterleitungen verwalten |
 | `messages.website.contact` | **nur** Website-Endpunkte des Kontakt- und Probestunden-Formulars – Scope für den API-Key der Stammeswebsite |
+
+Rolle „Gruppenleitung“ bekommt `messages.message.send` per `defaultRoleGrants` (einmalig), damit Leitungen ihr Gruppen-Postfach lesen.
 
 Keine `messages.storage.*`-Rechte: Anhänge liegen im Core-Storage und werden nur vom System (Versand/Aufräumen) gelesen, nie direkt ausgeliefert.
 
@@ -55,7 +60,8 @@ Kontos, `sender` = Absenderadresse; im Formular änderbar), `messages.maxRecipie
 - **Amt**: alle Adressen der Ämter, bei denen die Person Inhaber*in ist (`OfficesService.listOwnOfficeEmails`).
 - **Gruppe**: Kontakt-E-Mail (`groups.contact_email`, Website-Steckbrief) der Gruppen, die die Person leitet (`MembersService.listLedGroups`).
 - **Stamm**: `core.organization.email` (Name `core.organization.name`).
-- Der Schlüssel (`personal`, `stamm`, `office:<id>:<adresse>`, `group:<id>`) kommt vom Client, die Adresse nie: unbekannt/nicht erlaubt → **403**.
+- **Zusätzlich**: zusätzliche Postfächer mit Freigabe „Lesen und senden“ (`kind: 'extra'`, Schlüssel `extra:<id>`).
+- Der Schlüssel (`personal`, `stamm`, `office:<id>:<adresse>`, `group:<id>`, `extra:<id>`) kommt vom Client, die Adresse nie: unbekannt/nicht erlaubt → **403**.
 
 ## API (`/api/v1/modules/messages/…`)
 | Methode + Pfad | Recht | Besonderheiten |
@@ -251,6 +257,36 @@ Nachricht (freiwillig) –, die **passende Gruppe** bekommt die Nachricht.
   ohne Stamm-Adresse „Nicht zugeordnet“. Betreff „Probestunde: <Kind> (<Alter> Jahre)“, Antwort an die eingegebene Adresse, Benachrichtigung `inbox-new`.
 - Audit `messages.inbox.trial-received` nur `{ mailbox: group|stamm|unassigned }`.
 - Tests `tests/unit/messages-trial.test.ts` (Altersangaben, Auswahl, Kopie gleich), `tests/integration/messages-trial.test.ts`, Website-Parser in `website-contact.test.ts`.
+
+## Zusätzliche Postfächer und Weiterleitungen (2026-10-26, v1.6.0, Migr. 0006)
+Verwaltung unter Administration → Module → „Postfächer“ (`/modules/messages/admin`, Recht `messages.mailbox.manage`).
+- **Zusätzliche Postfächer** (`extra_mailboxes`: Name, Adresse klein + eindeutig, Beschreibung): Schlüssel `extra:<id>` (`MailboxKind` `extra`, gemeinsam,
+  Icon `AtSign` im Baum). Freigaben `extra_mailbox_shares` (Muster `<obj>_shares`, Typen `group|member|user`, Stufe `read` = Lesen, `edit` = Lesen und
+  senden). Zugriff je Request über `principalKeysFor` + `principalMatchSql` (`myExtraMailboxes`, höchste Stufe); Gruppe = verknüpfte Konten der Mitglieder
+  und Leitungen. Nur Konten mit `messages.message.send`. Verzeichnis (`loadMailboxDirectory`) über `principalUserIds(…, { permission: send })`.
+- `accessibleMailboxes`: Zusatzpostfächer mit `senderKey` nur bei `edit`; `listSenders` bietet nur `edit` als Absender an (`requireSender` → sonst 403).
+  Aus einem Nur-Lesen-Postfach geht Antworten/Weiterleiten trotzdem (`canReply`), die Vorbelegung hat dann `senderKey: null` (eigener Absender).
+- **Weiterleitungen** (`mailbox_aliases`: Adresse → `target_key`): im Verzeichnis als zusätzlicher Eintrag mit Alias-Adresse und Schlüssel/Name/Konten des
+  Ziels (`MailboxEntry.alias = true`; nicht als Zuordnungsziel in `GET /mailboxes/all`). Unbekanntes Ziel → übersprungen → „Nicht zugeordnet“.
+  Alias-Domains zählen automatisch als eigene Domains (`ownDomains` aus dem Verzeichnis). Nichts wird nach außen weitergeleitet.
+- **Adressen eindeutig**: Konflikt mit jeder Verzeichnis-Adresse (persönlich, Amt, Gruppe, Stamm, zusätzlich, Weiterleitung) → **409**; in der Transaktion
+  zusätzlich unter Advisory-Sperre `messages:mailbox-addresses` gegen die eigenen Tabellen. Persönliche Adressen von Konten **ohne** `send` werden nicht geprüft.
+- **Löschen**: Mails → `unassigned` (`folder_id = NULL`, Grund `unknown`, Gelesen-Status weg; liegt dieselbe Mail schon in „Nicht zugeordnet“, entfällt die
+  Kopie samt Anhängen), Ordner und Weiterleitungen auf das Postfach gelöscht. Gesendete Nachrichten behalten `mailbox_key`.
+- **API** (alle `messages.mailbox.manage`): GET/POST `/admin/mailboxes`, PATCH/DELETE `/admin/mailboxes/:id` (`shares[{type,id,level}]`, `validatePrincipals`;
+  bestehende Freigaben bleiben gültig, `describePrincipals`), GET `/admin/principals?search=` (`searchPrincipals`, Typen group/member/user,
+  `PRINCIPAL_SEARCH_RATE_LIMIT`), GET `/admin/aliases` (`{ aliases, targets }`, Ziele = Verzeichnis ohne Weiterleitungen, nach Art sortiert), POST `/admin/aliases`
+  `{ address, targetKey }` (422 unbekanntes Ziel/„Nicht zugeordnet“), DELETE `/admin/aliases/:id`.
+- **Audit** `messages.mailbox.created|updated|deleted` (`shares`, `addressChanged`, `movedMessages`, `deletedAliases`), `messages.alias.created|deleted` (`targetKind`) –
+  keine Adressen/Namen.
+- **Datenschutz**: `onUserDeleted` löscht `user:`-Freigaben des Kontos und Weiterleitungen auf `personal:<userId>`, `created_by` → `NULL`; neu `onMemberDeleted`
+  löscht `member:`-Freigaben. Kein Reset-Bereich im Modul (es gibt keinen).
+- **Oberfläche** `MailboxAdminPage`: Hinweis (Adressen müssen im Catch-all ankommen, Zugriff nur mit „Nachrichten senden“), Reiter Postfächer (`DataTable`, Freigaben als
+  Badges, Mails, Menü Bearbeiten/Löschen mit `ConfirmDialog`) | Weiterleitungen (Adresse → Ziel, fehlendes Ziel als Warnung). `ExtraMailboxDialog` mit `SharePanel`
+  (Stufen „Lesen“/„Lesen und senden“, gespeichert erst mit dem Formular). Ziele im `SelectField` als „Art: Name (Adresse)“ (keine Gruppen-Überschriften).
+- **Tests**: `tests/integration/messages-extra-mailboxes.test.ts` (IMAP-Ersatz), Schlüssel `extra:` in `tests/unit/messages-inbox.test.ts`, E2E `messages.spec.ts`
+  (Zusatzpostfach + Weiterleitung anlegen, Konflikt).
+- **Offen**: echter Provider-Catch-all für die neuen Adressen ungeprüft; Benachrichtigungs-Einstellungen gelöschter Zusatzpostfächer bleiben im Core liegen.
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.

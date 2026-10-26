@@ -4,7 +4,8 @@
  *   sonst aus dem Kontonamen),
  * - Funktions-Adressen der eigenen Ämter (`offices`, optional),
  * - Kontakt-E-Mail der Gruppen, die die Person leitet,
- * - Stamm-Adresse (`core.organization.email`).
+ * - Stamm-Adresse (`core.organization.email`),
+ * - zusätzliche Postfächer der Verwaltung mit Freigabe „Lesen und senden“.
  * Der Server prüft beim Senden erneut, dass der gewählte Absender in dieser Liste steht.
  * Core-Aufrufe immer außerhalb einer Modul-Transaktion.
  */
@@ -12,6 +13,7 @@ import { core, errors, type RequestContext } from '$lib/sdk/server';
 import type { MembersService } from '$lib/modules/members/contract';
 import type { OfficesService } from '$lib/modules/offices/contract';
 import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
+import { myExtraMailboxes, type MyExtraMailbox } from './extra-mailbox.service';
 import {
 	MAX_RECIPIENTS_DEFAULT,
 	MAX_RECIPIENTS_LIMIT,
@@ -123,8 +125,14 @@ async function deliverabilityHint(
 	return `Absenderadressen mit der Domain ${other.join(', ')} weichen vom Mailserver (${smtpDomain}) ab. Damit die Mails nicht im Spam landen, müssen SPF, DKIM und DMARC für diese Domain eingerichtet sein und der Mailserver das Senden als diese Adressen erlauben.`;
 }
 
-/** Alle Absender, die `ctx` verwenden darf (persönlich zuerst) */
-export async function listSenders(ctx: RequestContext): Promise<SendersResponse> {
+/**
+ * Alle Absender, die `ctx` verwenden darf (persönlich zuerst). `extras`: schon geladene zusätzliche
+ * Postfächer der Person (spart eine Abfrage).
+ */
+export async function listSenders(
+	ctx: RequestContext,
+	opts: { extras?: MyExtraMailbox[] } = {}
+): Promise<SendersResponse> {
 	const settings = await loadSettings();
 	const senders: Sender[] = [];
 	const personal = await personalSender(ctx, settings);
@@ -165,6 +173,17 @@ export async function listSenders(ctx: RequestContext): Promise<SendersResponse>
 			address: normalizeAddress(stammMail),
 			name,
 			label: `${name} <${normalizeAddress(stammMail)}>`
+		});
+	}
+
+	for (const x of opts.extras ?? (await myExtraMailboxes(ctx))) {
+		if (x.level !== 'edit') continue;
+		senders.push({
+			key: x.key,
+			kind: 'extra',
+			address: x.address,
+			name: x.name,
+			label: `${x.name} <${x.address}>`
 		});
 	}
 

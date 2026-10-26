@@ -99,7 +99,11 @@ export const messagingService: Pick<
 					LEFT JOIN members m ON m.id = gl.member_id AND ${activeLeader('m')}
 					LEFT JOIN member_user_links l ON l.member_id = m.id AND l.is_self
 					WHERE g.contact_email IS NOT NULL AND g.contact_email <> ''
-					ORDER BY g.name, g.id`
+					UNION ALL
+					SELECT g.id, g.name, g.contact_email, u.user_id
+					FROM groups g JOIN group_leader_users u ON u.group_id = g.id
+					WHERE g.contact_email IS NOT NULL AND g.contact_email <> ''
+					ORDER BY 2, 1`
 			)
 		);
 		const byId = new Map<string, GroupMailbox>();

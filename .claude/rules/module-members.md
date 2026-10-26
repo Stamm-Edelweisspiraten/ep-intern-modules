@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.11.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.12.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -38,7 +38,8 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `pages/` (weitere) | `FieldsPage` (Zusatzfelder, `FormBuilder`), `BulkDialog`, `LinksDialog`, öffentlich `LinkAccount`, `AddressFields` (+`countries.ts`), Profil `ProfileMembers`/`ProfileMemberCard`/`ProfileMailPrefs` (+`profile-shared.ts`), `download.ts`, Kachel `widgets/MyMembersWidget` |
 | `retention.service.ts`, `retention.endpoints.ts`, `pages/RetentionPage.svelte` | Löschfrist nach Austritt: Vorschlagsliste, Sammel-Anonymisieren (#30) |
 | `subject-export.ts` | Beitrag zur Datenauskunft (`subjectExport`: `findSubjects`, `resolve`, `run`) |
-| `migrations/0001_init.sql` … `0015_leader_self_link.sql` | Schema (0007 unbenutzt) |
+| `migrations/0001_init.sql` … `0016_leader_users.sql` | Schema (0007 unbenutzt) |
+| `pages/LeaderUserPicker.svelte` | Auswahl von Benutzerkonten als Gruppenleitung (Chips + Suche `GET /groups/leader-users`) |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),
@@ -111,6 +112,18 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
   `AddressFields` mit `apiBase` (Cache-Schlüssel enthält ihn).
 - Tests `tests/integration/members-leaders.test.ts` (Rolle nur mit eigenem Konto, Eltern nie, Zugriffsmatrix, gesperrte Felder, Dokumente mit Fake-Storage,
   PDFs, Adressen ohne Mitglieder-Anschriften, Rolle weg bei Leitungswechsel/Austritt/Job/Lösen/Kontolöschung, Rechteausweitung 403, Navigation).
+- **Konten als Leitung (Migr. 0016, v1.12.0, 2026-10-26, Nutzerentscheidung „Benutzer direkt wählen“)**: Tabelle `group_leader_users(group_id FK
+  CASCADE, user_id ohne FK, created_at, PK)`. Eine Gruppe braucht **mindestens eine Leitung** – Mitglied (`leaderIds`) **oder** Konto (`leaderUserIds`,
+  ≤ 20, neue nur aktive Konten, sonst 422 `leaderUserIds`; bereits eingetragene deaktivierte bleiben, Anzeige „Unbekannt“). DTO `Group.leaderUsers
+  [{ id, name, active }]` (Namen nach der Transaktion über `core.users.byIds`). Direkte Konten zählen überall wie eigene Konten leitender Mitglieder:
+  `ledGroupIds`, `syncLeaderGrants` (Rolle „Gruppenleitung“), `listGroupMailboxes.leaderUserIds`/`listLedGroups` (Gruppen-Postfach und -Absender in
+  `messages`), `principalIdsForUser` (`group:<id>`), `userIdsForPrincipals`; „einzige Leitung“ (Löschen/Anonymisieren) zählt Konten mit.
+  Rechteausweitung: neue Konto-Leitung → `assertCanGrantLeader(…, userIds)` → 403 ohne die Rechte der Rolle. `onUserDeleted`/`resetUsers` löschen die
+  Zeilen (`unlinkUsers`), Datenauskunft `accountLeaderOf`. **Website**: Konto-Leitungen erscheinen **nicht** (keine Website-Einwilligung).
+  `GET /groups/leader-users?search=` (`members.group.edit`, ab 2 Zeichen, E-Mail nur mit `core.users.view`). UI: Gruppendialog Abschnitt
+  „Gruppenleitung *“ mit Mitglieder-`MultiSelect` und `LeaderUserPicker`, Tabelle Spalte „Leitung“; Website-Feld heißt „E-Mail-Adresse der Gruppe“
+  (= Postfach der Leitungen). `messages` vergibt der Rolle „Gruppenleitung“ `messages.message.send` (`defaultRoleGrants`). Test
+  `tests/integration/members-leader-users.test.ts`.
 - Offen: Gruppenleitung kann keine Mitglieder anlegen/löschen (Entscheidung des Nutzers); kein Hinweis in der Gruppenliste, welche Leitung ein eigenes
   Konto hat; Verwaltungsrollen ohne `led-member.*` können Leitungen mit eigenem Konto nicht mehr eintragen (403, gewollt).
 
@@ -124,7 +137,8 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
 | PUT `/members/:id` | member.edit | `FOR UPDATE`; `custom` wird mit den gespeicherten Werten **zusammengeführt** (fehlend = unverändert, leer = gelöscht) |
 | DELETE `/members/:id` | member.delete | 409, wenn einziger Leiter einer Gruppe; entfernt Dateien best-effort |
 | GET `/groups`, `/groups/:id` | group.view | inkl. Leiter und `memberCount` |
-| POST `/groups`, PUT `/groups/:id` | group.edit | ≥ 1 Leiter (Mitglied, 422); Name case-insensitiv eindeutig (409) |
+| POST `/groups`, PUT `/groups/:id` | group.edit | ≥ 1 Leitung (Mitglied oder Konto, 422 `leaderIds`); Name case-insensitiv eindeutig (409) |
+| GET `/groups/leader-users?search=` | group.edit | aktive Konten für die Leitungsauswahl (ab 2 Zeichen, ≤ 30) |
 | DELETE `/groups/:id` | group.delete | 409, solange Mitglieder zugeordnet |
 | POST `/members/bulk` | member.edit (`delete`: zusätzlich member.delete) | Body `{ action: add-groups\|remove-groups\|set-stage\|set-consent\|delete, ids (1–2000 = `BULK_MAX_IDS`), … }`; Antwort `{ affected, skipped[{id,name,reason}] }`; unbekannte ID → 404 (nichts geändert); `remove-groups` lässt ≥ 1 Gruppe übrig, `delete` überspringt einzige Leiter (409-Grund); Audit `members.member.bulk_updated` ohne Namen |
 | POST/GET/DELETE `/members/:id/documents/:kind` | edit/view/edit | `kind` = `privacy`\|`registration`; Upload multipart Feld `file`, PDF/JPEG/PNG/WebP ≤ 10 MB; ersetzt altes |
@@ -297,7 +311,7 @@ bei DB-Fehler nach Upload wird die Datei wieder entfernt.
 - Eintritt/Austritt optional (`JJJJ-MM-TT`, leer → `null`), Austritt ≥ Eintritt (422 `exitDate`); Zweitmitglied braucht
   ≥ 1 Ebene (422 `feeLevels`); Ebenen werden in fester Reihenfolge dedupliziert.
 - Gruppe: `meetingWeekday` 1–7 (optional), `meetingTime` `HH:MM`, `meetingEndTime` `HH:MM` (optional; ohne Beginn bzw. Ende ≤ Beginn → 422
-  Pfad `meetingEndTime`), `color` Hex (wird normalisiert), `leaderIds` 1–20.
+  Pfad `meetingEndTime`), `color` Hex (wird normalisiert), `leaderIds` 0–20 + `leaderUserIds` 0–20, zusammen ≥ 1.
 
 ## UI
 - `MembersPage`: Zeilen klickbar (auch Enter/Leertaste) → `MemberForm` als Ansicht (`readonly`); Checkbox- und Aktionszelle stoppen den Klick.
@@ -327,7 +341,7 @@ Storage, 403/401/404, Audit, Mitgliedschaft: Eintritt/Austritt/Zweitmitglied, 42
 Upload-Erfolgspfad ist nicht getestet (kein S3; `tests/helpers/fake-storage.ts` wird hier nicht genutzt).
 
 ## Entscheidungen und Fallen
-- **Gruppen sind für Mitglieder optional** (früher Pflicht ab der ersten Gruppe); Gruppen brauchen weiterhin ≥ 1 Leiter (Mitglied).
+- **Gruppen sind für Mitglieder optional** (früher Pflicht ab der ersten Gruppe); Gruppen brauchen weiterhin ≥ 1 Leitung (Mitglied oder Konto).
 - `group_leaders.member_id` ist RESTRICT; `deleteMember` prüft zuerst „einziger Leiter“ (409), löscht dann die Leiter-Zeilen.
 - Stände sind eine feste Liste im Code (CHECK in der DB + `STAGES`); neuer Stand = neue Migration **und** Schema/Labels.
 - Core-Aufrufe (`storage`, `audit`) liegen bewusst **außerhalb** der Modul-Transaktion (PGlite).

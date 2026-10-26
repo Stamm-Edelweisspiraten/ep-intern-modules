@@ -4,7 +4,9 @@
  *
  * Zugriff = Absenderrecht (`GET /senders`): persönliches Postfach nur die Person selbst, Amtsadressen alle
  * Inhaber*innen, Gruppenadressen alle Leitungen, Stamm-Adresse zusätzlich mit `messages.inbox.stamm`,
- * „Nicht zugeordnet“ mit `messages.inbox.manage`. Alles setzt `messages.message.send` voraus.
+ * „Nicht zugeordnet“ mit `messages.inbox.manage`, zusätzliche Postfächer der Verwaltung über ihre Freigaben
+ * (Stufe „Lesen“ ohne Absender). Alles setzt `messages.message.send` voraus. Weiterleitungen erscheinen im
+ * Verzeichnis als weitere Adresse ihres Ziel-Postfachs (`alias: true`).
  * Core-Aufrufe nie innerhalb einer Modul-Transaktion.
  */
 import { core, errors, type RequestContext } from '$lib/sdk/server';
@@ -21,6 +23,7 @@ import {
 } from './mailbox';
 import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
 import { listSenders, loadSettings } from './sender.service';
+import { extraDirectoryEntries, loadAliasRows, myExtraMailboxes } from './extra-mailbox.service';
 import { MODULE_ID, PERM_INBOX_MANAGE, PERM_INBOX_STAMM, PERM_SEND } from './schemas';
 
 const system = () => core.auth.systemContext(MODULE_ID);
@@ -29,6 +32,8 @@ const system = () => core.auth.systemContext(MODULE_ID);
 export interface MailboxEntry extends MailboxTarget {
 	kind: MailboxKind;
 	userIds: string[];
+	/** Weiterleitung: weitere Adresse des Postfachs `key` (Name/Konten wie das Ziel) */
+	alias?: true;
 }
 
 /**
@@ -96,6 +101,17 @@ export async function loadMailboxDirectory(): Promise<MailboxEntry[]> {
 			userIds: stammUsers.filter((id) => senders.has(id))
 		});
 	}
+
+	out.push(...(await extraDirectoryEntries()));
+
+	// Weiterleitungen: Alias-Adresse mit Schlüssel, Name und Konten des Ziels (unbekanntes Ziel → übersprungen)
+	const byKey = new Map<string, MailboxEntry>();
+	for (const e of out) if (!byKey.has(e.key)) byKey.set(e.key, e);
+	for (const a of await loadAliasRows()) {
+		const target = byKey.get(a.targetKey);
+		if (!target) continue;
+		out.push({ ...target, address: a.address, alias: true });
+	}
 	return out;
 }
 
@@ -109,12 +125,17 @@ export interface AccessibleMailbox {
 	senderKey: string | null;
 }
 
-/** Postfächer der angemeldeten Person (Reihenfolge: persönlich, Ämter, Gruppen, Stamm, Nicht zugeordnet) */
+/**
+ * Postfächer der angemeldeten Person (Reihenfolge: persönlich, Ämter, Gruppen, Stamm, zusätzliche,
+ * Nicht zugeordnet)
+ */
 export async function accessibleMailboxes(ctx: RequestContext): Promise<AccessibleMailbox[]> {
 	if (!ctx.userId || !core.permissions.has(ctx, PERM_SEND)) return [];
-	const { senders } = await listSenders(ctx);
+	const extras = await myExtraMailboxes(ctx);
+	const { senders } = await listSenders(ctx, { extras });
 	const out: AccessibleMailbox[] = [];
 	for (const s of senders) {
+		if (s.kind === 'extra') continue;
 		if (s.kind === 'stamm' && !core.permissions.has(ctx, PERM_INBOX_STAMM)) continue;
 		const key = s.kind === 'personal' ? personalKey(ctx.userId) : s.key;
 		out.push({
@@ -124,6 +145,17 @@ export async function accessibleMailboxes(ctx: RequestContext): Promise<Accessib
 			name: s.kind === 'personal' ? 'Persönlich' : s.name,
 			shared: isSharedMailbox(key),
 			senderKey: senderKeyFor(key)
+		});
+	}
+	for (const x of extras) {
+		out.push({
+			key: x.key,
+			kind: 'extra',
+			address: x.address,
+			name: x.name,
+			shared: true,
+			// Stufe „Lesen“: kein Absender – Antworten gehen über einen eigenen Absender
+			senderKey: x.level === 'edit' ? x.key : null
 		});
 	}
 	if (core.permissions.has(ctx, PERM_INBOX_MANAGE)) {

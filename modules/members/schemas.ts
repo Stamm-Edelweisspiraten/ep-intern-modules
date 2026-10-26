@@ -361,7 +361,13 @@ export const groupInput = z
 	.object({
 		name: text(100),
 		type: z.enum(GROUP_TYPES, 'Bitte einen Typ wählen'),
-		leaderIds: z.array(id).min(1, 'Mindestens ein Gruppenleiter').max(20),
+		/** Leitende Mitglieder */
+		leaderIds: z.array(id).max(20, 'Höchstens 20 Gruppenleitungen').default([]),
+		/** Leitende Benutzerkonten (direkt, ohne Mitglied) */
+		leaderUserIds: z
+			.array(z.string().trim().min(1).max(100))
+			.max(20, 'Höchstens 20 Gruppenleitungen')
+			.default([]),
 		description: optionalText(2000, true),
 		meetingPlace: optionalText(200),
 		meetingWeekday: z
@@ -379,6 +385,13 @@ export const groupInput = z
 		website: z.lazy(() => groupWebsiteInput).optional()
 	})
 	.superRefine((v, ctx) => {
+		if (!v.leaderIds.length && !v.leaderUserIds.length) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['leaderIds'],
+				message: 'Mindestens eine Gruppenleitung'
+			});
+		}
 		if (!v.meetingEndTime) return;
 		if (!v.meetingTime) {
 			ctx.addIssue({
@@ -563,6 +576,13 @@ export interface GroupRef {
 	color: string | null;
 }
 
+/** Benutzerkonto als Gruppenleitung; `active = false` = deaktiviertes oder unbekanntes Konto */
+export interface GroupLeaderUser {
+	id: string;
+	name: string;
+	active: boolean;
+}
+
 export interface MemberRef {
 	id: string;
 	firstName: string;
@@ -648,6 +668,8 @@ export interface Group {
 	/** Cache-Busting-Wert für die Bild-URL (ISO-Zeitstempel der letzten Änderung) */
 	imageVersion: string | null;
 	leaders: MemberRef[];
+	/** Direkt leitende Benutzerkonten (ohne Mitglied) */
+	leaderUsers: GroupLeaderUser[];
 	memberCount: number;
 	website: GroupWebsite;
 	createdAt: string;

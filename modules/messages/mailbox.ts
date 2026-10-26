@@ -4,10 +4,11 @@
  *
  * Postfach-Schlüssel entsprechen den Absender-Schlüsseln aus `GET /senders`, nur das persönliche
  * Postfach trägt die Konto-ID: `personal:<userId>`, `office:<amtId>:<adresse>`, `group:<gruppenId>`,
- * `stamm`, dazu `unassigned` für Mails, die keinem Postfach zugeordnet werden konnten.
+ * `stamm`, zusätzliche Postfächer der Verwaltung `extra:<id>`, dazu `unassigned` für Mails, die keinem
+ * Postfach zugeordnet werden konnten.
  */
 
-export type MailboxKind = 'personal' | 'office' | 'group' | 'stamm' | 'unassigned';
+export type MailboxKind = 'personal' | 'office' | 'group' | 'stamm' | 'extra' | 'unassigned';
 
 export const UNASSIGNED = 'unassigned';
 
@@ -16,23 +17,32 @@ export const MESSAGE_ID_PATTERN = /^<[^\s<>@]{1,200}@[^\s<>@]{1,200}>$/;
 
 /** Postfach-Schlüssel gültig? (Format, keine Prüfung der Berechtigung) */
 export const MAILBOX_KEY_PATTERN =
-	/^(personal:[A-Za-z0-9_-]{1,100}|office:[A-Za-z0-9-]{1,100}:[^\s:]{3,254}|group:[A-Za-z0-9-]{1,100}|stamm|unassigned)$/;
+	/^(personal:[A-Za-z0-9_-]{1,100}|office:[A-Za-z0-9-]{1,100}:[^\s:]{3,254}|group:[A-Za-z0-9-]{1,100}|extra:[A-Za-z0-9-]{1,100}|stamm|unassigned)$/;
 
 export function personalKey(userId: string): string {
 	return `personal:${userId}`;
 }
 
+/** Schlüssel eines zusätzlichen Postfachs der Verwaltung */
+export function extraKey(id: string): string {
+	return `extra:${id}`;
+}
+
 export function kindOf(key: string): MailboxKind {
 	const kind = key.split(':')[0];
-	return kind === 'personal' || kind === 'office' || kind === 'group' || kind === 'stamm'
+	return kind === 'personal' ||
+		kind === 'office' ||
+		kind === 'group' ||
+		kind === 'stamm' ||
+		kind === 'extra'
 		? kind
 		: 'unassigned';
 }
 
-/** Gemeinsames Postfach (mehrere Personen): Amt, Gruppe, Stamm */
+/** Gemeinsames Postfach (mehrere Personen): Amt, Gruppe, Stamm, zusätzliches Postfach */
 export function isSharedMailbox(key: string): boolean {
 	const kind = kindOf(key);
-	return kind === 'office' || kind === 'group' || kind === 'stamm';
+	return kind === 'office' || kind === 'group' || kind === 'stamm' || kind === 'extra';
 }
 
 /** Absender-Schlüssel (`GET /senders`), mit dem aus diesem Postfach geantwortet wird */

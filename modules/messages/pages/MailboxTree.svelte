@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, type Component } from 'svelte';
+	import AtSign from '@lucide/svelte/icons/at-sign';
 	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -62,6 +63,7 @@
 		office: Briefcase,
 		group: Users,
 		stamm: Landmark,
+		extra: AtSign,
 		unassigned: Inbox
 	};
 	const SYSTEM_VIEWS = [

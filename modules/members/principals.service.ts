@@ -89,12 +89,14 @@ async function principalIdsForUser(
 				WHERE l.user_id = ${userId} AND ${ACTIVE} ORDER BY m.id`
 		);
 		const memberIds = members.map((r) => r.id as string);
-		if (!memberIds.length) return { memberIds, groupIds: [] };
+		// Direkt als Leitung eingetragene Konten gehören zur Gruppe wie leitende Mitglieder
 		const groups = await rowsOf(
 			tx,
 			sql`SELECT group_id FROM member_groups WHERE member_id IN (${inList(memberIds)})
 				UNION
-				SELECT group_id FROM group_leaders WHERE member_id IN (${inList(memberIds)})`
+				SELECT group_id FROM group_leaders WHERE member_id IN (${inList(memberIds)})
+				UNION
+				SELECT group_id FROM group_leader_users WHERE user_id = ${userId}`
 		);
 		const groupIds = [...new Set(groups.map((r) => r.group_id as string))].sort();
 		return { memberIds, groupIds };
@@ -174,13 +176,15 @@ async function userIdsForPrincipals(input: {
 	const found = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,
-			sql`SELECT DISTINCT l.user_id FROM member_user_links l
+			sql`SELECT l.user_id FROM member_user_links l
 				JOIN members m ON m.id = l.member_id
 				WHERE m.anonymized_at IS NULL AND ${ACTIVE} AND (
 					l.member_id IN (${inList(memberIds)})
 					OR l.member_id IN (SELECT member_id FROM member_groups WHERE group_id IN (${inList(groupIds)}))
 					OR l.member_id IN (SELECT member_id FROM group_leaders WHERE group_id IN (${inList(groupIds)}))
-				)`
+				)
+				UNION
+				SELECT user_id FROM group_leader_users WHERE group_id IN (${inList(groupIds)})`
 		)
 	);
 	return found.map((r) => String(r.user_id));

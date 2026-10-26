@@ -7,7 +7,8 @@ import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
 import { inboxEndpoints } from './inbox.endpoints';
 import { unreadTotal } from './inbox.service';
 import { messageEndpoints } from './messages.endpoints';
-import { onUserDeleted, subjectExport } from './privacy';
+import { mailboxAdminEndpoints } from './mailboxes-admin.endpoints';
+import { onMemberDeleted, onUserDeleted, subjectExport } from './privacy';
 import { isValidDomain } from './sender';
 import {
 	INBOX_RETENTION_DEFAULT,
@@ -16,6 +17,7 @@ import {
 	MAX_RECIPIENTS_LIMIT,
 	PERM_INBOX_MANAGE,
 	PERM_INBOX_STAMM,
+	PERM_MAILBOX_MANAGE,
 	PERM_SEND,
 	PERM_SETTINGS,
 	PERM_VIEW_ALL,
@@ -29,6 +31,7 @@ import m0002 from './migrations/0002_layout.sql?raw';
 import m0003 from './migrations/0003_inbox.sql?raw';
 import m0004 from './migrations/0004_inbox_folders.sql?raw';
 import m0005 from './migrations/0005_spam.sql?raw';
+import m0006 from './migrations/0006_extra_mailboxes.sql?raw';
 
 /** IMAP-Ordnername: druckbar, ohne Steuerzeichen und Platzhalter */
 const folderName = z
@@ -45,7 +48,7 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.5.0',
+		version: '1.6.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
 		permissions: [
@@ -54,7 +57,8 @@ export default defineModule({
 			PERM_SETTINGS,
 			PERM_INBOX_STAMM,
 			PERM_INBOX_MANAGE,
-			PERM_WEBSITE_CONTACT
+			PERM_WEBSITE_CONTACT,
+			PERM_MAILBOX_MANAGE
 		],
 		permissionDescriptions: {
 			[PERM_SEND]:
@@ -67,8 +71,12 @@ export default defineModule({
 			[PERM_INBOX_MANAGE]:
 				'Nicht zugeordnete Mails des Posteingangs sehen, einem Postfach zuordnen oder löschen und den Abruf auslösen',
 			[PERM_WEBSITE_CONTACT]:
-				'Nur Website-Endpunkte: Anfragen aus dem Kontakt- und dem Probestunden-Formular der Stammeswebsite in den Posteingang legen (Scope für den API-Key der Website)'
+				'Nur Website-Endpunkte: Anfragen aus dem Kontakt- und dem Probestunden-Formular der Stammeswebsite in den Posteingang legen (Scope für den API-Key der Website)',
+			[PERM_MAILBOX_MANAGE]:
+				'Zusätzliche Postfächer (z. B. für ein Lager) anlegen, ändern, löschen und an Benutzer*innen, Mitglieder oder Gruppen freigeben sowie Weiterleitungen weiterer Adressen in bestehende Postfächer verwalten'
 		},
+		// Gruppenleitungen lesen das Postfach ihrer Gruppe – dafür brauchen sie das Senden-Recht
+		defaultRoleGrants: { Gruppenleitung: [PERM_SEND] },
 		navigation: [
 			{
 				label: 'Nachrichten',
@@ -76,6 +84,13 @@ export default defineModule({
 				path: '/modules/messages',
 				permission: PERM_SEND,
 				order: 70
+			},
+			{
+				label: 'Postfächer',
+				icon: 'mail',
+				path: '/modules/messages/admin',
+				permission: PERM_MAILBOX_MANAGE,
+				admin: true
 			}
 		]
 	},
@@ -84,7 +99,8 @@ export default defineModule({
 		{ name: '0002_layout', sql: m0002 },
 		{ name: '0003_inbox', sql: m0003 },
 		{ name: '0004_inbox_folders', sql: m0004 },
-		{ name: '0005_spam', sql: m0005 }
+		{ name: '0005_spam', sql: m0005 },
+		{ name: '0006_extra_mailboxes', sql: m0006 }
 	],
 	settings: [
 		{
@@ -248,6 +264,7 @@ export default defineModule({
 	/** Ungelesene Mails der eigenen Postfächer am Eintrag „Nachrichten“ der Seitenleiste */
 	navBadge: { count: unreadTotal },
 	onUserDeleted,
+	onMemberDeleted,
 	subjectExport,
-	endpoints: [...contactEndpoints, ...messageEndpoints, ...inboxEndpoints]
+	endpoints: [...contactEndpoints, ...mailboxAdminEndpoints, ...messageEndpoints, ...inboxEndpoints]
 });

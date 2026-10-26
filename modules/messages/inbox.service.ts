@@ -462,7 +462,8 @@ export async function getInboxMessage(ctx: RequestContext, id: string): Promise<
 			kind: r.reply_of ? ('reply' as const) : ('forward' as const)
 		})),
 		thread: thread.length > 1 ? thread : [],
-		canReply: box.senderKey !== null
+		// Auch aus Nur-Lesen-Postfächern (zusätzliche Postfächer): dann mit eigenem Absender
+		canReply: box.kind !== 'unassigned'
 	};
 }
 
@@ -512,12 +513,14 @@ export async function setDeleted(
 export async function listAssignTargets(): Promise<
 	{ key: string; kind: string; name: string; address: string }[]
 > {
-	return (await loadMailboxDirectory()).map((e) => ({
-		key: e.key,
-		kind: e.kind,
-		name: e.kind === 'personal' ? `Persönlich: ${e.name}` : e.name,
-		address: e.address
-	}));
+	return (await loadMailboxDirectory())
+		.filter((e) => !e.alias)
+		.map((e) => ({
+			key: e.key,
+			kind: e.kind,
+			name: e.kind === 'personal' ? `Persönlich: ${e.name}` : e.name,
+			address: e.address
+		}));
 }
 
 /** Aus „Nicht zugeordnet“ einem Postfach zuordnen (nur mit `messages.inbox.manage`) */
@@ -626,7 +629,8 @@ export async function composePrefill(
 	mode: ComposeMode
 ): Promise<ComposePrefill> {
 	const { row, box } = await loadInboxRow(ctx, id);
-	if (!box.senderKey) {
+	// Nur-Lesen-Postfach (zusätzliches Postfach mit Stufe „Lesen“): Vorbelegung ohne Postfach-Absender
+	if (box.kind === 'unassigned') {
 		throw errors.conflict(
 			'Aus „Nicht zugeordnet“ kann nicht geantwortet werden – bitte erst zuordnen'
 		);

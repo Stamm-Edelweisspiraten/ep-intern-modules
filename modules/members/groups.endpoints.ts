@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import {
+	type AnyApiEndpoint,
 	type ApiEndpoint,
 	core,
+	defineEndpoint,
 	errors,
 	inList,
 	isUniqueViolation,
@@ -17,8 +19,11 @@ import {
 	idParams,
 	type Group,
 	type GroupInput,
+	type GroupLeaderUser,
 	type GroupType,
 	type GroupWebsite,
+	type LinkUserRef,
+	linkUserSearchQuery,
 	type MemberRef
 } from './schemas';
 import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
@@ -73,6 +78,20 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		leadersBy.set(String(r.group_id), list);
 	}
 
+	// Namen der Konten löst `withLeaderNames` nach der Transaktion auf (Core-Dienst)
+	const userRows = resultRows(
+		await tx.execute(
+			sql`SELECT group_id, user_id FROM group_leader_users
+				WHERE group_id IN (${ids}) ORDER BY created_at, user_id`
+		)
+	);
+	const usersBy = new Map<string, GroupLeaderUser[]>();
+	for (const r of userRows) {
+		const list = usersBy.get(String(r.group_id)) ?? [];
+		list.push({ id: String(r.user_id), name: '', active: false });
+		usersBy.set(String(r.group_id), list);
+	}
+
 	return groups.map((g) => ({
 		id: String(g.id),
 		name: String(g.name),
@@ -86,6 +105,7 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		hasImage: Boolean(g.has_image),
 		imageVersion: g.has_image ? toIso(g.updated_at) : null,
 		leaders: leadersBy.get(String(g.id)) ?? [],
+		leaderUsers: usersBy.get(String(g.id)) ?? [],
 		memberCount: countBy.get(String(g.id)) ?? 0,
 		website: websiteOf(g),
 		createdAt: toIso(g.created_at),
@@ -103,6 +123,22 @@ function websiteOf(g: Row): GroupWebsite {
 		ageRange: textOrNull(g.age_range),
 		contactEmail: textOrNull(g.contact_email)
 	};
+}
+
+/** Namen der leitenden Konten ergänzen (nach der Transaktion); deaktiviert/gelöscht → „Unbekannt“ */
+async function withLeaderNames(ctx: RequestContext, groups: Group[]): Promise<Group[]> {
+	const ids = groups.flatMap((g) => g.leaderUsers.map((u) => u.id));
+	if (!ids.length) return groups;
+	const users = await core.users.byIds(ctx, ids);
+	for (const g of groups) {
+		g.leaderUsers = g.leaderUsers
+			.map((u) => {
+				const found = users.get(u.id);
+				return { id: u.id, name: found?.name ?? 'Unbekannt', active: !!found };
+			})
+			.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+	}
+	return groups;
 }
 
 async function requireGroup(tx: Tx, id: string): Promise<Group> {
@@ -153,32 +189,58 @@ async function writeWebsite(
 	);
 }
 
-async function replaceLeaders(tx: Tx, groupId: string, leaderIds: string[]): Promise<void> {
+async function replaceLeaders(
+	tx: Tx,
+	groupId: string,
+	leaderIds: string[],
+	leaderUserIds: string[]
+): Promise<void> {
 	await tx.execute(sql`DELETE FROM group_leaders WHERE group_id = ${groupId}`);
 	for (const memberId of leaderIds) {
 		await tx.execute(
 			sql`INSERT INTO group_leaders (group_id, member_id) VALUES (${groupId}, ${memberId})`
 		);
 	}
+	await tx.execute(sql`DELETE FROM group_leader_users WHERE group_id = ${groupId}`);
+	for (const userId of leaderUserIds) {
+		await tx.execute(
+			sql`INSERT INTO group_leader_users (group_id, user_id) VALUES (${groupId}, ${userId})`
+		);
+	}
 }
 
-/** Neu hinzukommende Leitungen (gegenüber dem gespeicherten Stand) */
-async function addedLeaders(id: string | null, leaderIds: string[]): Promise<string[]> {
-	if (!id) return [...new Set(leaderIds)];
-	const current = await moduleDb(MODULE).transaction(async (tx) =>
-		resultRows(
+/** Gespeicherte Leitungen (Mitglieder und Konten); neue Gruppe → leer */
+async function currentLeaders(id: string | null): Promise<{ members: string[]; users: string[] }> {
+	if (!id) return { members: [], users: [] };
+	return moduleDb(MODULE).transaction(async (tx) => ({
+		members: resultRows(
 			await tx.execute(sql`SELECT member_id FROM group_leaders WHERE group_id = ${id}`)
-		).map((r) => String(r.member_id))
-	);
-	return [...new Set(leaderIds)].filter((m) => !current.includes(m));
+		).map((r) => String(r.member_id)),
+		users: resultRows(
+			await tx.execute(sql`SELECT user_id FROM group_leader_users WHERE group_id = ${id}`)
+		).map((r) => String(r.user_id))
+	}));
 }
 
 async function save(ctx: RequestContext, id: string | null, input: GroupInput): Promise<Group> {
-	// Neue Leitung mit eigenem Konto erhält die Rolle „Gruppenleitung“ → Rechteprüfung vorab (403)
-	await assertCanGrantLeader(ctx, await addedLeaders(id, input.leaderIds), 'becomesLeader');
-	const group = await saveGroup(id, input);
+	const current = await currentLeaders(id);
+	const leaderUserIds = [...new Set(input.leaderUserIds)];
+	const addedMembers = [...new Set(input.leaderIds)].filter((m) => !current.members.includes(m));
+	const addedUsers = leaderUserIds.filter((u) => !current.users.includes(u));
+	// Neue Konten müssen aktiv sein; bereits eingetragene, inzwischen deaktivierte dürfen bleiben
+	if (addedUsers.length) {
+		const active = await core.users.byIds(ctx, addedUsers);
+		if (addedUsers.some((u) => !active.has(u))) {
+			throw errors.validation({
+				leaderUserIds: 'Unbekanntes oder deaktiviertes Benutzerkonto als Gruppenleitung'
+			});
+		}
+	}
+	// Neue Leitung mit Konto erhält die Rolle „Gruppenleitung“ → Rechteprüfung vorab (403)
+	await assertCanGrantLeader(ctx, addedMembers, 'becomesLeader', addedUsers);
+	const group = await saveGroup(id, { ...input, leaderUserIds });
 	await syncLeaderGrantsAfterChange(ctx);
-	return group;
+	return (await withLeaderNames(ctx, [group]))[0]!;
 }
 
 async function saveGroup(id: string | null, input: GroupInput): Promise<Group> {
@@ -210,7 +272,7 @@ async function saveGroup(id: string | null, input: GroupInput): Promise<Group> {
 				await assertSlugFree(tx, input.website.slug, groupId);
 				await writeWebsite(tx, groupId, input.website);
 			}
-			await replaceLeaders(tx, groupId, leaderIds);
+			await replaceLeaders(tx, groupId, leaderIds, input.leaderUserIds);
 			return requireGroup(tx, groupId);
 		});
 	} catch (e) {
@@ -228,15 +290,30 @@ function auditMeta(group: Group, input: GroupInput): Record<string, unknown> {
 		: { name: group.name };
 }
 
-export const groupEndpoints: ApiEndpoint[] = [
+export const groupEndpoints: AnyApiEndpoint[] = [
 	{
 		method: 'GET',
 		path: '/groups',
 		summary: 'Gruppen auflisten',
 		tags: ['Modul: members'],
 		permission: 'members.group.view',
-		handler: async () => moduleDb(MODULE).transaction((tx) => loadGroups(tx))
+		handler: async ({ ctx }) =>
+			withLeaderNames(ctx, await moduleDb(MODULE).transaction((tx) => loadGroups(tx)))
 	} as ApiEndpoint,
+	defineEndpoint({
+		method: 'GET',
+		path: '/groups/leader-users',
+		summary: 'Aktive Benutzerkonten als Gruppenleitung suchen (ab 2 Zeichen)',
+		tags: ['Modul: members'],
+		permission: 'members.group.edit',
+		query: linkUserSearchQuery,
+		handler: async ({ ctx, query }): Promise<LinkUserRef[]> => {
+			if (query.search.length < 2) return [];
+			// E-Mail nur nach den Core-Regeln (core.users.view), sonst leer
+			const users = await core.users.directory(ctx, { search: query.search, limit: 30 });
+			return users.map((u) => ({ id: u.id, name: u.name, email: u.email }));
+		}
+	}),
 	{
 		method: 'GET',
 		path: '/groups/:id',
@@ -244,8 +321,12 @@ export const groupEndpoints: ApiEndpoint[] = [
 		tags: ['Modul: members'],
 		permission: 'members.group.view',
 		params: idParams,
-		handler: async ({ params }) =>
-			moduleDb(MODULE).transaction((tx) => requireGroup(tx, (params as { id: string }).id))
+		handler: async ({ ctx, params }) => {
+			const group = await moduleDb(MODULE).transaction((tx) =>
+				requireGroup(tx, (params as { id: string }).id)
+			);
+			return (await withLeaderNames(ctx, [group]))[0]!;
+		}
 	} as ApiEndpoint,
 	{
 		method: 'POST',

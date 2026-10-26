@@ -22,6 +22,7 @@ export const resetAreas: ResetArea[] = [
 			'member_link_codes',
 			'member_user_links',
 			'group_leaders',
+			'group_leader_users',
 			'member_groups',
 			'member_phones',
 			'member_emails',
@@ -53,11 +54,13 @@ export const resetAreas: ResetArea[] = [
 ];
 
 /**
- * Konto-Verknüpfungen lösen; `match` erzeugt die Bedingung für `user_id` – gemeinsam genutzt von
- * `resetUsers` (alle außer einer Person) und `onUserDeleted` (eine Person, `user-deleted.ts`).
+ * Konto-Verknüpfungen und Gruppenleitungen per Konto lösen; `match` erzeugt die Bedingung für
+ * `user_id` – gemeinsam genutzt von `resetUsers` (alle außer einer Person) und `onUserDeleted`
+ * (eine Person, `user-deleted.ts`).
  */
 export async function unlinkUsers(tx: Tx, match: (col: SQL) => SQL): Promise<void> {
 	await tx.execute(sql`DELETE FROM member_user_links WHERE ${match(sql.raw('user_id'))}`);
+	await tx.execute(sql`DELETE FROM group_leader_users WHERE ${match(sql.raw('user_id'))}`);
 }
 
 /** Verweise auf gelöschte Benutzer bereinigen (läuft im Modulschema). */

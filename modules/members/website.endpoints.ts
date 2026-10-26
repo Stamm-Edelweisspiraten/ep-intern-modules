@@ -44,7 +44,8 @@ const GROUP_SELECT = sql`SELECT id, name, type, description, website_description
 
 /**
  * Vornamen der Leitenden je Gruppe. Nur mit Website-Einwilligung (`consent_website`, #27);
- * ausgetretene Mitglieder (Austritt ≤ heute) entfallen.
+ * ausgetretene Mitglieder (Austritt ≤ heute) entfallen. Direkt leitende Konten (`group_leader_users`)
+ * erscheinen nicht – für sie gibt es keine Website-Einwilligung.
  */
 async function leadersByGroup(tx: Tx, groupIds: string[]): Promise<Map<string, string[]>> {
 	const map = new Map<string, string[]>();

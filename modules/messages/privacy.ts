@@ -2,7 +2,9 @@
  * Datenschutz im Modul `messages`:
  * - `onUserDeleted`: persönliches Postfach (inkl. Ordner und Anhänge im Speicher), Gelesen-Markierungen und
  *   Benachrichtigungs-Einstellungen der Person löschen; Verweise (`deleted_by`, `spam_marked_by`,
- *   `created_by`, auch an der Sperr-/Vertrauensliste) → `NULL`.
+ *   `created_by`, auch an der Sperr-/Vertrauensliste) → `NULL`. Freigaben zusätzlicher Postfächer an das
+ *   Konto und Weiterleitungen auf sein persönliches Postfach entfallen.
+ * - `onMemberDeleted`: Freigaben zusätzlicher Postfächer an gelöschte/anonymisierte Mitglieder entfallen.
  * - `subjectExport`: Datenauskunft für ein Konto (gesendete Nachrichten, persönliches Postfach als
  *   Metadaten, Einstellungen). Inhalte gemeinsamer Postfächer gehören nicht der Person und fehlen.
  * Keine Core-Dienste innerhalb der Transaktion (Speicher erst in `afterCommit`).
@@ -11,6 +13,7 @@ import { sql } from 'drizzle-orm';
 import {
 	bestEffort,
 	core,
+	inList,
 	moduleDb,
 	rowsOf,
 	toIso,
@@ -39,6 +42,15 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (tx, { use
 		sql`UPDATE inbox_messages SET spam_marked_by = NULL WHERE spam_marked_by = ${userId}`
 	);
 	await tx.execute(sql`UPDATE sender_rules SET created_by = NULL WHERE created_by = ${userId}`);
+	await tx.execute(
+		sql`DELETE FROM extra_mailbox_shares WHERE principal_type = 'user' AND principal_id = ${userId}`
+	);
+	await tx.execute(
+		sql`UPDATE extra_mailbox_shares SET created_by = NULL WHERE created_by = ${userId}`
+	);
+	await tx.execute(sql`UPDATE extra_mailboxes SET created_by = NULL WHERE created_by = ${userId}`);
+	await tx.execute(sql`DELETE FROM mailbox_aliases WHERE target_key = ${key}`);
+	await tx.execute(sql`UPDATE mailbox_aliases SET created_by = NULL WHERE created_by = ${userId}`);
 	const paths = files.map((f) => String(f.storage_path));
 	return {
 		afterCommit: async () => {
@@ -48,6 +60,14 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (tx, { use
 			);
 		}
 	};
+};
+
+export const onMemberDeleted: ModuleDefinition['onMemberDeleted'] = async (tx, { memberIds }) => {
+	if (!memberIds.length) return;
+	await tx.execute(
+		sql`DELETE FROM extra_mailbox_shares WHERE principal_type = 'member'
+			AND principal_id IN (${inList(memberIds)})`
+	);
 };
 
 async function run(subject: DataSubject): Promise<Record<string, unknown> | null> {
