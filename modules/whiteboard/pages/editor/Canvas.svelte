@@ -30,7 +30,8 @@
 		background,
 		peers,
 		coarse,
-		ariaLabel
+		ariaLabel,
+		surface = null
 	}: {
 		ctrl: EditorController;
 		rc: RenderContext;
@@ -38,6 +39,8 @@
 		peers: PresenceUser[];
 		coarse: boolean;
 		ariaLabel: string;
+		/** Feste Flächenfarbe (persönliche Einstellung) – `null` = durchsichtig, Modus/Theme scheint durch */
+		surface?: string | null;
 	} = $props();
 
 	const store = $derived(ctrl.store);
@@ -257,8 +260,8 @@
 	});
 </script>
 
-<!-- durchsichtig: Seitenhintergrund bzw. Theme scheint durch -->
-<div class="relative h-full w-full overflow-hidden">
+<!-- feste Farbe oder durchsichtig (Seitenhintergrund bzw. Theme scheint durch) -->
+<div class="relative h-full w-full overflow-hidden" style:background-color={surface ?? undefined}>
 	<!-- Zeichenfläche als Anwendung: Tastenkürzel siehe aria-label, Fokus für die Tastatur -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<svg

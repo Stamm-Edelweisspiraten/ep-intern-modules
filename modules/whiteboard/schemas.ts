@@ -578,6 +578,37 @@ export const pdfExportFields = z.object({
 	orientation: z.enum(['landscape', 'portrait']).default('landscape')
 });
 
+// --- Persönliche Einstellungen ------------------------------------------------
+
+export const SURFACE_MODES = ['fixed', 'theme'] as const;
+export type SurfaceMode = (typeof SURFACE_MODES)[number];
+export const DEFAULT_SURFACE_COLOR = '#ffffff';
+export const SURFACE_PRESETS = [
+	{ value: '#ffffff', label: 'Weiß' },
+	{ value: '#111827', label: 'Schwarz' }
+] as const;
+
+/** Fläche: fest (gleiche Farbe in Hell/Dunkel und mit jedem Theme) oder wie Modus/Theme */
+export const surfacePrefs = z
+	.object({
+		mode: z.enum(SURFACE_MODES).default('fixed'),
+		color: z
+			.string()
+			.regex(/^#[0-9a-fA-F]{6}$/, 'Farbe als #rrggbb')
+			.transform((v) => v.toLowerCase())
+			.default(DEFAULT_SURFACE_COLOR)
+	})
+	.strict();
+
+/** PUT `/me/prefs` (gespeicherte Werte werden beim Lesen ebenso geprüft, Unbekanntes fällt weg) */
+export const userPrefsInput = z
+	.object({ surface: surfacePrefs.default({ mode: 'fixed', color: DEFAULT_SURFACE_COLOR }) })
+	.strict();
+export type UserPrefs = z.output<typeof userPrefsInput>;
+export const DEFAULT_USER_PREFS: UserPrefs = {
+	surface: { mode: 'fixed', color: DEFAULT_SURFACE_COLOR }
+};
+
 // --- Antworten (DTOs) -------------------------------------------------------
 
 export interface UserRef {

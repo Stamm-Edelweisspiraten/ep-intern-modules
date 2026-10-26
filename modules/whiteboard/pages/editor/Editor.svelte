@@ -46,6 +46,8 @@
 		type Board,
 		type BoardDetail,
 		type BoardShares,
+		DEFAULT_USER_PREFS,
+		type UserPrefs,
 		type RefCard,
 		type RefType,
 		type WbElement
@@ -60,7 +62,8 @@
 	import LinkDialog from './LinkDialog.svelte';
 	import PropertiesBar from './PropertiesBar.svelte';
 	import RefPicker from './RefPicker.svelte';
-	import { assetUrl, LIGHT, readPalette, type Palette } from './render';
+	import { assetUrl, fixedPalette, LIGHT, readPalette, type Palette } from './render';
+	import SurfaceMenu from './SurfaceMenu.svelte';
 	import { BoardStore } from './store.svelte';
 	import { BoardSync } from './sync.svelte';
 	import { browserMeasure } from './text-layout';
@@ -125,7 +128,28 @@
 	// --- Darstellung ---------------------------------------------------------------
 	const measure = browserMeasure();
 	/** Farben aus Dunkelmodus/Theme; bei jedem Wechsel (Klasse/Stil am <html>) neu gelesen */
-	let palette = $state<Palette>(LIGHT);
+	let themePalette = $state<Palette>(LIGHT);
+	/** Persönliche Ansicht (Standard: feste weiße Fläche) */
+	let prefs = $state<UserPrefs>(DEFAULT_USER_PREFS);
+	const fixedSurface = $derived(prefs.surface.mode === 'fixed' ? prefs.surface.color : null);
+	const palette = $derived(fixedSurface ? fixedPalette(fixedSurface) : themePalette);
+
+	let prefsTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Fläche ändern: sofort zeigen, kurz gebündelt speichern */
+	function setSurface(surface: UserPrefs['surface']) {
+		const before = prefs;
+		prefs = { ...prefs, surface };
+		if (prefsTimer) clearTimeout(prefsTimer);
+		prefsTimer = setTimeout(() => {
+			prefsTimer = null;
+			apiFetch<UserPrefs>(`${BASE}/me/prefs`, { method: 'PUT', body: JSON.stringify(prefs) }).catch(
+				(e) => {
+					prefs = before;
+					toast.error(errMsg(e, 'Einstellung konnte nicht gespeichert werden'));
+				}
+			);
+		}, 400);
+	}
 	const rc: RenderContext = $derived({
 		lookup: (id) => store.get(id),
 		assets: store.assets,
@@ -623,10 +647,13 @@
 	// --- Lebenszyklus ---
 	let observer: ResizeObserver | null = null;
 	onMount(() => {
-		palette = readPalette();
+		themePalette = readPalette();
+		void apiFetch<UserPrefs>(`${BASE}/me/prefs`)
+			.then((p) => (prefs = p))
+			.catch(() => undefined);
 		const themeObserver = new MutationObserver(() => {
 			// erst nach dem Umschalten der Klassen/Variablen lesen
-			requestAnimationFrame(() => (palette = readPalette()));
+			requestAnimationFrame(() => (themePalette = readPalette()));
 		});
 		themeObserver.observe(document.documentElement, {
 			attributes: true,
@@ -847,6 +874,7 @@
 							{ctrl}
 							{rc}
 							background={board.background}
+							surface={fixedSurface}
 							{peers}
 							{coarse}
 							ariaLabel={`Whiteboard „${board.name}“. Werkzeuge über die Leiste oder Tasten (V Auswählen, N Notiz, R Form, T Text, L Verbinden, P Stift). Strg+Z rückgängig.`}
@@ -968,6 +996,8 @@
 					</Button>
 					<div class="mx-0.5 h-6 w-px bg-border" aria-hidden="true"></div>
 				{/if}
+				<SurfaceMenu {prefs} onchange={setSurface} />
+				<div class="mx-0.5 h-6 w-px bg-border" aria-hidden="true"></div>
 				<Button
 					variant="ghost"
 					size="icon"
