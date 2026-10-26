@@ -48,6 +48,8 @@ import m0019 from './migrations/0019_registration_optin.sql?raw';
 import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
 import m0021 from './migrations/0021_camp_fees.sql?raw';
 import m0022 from './migrations/0022_principal_shares.sql?raw';
+import m0023 from './migrations/0023_subsidy_application.sql?raw';
+import { PARISH_SETTING, subsidyApplicationEndpoints } from './subsidy-application.endpoints';
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
@@ -57,7 +59,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.5.0',
+		version: '1.6.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -120,6 +122,14 @@ export default defineModule({
 			description: 'Platzhalter: {{aktion}}. Beispiel: „{{aktion}} + Name“.',
 			schema: z.string().max(140),
 			default: '{{aktion}} + Name'
+		},
+		{
+			key: PARISH_SETTING,
+			label: 'Gemeinde im Zuschussantrag',
+			description:
+				'Erscheint im Antrag beim Landesjugendpfarramt (Feld „Gemeinde“). Die Bankverbindung kommt aus der Kasse bzw. den Kontodaten oben.',
+			schema: z.string().max(120),
+			default: ''
 		},
 		healthRetentionSetting
 	],
@@ -188,7 +198,8 @@ export default defineModule({
 		{ name: '0019_registration_optin', sql: m0019 },
 		{ name: '0020_link_token_hash_constraints', sql: m0020 },
 		{ name: '0021_camp_fees', sql: m0021 },
-		{ name: '0022_principal_shares', sql: m0022 }
+		{ name: '0022_principal_shares', sql: m0022 },
+		{ name: '0023_subsidy_application', sql: m0023 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [
@@ -243,7 +254,8 @@ export default defineModule({
 			...refundEndpoints,
 			...exportImportEndpoints,
 			...interimEndpoints,
-			...expenseLinkEndpoints
+			...expenseLinkEndpoints,
+			...subsidyApplicationEndpoints
 		])
 	)
 });

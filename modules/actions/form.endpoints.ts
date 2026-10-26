@@ -182,7 +182,7 @@ async function loadById(tx: Tx, id: string): Promise<Loaded> {
 }
 
 /** Kontodaten für Anmeldetexte: bei aktiver Kasse aus deren Einstellungen, sonst aus `actions.bank.*` */
-async function readSettings() {
+export async function readSettings() {
 	const s = await core.settings.getMany(SETTING_KEYS);
 	const s1 = (k: string) => (typeof s[k] === 'string' ? (s[k] as string) : '');
 	let treasuryBank: Awaited<ReturnType<TreasuryService['bankData']>> | null;

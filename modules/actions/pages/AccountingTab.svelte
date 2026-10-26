@@ -29,6 +29,7 @@
 	import InterimsCard from './InterimsCard.svelte';
 	import ExpenseLinkSection from './ExpenseLinkSection.svelte';
 	import CloseAccountingDialog from './CloseAccountingDialog.svelte';
+	import SubsidyApplicationSection from './SubsidyApplicationSection.svelte';
 
 	let {
 		actionId,
@@ -54,7 +55,7 @@
 	let busy = $state(false);
 
 	/** Unterbereich des Tabs (immer nur einer sichtbar) */
-	type Section = 'entries' | 'payouts' | 'submissions' | 'interims' | 'refund';
+	type Section = 'entries' | 'payouts' | 'submissions' | 'interims' | 'refund' | 'subsidy';
 	let section = $state<Section>('entries');
 	/** Offene Einreichungen über den Kosten-Link (Zähler an der Umschaltleiste) */
 	let pendingSubmissions = $state(0);
@@ -298,6 +299,7 @@
 					{/if}
 				</Tabs.Trigger>
 				<Tabs.Trigger value="refund">Rückzahlung</Tabs.Trigger>
+				<Tabs.Trigger value="subsidy">Zuschussantrag</Tabs.Trigger>
 			</Tabs.List>
 
 			<Tabs.Content value="entries" class="pt-4">
@@ -353,6 +355,10 @@
 
 			<Tabs.Content value="refund" class="pt-4">
 				<RefundCard {actionId} {editable} {reloadKey} onchanged={load} />
+			</Tabs.Content>
+
+			<Tabs.Content value="subsidy" class="pt-4">
+				<SubsidyApplicationSection {actionId} {canEdit} />
 			</Tabs.Content>
 		</Tabs.Root>
 	</div>

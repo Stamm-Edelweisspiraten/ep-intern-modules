@@ -126,6 +126,11 @@ export const onMemberDeleted: ModuleDefinition['onMemberDeleted'] = async (tx, {
 		memberIds.map((id) => sql`${id}`),
 		sql`, `
 	);
+	// Geschlecht für den Zuschussantrag gehört zur Person, nicht zur Aktion
+	await tx.execute(
+		sql`DELETE FROM subsidy_application_leaders WHERE participant_id IN
+				(SELECT id FROM action_participants WHERE member_id IN (${list}))`
+	);
 	await tx.execute(
 		sql`UPDATE action_participants SET name = ${ANONYMIZED_NAME}, contact_email = NULL,
 				diet = NULL, allergies = NULL, notes = NULL, health_answers = NULL,
@@ -152,7 +157,9 @@ export const subjectExport: ModuleSubjectExport = {
 			const participants = await rowsOf(
 				tx,
 				sql`SELECT p.*, a.name AS action_name, a.starts_on AS action_starts_on,
-						a.ends_on AS action_ends_on
+						a.ends_on AS action_ends_on,
+						(SELECT l.gender FROM subsidy_application_leaders l WHERE l.participant_id = p.id)
+							AS leader_gender
 					FROM action_participants p JOIN actions a ON a.id = p.action_id
 					WHERE ${sql.join(conds, sql` OR `)}
 					ORDER BY a.starts_on, p.created_at`
@@ -197,6 +204,8 @@ export const subjectExport: ModuleSubjectExport = {
 						answers: h.answers,
 						source: String(p.source),
 						memberId: p.member_id ?? null,
+						/** nur für den Zuschussantrag erfasst (Leitung weiblich/männlich) */
+						subsidyLeaderGender: p.leader_gender ?? null,
 						consentAcceptedAt: toIsoOrNull(p.consent_accepted_at),
 						createdAt: toIsoOrNull(p.created_at),
 						updatedAt: toIsoOrNull(p.updated_at)

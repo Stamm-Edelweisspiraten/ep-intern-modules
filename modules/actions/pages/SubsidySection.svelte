@@ -306,6 +306,10 @@
 					{/each}
 				</fieldset>
 			{/if}
+			<p class="mt-3 text-xs text-muted-foreground">
+				Den fertig ausgefüllten Antrag für das Landesjugendpfarramt findest du unter Abrechnung ›
+				Zuschussantrag.
+			</p>
 		</div>
 	</Card.Content>
 </Card.Root>

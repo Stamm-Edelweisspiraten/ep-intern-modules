@@ -20,6 +20,7 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 | `actions.endpoints.ts`, `participants.endpoints.ts` | Aktionen, Teilnehmende |
 | `calculation.ts` (rein), `calculation.endpoints.ts` | Kalkulation, Vorschläge, Beitrag übernehmen |
 | `subsidy.ts` (rein) | Zuschuss/Taschengeld Richtlinie 2026 |
+| `subsidy-application.ts` (rein), `subsidy-application-pdf.ts`, `subsidy-application.endpoints.ts`, `assets/zuschussantrag-bek.pdf` | Zuschussantrag beim Landesjugendpfarramt (siehe „Zuschussantrag“) |
 | `subsidy-eligibility.ts` (rein) | `effectiveSubsidyEligible`, `deriveSubsidyCounts` (EINE Klassifikation für Vorschläge und Abrechnung) |
 | `auto-income.ts` (rein) | `computeAutoIncome`, `appliedAutoIncome` (automatische Einnahmen) |
 | `form-support.ts` (rein), `form.endpoints.ts` | Anmeldeformular: Standardfelder, Disclaimer, Status, CSV, öffentliche Endpoints |
@@ -79,6 +80,8 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
   Die Kategorien stehen **am Ende** von `CALC_CATEGORIES`, damit Belegnummern bestehender Abrechnungen gleich bleiben.
 - **0022** (2026-10-25) `action_shares`: `user_id` → `principal_id`, neue Spalte `principal_type` (CHECK everyone|group|role|user|member), PK
   `(action_id, principal_type, principal_id)`, Index `(principal_type, principal_id)`; Bestand wird `user`. Upgrade-Test in `module-data-migrations.test.ts`.
+- **0023** (2026-10-26) `subsidy_applications` (1:1 Aktion: `freizeit_art`, `topic`, `inclusion`) und `subsidy_application_leaders`
+  (`participant_id` FK CASCADE, `gender` female|male) – Geschlecht **nur** für den Zuschussantrag.
 - Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
 - Kein Fremdschlüssel auf Core-Tabellen (`owner_id`, `user_id`, `created_by` sind `text`).
 
@@ -142,6 +145,28 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Nur Teilnehmende aus Bremen/Bremerhaven; Kinder 0–11, Jugend 12–27 **inkl. Teamer*innen 12–27** (`teamYouth`).
 - Taschengeld Ehrenamtliche: mit Juleica 15 €, ohne 10 € je Nacht; Limit 1 je 5 Kinder (`kids`) bzw. 1 je 7 Jugendliche (`youth`).
 - Warnungen als Texte im Ergebnis; Förder-Checkliste = `CHECKLIST_ITEMS` (5 Punkte, Autosave).
+
+## Zuschussantrag (Migr. 0023, v1.6.0, 2026-10-26)
+- Erzeugt das **Original-Formular** „Antrag und Abrechnung – Zuschüsse für Freizeiten und Fahrten“ (Landesjugendpfarramt BEK, Download
+  ejb 241930; `assets/zuschussantrag-bek.pdf`, per `?inline` eingebettet, ohne Formularfelder) per **pdf-lib-Overlay** (`fillSubsidyApplicationPdf`,
+  Koordinaten `PAGE1`/`PAGE2` aus den Linien der Vorlage, Helvetica/WinAnsi, unbekannte Zeichen → `?`, zu lange Texte verkleinert/gekürzt).
+  Bei neuer Vorlage Koordinaten neu ausmessen und per Rendering prüfen.
+- Ausgefüllt: Art, Gemeinde (Einstellung `actions.subsidy.parish`), vom/bis, Ort, Thema (Standard Aktionsname), Leitungen weiblich/männlich, Kästchen Inklusion,
+  Kinder/Jugend: Anzahl + Nächte, Bank (`readSettings` aus `form.endpoints.ts`: Kasse, sonst `actions.bank.*`), Rückseite Namenslisten + Taschengeld
+  (Name, Juleica-Kreuz, Nächte × Satz = Betrag). **Leer**: €-Spalte (Landesjugendpfarramt), Unterschriften, Beruf, „Bremen, den“.
+- Aufteilung `planSubsidyApplications` (rein): je Antrag ≤ 20 Kinder (0–11), ≤ 20 Jugendliche (12–27 **inkl. berechtigtem Team**), ≤ 5 Taschengeld-Zeilen.
+  Klassifikation wie `deriveSubsidyCounts`. Nötig `max(1, ⌈K/20⌉, ⌈J/20⌉)`, möglich = Leitungspaare (je eine weibliche + männliche Leitung) → **so viele wie
+  möglich** (Nutzerentscheidung), Rest in `unassigned` (`children-full|youth-full|allowance-limit`); ohne Paar trotzdem 1 Antrag + Warnung. Paar i → Antrag i,
+  übriges Team gleichmäßig, Team-Jugend steht in der Liste **seines** Antrags; dann Jugend/Kinder ausgeglichen, alphabetisch (numerisch). Taschengeld je Antrag
+  1 je 5 Kinder (`kids`) bzw. 7 Jugendliche, Juleica zuerst. Beträge (`computeSubsidy` je Antrag) nur als Vorschau.
+- Geschlecht wird **nur im Antrag** gepflegt (Nutzerentscheidung, kein Feld an Teilnehmenden/Mitgliedern); `onMemberDeleted` löscht es, `subjectExport` enthält
+  `subsidyLeaderGender`. Archiv-Export/-Import enthält den Antrag **nicht**.
+- API: `GET /actions/:id/subsidy-application` (read; Angaben, Team mit Geschlecht, `plan`, Gemeinde/Bank), `PUT` (edit; `subsidyApplicationInput` strikt,
+  nur Team-IDs der Aktion, sonst 422 `leaders.<i>.participantId`), `GET …/subsidy-application.pdf` (read, Download). Audit
+  `actions.subsidy.application_updated` (`female`, `male`, `forms`) / `application_generated` (`forms`, `persons`, `unassigned` = Personen auf keinem Antrag; „nur ohne Taschengeld“ zählt nicht).
+- UI: Abrechnung → Unterbereich „Zuschussantrag“ (`SubsidyApplicationSection`: Angaben, Leitungsteam per `SegmentedSlider`, Vorschau je Antrag,
+  „Nicht berücksichtigt“, PDF erst nach dem Speichern); Hinweis in der Förder-Checkliste der Kalkulation.
+- Tests: `tests/unit/subsidy-application.test.ts`, `tests/integration/actions-subsidy-application.test.ts`.
 
 ## Zuschussberechtigung je Person (Migr. 0009)
 - `subsidy_eligible`: `true` = berechtigt, `false` = nie, `NULL` = automatisch. DTO: `subsidyEligible` (Override) + `subsidyEffective`.
@@ -288,6 +313,7 @@ Anmeldung, Teilnehmende (n), Abrechnung. Abrechnung: Summenkarten, Buchungstabel
 `actions.action.created|updated|deleted|shared|unshared`, `actions.participant.created|updated|deleted`,
 `actions.participants.exported`, `actions.action.exported|imported`, `actions.calculation.updated`, `actions.fee.applied|cleared`,
 `actions.form.updated|token_rotated`, `actions.registration.submitted` (Akteur `public-form`),
+`actions.subsidy.application_updated|application_generated`,
 `actions.accounting.entry_created|entry_updated|entry_deleted|receipt_uploaded|receipt_deleted|payee_created|payee_updated|payee_deleted|iban_viewed|reimbursed|reimbursement_reverted|exported|closed|reopened|report|refund_booked|refund_reverted`.
 Metadata nur IDs/Zähler/Beträge – keine IBAN, keine Namen aus der Rückzahlung (Test prüft das).
 

@@ -1546,3 +1546,102 @@ export interface OpenAccounting {
 
 /** Höchstzahl Einträge der Dashboard-Listen */
 export const DASHBOARD_LIST_LIMIT = 20;
+
+// --- Zuschussantrag (Landesjugendpfarramt der BEK) --------------------------
+
+export const LEADER_GENDERS = ['female', 'male'] as const;
+export type LeaderGender = (typeof LEADER_GENDERS)[number];
+export const LEADER_GENDER_LABELS: Record<LeaderGender, string> = {
+	female: 'weiblich',
+	male: 'männlich'
+};
+
+/** Plätze je Antragsformular (Rückseite: je 20 Kinder/Jugendliche, 5 Taschengeld-Zeilen) */
+export const APPLICATION_CHILD_SLOTS = 20;
+export const APPLICATION_YOUTH_SLOTS = 20;
+export const APPLICATION_ALLOWANCE_SLOTS = 5;
+
+export const subsidyApplicationInput = z
+	.object({
+		freizeitArt: z.string().trim().max(80, 'Höchstens 80 Zeichen'),
+		topic: z.string().trim().max(150, 'Höchstens 150 Zeichen'),
+		inclusion: z.boolean(),
+		leaders: z
+			.array(z.object({ participantId: id, gender: z.enum(LEADER_GENDERS).nullable() }).strict())
+			.max(500)
+	})
+	.strict();
+export type SubsidyApplicationInput = z.infer<typeof subsidyApplicationInput>;
+
+/** Person auf einem Antrag */
+export interface ApplicationPerson {
+	participantId: string;
+	name: string;
+}
+
+export interface ApplicationAllowance extends ApplicationPerson {
+	juleica: boolean;
+	nights: number;
+	rateCents: number;
+	totalCents: number;
+}
+
+/** Ein ausgefülltes Antragsformular */
+export interface SubsidyApplicationForm {
+	/** 1-basiert */
+	number: number;
+	femaleLeaders: ApplicationPerson[];
+	maleLeaders: ApplicationPerson[];
+	children: ApplicationPerson[];
+	/** Jugendliche 12–27 inkl. Team dieses Antrags */
+	youth: ApplicationPerson[];
+	allowance: ApplicationAllowance[];
+	/** Nächte laut Aktion (für das Formular, ungedeckelt) */
+	nights: number;
+	/** Zuschuss laut Richtlinie (nur Vorschau, das Formular lässt die €-Spalte leer) */
+	subsidyCents: number;
+	allowanceCents: number;
+}
+
+export type UnassignedReason = 'children-full' | 'youth-full' | 'allowance-limit';
+export const UNASSIGNED_REASON_LABELS: Record<UnassignedReason, string> = {
+	'children-full': 'Kein Platz mehr bei den Kindern (je Antrag 20)',
+	'youth-full': 'Kein Platz mehr bei den Jugendlichen (je Antrag 20)',
+	'allowance-limit':
+		'Kein Taschengeld (Grenze 1 je 5 Kinder bzw. 7 Jugendliche, je Antrag 5 Zeilen)'
+};
+
+export interface SubsidyApplicationPlan {
+	forms: SubsidyApplicationForm[];
+	/** Anzahl Anträge, die für alle Berechtigten nötig wären */
+	neededForms: number;
+	unassigned: (ApplicationPerson & { reason: UnassignedReason })[];
+	warnings: string[];
+}
+
+export interface SubsidyApplicationTeamMember {
+	participantId: string;
+	name: string;
+	age: number | null;
+	juleica: boolean;
+	gender: LeaderGender | null;
+}
+
+export interface SubsidyApplicationDto {
+	freizeitArt: string;
+	topic: string;
+	inclusion: boolean;
+	/** Gespeichert (sonst Vorschlagswerte) */
+	persisted: boolean;
+	team: SubsidyApplicationTeamMember[];
+	plan: SubsidyApplicationPlan;
+	/** Aus den Einstellungen; leere Werte → Hinweis in der Oberfläche */
+	parish: string;
+	bank: { name: string; iban: string; bic: string };
+	action: {
+		name: string;
+		location: string | null;
+		startsOn: string;
+		endsOn: string | null;
+	};
+}
