@@ -68,6 +68,36 @@ export function readPalette(): Palette {
 	};
 }
 
+/** Relative Helligkeit einer `#rrggbb`-Farbe (0 = schwarz, 1 = weiß) */
+export function luminance(hex: string): number {
+	if (!/^#[0-9a-f]{6}$/i.test(hex)) return 1;
+	const n = parseInt(hex.slice(1), 16);
+	const lin = (c: number) => {
+		const v = c / 255;
+		return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+	};
+	return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+
+/**
+ * Feste Fläche (persönliche Einstellung „Feste Farbe“): Palette nur aus `color`, unabhängig von Modus und Theme.
+ * Dunkle Flächen bekommen helle Tinte und dunkle Karten, helle Flächen die helle Standard-Palette.
+ */
+export function fixedPalette(color: string): Palette {
+	const dark = luminance(color) < 0.18;
+	if (!dark) return { ...LIGHT, paper: color };
+	return {
+		dark: true,
+		paper: color,
+		pattern: 'rgba(255, 255, 255, 0.16)',
+		ink: '#f1f5f9',
+		muted: '#94a3b8',
+		card: '#1e293b',
+		cardBorder: '#334155',
+		placeholder: '#1e293b'
+	};
+}
+
 /** Gut lesbare Schriftfarbe auf `fill` (dunkel auf hell, hell auf dunkel); ohne Füllung = Tinte des Modus */
 export function textOn(fill: string | null | undefined, palette: Palette = LIGHT): string {
 	if (!fill || fill === 'transparent' || !/^#[0-9a-f]{6}$/i.test(fill)) return palette.ink;

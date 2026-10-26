@@ -23,6 +23,7 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
 	if (transferTo) {
 		await tx.execute(sql`UPDATE boards SET owner_id = ${transferTo} WHERE owner_id = ${userId}`);
 	}
+	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id = ${userId}`);
 	for (const [table, column] of [
 		['boards', 'created_by'],
 		['boards', 'updated_by'],
@@ -53,7 +54,7 @@ export const resetAreas: ResetArea[] = [
 		label: 'Alle Whiteboards',
 		description:
 			'Löscht alle Whiteboards mit Elementen, Bildern/Dateien, Versionen und Freigaben – auch die an Aktionen gehängten.',
-		tables: ['snapshots', 'assets', 'elements', 'board_shares', 'boards'],
+		tables: ['snapshots', 'assets', 'elements', 'board_shares', 'boards', 'user_prefs'],
 		rebuild: true
 	}
 ];
@@ -63,6 +64,7 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 		sql`DELETE FROM board_shares WHERE principal_type = 'user' AND principal_id <> ${keepUserId}`
 	);
 	await tx.execute(sql`UPDATE boards SET owner_id = ${keepUserId} WHERE owner_id <> ${keepUserId}`);
+	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id <> ${keepUserId}`);
 	for (const [table, column] of [
 		['boards', 'created_by'],
 		['boards', 'updated_by'],
@@ -92,13 +94,16 @@ export const subjectExport: ModuleSubjectExport = {
 				sql`SELECT s.board_id, b.name, s.level FROM board_shares s JOIN boards b ON b.id = s.board_id
 					WHERE s.principal_type = 'user' AND s.principal_id = ${userId}`
 			),
+			prefs: await rowsOf(tx, sql`SELECT prefs FROM user_prefs WHERE user_id = ${userId}`),
 			uploads: await rowsOf(
 				tx,
 				sql`SELECT a.id, a.name, a.created_at, b.name AS board FROM assets a JOIN boards b ON b.id = a.board_id
 					WHERE a.created_by = ${userId} ORDER BY a.created_at, a.id`
 			)
 		}));
-		if (!data.boards.length && !data.shares.length && !data.uploads.length) return null;
+		if (!data.boards.length && !data.shares.length && !data.uploads.length && !data.prefs.length) {
+			return null;
+		}
 		return {
 			ownedBoards: data.boards.map((r) => ({
 				id: String(r.id),
@@ -110,6 +115,7 @@ export const subjectExport: ModuleSubjectExport = {
 				name: String(r.name),
 				level: String(r.level)
 			})),
+			viewSettings: data.prefs[0]?.prefs ?? null,
 			uploads: data.uploads.map((r) => ({
 				id: String(r.id),
 				name: String(r.name),

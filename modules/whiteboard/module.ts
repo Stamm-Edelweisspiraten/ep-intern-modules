@@ -4,6 +4,7 @@ import { withBoardContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
 import { boardEndpoints } from './boards.endpoints';
 import { liveEndpoints } from './live.endpoints';
+import { prefsEndpoints } from './prefs.endpoints';
 import { onMemberDeleted, onUserDeleted, resetAreas, resetUsers, subjectExport } from './privacy';
 import { whiteboardSearch } from './search';
 import { snapshotEndpoints } from './snapshots.endpoints';
@@ -11,6 +12,7 @@ import { runAutoSnapshots, runCleanup } from './snapshots.service';
 import { transferEndpoints } from './transfer.endpoints';
 import { DEFAULT_BOARD_MB, NOTIFY_BOARD_SHARED, PERM, SETTING_BOARD_MB } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_user_prefs.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -18,7 +20,7 @@ export default defineModule({
 		name: 'Whiteboards',
 		description:
 			'Gemeinsame Whiteboards zum Live-Bearbeiten: Kacheln und Formen, Verbinder, Freihand, Bilder, Dateien, Links und Karten aus anderen Modulen – auch für Aktionen',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen, Karten aus Aufgaben/Terminen/Galerien/Dateien */
 		optionalDependencies: ['members', 'actions', 'tasks', 'events', 'galleries', 'files'],
@@ -48,7 +50,10 @@ export default defineModule({
 			default: DEFAULT_BOARD_MB
 		}
 	],
-	migrations: [{ name: '0001_init', sql: m0001 }],
+	migrations: [
+		{ name: '0001_init', sql: m0001 },
+		{ name: '0002_user_prefs', sql: m0002 }
+	],
 	search: whiteboardSearch,
 	notifications: {
 		types: [
@@ -86,6 +91,7 @@ export default defineModule({
 	subjectExport,
 	// Reihenfolge: erster Treffer gewinnt (`/boards/recent`, `/boards/import`, `/boards/by-action/…` vor `/boards/:id`)
 	endpoints: withBoardContext([
+		...prefsEndpoints,
 		...boardEndpoints,
 		...transferEndpoints,
 		...liveEndpoints,

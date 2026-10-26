@@ -8,7 +8,7 @@ Whiteboards mit **Live-Bearbeitung durch mehrere Personen**: Kacheln/Notizzettel
 gebogen, an Elemente gebunden), Freihand (Stift/Marker, Radierer), **Rahmen**, **Bilder und Dateien** (Upload ins Board), **Links**, **Karten** aus
 anderen Modulen (Aktion, Aufgabe, Aufgaben-Board, Termin, Galerie, Datei aus „Dateien“, anderes Whiteboard), **Versionsverlauf**, Teilen an
 Principals, **mehrere Boards je Aktion** (Zugriff vererbt), Export **PNG/SVG/PDF** und Archiv **`.epwhiteboard`** (Import), touch-tauglich.
-Schema `mod_whiteboard`, v1.0.0 (2026-10-26), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions','tasks','events','galleries','files']`.
+Schema `mod_whiteboard`, v1.1.0 (2026-10-26), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions','tasks','events','galleries','files']`.
 Navigation „Whiteboards“ (Icon `presentation`, `order` 76). Editor-Seite vollflächig über `ModuleUi.fullBleedRoutes: [':id']` (Core, 2026-10-26).
 
 Nutzerentscheidungen (2026-10-26): Dateien **direkt hochladen und** aus „Dateien“ verknüpfen (als Karte, ohne Kopie); **mehrere** Whiteboards je
@@ -29,6 +29,11 @@ Aktion; erste Version **mit** Freihand, Live-Cursor/Anwesenheit, Rahmen, Version
   `Palette` (`render.ts` `readPalette()` liest `--background/--foreground/--card/--border/--muted…`, `MutationObserver` am `<html>` liest bei jedem
   Wechsel neu; SVG-Attribute lösen keine CSS-Variablen auf). Fast schwarze „Tinte“ (`#1f2937` u. a.) wird im Dunkelmodus hell gezeichnet (`ink()`),
   Text ohne Füllung ebenso; Nutzerfarben (Notizen, Formen) bleiben. **Export immer hell** (`LIGHT`, druckbar). Keine Palettenklassen (Design-Guard).
+- **Persönliche Flächenfarbe** (Nutzerwunsch 2026-10-26, v1.1.0, Migr. 0002): Tabelle `user_prefs(user_id PK, prefs jsonb)`, `GET/PUT /me/prefs`
+  (`userPrefsInput`: `surface.mode` `fixed|theme`, `surface.color` `#rrggbb`). **Standard: feste weiße Fläche**; Knopf „Fläche einstellen“ (Farbeimer,
+  unten rechts, `SurfaceMenu.svelte`): Schalter „Feste Flächenfarbe“, Weiß/Schwarz/eigene Farbe; aus = wie Modus/Theme. Gilt je Konto für alle Boards.
+  Feste Farbe → `fixedPalette(color)` (dunkle Fläche: helle Tinte, dunkle Karten), Fläche deckend (`Canvas` `surface`). Löschen/Reset/Auskunft berücksichtigen
+  `user_prefs`.
 
 ## Dateien (`src/lib/modules/whiteboard/`)
 | Datei | Inhalt |
