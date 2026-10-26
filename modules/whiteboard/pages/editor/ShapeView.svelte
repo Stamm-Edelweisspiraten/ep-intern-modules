@@ -2,8 +2,8 @@
 	// Form, Notizzettel oder Text mit umbrochenem Text (SVG-<text>, auch für den Bild-Export)
 	import type { ShapeData } from '../../schemas';
 	import { shapePath, textArea } from './geometry';
-	import { textOn } from './render';
-	import { FONT_FAMILY, layoutText } from './text-layout';
+	import { ink, textOn } from './render';
+	import { FONT_STACKS, layoutText } from './text-layout';
 	import type { RenderContext } from './types';
 
 	let { id, data, rc }: { id: string; data: ShapeData; rc: RenderContext } = $props();
@@ -16,7 +16,14 @@
 				? `${data.strokeWidth} ${data.strokeWidth * 1.6}`
 				: undefined
 	);
-	const color = $derived(data.textColor ?? textOn(data.fill));
+	// ohne Füllung folgt auch eine gewählte Tintenfarbe dem Modus
+	const color = $derived(
+		data.textColor
+			? data.fill === 'transparent'
+				? ink(data.textColor, rc.palette)
+				: data.textColor
+			: textOn(data.fill, rc.palette)
+	);
 	const layout = $derived(
 		data.text && rc.editingId !== id
 			? layoutText(
@@ -27,7 +34,9 @@
 						align: data.align,
 						valign: data.valign,
 						bold: data.bold,
-						italic: data.italic
+						italic: data.italic,
+						fontFamily: data.fontFamily ?? 'sans',
+						autoFit: data.autoFit
 					},
 					rc.measure
 				)
@@ -45,7 +54,7 @@
 	<path
 		{d}
 		fill={data.fill === 'transparent' ? (rc.exporting ? 'none' : 'transparent') : data.fill}
-		stroke={data.stroke === 'transparent' ? 'none' : data.stroke}
+		stroke={data.stroke === 'transparent' ? 'none' : ink(data.stroke, rc.palette)}
 		stroke-width={data.stroke === 'transparent' ? 0 : data.strokeWidth}
 		stroke-dasharray={dash}
 		stroke-linejoin="round"
@@ -53,11 +62,14 @@
 	{#if layout}
 		<text
 			fill={color}
-			font-family={FONT_FAMILY}
-			font-size={data.fontSize}
+			font-family={FONT_STACKS[data.fontFamily ?? 'sans']}
+			font-size={layout.fontSize}
 			font-weight={data.bold ? 700 : 400}
 			font-style={data.italic ? 'italic' : 'normal'}
 			text-anchor={layout.anchor}
+			text-decoration={[data.underline && 'underline', data.strike && 'line-through']
+				.filter(Boolean)
+				.join(' ') || undefined}
 			style="white-space: pre"
 		>
 			{#each layout.lines as line, i (i)}

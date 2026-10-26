@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Karte im Whiteboard (Datei, Link, Datensatz aus einem anderen Modul): Symbol oder Bild, Typ, Titel, Unterzeile
 	import type { Component } from 'svelte';
-	import { CARD_BORDER, INK, MUTED_INK, PAPER } from './render';
+	import type { Palette } from './render';
 	import { FONT_FAMILY, wrapText, type Measure } from './text-layout';
 
 	let {
@@ -19,7 +19,8 @@
 		badge = null,
 		imageHref = null,
 		unavailable = false,
-		measure
+		measure,
+		palette
 	}: {
 		id: string;
 		x: number;
@@ -37,6 +38,7 @@
 		imageHref?: string | null;
 		unavailable?: boolean;
 		measure: Measure;
+		palette: Palette;
 	} = $props();
 
 	const pad = 12;
@@ -62,13 +64,21 @@
 </script>
 
 <g data-el={id} {transform} opacity={unavailable ? 0.7 : 1}>
-	<rect x="2" y="3" width={w} height={h} rx="10" fill="#000000" opacity="0.06" />
+	<rect
+		x="2"
+		y="3"
+		width={w}
+		height={h}
+		rx="10"
+		fill="#000000"
+		opacity={palette.dark ? 0.35 : 0.06}
+	/>
 	<rect
 		width={w}
 		height={h}
 		rx="10"
-		fill={PAPER}
-		stroke={CARD_BORDER}
+		fill={palette.card}
+		stroke={palette.cardBorder}
 		stroke-width="1"
 		stroke-dasharray={unavailable ? '6 4' : undefined}
 	/>
@@ -77,7 +87,7 @@
 			<rect width={w} height={imageH} rx="10" />
 			<rect y="10" width={w} height={imageH - 10} />
 		</clipPath>
-		<rect width={w} height={imageH} fill="#f1f5f9" clip-path={`url(#${clipId})`} />
+		<rect width={w} height={imageH} fill={palette.placeholder} clip-path={`url(#${clipId})`} />
 		<image
 			href={imageHref}
 			width={w}
@@ -136,7 +146,7 @@
 		font-family={FONT_FAMILY}
 		font-size="15"
 		font-weight="700"
-		fill={unavailable ? MUTED_INK : INK}
+		fill={unavailable ? palette.muted : palette.ink}
 		style="white-space: pre"
 	>
 		{#each titleLines as line, i (i)}
@@ -149,7 +159,7 @@
 			y={top + 30 + titleLines.length * 19 + 2}
 			font-family={FONT_FAMILY}
 			font-size="12"
-			fill={MUTED_INK}
+			fill={palette.muted}
 			style="white-space: pre">{fitSub(subtitle)}</text
 		>
 	{/if}

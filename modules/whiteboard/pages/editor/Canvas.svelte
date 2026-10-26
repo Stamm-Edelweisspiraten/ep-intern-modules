@@ -19,8 +19,8 @@
 		textArea,
 		unionRects
 	} from './geometry';
-	import { PAPER, PAPER_PATTERN, SELECTION, textOn } from './render';
-	import { FONT_FAMILY } from './text-layout';
+	import { ink, SELECTION, textOn } from './render';
+	import { FONT_FAMILY, FONT_STACKS, fitFontSize } from './text-layout';
 	import type { RenderContext } from './types';
 	import { toScreen } from './viewport';
 
@@ -132,10 +132,30 @@
 				top: tl.y,
 				width: area.w * view.zoom,
 				height: area.h * view.zoom,
-				fontSize: el.data.fontSize * view.zoom,
+				// automatisch angepasste Schrift wie in der Ansicht
+				fontSize:
+					(el.data.autoFit
+						? fitFontSize(
+								el.data.text,
+								area,
+								{ ...el.data, fontFamily: el.data.fontFamily ?? 'sans' },
+								rc.measure
+							)
+						: el.data.fontSize) * view.zoom,
+				family: FONT_STACKS[el.data.fontFamily ?? 'sans'],
+				decoration:
+					[el.data.underline && 'underline', el.data.strike && 'line-through']
+						.filter(Boolean)
+						.join(' ') || 'none',
+				/** Tab legt die nächste Notiz daneben an (nicht bei reinen Textfeldern) */
+				canSpawn: el.data.kind !== 'text',
 				align: el.data.align,
 				valign: el.data.valign,
-				color: el.data.textColor ?? textOn(el.data.fill),
+				color: el.data.textColor
+					? el.data.fill === 'transparent'
+						? ink(el.data.textColor, rc.palette)
+						: el.data.textColor
+					: textOn(el.data.fill, rc.palette),
 				bold: el.data.bold,
 				italic: el.data.italic
 			};
@@ -178,6 +198,14 @@
 
 	function editorKey(e: KeyboardEvent) {
 		e.stopPropagation();
+		if (e.key === 'Tab' && editor?.kind === 'area' && editor.canSpawn && ctrl.editing) {
+			// nächste Notiz rechts daneben (Umschalt+Tab: darunter)
+			e.preventDefault();
+			const id = ctrl.editing.id;
+			ctrl.finishEditing();
+			ctrl.spawnNext(id, e.shiftKey ? 'bottom' : 'right', false);
+			return;
+		}
 		if (
 			e.key === 'Escape' ||
 			(e.key === 'Enter' && (editor?.kind === 'line' || e.ctrlKey || e.metaKey))
@@ -229,7 +257,8 @@
 	});
 </script>
 
-<div class="relative h-full w-full overflow-hidden" style={`background:${PAPER}`}>
+<!-- durchsichtig: Seitenhintergrund bzw. Theme scheint durch -->
+<div class="relative h-full w-full overflow-hidden">
 	<!-- Zeichenfläche als Anwendung: Tastenkürzel siehe aria-label, Fokus für die Tastatur -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<svg
@@ -254,7 +283,7 @@
 				x={view.panX % patternSize}
 				y={view.panY % patternSize}
 			>
-				<circle cx={1} cy={1} r={1.1} fill={PAPER_PATTERN} />
+				<circle cx={1} cy={1} r={1.1} fill={rc.palette.pattern} />
 			</pattern>
 			<pattern
 				id="wb-grid"
@@ -267,7 +296,7 @@
 				<path
 					d={`M${patternSize} 0 L0 0 0 ${patternSize}`}
 					fill="none"
-					stroke={PAPER_PATTERN}
+					stroke={rc.palette.pattern}
 					stroke-width="0.8"
 				/>
 			</pattern>
@@ -392,7 +421,7 @@
 							cx={c.x}
 							cy={b.y - 28 / view.zoom}
 							r={hs / 2 + 1 / view.zoom}
-							fill={PAPER}
+							fill={rc.palette.card}
 							stroke={SELECTION}
 							stroke-width={1.5 / view.zoom}
 							style="cursor:grab"
@@ -409,7 +438,7 @@
 								width={hs}
 								height={hs}
 								rx={2 / view.zoom}
-								fill={PAPER}
+								fill={rc.palette.card}
 								stroke={SELECTION}
 								stroke-width={1.5 / view.zoom}
 								style={`cursor:${cursorFor[h]}`}
@@ -418,10 +447,17 @@
 						{#if canLink}
 							<!-- oben sitzt der Drehgriff, daher nur rechts/unten/links -->
 							{#each [['link-right', b.x + b.w + 18 / view.zoom + hs, c.y], ['link-bottom', c.x, b.y + b.h + 18 / view.zoom + hs], ['link-left', b.x - 18 / view.zoom - hs, c.y]] as const as [h, x, y] (h)}
-								<g data-handle={h} data-for={single.id} style="cursor:crosshair">
-									<circle cx={x} cy={y} r={hs * 0.9} fill={SELECTION} fill-opacity="0.12" />
-									<circle cx={x} cy={y} r={hs * 0.42} fill={SELECTION} />
-									<title>Ziehen, um zu verbinden</title>
+								{@const r = Math.max(hs * 0.7, 9 / view.zoom)}
+								<g data-handle={h} data-for={single.id} style="cursor:pointer">
+									<circle cx={x} cy={y} r={r * 1.35} fill={SELECTION} fill-opacity="0.1" />
+									<circle cx={x} cy={y} {r} fill={SELECTION} />
+									<path
+										d={`M${x - r * 0.5} ${y} H${x + r * 0.5} M${x} ${y - r * 0.5} V${y + r * 0.5}`}
+										stroke="#ffffff"
+										stroke-width={Math.max(1.5, r * 0.22)}
+										stroke-linecap="round"
+									/>
+									<title>Klicken: neue verbundene Notiz · Ziehen: verbinden</title>
 								</g>
 							{/each}
 						{/if}
@@ -435,7 +471,7 @@
 							cx={p.x}
 							cy={p.y}
 							r={hs * 0.65}
-							fill={PAPER}
+							fill={rc.palette.card}
 							stroke={SELECTION}
 							stroke-width={2 / view.zoom}
 							style="cursor:move"
@@ -487,7 +523,7 @@
 					<path
 						d={connectGeo.path}
 						fill="none"
-						stroke="#1f2937"
+						stroke={rc.palette.ink}
 						stroke-width="2"
 						stroke-dasharray="6 4"
 					/>
@@ -495,7 +531,7 @@
 						<path
 							d={connectHead.d}
 							fill="none"
-							stroke="#1f2937"
+							stroke={rc.palette.ink}
 							stroke-width="2"
 							stroke-linecap="round"
 						/>
@@ -558,7 +594,7 @@
 					onkeydown={editorKey}
 					onblur={() => ctrl.finishEditing()}
 					class="max-h-full min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent p-0 leading-tight shadow-none focus-visible:ring-0 dark:bg-transparent"
-					style={`font-size:${editor.fontSize}px;font-family:${FONT_FAMILY};color:${editor.color};text-align:${editor.align};font-weight:${editor.bold ? 700 : 400};font-style:${editor.italic ? 'italic' : 'normal'};line-height:1.25`}
+					style={`font-size:${editor.fontSize}px;font-family:${editor.family};text-decoration:${editor.decoration};color:${editor.color};text-align:${editor.align};font-weight:${editor.bold ? 700 : 400};font-style:${editor.italic ? 'italic' : 'normal'};line-height:1.25`}
 				/>
 			</div>
 		{:else}

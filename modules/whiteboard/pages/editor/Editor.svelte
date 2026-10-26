@@ -60,7 +60,7 @@
 	import LinkDialog from './LinkDialog.svelte';
 	import PropertiesBar from './PropertiesBar.svelte';
 	import RefPicker from './RefPicker.svelte';
-	import { assetUrl, PAPER } from './render';
+	import { assetUrl, LIGHT, readPalette, type Palette } from './render';
 	import { BoardStore } from './store.svelte';
 	import { BoardSync } from './sync.svelte';
 	import { browserMeasure } from './text-layout';
@@ -124,6 +124,8 @@
 
 	// --- Darstellung ---------------------------------------------------------------
 	const measure = browserMeasure();
+	/** Farben aus Dunkelmodus/Theme; bei jedem Wechsel (Klasse/Stil am <html>) neu gelesen */
+	let palette = $state<Palette>(LIGHT);
 	const rc: RenderContext = $derived({
 		lookup: (id) => store.get(id),
 		assets: store.assets,
@@ -132,16 +134,18 @@
 		zoom: ctrl.view.zoom,
 		editingId: ctrl.editing?.id ?? null,
 		assetHref: (assetId, variant) => assetUrl(boardId, assetId, variant),
+		palette,
 		exporting: false
 	});
 	const peers = $derived([...sync.peers.values()]);
 	/** Anwesende je Konto (mehrere Tabs = eine Person) */
+	const myId = $derived((page.data.user as { id?: string } | null | undefined)?.id ?? null);
+	/** Andere Personen (eigene weitere Tabs zählen nicht) */
 	const people = $derived.by(() => {
 		const map = new Map<string, (typeof peers)[number]>();
-		for (const p of peers) if (!map.has(p.userId)) map.set(p.userId, p);
+		for (const p of peers) if (p.userId !== myId && !map.has(p.userId)) map.set(p.userId, p);
 		return [...map.values()];
 	});
-	const myId = $derived((page.data.user as { id?: string } | null | undefined)?.id ?? null);
 
 	let coarse = $state(false);
 	let container = $state<HTMLDivElement | null>(null);
@@ -619,6 +623,15 @@
 	// --- Lebenszyklus ---
 	let observer: ResizeObserver | null = null;
 	onMount(() => {
+		palette = readPalette();
+		const themeObserver = new MutationObserver(() => {
+			// erst nach dem Umschalten der Klassen/Variablen lesen
+			requestAnimationFrame(() => (palette = readPalette()));
+		});
+		themeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['class', 'style', 'data-app-theme']
+		});
 		const mq = window.matchMedia('(pointer: coarse)');
 		coarse = mq.matches;
 		const onMq = () => (coarse = mq.matches);
@@ -645,6 +658,7 @@
 		};
 		window.addEventListener('pagehide', onUnload);
 		return () => {
+			themeObserver.disconnect();
 			mq.removeEventListener('change', onMq);
 			document.removeEventListener('fullscreenchange', onFs);
 			window.removeEventListener('pagehide', onUnload);
@@ -681,9 +695,11 @@
 
 <PageTitle title={board.name} />
 
-<div bind:this={container} class="flex h-full min-h-0 flex-col bg-background">
+<div bind:this={container} class="flex h-full min-h-0 flex-col">
 	<!-- Kopfzeile -->
-	<header class="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:px-3">
+	<header
+		class="app-glass flex h-12 shrink-0 items-center gap-2 border-b bg-topbar-surface px-2 sm:px-3"
+	>
 		<Button
 			variant="ghost"
 			size="icon"
@@ -743,7 +759,8 @@
 				aria-label={`Gerade hier: ${people.map((p) => p.name).join(', ')}`}
 			>
 				{#each people.slice(0, 5) as p (p.userId)}
-					<span class="rounded-full ring-2" style={`--tw-ring-color:${p.color}`} title={p.name}>
+					<!-- farbiger Rand kommt von EntityAvatar (`color`), der Ring trennt überlappende Bilder -->
+					<span class="inline-flex rounded-full ring-2 ring-background" title={p.name}>
 						<EntityAvatar name={p.name} src={p.image} color={p.color} size={28} />
 					</span>
 				{/each}
@@ -985,8 +1002,7 @@
 			<!-- Minikarte -->
 			{#if world && ctrl.size.w > 900}
 				<div
-					class="pointer-events-auto absolute right-3 bottom-16 z-10 hidden overflow-hidden rounded-lg border shadow-md lg:block"
-					style={`background:${PAPER}`}
+					class="pointer-events-auto absolute right-3 bottom-16 z-10 hidden overflow-hidden rounded-lg border bg-card shadow-md lg:block"
 				>
 					<svg
 						width={MINI.w}
@@ -1008,7 +1024,7 @@
 											? el.data.fill
 											: el.type === 'frame'
 												? 'none'
-												: '#cbd5e1'}
+												: palette.cardBorder}
 										stroke={el.type === 'frame' ? '#94a3b8' : 'none'}
 										stroke-width={1 / mini.s}
 									/>

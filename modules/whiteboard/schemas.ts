@@ -148,14 +148,30 @@ export const V_ALIGNS = ['top', 'middle', 'bottom'] as const;
 export type VAlign = (typeof V_ALIGNS)[number];
 
 /** Schriftbild der Texte in Formen */
+export const FONT_FAMILIES = ['sans', 'serif', 'mono', 'hand'] as const;
+export type FontFamily = (typeof FONT_FAMILIES)[number];
+export const FONT_FAMILY_LABELS: Record<FontFamily, string> = {
+	sans: 'Normal',
+	serif: 'Serif',
+	mono: 'Mono',
+	hand: 'Handschrift'
+};
+
 const textStyle = {
 	text: text().default(''),
 	textColor: hex.nullable().default(null),
 	fontSize: z.number().int().min(8).max(160).default(18),
+	fontFamily: z.enum(FONT_FAMILIES).default('sans'),
 	align: z.enum(TEXT_ALIGNS).default('center'),
 	valign: z.enum(V_ALIGNS).default('middle'),
 	bold: z.boolean().default(false),
-	italic: z.boolean().default(false)
+	italic: z.boolean().default(false),
+	underline: z.boolean().default(false),
+	strike: z.boolean().default(false),
+	/** Schrift verkleinern, bis der Text in die Form passt (Notizzettel) */
+	autoFit: z.boolean().default(false),
+	/** Höhe wächst/schrumpft beim Tippen mit dem Text (Textfelder) */
+	autoHeight: z.boolean().default(false)
 };
 
 export const SHAPE_KINDS = [

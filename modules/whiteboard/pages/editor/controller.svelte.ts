@@ -9,6 +9,7 @@
  */
 import {
 	FILL_COLORS,
+	parseElementData,
 	type ConnectorData,
 	type ConnectorEnd,
 	type ConnectorRoute,
@@ -33,6 +34,7 @@ import {
 import type { BoardStore } from './store.svelte';
 import { clampZoom, fitRect, stepZoom, toWorld, visibleRect, zoomAt, type View } from './viewport';
 import { boundsOfElements } from './bounds';
+import { browserMeasure, textHeight } from './text-layout';
 
 export type Tool =
 	| 'select'
@@ -85,7 +87,13 @@ type Gesture =
 	| { kind: 'end'; id: string; end: 'from' | 'to'; origin: WbElement }
 	| { kind: 'bend'; id: string; origin: WbElement }
 	| { kind: 'create'; tool: 'note' | 'shape' | 'text' | 'frame'; start: Point; screenStart: Point }
-	| { kind: 'connect'; started: boolean; screenStart: Point }
+	| {
+			kind: 'connect';
+			started: boolean;
+			screenStart: Point;
+			/** Start an einem „+“-Griff: ohne Ziehen = neue verbundene Notiz in diese Richtung */
+			spawn?: { id: string; dir: SpawnDir };
+	  }
 	| { kind: 'draw' }
 	| { kind: 'erase' };
 
@@ -103,6 +111,10 @@ export interface ControllerHooks {
 }
 
 const uuid = () => crypto.randomUUID();
+
+export type SpawnDir = 'top' | 'right' | 'bottom' | 'left';
+/** Abstand neuer Notizen zur Ausgangsnotiz */
+const SPAWN_GAP = 80;
 
 export class EditorController {
 	view = $state<View>({ panX: 0, panY: 0, zoom: 1 });
@@ -139,7 +151,14 @@ export class EditorController {
 	private pinch: { dist: number; mid: Point; view: View } | null = null;
 	private lastPen = 0;
 	private lastTap: { at: number; p: Point; id: string | null } | null = null;
-	private downInfo: { at: number; p: Point; id: string | null; moved: boolean } | null = null;
+	private downInfo: {
+		at: number;
+		p: Point;
+		id: string | null;
+		moved: boolean;
+		/** Element war schon allein ausgewählt (Antippen → Text bearbeiten) */
+		wasSelected: boolean;
+	} | null = null;
 	private clipboard: WbElement[] = [];
 
 	constructor(
@@ -263,7 +282,14 @@ export class EditorController {
 
 		const w = toWorld(this.view, p);
 		const target = this.targetOf(e);
-		this.downInfo = { at: Date.now(), p, id: target.id, moved: false };
+		this.downInfo = {
+			at: Date.now(),
+			p,
+			id: target.id,
+			moved: false,
+			wasSelected:
+				!!target.id && this.store.selection.size === 1 && this.store.selection.has(target.id)
+		};
 
 		if (e.button === 1 || this.tool === 'hand' || this.spaceDown) {
 			this.startPan(p);
@@ -548,7 +574,11 @@ export class EditorController {
 					this.finishCreate(g, w);
 					break;
 				case 'connect':
-					this.finishConnect(g.started);
+					if (!g.started && g.spawn) {
+						this.connectDraft = null;
+						this.hoverTarget = null;
+						this.spawnNext(g.spawn.id, g.spawn.dir, true);
+					} else this.finishConnect(g.started);
 					break;
 				case 'draw':
 					this.finishDraw();
@@ -558,11 +588,21 @@ export class EditorController {
 					break;
 			}
 		}
-		if (tap) this.handleTap(tap, e);
+		if (tap && !this.handleTap(tap, e) && tap.wasSelected && tap.id && this.tool === 'select') {
+			this.tapEdit(tap.id);
+		}
+	}
+
+	/** Antippen einer schon ausgewählten Form/Notiz: Text bearbeiten */
+	private tapEdit(id: string): void {
+		const el = this.store.get(id);
+		if (!el || el.type !== 'shape' || el.data.locked || !this.store.canEdit) return;
+		if (this.editing?.id === id) return;
+		this.startEditing(id, 'text');
 	}
 
 	/** Doppeltippen/-klicken selbst erkennen (Touch löst `dblclick` nicht verlässlich aus) */
-	private handleTap(tap: { at: number; p: Point; id: string | null }, e: PointerEvent): void {
+	private handleTap(tap: { at: number; p: Point; id: string | null }, e: PointerEvent): boolean {
 		const last = this.lastTap;
 		const now = Date.now();
 		if (
@@ -573,16 +613,18 @@ export class EditorController {
 		) {
 			this.lastTap = null;
 			this.onDoubleTap(tap.id, toWorld(this.view, tap.p), e);
-			return;
+			return true;
 		}
 		this.lastTap = { at: now, p: tap.p, id: tap.id };
+		return false;
 	}
 
 	private onDoubleTap(id: string | null, w: Point, e: PointerEvent): void {
+		void e;
 		if (this.tool !== 'select' && this.tool !== 'hand') return;
 		if (!id) {
-			if (!this.store.canEdit || e.pointerType === 'touch') return;
-			// Doppelklick auf leere Fläche: Notiz anlegen
+			if (!this.store.canEdit) return;
+			// Doppelklick/-tippen auf leere Fläche: Notiz anlegen
 			const el = this.createElement('note', { x: w.x - 100, y: w.y - 100, w: 200, h: 200 });
 			if (el) this.startEditing(el.id, 'text');
 			return;
@@ -653,7 +695,12 @@ export class EditorController {
 				to: { elementId: null, anchor: 'auto', x: w.x, y: w.y },
 				route: this.connectorRoute
 			};
-			this.gesture = { kind: 'connect', started: false, screenStart: this.local(e) };
+			this.gesture = {
+				kind: 'connect',
+				started: false,
+				screenStart: this.local(e),
+				spawn: { id, dir: anchor }
+			};
 			return;
 		}
 		this.store.begin([id]);
@@ -789,7 +836,13 @@ export class EditorController {
 		} else {
 			const style =
 				kind === 'note'
-					? { kind: 'note' as const, fill: this.noteColor, stroke: 'transparent', fontSize: 20 }
+					? {
+							kind: 'note' as const,
+							fill: this.noteColor,
+							stroke: 'transparent',
+							fontSize: 24,
+							autoFit: true
+						}
 					: kind === 'text'
 						? {
 								kind: 'text' as const,
@@ -797,7 +850,8 @@ export class EditorController {
 								stroke: 'transparent',
 								fontSize: 20,
 								align: 'left' as const,
-								valign: 'top' as const
+								valign: 'top' as const,
+								autoHeight: true
 							}
 						: {
 								kind: this.shapeKind,
@@ -805,25 +859,10 @@ export class EditorController {
 								stroke: this.shapeStroke,
 								fontSize: 18
 							};
-			el = {
-				id,
-				z,
-				version: 0,
-				type: 'shape',
-				data: {
-					...base,
-					strokeWidth: 2,
-					strokeStyle: 'solid',
-					text: '',
-					textColor: null,
-					align: 'center',
-					valign: 'middle',
-					bold: false,
-					italic: false,
-					...style,
-					...extra
-				}
-			} as WbElement;
+			// Standardwerte aller Felder über das Schema
+			const data = parseElementData('shape', { ...base, strokeWidth: 2, ...style, ...extra });
+			if (!data) return null;
+			el = { id, z, version: 0, type: 'shape', data };
 		}
 		this.store.apply([el]);
 		this.store.selection.clear();
@@ -847,6 +886,60 @@ export class EditorController {
 		const el = this.createElement(g.tool, r);
 		this.tool = 'select';
 		if (el && (g.tool === 'note' || g.tool === 'text')) this.startEditing(el.id, 'text');
+	}
+
+	/**
+	 * Neue Notiz neben `id` – gleiche Art, Farbe und Größe, wenn es eine Form/Notiz ist –, optional mit Pfeil
+	 * verbunden; danach sofort Text eingeben (ein Rückgängig-Schritt). Für die „+“-Griffe und Tab beim Schreiben.
+	 */
+	spawnNext(id: string, dir: SpawnDir, connect: boolean): WbElement | null {
+		const src = this.store.get(id);
+		if (!src || !isBoxElement(src) || !this.store.canEdit) return null;
+		const like = src.type === 'shape' && src.data.kind !== 'text' ? src.data : null;
+		const w = like ? like.w : 200;
+		const h = like ? like.h : 200;
+		const d = src.data;
+		const pos =
+			dir === 'right'
+				? { x: d.x + d.w + SPAWN_GAP, y: d.y + (d.h - h) / 2 }
+				: dir === 'left'
+					? { x: d.x - SPAWN_GAP - w, y: d.y + (d.h - h) / 2 }
+					: dir === 'bottom'
+						? { x: d.x + (d.w - w) / 2, y: d.y + d.h + SPAWN_GAP }
+						: { x: d.x + (d.w - w) / 2, y: d.y - SPAWN_GAP - h };
+		const box = { x: Math.round(pos.x), y: Math.round(pos.y), w, h, rotation: 0, locked: false };
+		const raw = like
+			? { ...like, ...box, text: '' }
+			: {
+					...box,
+					kind: 'note',
+					fill: this.noteColor,
+					stroke: 'transparent',
+					fontSize: 24,
+					autoFit: true
+				};
+		const data = parseElementData('shape', raw);
+		if (!data) return null;
+		let z = this.store.maxZ();
+		const note: WbElement = { id: uuid(), type: 'shape', z: ++z, version: 0, data };
+		const items: WbElement[] = [note];
+		if (connect) {
+			const opposite = ({ top: 'bottom', bottom: 'top', left: 'right', right: 'left' } as const)[
+				dir
+			];
+			const line = parseElementData('connector', {
+				from: { elementId: id, anchor: dir, x: box.x, y: box.y },
+				to: { elementId: note.id, anchor: opposite, x: box.x, y: box.y },
+				route: this.connectorRoute,
+				endHead: 'arrow'
+			});
+			if (line) items.push({ id: uuid(), type: 'connector', z: z + 1, version: 0, data: line });
+		}
+		this.store.apply(items);
+		this.store.selection.clear();
+		this.store.selection.add(note.id);
+		this.startEditing(note.id, 'text');
+		return note;
 	}
 
 	private finishConnect(started: boolean): void {
@@ -937,9 +1030,15 @@ export class EditorController {
 		if (!ed) return;
 		const el = this.store.get(ed.id);
 		if (!el) return;
-		if (el.type === 'shape' && ed.field === 'text')
-			this.store.preview([{ ...el, data: { ...el.data, text: value } }]);
-		else if (el.type === 'frame' && ed.field === 'title')
+		if (el.type === 'shape' && ed.field === 'text') {
+			let h = el.data.h;
+			if (el.data.autoHeight) {
+				// Textfeld wächst/schrumpft mit (Innenabstand 4 px oben und unten)
+				const inner = textHeight(value, Math.max(1, el.data.w - 8), el.data, browserMeasure());
+				h = Math.max(24, Math.min(100_000, inner + 8));
+			}
+			this.store.preview([{ ...el, data: { ...el.data, text: value, h } }]);
+		} else if (el.type === 'frame' && ed.field === 'title')
 			this.store.preview([{ ...el, data: { ...el.data, title: value } }]);
 		else if (el.type === 'connector' && ed.field === 'label')
 			this.store.preview([{ ...el, data: { ...el.data, label: value } }]);

@@ -25,8 +25,10 @@ Aktion; erste Version **mit** Freihand, Live-Cursor/Anwesenheit, Rahmen, Version
   Element: Toast „X bearbeitet diesen Text gerade auch“ (Anwesenheit `editing`), sonst gewinnt das Letzte.
 - **Eigener SVG-Renderer** (keine Fremd-Bibliothek außer `perfect-freehand` für Striche). Text wird selbst umbrochen (`text-layout.ts`, Canvas
   `measureText`) und als `<text>/<tspan>` gezeichnet – Export = dieselben Komponenten (`ExportSvg` per `mount`), Bilder als Data-URL eingebettet.
-- Fläche ist **Papier**: immer hell (`render.ts` `PAPER` …), auch im Dunkelmodus; Nutzerfarben als Inline-Style/SVG-Attribute (Design-Guard erfasst
-  das Modul, keine Palettenklassen). Leisten/Dialoge folgen dem Theme.
+- Fläche folgt **Dunkelmodus und persönlichem Theme** (Nutzerwunsch 2026-10-26): durchsichtig (Theme-Hintergrund scheint durch), Farben aus einer
+  `Palette` (`render.ts` `readPalette()` liest `--background/--foreground/--card/--border/--muted…`, `MutationObserver` am `<html>` liest bei jedem
+  Wechsel neu; SVG-Attribute lösen keine CSS-Variablen auf). Fast schwarze „Tinte“ (`#1f2937` u. a.) wird im Dunkelmodus hell gezeichnet (`ink()`),
+  Text ohne Füllung ebenso; Nutzerfarben (Notizen, Formen) bleiben. **Export immer hell** (`LIGHT`, druckbar). Keine Palettenklassen (Design-Guard).
 
 ## Dateien (`src/lib/modules/whiteboard/`)
 | Datei | Inhalt |
@@ -68,6 +70,13 @@ Text bearbeiten (Form), Titel (Rahmen), Beschriftung (Verbinder), Öffnen (Link/
 Touch: 1 Finger leer = Ansicht verschieben, 2 Finger = Zoom/Verschieben, Long-Press = Kontextmenü, Stift zeichnet (Touch 800 ms danach ignoriert),
 Griffe größer bei `pointer: coarse`. Tastatur: Entf, Strg+Z/Y/D/C/X/V, Pfeile (Umschalt = 10), 0 = 100 %, 1 = alles zeigen, Leertaste+Ziehen.
 Einfügen aus der Zwischenablage: eigene Elemente, Bilder/Dateien (Upload), URL → Link, Text → Notiz. Dateien per Drag & Drop aus dem System.
+**Schnelle Notizen** (Nutzerwunsch 2026-10-26): Notiz-Werkzeug zeigt Farbwahl für die nächste Notiz; Antippen einer schon allein ausgewählten
+Form/Notiz öffnet die Texteingabe (`tapEdit`); „+“-Griffe rechts/unten/links: **Klick** = neue Notiz gleicher Art/Farbe/Größe daneben, mit Pfeil
+verbunden (`spawnNext`), **Ziehen** = verbinden; **Tab** beim Schreiben = nächste Notiz rechts (Umschalt+Tab darunter, ohne Pfeil); Doppeltippen
+auf leere Fläche (auch Touch) = Notiz. Neue Notizen: `autoFit` (Schrift schrumpft bis 8 px), neue Textfelder: `autoHeight` (Höhe wächst/schrumpft beim
+Tippen, `textHeight`). **Text-Menü** (`TextSettings.svelte`, Knopf „Text einstellen“): Schriftart `sans|serif|mono|hand` (nur Systemschriften,
+`FONT_STACKS`), Größe 8–160 (Stepper + S…XXL), waagrecht/senkrecht ausrichten, fett/kursiv/unterstrichen/durchgestrichen, Automatik-Schalter.
+Ältere Elemente bekommen die neuen Felder per Schema-Standardwert (`store.load` normalisiert über `parseElementData`).
 Rahmen nehmen beim Verschieben/Kopieren vollständig enthaltene Elemente mit. Löschen eines Elements löst angehängte Verbinder (Ende bleibt stehen).
 
 ## Grenzen
@@ -96,4 +105,4 @@ Board aus der Aktion). Demo: `node scripts/seed-demo-whiteboard.mjs`.
   echtes S3 für Board-Dateien und Safari-Export (SVG→Canvas) ungeprüft.
 - Kein Gruppieren, Ausrichten/Verteilen, Raster-Einrasten, Kommentare, Vorlagen; Text ohne Rich-Text; gleichzeitiges Tippen im selben Element ohne
   Zusammenführen (Letztes gewinnt); Drehen mehrerer Elemente gemeinsam nicht möglich (nur einzeln).
-- Rahmen-/Kartentexte im Export nutzen die Systemschrift des exportierenden Geräts.
+- Rahmen-/Kartentexte im Export nutzen die Systemschrift des exportierenden Geräts. Export ignoriert Dunkelmodus/Theme (immer hell).

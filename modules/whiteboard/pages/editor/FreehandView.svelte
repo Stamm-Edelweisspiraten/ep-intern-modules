@@ -2,6 +2,7 @@
 	// Freihand-Strich: Umriss aus den gespeicherten Punkten, in den Rahmen x/y/w/h eingepasst
 	import type { FreehandData } from '../../schemas';
 	import { strokePath } from './freehand';
+	import { ink } from './render';
 	import type { RenderContext } from './types';
 
 	let { id, data, rc }: { id: string; data: FreehandData; rc: RenderContext } = $props();
@@ -23,5 +24,9 @@
 		<!-- etwas breitere Trefferfläche zum Antippen dünner Striche -->
 		<path {d} fill="transparent" stroke="transparent" stroke-width={10 / rc.zoom} />
 	{/if}
-	<path {d} fill={data.color} opacity={data.marker ? Math.min(data.opacity, 0.45) : data.opacity} />
+	<path
+		{d}
+		fill={ink(data.color, rc.palette)}
+		opacity={data.marker ? Math.min(data.opacity, 0.45) : data.opacity}
+	/>
 </g>

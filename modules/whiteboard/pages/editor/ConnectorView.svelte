@@ -2,7 +2,7 @@
 	// Verbinder: Linie/Pfeil mit Spitzen und Beschriftung; breite unsichtbare Fläche zum Antippen
 	import type { ConnectorData } from '../../schemas';
 	import { arrowHeadPath, resolveConnector } from './connectors';
-	import { INK, PAPER } from './render';
+	import { ink } from './render';
 	import { FONT_FAMILY } from './text-layout';
 	import type { RenderContext } from './types';
 
@@ -23,6 +23,7 @@
 		data.label ? rc.measure(data.label, labelSize, false, false) + 12 : 0
 	);
 	const hidden = $derived(rc.editingId === id);
+	const stroke = $derived(ink(data.stroke, rc.palette));
 </script>
 
 <g data-el={id}>
@@ -32,7 +33,7 @@
 	<path
 		d={geo.path}
 		fill="none"
-		stroke={data.stroke}
+		{stroke}
 		stroke-width={data.strokeWidth}
 		stroke-dasharray={dash}
 		stroke-linecap="round"
@@ -42,8 +43,8 @@
 		{#if head}
 			<path
 				d={head.d}
-				fill={head.filled ? data.stroke : 'none'}
-				stroke={data.stroke}
+				fill={head.filled ? stroke : 'none'}
+				{stroke}
 				stroke-width={data.strokeWidth}
 				stroke-linecap="round"
 				stroke-linejoin="round"
@@ -57,7 +58,7 @@
 			width={labelWidth}
 			height={labelSize * 1.7}
 			rx="4"
-			fill={PAPER}
+			fill={rc.palette.paper}
 		/>
 		<text
 			x={geo.mid.x}
@@ -65,7 +66,7 @@
 			text-anchor="middle"
 			font-family={FONT_FAMILY}
 			font-size={labelSize}
-			fill={INK}
+			fill={rc.palette.ink}
 			style="white-space: pre">{data.label}</text
 		>
 	{/if}

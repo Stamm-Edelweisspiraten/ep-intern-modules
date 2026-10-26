@@ -7,6 +7,7 @@ import type { RefCard, WbElement } from '../../schemas';
 import { boundsOfElements } from './bounds';
 import ExportSvg from './ExportSvg.svelte';
 import { frameChildren, inflate, intersects, type Rect } from './geometry';
+import { LIGHT } from './render';
 import { refKey, type RenderContext } from './types';
 
 /** Größte Kantenlänge/Pixelzahl eines Canvas (Browsergrenzen, v. a. iOS) */
@@ -68,6 +69,8 @@ export async function exportContext(
 		...base,
 		refs,
 		zoom: 4,
+		// Export immer hell (druckbar, unabhängig von Gerät und Theme)
+		palette: LIGHT,
 		editingId: null,
 		exporting: true,
 		assetHref: (assetId, variant) => assetUrls.get(`${assetId}:${variant}`) || null

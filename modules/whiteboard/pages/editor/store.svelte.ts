@@ -54,7 +54,11 @@ export class BoardStore {
 		// eigene, noch nicht bestätigte Änderungen bleiben beim Neuladen erhalten
 		for (const [id, el] of this.elements) if (this.sync?.isPending(id)) keep.set(id, el);
 		this.elements.clear();
-		for (const el of detail.elements) this.elements.set(el.id, el);
+		for (const el of detail.elements) {
+			// Standardwerte neuerer Felder ergänzen (ältere Elemente)
+			const data = parseElementData(el.type, el.data);
+			this.elements.set(el.id, data ? ({ ...el, data } as WbElement) : el);
+		}
 		for (const [id, el] of keep) this.elements.set(id, el);
 		this.assets.clear();
 		for (const a of detail.assets) this.assets.set(a.id, a);

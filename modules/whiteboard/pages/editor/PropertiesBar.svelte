@@ -1,9 +1,6 @@
 <script lang="ts">
 	// Eigenschaftsleiste über der Fläche: passt sich der Auswahl an (Farben, Linie, Text, Verbinder, Reihenfolge …);
 	// ohne Auswahl beim Stift/Marker: Farbe und Stärke.
-	import AlignCenter from '@lucide/svelte/icons/align-center';
-	import AlignLeft from '@lucide/svelte/icons/align-left';
-	import AlignRight from '@lucide/svelte/icons/align-right';
 	import ArrowDownToLine from '@lucide/svelte/icons/arrow-down-to-line';
 	import ArrowUpToLine from '@lucide/svelte/icons/arrow-up-to-line';
 	import Bold from '@lucide/svelte/icons/bold';
@@ -29,10 +26,10 @@
 		type ConnectorRoute,
 		type ShapeKind,
 		type StrokeStyle,
-		type TextAlign,
 		type WbElement
 	} from '../../schemas';
 	import ColorButton from './ColorButton.svelte';
+	import TextSettings from './TextSettings.svelte';
 	import type { EditorController } from './controller.svelte';
 
 	let {
@@ -56,7 +53,11 @@
 	const textShapes = $derived(shapes.filter((e) => e.type === 'shape'));
 	const allLocked = $derived(selected.length > 0 && selected.every((e) => e.data.locked));
 	const penMode = $derived(!selected.length && (ctrl.tool === 'pen' || ctrl.tool === 'marker'));
-	const show = $derived(store.canEdit && (selected.length > 0 || penMode) && !ctrl.editing);
+	/** Notiz-Werkzeug ohne Auswahl: Farbe der nächsten Notiz wählen */
+	const noteMode = $derived(!selected.length && ctrl.tool === 'note');
+	const show = $derived(
+		store.canEdit && (selected.length > 0 || penMode || noteMode) && !ctrl.editing
+	);
 
 	type Patch = (el: WbElement) => WbElement | null;
 	const update = (patch: Patch) => ctrl.updateSelected(patch);
@@ -83,18 +84,6 @@
 		return 'color' in el.data ? (el.data.color as string | null) : null;
 	});
 
-	const FONT_SIZES = [
-		{ label: 'S', value: 14 },
-		{ label: 'M', value: 20 },
-		{ label: 'L', value: 28 },
-		{ label: 'XL', value: 40 },
-		{ label: 'XXL', value: 64 }
-	];
-	const ALIGNS: { value: TextAlign; icon: typeof AlignLeft; label: string }[] = [
-		{ value: 'left', icon: AlignLeft, label: 'Linksbündig' },
-		{ value: 'center', icon: AlignCenter, label: 'Zentriert' },
-		{ value: 'right', icon: AlignRight, label: 'Rechtsbündig' }
-	];
 	const ROUTES: { value: ConnectorRoute; label: string }[] = [
 		{ value: 'straight', label: 'Gerade' },
 		{ value: 'elbow', label: 'Gewinkelt' },
@@ -129,7 +118,26 @@
 		role="toolbar"
 		aria-label="Eigenschaften"
 	>
-		{#if penMode}
+		{#if noteMode}
+			<div class="flex items-center gap-1 px-1" role="group" aria-label="Farbe der neuen Notiz">
+				{#each FILL_COLORS.slice(0, 8) as c (c)}
+					<button
+						type="button"
+						class={[
+							'size-7 shrink-0 rounded-md border focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+							ctrl.noteColor === c && 'ring-2 ring-ring ring-offset-1 ring-offset-background'
+						]}
+						style:background-color={c}
+						aria-label={`Notizfarbe ${c}`}
+						aria-pressed={ctrl.noteColor === c}
+						onclick={() => (ctrl.noteColor = c)}
+					></button>
+				{/each}
+			</div>
+			<span class="hidden px-2 text-xs whitespace-nowrap text-muted-foreground sm:inline">
+				Auf die Fläche tippen, um die Notiz zu setzen
+			</span>
+		{:else if penMode}
 			<ColorButton
 				label={ctrl.tool === 'marker' ? 'Markerfarbe' : 'Stiftfarbe'}
 				value={ctrl.tool === 'marker' ? ctrl.markerColor : ctrl.penColor}
@@ -227,39 +235,7 @@
 						variant="text"
 						onchange={(c) => set(['shape'], { textColor: c === 'transparent' ? null : c })}
 					/>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="ghost"
-									size="sm"
-									aria-label="Schriftgröße"
-									title="Schriftgröße"
-									class="tabular-nums"
-								>
-									{firstShape?.fontSize}
-								</Button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content>
-							{#each FONT_SIZES as f (f.value)}
-								<DropdownMenu.Item onclick={() => set(['shape'], { fontSize: f.value })}>
-									{f.label} · {f.value} px
-								</DropdownMenu.Item>
-							{/each}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-					{#each ALIGNS as a (a.value)}
-						<Button
-							variant={firstShape.align === a.value ? 'secondary' : 'ghost'}
-							size="icon"
-							aria-label={a.label}
-							aria-pressed={firstShape.align === a.value}
-							title={a.label}
-							onclick={() => set(['shape'], { align: a.value })}><a.icon /></Button
-						>
-					{/each}
+					<TextSettings data={firstShape} onchange={(v) => set(['shape'], v)} />
 					<Button
 						variant={firstShape.bold ? 'secondary' : 'ghost'}
 						size="icon"

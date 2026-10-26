@@ -1,21 +1,77 @@
 /**
- * Hilfen für die Darstellung (rein): Kontrastfarbe, Datei-Adressen, Dateigröße, Symbol je Dateityp/Karte.
- * Das Whiteboard ist „Papier“: die Fläche bleibt auch im Dunkelmodus hell, damit Nutzerfarben gleich wirken
- * (wie PDF-Vorschauen) – deshalb feste Farben hier statt Design-Tokens.
+ * Hilfen für die Darstellung (rein): Farbpalette (hell/dunkel, aus dem Theme), Kontrastfarbe, Datei-Adressen,
+ * Dateigröße, Symbol je Dateityp/Karte.
+ *
+ * Die Fläche folgt Dunkelmodus und persönlichem Theme: die Palette kommt zur Laufzeit aus den Design-Tokens
+ * (`readPalette`). SVG-Attribute lösen keine CSS-Variablen auf, deshalb werden die Werte gelesen und als Farben
+ * eingesetzt. Gespeicherte Standard-„Tinte“ (fast Schwarz) wird im Dunkelmodus hell gezeichnet (`ink`), Nutzerfarben
+ * bleiben unverändert. Der Export nutzt immer `LIGHT` (druckbar, unabhängig vom Gerät).
  */
 import type { RefType } from '../../schemas';
 import { API_BASE } from '../../schemas';
 
-export const PAPER = '#ffffff';
-export const PAPER_PATTERN = '#cbd5e1';
-export const INK = '#1f2937';
-export const MUTED_INK = '#64748b';
-export const SELECTION = '#2563eb';
-export const CARD_BORDER = '#cbd5e1';
+export interface Palette {
+	dark: boolean;
+	/** Fläche (Export, Verbinder-Beschriftung); auf dem Bildschirm scheint der Seitenhintergrund durch */
+	paper: string;
+	/** Raster/Punkte */
+	pattern: string;
+	ink: string;
+	muted: string;
+	card: string;
+	cardBorder: string;
+	/** Platzhalterfläche (fehlendes Bild, Kartenbild lädt) */
+	placeholder: string;
+}
 
-/** Gut lesbare Schriftfarbe auf `fill` (dunkel auf hell, hell auf dunkel) */
-export function textOn(fill: string | null | undefined): string {
-	if (!fill || fill === 'transparent' || !/^#[0-9a-f]{6}$/i.test(fill)) return INK;
+export const LIGHT: Palette = {
+	dark: false,
+	paper: '#ffffff',
+	pattern: '#cbd5e1',
+	ink: '#1f2937',
+	muted: '#64748b',
+	card: '#ffffff',
+	cardBorder: '#cbd5e1',
+	placeholder: '#f1f5f9'
+};
+
+export const SELECTION = '#2563eb';
+/** Standard-Tinte für neue Linien/Striche (wird im Dunkelmodus hell gezeichnet) */
+export const DEFAULT_INK = LIGHT.ink;
+
+/** Fast schwarze Farben gelten als „Tinte“ und passen sich dem Modus an */
+const INK_COLORS = new Set(['#1f2937', '#000000', '#111827', '#212121', '#0f172a']);
+
+/** Farbe einer Linie/eines Strichs für die Darstellung (Tinte folgt dem Modus) */
+export function ink(color: string, palette: Palette): string {
+	return palette.dark && INK_COLORS.has(color.toLowerCase()) ? palette.ink : color;
+}
+
+/** Palette aus den aktuellen Design-Tokens (Browser); ohne DOM `LIGHT` */
+export function readPalette(): Palette {
+	if (typeof document === 'undefined') return LIGHT;
+	const root = document.documentElement;
+	const css = getComputedStyle(root);
+	const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+	const dark = root.classList.contains('dark');
+	return {
+		dark,
+		paper: v('--background', LIGHT.paper),
+		pattern: dark
+			? `color-mix(in oklch, ${v('--muted-foreground', '#94a3b8')} 45%, transparent)`
+			: v('--border', LIGHT.pattern),
+		ink: v('--foreground', LIGHT.ink),
+		muted: v('--muted-foreground', LIGHT.muted),
+		card: v('--card', LIGHT.card),
+		cardBorder: v('--border', LIGHT.cardBorder),
+		placeholder: v('--muted', LIGHT.placeholder)
+	};
+}
+
+/** Gut lesbare Schriftfarbe auf `fill` (dunkel auf hell, hell auf dunkel); ohne Füllung = Tinte des Modus */
+export function textOn(fill: string | null | undefined, palette: Palette = LIGHT): string {
+	if (!fill || fill === 'transparent' || !/^#[0-9a-f]{6}$/i.test(fill)) return palette.ink;
+	const INK = LIGHT.ink;
 	const n = parseInt(fill.slice(1), 16);
 	const lin = (c: number) => {
 		const v = c / 255;

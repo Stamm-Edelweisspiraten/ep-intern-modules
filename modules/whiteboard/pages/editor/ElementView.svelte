@@ -25,8 +25,7 @@
 		fileKind,
 		formatBytes,
 		hostOf,
-		INK,
-		MUTED_INK,
+		ink,
 		REF_COLORS,
 		type FileKind
 	} from './render';
@@ -82,8 +81,8 @@
 				y={d.y}
 				width={d.w}
 				height={d.h}
-				fill="#f1f5f9"
-				stroke="#cbd5e1"
+				fill={rc.palette.placeholder}
+				stroke={rc.palette.cardBorder}
 				stroke-dasharray="6 4"
 			/>
 			<text
@@ -92,7 +91,7 @@
 				text-anchor="middle"
 				font-family={FONT_FAMILY}
 				font-size="14"
-				fill={MUTED_INK}>Bild nicht verfügbar</text
+				fill={rc.palette.muted}>Bild nicht verfügbar</text
 			>
 		{/if}
 		{#if d.stroke !== 'transparent' && d.strokeWidth > 0}
@@ -102,7 +101,7 @@
 				width={d.w}
 				height={d.h}
 				fill="none"
-				stroke={d.stroke}
+				stroke={ink(d.stroke, rc.palette)}
 				stroke-width={d.strokeWidth}
 			/>
 		{/if}
@@ -129,6 +128,7 @@
 		imageHref={asset?.hasThumb ? rc.assetHref(d.assetId, 'thumb') : null}
 		unavailable={!asset}
 		measure={rc.measure}
+		palette={rc.palette}
 	/>
 {:else if el.type === 'link'}
 	{@const d = el.data}
@@ -145,6 +145,7 @@
 		title={d.title || d.url}
 		subtitle={d.note || (d.title ? d.url : null)}
 		measure={rc.measure}
+		palette={rc.palette}
 	/>
 {:else if el.type === 'ref'}
 	{@const d = el.data}
@@ -165,6 +166,7 @@
 		imageHref={card?.imageUrl ?? null}
 		unavailable={card ? !card.available : false}
 		measure={rc.measure}
+		palette={rc.palette}
 	/>
 {:else if el.type === 'frame'}
 	{@const d = el.data}
@@ -202,7 +204,7 @@
 				font-family={FONT_FAMILY}
 				font-size="16"
 				font-weight="700"
-				fill={d.color ?? INK}
+				fill={d.color ?? rc.palette.ink}
 				style="white-space: pre">{d.title}</text
 			>
 		{/if}

@@ -3,7 +3,7 @@
 	import type { WbElement } from '../../schemas';
 	import ElementView from './ElementView.svelte';
 	import type { Rect } from './geometry';
-	import { PAPER } from './render';
+	import { LIGHT } from './render';
 	import type { RenderContext } from './types';
 
 	let {
@@ -21,7 +21,7 @@
 	viewBox={`${rect.x} ${rect.y} ${rect.w} ${rect.h}`}
 >
 	{#if !transparent}
-		<rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={PAPER} />
+		<rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} fill={LIGHT.paper} />
 	{/if}
 	{#each elements as el (el.id)}
 		<ElementView {el} {rc} />
