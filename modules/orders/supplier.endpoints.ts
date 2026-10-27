@@ -29,6 +29,7 @@ import {
 	type SupplierSuggestion
 } from './schemas';
 import {
+	groupRows,
 	idList,
 	iso,
 	isoOrNull,
@@ -73,10 +74,8 @@ async function loadSupplierOrders(tx: Tx, ids?: string[]): Promise<SupplierData[
 			WHERE si.supplier_order_id IN (${idList(orders.map((o) => String(o.id)))})
 			ORDER BY si.position, si.id`
 	);
-	return orders.map((order) => ({
-		order,
-		items: items.filter((i) => i.supplier_order_id === order.id)
-	}));
+	const itemsBy = groupRows(items, (i) => String(i.supplier_order_id));
+	return orders.map((order) => ({ order, items: itemsBy.get(String(order.id)) ?? [] }));
 }
 
 async function loadOr404(tx: Tx, id: string, lock = false): Promise<SupplierData> {

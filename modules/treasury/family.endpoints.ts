@@ -66,7 +66,7 @@ export async function loadFamilyAccount(
 	let invoices: InvoiceSummary[];
 
 	if ('payerId' in target) {
-		payer = (await loadPayers()).find((p) => p.id === target.payerId) ?? null;
+		payer = (await loadPayers([target.payerId]))[0] ?? null;
 		if (!payer) throw errors.notFound('Zahler nicht gefunden');
 		name = payer.name;
 		members = payer.members;

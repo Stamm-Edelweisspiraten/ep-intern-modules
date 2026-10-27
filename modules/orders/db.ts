@@ -28,6 +28,18 @@ export { idList, iso, isoOrNull, num, rows, str, type Row };
 
 export const mdb = () => moduleDb(MODULE_ID);
 
+/** Zeilen nach Schlüssel gruppieren (Map, linear statt `filter` je Eintrag) */
+export function groupRows<T>(items: Iterable<T>, key: (item: T) => string): Map<string, T[]> {
+	const out = new Map<string, T[]>();
+	for (const item of items) {
+		const k = key(item);
+		const list = out.get(k);
+		if (list) list.push(item);
+		else out.set(k, [item]);
+	}
+	return out;
+}
+
 /** Heutiges Datum in Deutschland (zentral, Test-Override über `setTodayForTests` aus `$lib/sdk/dates`) */
 export const today = (): string => todayBerlin();
 
