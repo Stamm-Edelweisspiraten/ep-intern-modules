@@ -6,7 +6,7 @@ paths: ["src/lib/modules/material/**", "src/lib/sdk/labels/**", "src/lib/server/
 
 Überblick über das Material des Stammes: **was** da ist (Artikel → Einzelstücke mit Code **oder** Mengen), **wo** es liegt (Lagerorte als Baum,
 Kisten als Behälter, verschachtelbar), **wer** es wann braucht (Reservierungen, frei oder je Aktion) – mit Ausgabe/Rückgabe per Barcode/QR
-(Handy-Kamera, USB-Scanner) und Etiketten-Designer/-Druck (A4-Bögen und Etikettendrucker). Schema `mod_material`, Version 1.0.0, keine harten
+(Handy-Kamera, USB-Scanner) und Etiketten-Designer/-Druck (A4-Bögen und Etikettendrucker). Schema `mod_material`, Version 1.1.0, keine harten
 Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt „Materialwart*in“). Navigation „Material“ (Icon `boxes`, `order: 45`).
 
 ## Entscheidungen des Nutzers (2026-10-27, nicht ungefragt ändern)
@@ -16,6 +16,21 @@ Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt 
   Ausgeben dürfen sie aufgeteilt werden. Set-Typen (Zelttypen) und Sets sind frei konfigurierbar.
 - Etiketten: A4-Bögen **und** Etikettendrucker (Rolle); Scannen per Handy-Kamera **und** USB-Handscanner.
 - Ausgabe/Rückgabe per Scan mit Zustandsmeldung gehört dazu (Annahme im Plan, mit der Freigabe bestätigt).
+
+## Neugestaltung „Ausleihen zuerst“ (2026-10-27, v1.1.0, Nutzerentscheidungen)
+- **Aufbau** mit eigenen Routen statt Reitern und Bereichsleiste `pages/MaterialNav.svelte` (Desktop `LinkTabs`, Handy `MobileTabBar`, Sichtbarkeit
+  in `pages/nav.ts` `visibleAreas`): `''` **Ausleihen** (Katalog mit Zeitraum, Suche, Kategorien, „frei N von M“, Zelte als Typ × Anzahl → Teile,
+  Merkliste → Reservieren), `meine` **Meine Reservierungen**, `reservierung/:id` (Detailseite), `scan`, `lager` **Lager** (für alle mit `view` lesbar,
+  „Wo ist …?“-Suche, Orte-Baum, Ansichten Orte · Artikel · Zelte & Sets über `?view=`, `?open=`), `ausgabe` **Ausgabe & Rückgabe** (Verwaltung),
+  `etiketten` + `labels/:id`. Reservieren für alle mit `material.reservation.create` (keine Rollenänderung).
+- **Gestaltung**: Taste Skill App-Screens, Stil „Achromatic ledger“ (`.taste-skill/material/direction.json`) mit den Projekt-Tokens: Farbe nur auf
+  Daten/Status und eine Primäraktion, „frei“-Anzahl bzw. Lagerort als Haupt-Datenelement, Listen mit Linien statt Kartenraster, ein `h1` + Befund-Satz.
+- **Artikel-Codes** `A-…` (Migr. 0002): Etiketten und Scannen auch für Mengenartikel (Ziel `article`, Felder `LABEL_FIELDS.article`).
+- **Etiketten**: Vorgabe `avery-l7159` (63,5 × 33,9 mm, 24 je A4); Logos farbig oder **Schwarz-Weiß** (`monochrome`, Assets `*-sw.png`, `logoKey`/
+  `logoDataUrl`); senkrechte Linien als eigenes Werkzeug.
+- **PDF-Listen**: `GET /reservations/:id/handout.pdf` (Ausgabeliste zum Abhaken, nach Lagerort sortiert, Kisteninhalt eingerückt,
+  Unterschriftszeilen) und `POST /inventory.pdf` (Bestandsliste A4 quer, Filter Ort inkl. Unterorte/Kategorie/Artikel/Zustand, Gruppierung,
+  Spalten `INVENTORY_COLUMNS`, Mengen-Abschnitt). Weitere neue Endpunkte: `GET /catalog`, `GET /find` (`borrow.endpoints.ts`).
 
 ## Dateien (`src/lib/modules/material/`)
 | Datei | Inhalt |
@@ -39,9 +54,10 @@ Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt 
 | `labels.endpoints.ts` | `GET /overview`, Etikettenformate (Vorgaben aus `$lib/sdk/labels` + eigene `custom:<id>`), Etikett-Layouts, `POST /labels.pdf` |
 | `notify.ts` | Amt: neue Reservierung **für eine Aktion**, Schaden/Verlust bei Rückgabe, überfällig (Tagesjob, einmal je Fälligkeit über `overdue_notified_on`); Person: `my-overdue` |
 | `search.ts`, `reset.ts` (`reservations`, `all`; `USER_COLUMNS`), `user-deleted.ts`, `subject-export.ts` | Hooks |
-| `pages/` | `MaterialPage` + `OverviewTab`, `inventory/`, `sets/`, `reservations/`, `labels/` (inkl. `LabelDesigner`), `ScanPage`, `widgets/`, `shared/` (`UnitPicker`, `ConditionBadge`, `StatusBadge`, `PrintLabelsDialog`), `helpers.ts` |
+| `borrow.endpoints.ts` | `GET /catalog`, `GET /find`, Ausgabeliste- und Bestandslisten-PDF |
+| `pages/` | `BorrowPage` (+ `borrow/`), `MyReservationsPage`, `ReservationPage`, `StockPage` (+ `stock/`, `inventory/`, `sets/`), `HandoutPage` (+ `handout/`, `reservations/`), `LabelsPage` + `labels/` (inkl. `LabelDesigner`), `ScanPage`, `widgets/`, `shared/`, `MaterialNav` + `nav.ts`, `helpers.ts` |
 
-## Datenmodell (Migration 0001)
+## Datenmodell (Migration 0001, 0002 Artikel-Codes)
 `locations` (Baum, `code`), `categories`, `articles` (`kind` unit|bulk, `min_quantity`), `article_images`, `units` (`code` unique, `label`, `is_container`,
 `container_id` **oder** `location_id`, `condition` ok|worn|damaged|defect|lost, `retired_at`, `issued_reservation_id`, Wert in Cent `bigint`), `stock`
 (Artikel × Halter Ort **oder** Kiste, partielle Unique-Indizes), `container_targets` (Packliste), `set_templates`/`set_template_parts`, `sets`/`set_units`
@@ -75,8 +91,8 @@ Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt 
 | `material.labels.manage` | Etikettenformate und -Layouts gestalten, drucken |
 
 ## Tests und Demo
-Unit `tests/unit/material-logic.test.ts` (Verfügbarkeit, Zuteilung, Vollständigkeit, Orte, Codes), `tests/unit/labels.test.ts` (Etiketten-Layout, Barcodes,
-HTML, USB-Scanner); Integration `tests/integration/material.test.ts`. Demo `node scripts/seed-demo-material.mjs`.
+Unit `tests/unit/material-nav.test.ts`, `material-cart.test.ts`, `material-label-designer.test.ts`, `tests/unit/material-logic.test.ts` (Verfügbarkeit, Zuteilung, Vollständigkeit, Orte, Codes), `tests/unit/labels.test.ts` (Etiketten-Layout, Barcodes,
+HTML, USB-Scanner); Integration `tests/integration/material.test.ts`, Upgrade `material-migrations.test.ts` (0002); E2E `tests/e2e/material.spec.ts`. Demo `node scripts/seed-demo-material.mjs`.
 
 ## Offen
 - Echte Handy-Kamera (iOS-Polyfill) und echte Etikettendrucker nur nach Deploy mit HTTPS prüfbar.

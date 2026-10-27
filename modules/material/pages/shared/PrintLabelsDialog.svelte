@@ -18,6 +18,7 @@
 	import {
 		BASE_PATH,
 		LABEL_TARGET_LABELS,
+		type Article,
 		type LabelFormatEntry,
 		type LabelTarget,
 		type LabelTemplate,
@@ -41,7 +42,7 @@
 		open?: boolean;
 		/** Art der Objekte */
 		target: LabelTarget;
-		/** IDs der Objekte (Stücke/Kisten, Sets oder Lagerorte), Reihenfolge = Druckreihenfolge */
+		/** IDs der Objekte (Stücke/Kisten, Artikel, Sets oder Lagerorte), Reihenfolge = Druckreihenfolge */
 		ids?: string[];
 		/** Nur `blank`: vorab vergebene Codes */
 		codes?: string[];
@@ -121,7 +122,8 @@
 			const pre = own.find((x) => x.id === templateId) ?? own[0] ?? null;
 			chosenTemplate = pre?.id ?? null;
 			formatKey = pre?.formatKey ?? null;
-			if (probe && (target === 'set' || target === 'location')) await loadOptions();
+			if (probe && (target === 'set' || target === 'location' || target === 'article'))
+				await loadOptions();
 		} catch (e) {
 			loadError = errorText(e, 'Etiketten-Layouts konnten nicht geladen werden.');
 		} finally {
@@ -130,7 +132,13 @@
 	}
 
 	async function loadOptions() {
-		if (target === 'set') {
+		if (target === 'article') {
+			const articles = await apiFetch<Article[]>(`${API}/articles`);
+			options = articles.map((a) => ({
+				value: a.id,
+				label: a.code ? `${a.name} (${a.code})` : a.name
+			}));
+		} else if (target === 'set') {
 			const sets = await apiFetch<MaterialSet[]>(`${API}/sets`);
 			options = sets.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
 		} else {
@@ -145,6 +153,12 @@
 		if (t) formatKey = t.formatKey;
 		startIndex = 0;
 	}
+
+	const PROBE_LABELS: Partial<Record<LabelTarget, string>> = {
+		set: 'Sets für den Probedruck',
+		location: 'Lagerorte für den Probedruck',
+		article: 'Artikel für den Probedruck'
+	};
 
 	const formatOptions = $derived(
 		formats.map((f) => ({ value: f.key, label: f.preset ? f.name : `${f.name} (eigenes)` }))
@@ -206,7 +220,7 @@
 				<Alert.Title>Noch kein passendes Layout</Alert.Title>
 				<Alert.Description>
 					Für „{LABEL_TARGET_LABELS[target]}“ gibt es noch kein Etikett-Layout.
-					<a class="text-link underline-offset-4 hover:underline" href={`${BASE_PATH}?tab=labels`}>
+					<a class="text-link underline-offset-4 hover:underline" href={`${BASE_PATH}/etiketten`}>
 						Layout anlegen
 					</a>
 				</Alert.Description>
@@ -249,7 +263,7 @@
 						</div>
 					{:else if probe && target !== 'blank'}
 						<FormField
-							label={target === 'set' ? 'Sets für den Probedruck' : 'Lagerorte für den Probedruck'}
+							label={PROBE_LABELS[target] ?? 'Objekte für den Probedruck'}
 							id="print-objects"
 						>
 							<MultiSelect

@@ -12,6 +12,8 @@
 	import Image from '@lucide/svelte/icons/image';
 	import Square from '@lucide/svelte/icons/square';
 	import Minus from '@lucide/svelte/icons/minus';
+	import SeparatorVertical from '@lucide/svelte/icons/separator-vertical';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -32,6 +34,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
@@ -88,7 +91,7 @@
 	const canPrint = $derived(canDesign || can(permissions, PERMISSIONS.manage));
 	const phone = $derived(deviceLayout() === 'phone');
 	const readonly = $derived(!canDesign || phone);
-	const BACK = `${BASE_PATH}?tab=labels`;
+	const BACK = `${BASE_PATH}/etiketten`;
 
 	type DesignState = { layout: LabelLayout; formatKey: string };
 
@@ -254,13 +257,26 @@
 		);
 	}
 
-	function add(type: LabelElementType, opts: { logo?: LabelLogo; code128?: boolean } = {}) {
+	function add(
+		type: LabelElementType,
+		opts: {
+			logo?: LabelLogo;
+			monochrome?: boolean;
+			code128?: boolean;
+			orientation?: 'horizontal' | 'vertical';
+		} = {}
+	) {
 		if (readonly) return;
 		if (layout.elements.length >= MAX_ELEMENTS) {
 			toast.error(`Höchstens ${MAX_ELEMENTS} Elemente je Etikett`);
 			return;
 		}
-		let el = createElement(type, layout, { target, logo: opts.logo });
+		let el = createElement(type, layout, {
+			target,
+			logo: opts.logo,
+			monochrome: opts.monochrome,
+			orientation: opts.orientation
+		});
 		if (el.type === 'barcode' && opts.code128) {
 			const w = round2(Math.min(layout.widthMm * 0.8, layout.widthMm));
 			const h = round2(clamp(layout.heightMm * 0.35, 1, layout.heightMm));
@@ -464,6 +480,10 @@
 	};
 	function describe(el: LabelElement): string {
 		if (el.type === 'text') return el.text || 'Text';
+		if (el.type === 'image')
+			return `${el.logo === 'lilie' ? 'Lilie' : 'Wappen'}${el.monochrome ? ' (schwarz-weiß)' : ''}`;
+		if (el.type === 'line')
+			return el.orientation === 'vertical' ? 'Linie senkrecht' : 'Linie waagerecht';
 		if (el.type === 'barcode')
 			return `${el.symbology === 'code128' ? 'Strichcode' : el.symbology === 'qrcode' ? 'QR' : 'DataMatrix'} ${el.value}`;
 		return ELEMENT_LABELS[el.type];
@@ -580,17 +600,41 @@
 				<Button variant="ghost" size="sm" onclick={() => add('barcode', { code128: true })}>
 					<Barcode aria-hidden="true" /> Strichcode
 				</Button>
-				<Button variant="ghost" size="sm" onclick={() => add('image', { logo: 'wappen' })}>
-					<Image aria-hidden="true" /> Wappen
-				</Button>
-				<Button variant="ghost" size="sm" onclick={() => add('image', { logo: 'lilie' })}>
-					<Image aria-hidden="true" /> Lilie
-				</Button>
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} variant="ghost" size="sm">
+								<Image aria-hidden="true" /> Logo <ChevronDown
+									aria-hidden="true"
+									class="size-3.5"
+								/>
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="start">
+						<DropdownMenu.Item onSelect={() => add('image', { logo: 'wappen' })}>
+							Wappen farbig
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onSelect={() => add('image', { logo: 'wappen', monochrome: true })}>
+							Wappen schwarz-weiß
+						</DropdownMenu.Item>
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item onSelect={() => add('image', { logo: 'lilie' })}>
+							Lilie farbig
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onSelect={() => add('image', { logo: 'lilie', monochrome: true })}>
+							Lilie schwarz-weiß
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 				<Button variant="ghost" size="sm" onclick={() => add('rect')}
 					><Square aria-hidden="true" /> Rahmen</Button
 				>
 				<Button variant="ghost" size="sm" onclick={() => add('line')}
-					><Minus aria-hidden="true" /> Linie</Button
+					><Minus aria-hidden="true" /> Linie waagerecht</Button
+				>
+				<Button variant="ghost" size="sm" onclick={() => add('line', { orientation: 'vertical' })}
+					><SeparatorVertical aria-hidden="true" /> Linie senkrecht</Button
 				>
 				<span class="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden="true"></span>
 			{/if}

@@ -12,7 +12,7 @@ import { UNUSABLE_CONDITIONS, type Condition, type UnitSummary } from './schemas
 export interface PlaceIndex {
 	locationPaths: Map<string, string>;
 	locationParents: Map<string, string | null>;
-	units: Map<string, Placed & { name: string; isContainer: boolean }>;
+	units: Map<string, Placed & { name: string; isContainer: boolean; articleId: string }>;
 }
 
 export async function loadPlaceIndex(tx: Tx): Promise<PlaceIndex> {
@@ -24,7 +24,7 @@ export async function loadPlaceIndex(tx: Tx): Promise<PlaceIndex> {
 	}));
 	const unitRows = await rows(
 		tx,
-		sql`SELECT u.id, u.container_id, u.location_id, u.label, u.is_container, a.name AS article_name
+		sql`SELECT u.id, u.article_id, u.container_id, u.location_id, u.label, u.is_container, a.name AS article_name
 			FROM units u JOIN articles a ON a.id = u.article_id`
 	);
 	return {
@@ -38,7 +38,8 @@ export async function loadPlaceIndex(tx: Tx): Promise<PlaceIndex> {
 					containerId: r.container_id ? String(r.container_id) : null,
 					locationId: r.location_id ? String(r.location_id) : null,
 					name: str(r.label) || String(r.article_name),
-					isContainer: bool(r.is_container)
+					isContainer: bool(r.is_container),
+					articleId: String(r.article_id)
 				}
 			])
 		)

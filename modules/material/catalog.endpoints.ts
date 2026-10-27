@@ -7,7 +7,7 @@ import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib
 import { mdb, nextCodes, num, rows, str, type Row } from './db';
 import { removeFiles } from './files';
 import { loadPlaceIndex } from './inventory';
-import { wouldCycle } from './places';
+import { effectivePlace, wouldCycle } from './places';
 import {
 	PERMISSIONS,
 	articleInput,
@@ -35,10 +35,17 @@ async function loadLocations(tx: Tx): Promise<Location[]> {
 	const index = await loadPlaceIndex(tx);
 	const list = await rows(
 		tx,
-		sql`SELECT l.id, l.parent_id, l.name, l.description, l.code, l.position,
-				(SELECT count(*) FROM units u WHERE u.location_id = l.id AND u.retired_at IS NULL) AS unit_count
-			FROM locations l`
+		sql`SELECT l.id, l.parent_id, l.name, l.description, l.code, l.position FROM locations l`
 	);
+	// Stücke je Ort wie im Kopf des Lagers gezählt: inkl. Inhalt von Kisten, ohne die Kisten selbst und Ausgemustertes
+	const counts = new Map<string, number>();
+	for (const u of await rows(
+		tx,
+		sql`SELECT id FROM units WHERE retired_at IS NULL AND NOT is_container`
+	)) {
+		const loc = effectivePlace(index.units, String(u.id)).locationId;
+		if (loc) counts.set(loc, (counts.get(loc) ?? 0) + 1);
+	}
 	return list
 		.map((r) => ({
 			id: String(r.id),
@@ -48,7 +55,7 @@ async function loadLocations(tx: Tx): Promise<Location[]> {
 			code: String(r.code),
 			path: index.locationPaths.get(String(r.id)) ?? String(r.name),
 			position: num(r.position),
-			unitCount: num(r.unit_count)
+			unitCount: counts.get(String(r.id)) ?? 0
 		}))
 		.sort((a, b) => a.path.localeCompare(b.path, 'de'));
 }
@@ -139,7 +146,7 @@ export async function loadArticles(
 	}
 	const list = await rows(
 		tx,
-		sql`SELECT a.id, a.name, a.category_id, c.name AS category_name, c.color AS category_color,
+		sql`SELECT a.id, a.code, a.name, a.category_id, c.name AS category_name, c.color AS category_color,
 				c.icon AS category_icon, a.kind, a.unit_label, a.description, a.notes, a.min_quantity,
 				a.archived_at,
 				(SELECT count(*) FROM units u WHERE u.article_id = a.id AND u.retired_at IS NULL) AS unit_count,
@@ -173,6 +180,7 @@ export async function loadArticles(
 	}
 	return list.map((r) => ({
 		id: String(r.id),
+		code: String(r.code),
 		name: String(r.name),
 		categoryId: r.category_id ? String(r.category_id) : null,
 		categoryName: r.category_name ? String(r.category_name) : null,
@@ -410,9 +418,10 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 			const id = crypto.randomUUID();
 			const article = await mdb().transaction(async (tx) => {
 				await assertCategory(tx, body.categoryId);
+				const [code] = await nextCodes(tx, 'article', 1);
 				await tx.execute(
-					sql`INSERT INTO articles (id, name, category_id, kind, unit_label, description, notes, min_quantity, created_by)
-						VALUES (${id}, ${body.name}, ${body.categoryId}, ${body.kind}, ${body.unitLabel},
+					sql`INSERT INTO articles (id, code, name, category_id, kind, unit_label, description, notes, min_quantity, created_by)
+						VALUES (${id}, ${code!}, ${body.name}, ${body.categoryId}, ${body.kind}, ${body.unitLabel},
 							${body.description}, ${body.notes}, ${body.minQuantity}, ${ctx.userId ?? null})`
 				);
 				return requireArticle(tx, id);

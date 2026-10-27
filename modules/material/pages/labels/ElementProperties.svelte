@@ -20,6 +20,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FormField, NumberStepper } from '$lib/components/layout';
@@ -304,6 +305,18 @@
 				onchange={(v) => v && onchange({ logo: v }, null)}
 			/>
 		</FormField>
+		<div class="flex items-center gap-2">
+			<Switch
+				id={id('monochrome')}
+				checked={element.monochrome === true}
+				disabled={readonly}
+				onCheckedChange={(v) => onchange({ monochrome: v === true }, null)}
+			/>
+			<Label for={id('monochrome')}>Schwarz-Weiß</Label>
+		</div>
+		<p class="text-xs text-muted-foreground">
+			Für Laser- und Thermodrucker ohne Farbe – druckt sauberer als ein gerastertes Farblogo.
+		</p>
 	{:else if element.type === 'rect'}
 		<div class="grid grid-cols-2 gap-2">
 			<FormField label="Linienstärke" id={id('stroke')} hint="0 = ohne Linie">

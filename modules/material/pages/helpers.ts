@@ -12,6 +12,9 @@ import {
 	type ReservationStatus
 } from '../schemas';
 
+/** Pseudo-Ort im Lager: Stücke ohne Lagerort und ohne Kiste */
+export const UNPLACED = '__unplaced';
+
 /** Basis für `apiFetch` */
 export const API = BASE_PATH;
 
@@ -69,8 +72,10 @@ export const STATUS_VARIANTS: Record<ReservationStatus, BadgeVariant> = {
 export { CONDITION_LABELS, RESERVATION_STATUS_LABELS };
 
 /** Link zur Detailansicht eines Stücks/einer Kiste (öffnet das Blatt im Bestand) */
-export const unitHref = (id: string) => `${BASE_PATH}?open=${id}`;
+export const unitHref = (id: string) => `${BASE_PATH}/lager?open=${id}`;
 /** Link zu einem Set */
-export const setHref = (id: string) => `${BASE_PATH}?tab=sets&open=${id}`;
+export const setHref = (id: string) => `${BASE_PATH}/lager?view=sets&open=${id}`;
 /** Link zu einer Reservierung */
-export const reservationHref = (id: string) => `${BASE_PATH}?tab=reservations&open=${id}`;
+export const reservationHref = (id: string) => `${BASE_PATH}/reservierung/${id}`;
+/** Link zu einem Artikel im Lager */
+export const articleHref = (id: string) => `${BASE_PATH}/lager?view=articles&open=${id}`;

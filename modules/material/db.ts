@@ -56,6 +56,7 @@ export async function codeInUse(tx: Tx, code: string, except?: string): Promise<
 		sql`SELECT 1 AS x FROM units WHERE code = ${code} AND id::text <> ${except ?? ''}
 			UNION ALL SELECT 1 FROM sets WHERE code = ${code} AND id::text <> ${except ?? ''}
 			UNION ALL SELECT 1 FROM locations WHERE code = ${code} AND id::text <> ${except ?? ''}
+			UNION ALL SELECT 1 FROM articles WHERE code = ${code} AND id::text <> ${except ?? ''}
 			LIMIT 1`
 	);
 	return !!r;

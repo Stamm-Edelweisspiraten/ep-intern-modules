@@ -303,6 +303,8 @@ export const unitsEndpoints: AnyApiEndpoint[] = [
 				if (query.containers === '1') where.push(sql`u.is_container`);
 				if (query.condition) where.push(sql`u.condition = ${query.condition}`);
 				if (query.issued === '1') where.push(sql`u.issued_reservation_id IS NOT NULL`);
+				if (query.unplaced === '1')
+					where.push(sql`u.location_id IS NULL AND u.container_id IS NULL`);
 				if (query.locationId && query.deep !== '1')
 					where.push(sql`u.location_id = ${query.locationId}`);
 				if (query.search) {

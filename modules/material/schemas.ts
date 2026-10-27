@@ -62,7 +62,7 @@ export function imageUrl(articleId: string, imageId: string, variant: ImageVaria
 // --- Codes ---------------------------------------------------------------------
 
 /** Präfixe automatisch vergebener Codes: Stück/Kiste, Set, Lagerort */
-export const CODE_PREFIX = { unit: 'M', set: 'S', location: 'L' } as const;
+export const CODE_PREFIX = { unit: 'M', set: 'S', location: 'L', article: 'A' } as const;
 export type CodeKind = keyof typeof CODE_PREFIX;
 
 /** Code normalisieren: Leerraum weg, Großbuchstaben */
@@ -128,10 +128,11 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
 export const LINE_KINDS = ['unit', 'set', 'article'] as const;
 export type LineKind = (typeof LINE_KINDS)[number];
 
-export const LABEL_TARGETS = ['unit', 'set', 'location', 'blank'] as const;
+export const LABEL_TARGETS = ['unit', 'article', 'set', 'location', 'blank'] as const;
 export type LabelTarget = (typeof LABEL_TARGETS)[number];
 export const LABEL_TARGET_LABELS: Record<LabelTarget, string> = {
 	unit: 'Stücke und Kisten',
+	article: 'Artikel (auch Mengen wie Tassen)',
 	set: 'Sets',
 	location: 'Lagerorte',
 	blank: 'Leere Codes (vorab drucken)'
@@ -174,6 +175,20 @@ export const LABEL_FIELDS: Record<LabelTarget, { key: string; label: string; sam
 			key: 'url',
 			label: 'Scan-Link (für QR)',
 			sample: 'https://intern.example.org/modules/material/scan/L-000002'
+		},
+		{ key: 'org', label: 'Stammesname', sample: 'Stamm Edelweißpiraten' }
+	],
+	article: [
+		{ key: 'name', label: 'Artikel', sample: 'Emaille-Tasse' },
+		{ key: 'category', label: 'Kategorie', sample: 'Küche' },
+		{ key: 'unit', label: 'Einheit', sample: 'Stück' },
+		{ key: 'total', label: 'Bestand gesamt', sample: '42' },
+		{ key: 'locations', label: 'Lagerorte', sample: 'Regal B – Küche, Kochkiste 1' },
+		{ key: 'code', label: 'Code', sample: 'A-000008' },
+		{
+			key: 'url',
+			label: 'Scan-Link (für QR)',
+			sample: 'https://intern.example.org/modules/material/scan/A-000008'
 		},
 		{ key: 'org', label: 'Stammesname', sample: 'Stamm Edelweißpiraten' }
 	],
@@ -252,7 +267,7 @@ export interface Location {
 	/** Voller Pfad „Materialraum › Regal A“ */
 	path: string;
 	position: number;
-	/** Stücke direkt an diesem Ort (ohne Inhalt von Kisten) */
+	/** Stücke direkt an diesem Ort inkl. Inhalt der Kisten dort (ohne Kisten selbst, ohne Unterorte) */
 	unitCount: number;
 }
 
@@ -318,6 +333,8 @@ export interface ArticleImage {
 export interface Article {
 	id: string;
 	name: string;
+	/** Eigener Code (Etikett am Regalfach, Scannen) */
+	code: string;
 	categoryId: string | null;
 	categoryName: string | null;
 	categoryColor: string | null;
@@ -438,6 +455,8 @@ export const unitListQuery = z.object({
 	containers: z.enum(['0', '1']).optional(),
 	condition: z.enum(CONDITIONS).optional(),
 	retired: z.enum(['0', '1']).optional(),
+	/** Nur Stücke ohne Lagerort und ohne Kiste */
+	unplaced: z.enum(['0', '1']).optional(),
 	issued: z.enum(['0', '1']).optional(),
 	/** Nur im Zeitraum verfügbare Stücke */
 	from: dateString.optional(),
@@ -798,6 +817,7 @@ export type CodeTarget =
 	| { type: 'unit'; id: string; code: string; name: string }
 	| { type: 'set'; id: string; code: string; name: string }
 	| { type: 'location'; id: string; code: string; name: string }
+	| { type: 'article'; id: string; code: string; name: string }
 	| { type: 'reserved'; code: string };
 
 export const reserveCodesInput = z.object({
@@ -860,5 +880,106 @@ export interface Overview {
 	overdueReservations: number;
 	damagedUnits: number;
 	upcomingReservations: number;
+	/** Stücke ohne Lagerort und ohne Kiste */
+	unplacedUnits: number;
 	lowStock: { articleId: string; name: string; total: number; min: number }[];
 }
+
+// --- Ausleihen (Katalog) ---------------------------------------------------------
+
+export const catalogQuery = z.object({
+	from: dateString,
+	to: dateString,
+	search: z.string().trim().max(100).optional(),
+	categoryId: z.uuid().optional()
+});
+
+export interface CatalogArticle {
+	id: string;
+	code: string;
+	name: string;
+	kind: ArticleKind;
+	unitLabel: string;
+	description: string;
+	categoryId: string | null;
+	categoryName: string | null;
+	categoryColor: string | null;
+	categoryIcon: string | null;
+	thumbUrl: string | null;
+	/** Nutzbare Stücke bzw. Gesamtmenge */
+	total: number;
+	/** Im Zeitraum frei */
+	free: number;
+	/** Wo es liegt (Pfade, höchstens 3) */
+	places: string[];
+}
+
+export interface CatalogTemplate {
+	id: string;
+	name: string;
+	description: string;
+	parts: { articleId: string; articleName: string; quantity: number }[];
+	/** So viele vollständige Exemplare lassen sich im Zeitraum aus freien Teilen zusammenstellen */
+	free: number;
+	/** Fertige Sets dieses Typs */
+	sets: number;
+}
+
+export interface Catalog {
+	from: string;
+	to: string;
+	articles: CatalogArticle[];
+	templates: CatalogTemplate[];
+}
+
+// --- „Wo ist …?“ -----------------------------------------------------------------
+
+export const findQuery = z.object({ q: z.string().trim().min(1).max(100) });
+
+export interface FindHit {
+	type: 'unit' | 'container' | 'article' | 'set' | 'location';
+	id: string;
+	code: string;
+	name: string;
+	/** Artikel/Set-Typ bzw. Kategorie */
+	detail: string;
+	/** Lagerort als Pfad (bei Artikeln: die Orte mit Bestand) */
+	place: string;
+	/** Unterwegs: Titel der Reservierung */
+	away: string | null;
+	condition: Condition | null;
+	/** Menge (Mengenartikel) bzw. Stückzahl */
+	quantity: number | null;
+}
+
+// --- Bestandsliste (PDF) -----------------------------------------------------------
+
+export const INVENTORY_COLUMNS = [
+	{ key: 'code', label: 'Code', default: true },
+	{ key: 'name', label: 'Bezeichnung', default: true },
+	{ key: 'article', label: 'Artikel', default: true },
+	{ key: 'category', label: 'Kategorie', default: false },
+	{ key: 'place', label: 'Lagerort', default: true },
+	{ key: 'condition', label: 'Zustand', default: true },
+	{ key: 'set', label: 'Set', default: false },
+	{ key: 'away', label: 'Unterwegs', default: true },
+	{ key: 'value', label: 'Wert', default: false },
+	{ key: 'check', label: 'Geprüft ☐', default: false }
+] as const;
+export type InventoryColumn = (typeof INVENTORY_COLUMNS)[number]['key'];
+
+export const inventoryPdfInput = z.object({
+	locationId: z.uuid().nullish(),
+	categoryId: z.uuid().nullish(),
+	articleId: z.uuid().nullish(),
+	condition: z.enum(CONDITIONS).nullish(),
+	groupBy: z.enum(['place', 'category']).default('place'),
+	columns: z
+		.array(z.enum(INVENTORY_COLUMNS.map((c) => c.key) as [InventoryColumn, ...InventoryColumn[]]))
+		.min(1)
+		.max(INVENTORY_COLUMNS.length)
+		.optional(),
+	/** Mengenartikel als eigener Abschnitt */
+	includeBulk: z.boolean().default(true),
+	includeRetired: z.boolean().default(false)
+});

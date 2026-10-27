@@ -1,6 +1,7 @@
 <script lang="ts">
-	// Reiter „Etiketten“: Layouts (Liste mit Mini-Vorschau, neu/bearbeiten/duplizieren/löschen),
-	// Formate und Leer-Etiketten.
+	// Inhalt der Seite „Etiketten“ (`/modules/material/etiketten`): Layouts (Mini-Vorschau,
+	// neu/bearbeiten/duplizieren/löschen, Probedruck), Formate und Leer-Etiketten.
+	// Gestaltet wird im Designer `labels/:id`.
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -123,7 +124,11 @@
 			<div>
 				<h2 id="label-layouts-heading" class="text-section">Layouts</h2>
 				<p class="text-sm text-muted-foreground">
-					Wie ein Etikett aussieht. Gedruckt wird aus dem Bestand, den Sets oder den Lagerorten.
+					Wie ein Etikett aussieht. Gedruckt wird im
+					<a class="text-link underline-offset-4 hover:underline" href={`${BASE_PATH}/lager`}
+						>Lager</a
+					>
+					bei Stücken, Kisten, Artikeln, Sets und Lagerorten – oder hier als Probedruck.
 				</p>
 			</div>
 			{#if canDesign}
@@ -138,7 +143,7 @@
 		{:else if !templates.length}
 			<EmptyState
 				title="Noch keine Etikett-Layouts"
-				description="Lege ein Layout an – zum Beispiel für Kisten, Zeltbahnen oder Lagerorte."
+				description="Lege ein Layout an – zum Beispiel für Kisten, Zeltbahnen, Regalfächer oder Lagerorte. Startvorlagen gibt es für gängige Avery-Zweckform-Bögen."
 			>
 				{#if canDesign}
 					<Button onclick={() => (newOpen = true)}><Plus aria-hidden="true" /> Neues Layout</Button>
@@ -159,7 +164,7 @@
 									values={sampleValues(t.target)}
 									maxWidth={240}
 									maxHeight={112}
-									class="shadow-sm"
+									class="ring-1 ring-border"
 								/>
 							</a>
 							<div class="flex items-start gap-2 px-3">

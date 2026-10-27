@@ -134,6 +134,8 @@ export const handoutEndpoints: AnyApiEndpoint[] = [
 					return { type: 'unit', id: String(u.id), code, name: str(u.label) || String(u.name) };
 				const [s] = await rows(tx, sql`SELECT id, name FROM sets WHERE code = ${code}`);
 				if (s) return { type: 'set', id: String(s.id), code, name: String(s.name) };
+				const [a] = await rows(tx, sql`SELECT id, name FROM articles WHERE code = ${code}`);
+				if (a) return { type: 'article', id: String(a.id), code, name: String(a.name) };
 				const [l] = await rows(tx, sql`SELECT id, name FROM locations WHERE code = ${code}`);
 				if (l) return { type: 'location', id: String(l.id), code, name: String(l.name) };
 				const [rc] = await rows(tx, sql`SELECT code FROM reserved_codes WHERE code = ${code}`);

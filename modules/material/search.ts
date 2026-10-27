@@ -29,7 +29,7 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				type: u.is_container === true || u.is_container === 't' ? 'Kiste' : 'Material',
 				title: str(u.label) || String(u.name),
 				subtitle: `${String(u.code)} · ${String(u.name)}`,
-				href: `${BASE_PATH}?open=${String(u.id)}`,
+				href: `${BASE_PATH}/lager?open=${String(u.id)}`,
 				icon: 'boxes'
 			});
 		}
@@ -45,7 +45,7 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				type: 'Set',
 				title: String(s.name),
 				subtitle: `${String(s.code)} · ${String(s.template)}`,
-				href: `${BASE_PATH}?tab=sets&open=${String(s.id)}`,
+				href: `${BASE_PATH}/lager?view=sets&open=${String(s.id)}`,
 				icon: 'boxes'
 			});
 		}
@@ -60,7 +60,7 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				type: 'Artikel',
 				title: String(a.name),
 				subtitle: String(a.kind) === 'bulk' ? 'Menge' : 'Einzelstücke',
-				href: `${BASE_PATH}?article=${String(a.id)}`,
+				href: `${BASE_PATH}/lager?view=articles&open=${String(a.id)}`,
 				icon: 'boxes'
 			});
 		}
@@ -76,7 +76,7 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				type: 'Reservierung',
 				title: String(r.title),
 				subtitle: `ab ${formatDateDe(dateStr(r.starts_on))}`,
-				href: `${BASE_PATH}?tab=reservations&open=${String(r.id)}`,
+				href: `${BASE_PATH}/reservierung/${String(r.id)}`,
 				icon: 'boxes'
 			});
 		}

@@ -21,7 +21,7 @@ import {
 } from './schemas';
 
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
-const link = (id: string) => `${BASE_PATH}?tab=reservations&open=${id}`;
+const link = (id: string) => `${BASE_PATH}/reservierung/${id}`;
 
 export async function notifyReservationCreated(ctx: RequestContext, r: Reservation): Promise<void> {
 	await bestEffort(

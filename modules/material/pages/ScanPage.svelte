@@ -19,15 +19,25 @@
 		CONDITION_LABELS,
 		PERMISSIONS,
 		codeFromScan,
+		type Article,
 		type CodeTarget,
 		type Condition,
 		type MaterialSet,
 		type Reservation,
 		type ReservationListItem,
+		type StockEntry,
 		type UnitDetail,
 		type UnitSummary
 	} from '../schemas';
-	import { API, errorText, formatPeriod, reservationHref, setHref, unitHref } from './helpers';
+	import {
+		API,
+		articleHref,
+		errorText,
+		formatPeriod,
+		reservationHref,
+		setHref,
+		unitHref
+	} from './helpers';
 	import ConditionBadge from './shared/ConditionBadge.svelte';
 	import StatusBadge from './shared/StatusBadge.svelte';
 	import ScanField from './reservations/ScanField.svelte';
@@ -58,6 +68,7 @@
 		| { type: 'unit'; target: CodeTarget; unit: UnitDetail }
 		| { type: 'set'; target: CodeTarget; set: MaterialSet }
 		| { type: 'location'; target: CodeTarget; units: UnitSummary[]; total: number }
+		| { type: 'article'; article: Article; stock: StockEntry[] }
 		| { type: 'reserved'; code: string }
 		| { type: 'unknown'; raw: string };
 	let hit = $state<Hit | null>(null);
@@ -129,6 +140,12 @@
 				hit = { type: 'unit', target: t, unit: await apiFetch<UnitDetail>(`${API}/units/${t.id}`) };
 			} else if (t.type === 'set') {
 				hit = { type: 'set', target: t, set: await apiFetch<MaterialSet>(`${API}/sets/${t.id}`) };
+			} else if (t.type === 'article') {
+				const [article, stock] = await Promise.all([
+					apiFetch<Article>(`${API}/articles/${t.id}`),
+					apiFetch<StockEntry[]>(`${API}/stock?articleId=${t.id}`)
+				]);
+				hit = { type: 'article', article, stock };
 			} else if (t.type === 'location') {
 				const res = await apiFetch<{ items: UnitSummary[]; total: number }>(
 					`${API}/units?locationId=${t.id}&deep=1&limit=100`
@@ -417,6 +434,43 @@
 							{/each}
 						</ul>
 						<Button href={setHref(s.id)} variant="outline" size="sm">Set öffnen</Button>
+					{:else if hit.type === 'article'}
+						{@const a = hit.article}
+						<div>
+							<p class="text-section">{a.name}</p>
+							<p class="text-xs text-muted-foreground">
+								<span class="font-mono">{a.code}</span> · {a.kind === 'bulk'
+									? 'Mengenartikel'
+									: 'Artikel'}{a.categoryName ? ` · ${a.categoryName}` : ''}
+							</p>
+						</div>
+						{#if a.kind === 'bulk'}
+							<p class="tabular-nums">
+								Gesamt {a.stockTotal.toLocaleString('de-DE')}
+								{a.unitLabel}{a.issuedCount ? `, davon ${a.issuedCount} unterwegs` : ''}
+							</p>
+							{#if hit.stock.length}
+								<ul class="divide-y rounded-md border" aria-label={`Bestand von ${a.name} je Ort`}>
+									{#each hit.stock as e (e.id)}
+										<li class="flex items-center justify-between gap-2 px-3 py-2">
+											<span class="min-w-0 truncate">{e.holderName}</span>
+											<span class="whitespace-nowrap tabular-nums">
+												{e.quantity.toLocaleString('de-DE')}
+												{a.unitLabel}
+											</span>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="text-muted-foreground">Noch kein Bestand erfasst.</p>
+							{/if}
+						{:else}
+							<p class="tabular-nums">
+								{a.usableCount} nutzbar{a.usableCount !== a.unitCount ? ` von ${a.unitCount}` : ''}
+								{a.unitLabel}
+							</p>
+						{/if}
+						<Button href={articleHref(a.id)} variant="outline" size="sm">Artikel öffnen</Button>
 					{:else if hit.type === 'location'}
 						<div>
 							<p class="text-section">{hit.target.type === 'location' ? hit.target.name : ''}</p>
@@ -450,9 +504,7 @@
 					{:else if hit.type === 'reserved'}
 						<p class="text-section">{hit.code}</p>
 						<p>Noch keinem Stück zugeordnet – im Bestand „Stück erfassen“ mit diesem Code.</p>
-						<Button href={`${BASE_PATH}?tab=inventory`} variant="outline" size="sm">
-							Zum Bestand
-						</Button>
+						<Button href={`${BASE_PATH}/lager`} variant="outline" size="sm">Zum Bestand</Button>
 					{:else}
 						<p class="font-medium">Unbekannter Code</p>
 						<p class="break-all text-muted-foreground">„{hit.raw}“ gehört zu keinem Material.</p>

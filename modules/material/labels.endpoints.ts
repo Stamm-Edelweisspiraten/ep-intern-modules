@@ -19,7 +19,7 @@ import {
 	type LabelLayout
 } from '$lib/sdk/labels';
 import { iso, mdb, num, rows, str, today } from './db';
-import { loadPlaceIndex, placeText, unitSummaries } from './inventory';
+import { holderText, loadPlaceIndex, placeText, unitSummaries } from './inventory';
 import { loadSets } from './sets.endpoints';
 import {
 	MAX_LABELS,
@@ -166,6 +166,55 @@ async function labelValues(
 			};
 		});
 	}
+	if (target === 'article') {
+		const index = await loadPlaceIndex(tx);
+		const list = await rows(
+			tx,
+			sql`SELECT a.id, a.code, a.name, a.kind, a.unit_label, c.name AS category,
+					(SELECT coalesce(sum(quantity), 0) FROM stock s WHERE s.article_id = a.id) AS stock_total,
+					(SELECT count(*) FROM units u WHERE u.article_id = a.id AND u.retired_at IS NULL) AS unit_total
+				FROM articles a LEFT JOIN categories c ON c.id = a.category_id
+				WHERE a.id::text IN (${sql.join(
+					(ids.length ? ids : ['00000000-0000-0000-0000-000000000000']).map((id) => sql`${id}`),
+					sql`, `
+				)})`
+		);
+		if (list.length !== new Set(ids).size) throw errors.notFound('Artikel nicht gefunden');
+		const byId = new Map(list.map((r) => [String(r.id), r]));
+		const out: Record<string, string>[] = [];
+		for (const id of ids) {
+			const r = byId.get(id)!;
+			const places = new Set<string>();
+			if (String(r.kind) === 'bulk') {
+				for (const h of await rows(
+					tx,
+					sql`SELECT location_id, container_id FROM stock WHERE article_id = ${id} AND quantity > 0
+						ORDER BY quantity DESC`
+				)) {
+					places.add(
+						holderText(index, {
+							locationId: h.location_id ? String(h.location_id) : null,
+							containerId: h.container_id ? String(h.container_id) : null
+						})
+					);
+				}
+			} else {
+				for (const u of index.units.values()) {
+					if (u.articleId === id) places.add(placeText(index, u.id));
+				}
+			}
+			const where = [...places];
+			out.push({
+				...common(String(r.code)),
+				name: String(r.name),
+				category: str(r.category),
+				unit: str(r.unit_label) || 'Stück',
+				total: String(String(r.kind) === 'bulk' ? num(r.stock_total) : num(r.unit_total)),
+				locations: where.slice(0, 3).join(', ') + (where.length > 3 ? ' …' : '')
+			});
+		}
+		return out;
+	}
 	if (target === 'set') {
 		const sets = await loadSets(tx, ids);
 		if (sets.length !== new Set(ids).size) throw errors.notFound('Set nicht gefunden');
@@ -209,7 +258,8 @@ async function overview(tx: Tx): Promise<Overview> {
 			(SELECT count(*) FROM units WHERE issued_reservation_id IS NOT NULL) AS issued,
 			(SELECT count(*) FROM reservations WHERE status = 'issued' AND ends_on < ${t}::date) AS overdue,
 			(SELECT count(*) FROM units WHERE retired_at IS NULL AND condition IN ('damaged', 'defect')) AS damaged,
-			(SELECT count(*) FROM reservations WHERE status = 'reserved' AND starts_on >= ${t}::date) AS upcoming`
+			(SELECT count(*) FROM reservations WHERE status = 'reserved' AND starts_on >= ${t}::date) AS upcoming,
+			(SELECT count(*) FROM units WHERE retired_at IS NULL AND location_id IS NULL AND container_id IS NULL) AS unplaced`
 	);
 	const low = await rows(
 		tx,
@@ -230,6 +280,7 @@ async function overview(tx: Tx): Promise<Overview> {
 		overdueReservations: num(c?.overdue),
 		damagedUnits: num(c?.damaged),
 		upcomingReservations: num(c?.upcoming),
+		unplacedUnits: num(c?.unplaced),
 		lowStock: low.map((l) => ({
 			articleId: String(l.id),
 			name: String(l.name),

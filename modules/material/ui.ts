@@ -2,9 +2,14 @@ import type { ModuleUi } from '$lib/sdk/types/module-ui';
 
 export default {
 	routes: {
-		'': () => import('./pages/MaterialPage.svelte'),
+		'': () => import('./pages/BorrowPage.svelte'),
+		meine: () => import('./pages/MyReservationsPage.svelte'),
+		'reservierung/:id': () => import('./pages/ReservationPage.svelte'),
 		scan: () => import('./pages/ScanPage.svelte'),
 		'scan/:code': () => import('./pages/ScanPage.svelte'),
+		lager: () => import('./pages/StockPage.svelte'),
+		ausgabe: () => import('./pages/HandoutPage.svelte'),
+		etiketten: () => import('./pages/LabelsPage.svelte'),
 		'labels/:id': () => import('./pages/labels/LabelDesigner.svelte')
 	},
 	fullBleedRoutes: ['labels/:id'],

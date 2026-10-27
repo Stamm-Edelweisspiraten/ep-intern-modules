@@ -59,8 +59,7 @@
 
 	const newHref = $derived(
 		`/modules/material?${new URLSearchParams({
-			tab: 'reservations',
-			newFor: actionId,
+			action: actionId,
 			from: startsOn,
 			to: endsOn ?? startsOn,
 			title: actionName
@@ -84,7 +83,7 @@
 					{#each info.reservations as r (r.id)}
 						<li class="py-2">
 							<a
-								href={`/modules/material?tab=reservations&open=${r.id}`}
+								href={`/modules/material/reservierung/${r.id}`}
 								class="flex items-start justify-between gap-2 rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 							>
 								<span class="min-w-0">

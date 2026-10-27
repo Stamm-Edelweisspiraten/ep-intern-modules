@@ -1,12 +1,12 @@
 /**
  * Große Etiketten-Bausteine (Barcode-Bibliothek, Logos) nur bei Bedarf laden und Barcodes zwischenspeichern.
  */
-import type { BarcodeType, LabelLogo } from '$lib/sdk/labels';
+import type { BarcodeType } from '$lib/sdk/labels';
 
 type BarcodeModule = typeof import('$lib/sdk/labels/barcode');
 
 let barcodeModule: Promise<BarcodeModule> | null = null;
-let logos: Promise<Record<LabelLogo, string>> | null = null;
+let logos: Promise<Record<string, string>> | null = null;
 const cache = new Map<string, string | null>();
 
 export function loadBarcodes(): Promise<BarcodeModule> {
@@ -14,7 +14,7 @@ export function loadBarcodes(): Promise<BarcodeModule> {
 	return barcodeModule;
 }
 
-export function loadLogos(): Promise<Record<LabelLogo, string>> {
+export function loadLogos(): Promise<Record<string, string>> {
 	logos ??= import('$lib/sdk/labels/logos').then((m) => m.LABEL_LOGO_DATA);
 	return logos;
 }

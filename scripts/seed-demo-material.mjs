@@ -310,4 +310,31 @@ await call('POST', `${M}/label-templates`, {
 		]
 	}
 });
+await call('POST', `${M}/label-templates`, {
+	name: 'Regalfach (Artikel)',
+	target: 'article',
+	formatKey: 'avery-l7159',
+	layout: {
+		widthMm: 63.5,
+		heightMm: 33.9,
+		elements: [
+			{ id: 'logo', type: 'image', x: 3, y: 3, w: 7, h: 7, logo: 'wappen', monochrome: true },
+			text('name', 12, 3, 30, 8, '{name}', 12, true),
+			text('cat', 12, 11, 30, 5, '{category}', 8),
+			{ id: 'v', type: 'line', x: 43, y: 3, w: 1, h: 27, stroke: 0.3, orientation: 'vertical' },
+			{
+				id: 'qr',
+				type: 'barcode',
+				x: 45.5,
+				y: 3,
+				w: 15,
+				h: 15,
+				symbology: 'qrcode',
+				value: '{url}'
+			},
+			text('code', 44, 19, 18, 4, '{code}', 7, false, 'center'),
+			text('ort', 3, 24, 39, 7, '{locations}', 7, false, 'left', 2)
+		]
+	}
+});
 console.log('Material-Demodaten angelegt.');

@@ -83,6 +83,42 @@ export const LABEL_STARTERS: LabelStarter[] = [
 		]
 	},
 	{
+		id: 'shelf-article',
+		name: 'Regalfach / Artikel (QR + Name + Lagerorte)',
+		description:
+			'Für Regalfächer und Mengenartikel wie Tassen oder Heringe: Name groß, Kategorie, Lagerorte, QR-Code und Code.',
+		target: 'article',
+		formatKey: 'avery-l7159',
+		widthMm: 63.5,
+		heightMm: 33.9,
+		elements: [
+			qr(2, 3, 27),
+			{ type: 'line', x: 29.5, y: 3, w: 1, h: 27.9, stroke: 0.3, orientation: 'vertical' },
+			text(31.5, 2, 30, 10, '{name}', { size: 13, bold: true, lines: 2 }),
+			text(31.5, 12.5, 30, 4.5, '{category}', { size: 8 }),
+			text(31.5, 17.5, 30, 8.5, '{locations}', { size: 7, lines: 2 }),
+			text(31.5, 27, 30, 4.5, '{code}', { size: 8, bold: true, valign: 'bottom' })
+		]
+	},
+	{
+		id: 'box-small',
+		name: 'Kiste klein (QR + Name + Inhalt)',
+		description:
+			'Kleines Kisten-Etikett für A4-Bögen (24 je Seite): QR-Code, Name, Code, Inhalt und Wappen in Schwarz-Weiß.',
+		target: 'unit',
+		formatKey: 'avery-l7159',
+		widthMm: 63.5,
+		heightMm: 33.9,
+		elements: [
+			qr(2, 3, 27),
+			text(31.5, 2, 30, 9, '{name}', { size: 12, bold: true, lines: 2 }),
+			text(31.5, 11.5, 30, 4.5, '{code}', { size: 8 }),
+			text(31.5, 16.5, 30, 10, '{contents}', { size: 7, lines: 3 }),
+			{ type: 'image', x: 31.5, y: 27.5, w: 5, h: 5, logo: 'wappen', monochrome: true },
+			text(37.5, 27.5, 24, 5, '{org}', { size: 6, valign: 'middle' })
+		]
+	},
+	{
 		id: 'tent-small',
 		name: 'Zeltbahn klein (Code 128 + Name)',
 		description: 'Schmales Etikett für Zeltbahnen und Stangen mit Strichcode für den Handscanner.',

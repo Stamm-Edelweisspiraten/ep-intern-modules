@@ -1,24 +1,19 @@
 <script lang="ts">
-	// Reiter „Zelte & Sets“: Set-Typen (Vorlagen) mit Teileliste und die Sets je Typ mit
-	// Vollständigkeits-Ampel. `?open=<setId>` öffnet ein Set.
-	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
-	import { tick } from 'svelte';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Pencil from '@lucide/svelte/icons/pencil';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Printer from '@lucide/svelte/icons/printer';
-	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
-	import Tent from '@lucide/svelte/icons/tent';
+	// Ansicht „Zelte & Sets“ im Lager: Set-Typen mit Teileliste und je Typ die Sets als Liste mit
+	// Vollständigkeit. `openId` (aus `?view=sets&open=`) öffnet ein Set, sobald die Liste geladen ist.
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import * as Card from '$lib/components/ui/card';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Printer from '@lucide/svelte/icons/printer';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { apiFetch } from '$lib/sdk/client';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
-	import { PERMISSIONS, type Article, type MaterialSet, type SetTemplate } from '../../schemas';
+	import { ConfirmDialog, ErrorState, LoadingState } from '$lib/components/layout';
+	import type { Article, MaterialSet, SetTemplate } from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
 	import SetDetailDialog from './SetDetailDialog.svelte';
@@ -26,14 +21,22 @@
 	import SetTemplateDialog from './SetTemplateDialog.svelte';
 	import { completenessView, partsText } from './set-helpers';
 
-	const permissions = $derived((page.data.permissions ?? []) as string[]);
-	const canManage = $derived(can(permissions, PERMISSIONS.manage));
-	const canPrint = $derived(canManage || can(permissions, PERMISSIONS.labels));
+	let {
+		canManage,
+		canPrint,
+		openId = $bindable(null)
+	}: {
+		canManage: boolean;
+		canPrint: boolean;
+		/** Set öffnen (Deep-Link); wird nach dem Öffnen zurückgesetzt */
+		openId?: string | null;
+	} = $props();
 
 	let templates = $state<SetTemplate[]>([]);
 	let sets = $state<MaterialSet[]>([]);
 	let articles = $state<Article[]>([]);
 	let loading = $state(true);
+	let loaded = $state(false);
 	let error = $state('');
 	let search = $state('');
 
@@ -60,6 +63,7 @@
 				apiFetch<SetTemplate[]>(`${API}/set-templates`),
 				apiFetch<MaterialSet[]>(`${API}/sets`)
 			]);
+			loaded = true;
 		} catch (e) {
 			error = errorText(e, 'Sets konnten nicht geladen werden.');
 		} finally {
@@ -79,17 +83,14 @@
 	$effect(() => {
 		if (started) return;
 		started = true;
-		void (async () => {
-			await load();
-			const open = page.url.searchParams.get('open');
-			if (open) {
-				if (sets.some((s) => s.id === open)) openDetail(open);
-				await tick();
-				const url = new URL(page.url);
-				url.searchParams.delete('open');
-				replaceState(url, {});
-			}
-		})();
+		void load();
+	});
+
+	// Deep-Link: Set öffnen, sobald geladen (auch bei unbekannter ID – das Detail meldet dann den Fehler)
+	$effect(() => {
+		if (!openId || !loaded) return;
+		openDetail(openId);
+		openId = null;
 	});
 
 	const fold = (s: string) =>
@@ -151,59 +152,61 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-6">
 	<div class="flex flex-wrap items-center gap-2">
 		<Input
 			type="search"
-			placeholder="Set suchen …"
-			aria-label="Sets suchen"
-			class="max-w-xs"
+			placeholder="Set filtern"
+			aria-label="Sets filtern"
+			class="w-full sm:max-w-xs"
 			bind:value={search}
 		/>
-		<div class="ml-auto flex flex-wrap gap-2">
+		<div class="flex flex-wrap gap-2 sm:ml-auto">
 			{#if canPrint && sets.length}
-				<Button variant="outline" onclick={() => print(filtered.map((s) => s.id))}>
+				<Button variant="ghost" onclick={() => print(filtered.map((s) => s.id))}>
 					<Printer aria-hidden="true" /> Etiketten
 				</Button>
 			{/if}
 			{#if canManage}
-				<Button variant="outline" onclick={() => editTemplate(null)}>
+				<Button variant="ghost" onclick={() => editTemplate(null)}>
 					<Plus aria-hidden="true" /> Set-Typ
 				</Button>
-				<Button onclick={() => newSet(null)} disabled={!templates.length}>
+				<Button variant="outline" onclick={() => newSet(null)} disabled={!templates.length}>
 					<Plus aria-hidden="true" /> Neues Set
 				</Button>
 			{/if}
 		</div>
 	</div>
 
-	{#if loading}
-		<LoadingState label="Sets" rows={3} rowClass="h-32 w-full" />
+	{#if loading && !loaded}
+		<LoadingState label="Sets" rows={4} rowClass="h-12 w-full" />
 	{:else if error}
 		<ErrorState message={error} onretry={load} />
 	{:else if !templates.length}
-		<EmptyState
-			title="Noch keine Set-Typen"
-			description="Lege zuerst einen Set-Typ an, z. B. „Kohte“ aus 4 Kohtenbahnen und einem Kohtenkreuz. Danach stellst du daraus Sets aus konkreten Stücken zusammen."
-		>
+		<div class="border-y py-10 text-center">
+			<p class="font-medium">Noch keine Set-Typen</p>
+			<p class="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
+				Lege zuerst einen Set-Typ an, z. B. „Kohte“ aus 4 Kohtenbahnen und einem Kohtenkreuz. Danach
+				stellst du daraus Sets aus konkreten Stücken zusammen.
+			</p>
 			{#if canManage}
-				<Button onclick={() => editTemplate(null)}
-					><Plus aria-hidden="true" /> Set-Typ anlegen</Button
-				>
+				<Button class="mt-4" variant="outline" onclick={() => editTemplate(null)}>
+					<Plus aria-hidden="true" /> Set-Typ anlegen
+				</Button>
 			{/if}
-		</EmptyState>
+		</div>
 	{:else if !groups.length}
-		<p class="text-sm text-muted-foreground">Keine Sets gefunden.</p>
+		<p class="py-6 text-sm text-muted-foreground" role="status">Keine Sets gefunden.</p>
 	{:else}
 		{#each groups as g (g.template.id)}
-			<section class="space-y-3" aria-labelledby={`tpl-${g.template.id}`}>
+			<section class="space-y-2" aria-labelledby={`tpl-${g.template.id}`}>
 				<div class="flex flex-wrap items-start gap-2">
 					<div class="min-w-0 flex-1">
-						<h2 id={`tpl-${g.template.id}`} class="text-section flex items-center gap-2">
-							<Tent class="size-4 text-muted-foreground" aria-hidden="true" />
+						<h2 id={`tpl-${g.template.id}`} class="text-section">
 							{g.template.name}
 							<span class="text-sm font-normal text-muted-foreground tabular-nums">
-								({g.template.setCount})
+								· {g.template.setCount}
+								{g.template.setCount === 1 ? 'Set' : 'Sets'}
 							</span>
 						</h2>
 						<p class="text-sm text-muted-foreground">{partsText(g.template)}</p>
@@ -211,38 +214,36 @@
 							<p class="text-xs text-muted-foreground">{g.template.description}</p>
 						{/if}
 					</div>
-					<div class="flex items-center gap-1">
-						{#if canPrint && g.sets.length}
-							<Button
-								variant="ghost"
-								size="sm"
-								onclick={() => print(g.sets.map((s) => s.id))}
-								aria-label={`Etiketten für alle Sets „${g.template.name}“`}
-							>
-								<Printer aria-hidden="true" /> <span class="hidden sm:inline">Etiketten</span>
-							</Button>
-						{/if}
-						{#if canManage}
-							<Button variant="outline" size="sm" onclick={() => newSet(g.template.id)}>
-								<Plus aria-hidden="true" /> Set
-							</Button>
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											variant="ghost"
-											size="icon-sm"
-											aria-label={`Aktionen für Set-Typ ${g.template.name}`}
-										>
-											<EllipsisVertical />
-										</Button>
-									{/snippet}
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Content align="end">
+					{#if canManage || (canPrint && g.sets.length)}
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon"
+										aria-label={`Aktionen für Set-Typ ${g.template.name}`}
+									>
+										<EllipsisVertical />
+									</Button>
+								{/snippet}
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content align="end">
+								{#if canManage}
+									<DropdownMenu.Item onSelect={() => newSet(g.template.id)}>
+										<Plus aria-hidden="true" /> Set anlegen
+									</DropdownMenu.Item>
+								{/if}
+								{#if canPrint && g.sets.length}
+									<DropdownMenu.Item onSelect={() => print(g.sets.map((s) => s.id))}>
+										<Printer aria-hidden="true" /> Etiketten für alle
+									</DropdownMenu.Item>
+								{/if}
+								{#if canManage}
 									<DropdownMenu.Item onSelect={() => editTemplate(g.template)}>
 										<Pencil aria-hidden="true" /> Set-Typ bearbeiten
 									</DropdownMenu.Item>
+									<DropdownMenu.Separator />
 									<DropdownMenu.Item
 										variant="destructive"
 										disabled={g.template.setCount > 0}
@@ -254,46 +255,41 @@
 										<Trash2 aria-hidden="true" />
 										{g.template.setCount > 0 ? 'Löschen (erst Sets auflösen)' : 'Set-Typ löschen'}
 									</DropdownMenu.Item>
-								</DropdownMenu.Content>
-							</DropdownMenu.Root>
-						{/if}
-					</div>
+								{/if}
+							</DropdownMenu.Content>
+						</DropdownMenu.Root>
+					{/if}
 				</div>
 
 				{#if g.sets.length}
-					<ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					<ul class="divide-y border-y">
 						{#each g.sets as s (s.id)}
 							{@const view = completenessView(s.completeness)}
 							<li>
-								<Card.Root class="h-full py-0">
-									<button
-										type="button"
-										class="flex h-full w-full flex-col gap-2 rounded-xl p-4 text-left transition-colors hover:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
-										onclick={() => openDetail(s.id)}
-									>
-										<span class="flex w-full items-start gap-2">
-											<span class="min-w-0 flex-1">
-												<span class="block truncate font-medium">{s.name}</span>
-												<span class="block text-xs text-muted-foreground tabular-nums"
-													>{s.code}</span
-												>
-											</span>
-											<Badge variant={view.variant}>{view.label}</Badge>
+								<button
+									type="button"
+									class="focus-ring grid min-h-14 w-full grid-cols-[1fr_auto] items-center gap-x-3 px-1 py-2 text-left hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_auto]"
+									onclick={() => openDetail(s.id)}
+								>
+									<span class="min-w-0">
+										<span class="block truncate font-medium">{s.name}</span>
+										<span class="block truncate text-xs text-muted-foreground">
+											<span class="font-mono">{s.code}</span>{view.details.length
+												? ` · ${view.details.join(' · ')}`
+												: ''}{#if s.issuedUnits}<span class="text-warning sm:hidden">
+													· {s.issuedUnits} unterwegs</span
+												>{/if}
 										</span>
-										{#if view.details.length}
-											<span class="text-xs text-muted-foreground">{view.details.join(' · ')}</span>
-										{/if}
-										<span class="mt-auto flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-											<span class="tabular-nums">
-												{s.units.length}
-												{s.units.length === 1 ? 'Stück' : 'Stücke'}
-											</span>
-											{#if s.issuedUnits}
-												<span class="text-warning tabular-nums">{s.issuedUnits} ausgegeben</span>
-											{/if}
-										</span>
-									</button>
-								</Card.Root>
+									</span>
+									<span class="hidden text-right text-sm tabular-nums sm:block">
+										{s.units.length}
+										{s.units.length === 1 ? 'Stück' : 'Stücke'}
+									</span>
+									<span class="hidden text-right text-sm text-warning tabular-nums sm:block">
+										{s.issuedUnits ? `${s.issuedUnits} unterwegs` : ''}
+									</span>
+									<Badge variant={view.variant}>{view.label}</Badge>
+								</button>
 							</li>
 						{/each}
 					</ul>

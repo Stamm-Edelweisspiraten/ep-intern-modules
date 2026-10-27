@@ -44,7 +44,7 @@
 <DashboardCard
 	title="Meine Materialreservierungen"
 	icon={Boxes}
-	href="/modules/material?tab=reservations"
+	href="/modules/material/meine"
 	{loading}
 	{error}
 	onretry={load}

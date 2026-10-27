@@ -217,7 +217,14 @@ export function newElementId(): string {
 export function createElement(
 	type: LabelElementType,
 	layout: Pick<LabelLayout, 'widthMm' | 'heightMm'>,
-	opts: { target?: LabelTarget; logo?: LabelLogo } = {}
+	opts: {
+		target?: LabelTarget;
+		logo?: LabelLogo;
+		/** Logo in Schwarz-Weiß */
+		monochrome?: boolean;
+		/** Linie: waagerecht (Standard) oder senkrecht */
+		orientation?: 'horizontal' | 'vertical';
+	} = {}
 ): LabelElement {
 	const W = layout.widthMm;
 	const H = layout.heightMm;
@@ -247,11 +254,23 @@ export function createElement(
 		}
 		case 'image': {
 			const side = Math.min(W, H) * 0.3;
-			return { id, type, ...center(side, side), logo: opts.logo ?? 'wappen' };
+			const el = { id, type, ...center(side, side), logo: opts.logo ?? 'wappen' } as const;
+			return opts.monochrome ? { ...el, monochrome: true } : el;
 		}
 		case 'rect':
 			return { id, type, x: 0, y: 0, w: W, h: H, stroke: 0.3, radius: 1, filled: false };
-		case 'line':
+		case 'line': {
+			if (opts.orientation === 'vertical') {
+				// Schmal und fast so hoch wie das Etikett (Rand je 2 mm, bei sehr kleinen Etiketten weniger)
+				const margin = Math.min(2, H * 0.1);
+				return {
+					id,
+					type,
+					...center(MIN_SIZE_MM, H - 2 * margin),
+					stroke: 0.3,
+					orientation: 'vertical'
+				};
+			}
 			return {
 				id,
 				type,
@@ -259,6 +278,7 @@ export function createElement(
 				stroke: 0.3,
 				orientation: 'horizontal'
 			};
+		}
 	}
 }
 
