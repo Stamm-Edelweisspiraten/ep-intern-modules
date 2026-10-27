@@ -37,5 +37,11 @@ export function completenessView(c: SetCompleteness): CompletenessView {
 
 /** Teileliste einer Vorlage als Text „4 × Kohtenbahn, 1 × Kohtenkreuz“ */
 export function partsText(t: Pick<SetTemplate, 'parts'>): string {
-	return t.parts.map((p) => `${p.quantity} × ${p.articleName}`).join(', ');
+	return t.parts
+		.map((p) =>
+			p.kind === 'bulk'
+				? `${p.quantity} ${p.unitLabel} ${p.articleName}`
+				: `${p.quantity} × ${p.articleName}`
+		)
+		.join(', ');
 }

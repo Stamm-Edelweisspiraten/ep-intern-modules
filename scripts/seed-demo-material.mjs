@@ -152,10 +152,11 @@ await call('PUT', `${M}/units/${kiste1.id}/targets`, {
 const kohteTpl = (
 	await call('POST', `${M}/set-templates`, {
 		name: 'Kohte',
-		description: '4 Bahnen + Kreuz',
+		description: '4 Bahnen, Kreuz und 10 Heringe',
 		parts: [
 			{ articleId: kohtenbahn.id, quantity: 4 },
-			{ articleId: kohtenkreuz.id, quantity: 1 }
+			{ articleId: kohtenkreuz.id, quantity: 1 },
+			{ articleId: hering.id, quantity: 10 }
 		]
 	})
 ).data;

@@ -155,7 +155,7 @@ async function loadCatalog(
 	);
 	const parts = await rows(
 		tx,
-		sql`SELECT p.template_id, p.article_id, p.quantity, a.name FROM set_template_parts p
+		sql`SELECT p.template_id, p.article_id, p.quantity, a.name, a.kind, a.unit_label FROM set_template_parts p
 			JOIN articles a ON a.id = p.article_id ORDER BY p.position`
 	);
 	const templates: CatalogTemplate[] = [];
@@ -165,6 +165,8 @@ async function loadCatalog(
 			.map((p) => ({
 				articleId: String(p.article_id),
 				articleName: String(p.name),
+				kind: String(p.kind) as ArticleKind,
+				unitLabel: str(p.unit_label) || 'Stück',
 				quantity: num(p.quantity)
 			}));
 		if (!myParts.length) continue;

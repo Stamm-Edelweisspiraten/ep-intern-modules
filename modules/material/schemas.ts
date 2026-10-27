@@ -595,7 +595,14 @@ export interface SetTemplate {
 	id: string;
 	name: string;
 	description: string;
-	parts: { articleId: string; articleName: string; kind: ArticleKind; quantity: number }[];
+	/** Teile: Einzelstücke (bilden das konkrete Set) und Mengen (kommen beim Reservieren aus dem Lager dazu) */
+	parts: {
+		articleId: string;
+		articleName: string;
+		kind: ArticleKind;
+		unitLabel: string;
+		quantity: number;
+	}[];
 	setCount: number;
 }
 
@@ -629,6 +636,8 @@ export interface MaterialSet {
 	notes: string;
 	units: UnitSummary[];
 	completeness: SetCompleteness;
+	/** Mengen laut Set-Typ, die beim Reservieren aus dem Lager dazukommen */
+	bulkParts: { articleId: string; articleName: string; unitLabel: string; quantity: number }[];
 	/** Gerade ganz oder teilweise ausgegeben */
 	issuedUnits: number;
 }
@@ -712,6 +721,8 @@ export interface ReservationLine {
 	returnedQty: number;
 	/** Stücke, die zu dieser Zeile ausgegeben wurden */
 	assignedCount: number;
+	/** Automatisch angelegte Mengen-Zeile zu einem reservierten Set (Name des Sets) */
+	fromSet: string | null;
 }
 
 export interface AssignedUnit {
@@ -918,7 +929,14 @@ export interface CatalogTemplate {
 	id: string;
 	name: string;
 	description: string;
-	parts: { articleId: string; articleName: string; quantity: number }[];
+	parts: {
+		articleId: string;
+		articleName: string;
+		/** Einzelstücke oder Menge (Mengen kommen aus dem Lager dazu) */
+		kind?: ArticleKind;
+		unitLabel?: string;
+		quantity: number;
+	}[];
 	/** So viele vollständige Exemplare lassen sich im Zeitraum aus freien Teilen zusammenstellen */
 	free: number;
 	/** Fertige Sets dieses Typs */

@@ -254,6 +254,9 @@
 									{#if l.code}
 										<span class="ml-1 font-mono text-xs text-muted-foreground">{l.code}</span>
 									{/if}
+									{#if l.fromSet}
+										<span class="block text-xs text-muted-foreground">aus Set {l.fromSet}</span>
+									{/if}
 								</td>
 								<td class="py-2 pr-3 text-right align-top whitespace-nowrap tabular-nums">
 									{p.planned}

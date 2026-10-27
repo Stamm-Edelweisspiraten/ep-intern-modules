@@ -68,7 +68,7 @@
 			.filter((a) => !a.archived || parts.some((p) => p.articleId === a.id))
 			.map((a) => ({
 				value: a.id,
-				label: `${a.name}${a.categoryName ? ` · ${a.categoryName}` : ''}`
+				label: `${a.name}${a.kind === 'bulk' ? ' (Menge)' : ''}${a.categoryName ? ` · ${a.categoryName}` : ''}`
 			}))
 	);
 

@@ -139,6 +139,14 @@
 				{:else}
 					<p class="text-sm text-muted-foreground">Dem Set sind noch keine Stücke zugeordnet.</p>
 				{/if}
+				{#if set.bulkParts.length}
+					<p class="text-sm text-muted-foreground">
+						Dazu aus dem Lager (kommt beim Reservieren automatisch mit):
+						<span class="text-foreground">
+							{set.bulkParts.map((p) => `${p.quantity} ${p.unitLabel} ${p.articleName}`).join(', ')}
+						</span>
+					</p>
+				{/if}
 			</div>
 		{/if}
 

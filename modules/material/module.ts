@@ -25,6 +25,7 @@ import {
 } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_article_codes.sql?raw';
+import m0003 from './migrations/0003_set_bulk_lines.sql?raw';
 
 const ALL = [
 	PERMISSIONS.view,
@@ -41,7 +42,7 @@ export default defineModule({
 		description:
 			'Materialverwaltung: Bestand mit Lagerorten und Kisten, Zelt-Sets, Reservierungen für Aktionen, ' +
 			'Ausgabe/Rückgabe per Barcode und Etiketten-Druck',
-		version: '1.1.0',
+		version: '1.2.0',
 		/** Aktionen: Reservierung je Aktion; Ämter: Vorlage „Materialwart*in“ mit Benachrichtigungen */
 		dependencies: [],
 		optionalDependencies: ['actions', 'offices'],
@@ -100,7 +101,8 @@ export default defineModule({
 	},
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_article_codes', sql: m0002 }
+		{ name: '0002_article_codes', sql: m0002 },
+		{ name: '0003_set_bulk_lines', sql: m0003 }
 	],
 	resetAreas,
 	resetUsers,

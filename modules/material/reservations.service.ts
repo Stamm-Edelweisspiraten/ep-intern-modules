@@ -39,6 +39,7 @@ interface LineRow {
 	quantity: number;
 	issuedQty: number;
 	returnedQty: number;
+	sourceSetId: string | null;
 }
 
 function toLineRow(r: Record<string, unknown>): LineRow {
@@ -51,7 +52,8 @@ function toLineRow(r: Record<string, unknown>): LineRow {
 		articleId: r.article_id ? String(r.article_id) : null,
 		quantity: num(r.quantity),
 		issuedQty: num(r.issued_qty),
-		returnedQty: num(r.returned_qty)
+		returnedQty: num(r.returned_qty),
+		sourceSetId: r.source_set_id ? String(r.source_set_id) : null
 	};
 }
 
@@ -426,7 +428,57 @@ export async function assertLinesAvailable(
 	}
 }
 
-/** Zeilen einer Reservierung ersetzen */
+/** Mengen-Zeile, die der Server zu einem reservierten Set anlegt (Mengenteile des Set-Typs) */
+export interface SetBulkLine {
+	kind: 'article';
+	articleId: string;
+	quantity: number;
+	sourceSetId: string;
+}
+
+/** Mengenteile der Set-Typen aller Set-Zeilen (z. B. 20 Heringe je Kohte) */
+export async function setBulkLines(tx: Tx, lines: ReservationLineInput[]): Promise<SetBulkLine[]> {
+	const setIds = lines
+		.filter((l) => l.kind === 'set')
+		.map((l) => (l.kind === 'set' ? l.setId : ''));
+	if (!setIds.length) return [];
+	const parts = await rows(
+		tx,
+		sql`SELECT s.id AS set_id, p.article_id, p.quantity
+			FROM sets s
+			JOIN set_template_parts p ON p.template_id = s.template_id
+			JOIN articles a ON a.id = p.article_id
+			WHERE a.kind = 'bulk' AND s.id::text IN (${sql.join(
+				setIds.map((id) => sql`${id}`),
+				sql`, `
+			)})
+			ORDER BY p.position`
+	);
+	return parts.map((r) => ({
+		kind: 'article',
+		articleId: String(r.article_id),
+		quantity: num(r.quantity),
+		sourceSetId: String(r.set_id)
+	}));
+}
+
+/** Zeilen zum Prüfen: eigene Zeilen plus Mengen-Zeilen der Sets */
+export async function withSetBulk(
+	tx: Tx,
+	lines: ReservationLineInput[]
+): Promise<ReservationLineInput[]> {
+	const extra = await setBulkLines(tx, lines);
+	return [
+		...lines,
+		...extra.map((e) => ({
+			kind: 'article' as const,
+			articleId: e.articleId,
+			quantity: e.quantity
+		}))
+	];
+}
+
+/** Zeilen einer Reservierung ersetzen; zu Sets werden deren Mengenteile als eigene Zeilen angelegt */
 export async function replaceLines(
 	tx: Tx,
 	reservationId: string,
@@ -439,6 +491,13 @@ export async function replaceLines(
 				VALUES (${crypto.randomUUID()}, ${reservationId}, ${l.kind},
 					${l.kind === 'unit' ? l.unitId : null}, ${l.kind === 'set' ? l.setId : null},
 					${l.kind === 'article' ? l.articleId : null}, ${l.kind === 'article' ? l.quantity : 1}, ${i})`
+		);
+	}
+	for (const [j, b] of (await setBulkLines(tx, lines)).entries()) {
+		await tx.execute(
+			sql`INSERT INTO reservation_lines (id, reservation_id, kind, article_id, quantity, position, source_set_id)
+				VALUES (${crypto.randomUUID()}, ${reservationId}, 'article', ${b.articleId}, ${b.quantity},
+					${lines.length + j}, ${b.sourceSetId})`
 		);
 	}
 }
@@ -529,6 +588,8 @@ export async function loadReservation(
 		const base =
 			l.kind === 'unit' ? [l.unitId!] : l.kind === 'set' ? (sets.get(l.setId!) ?? []) : null;
 		const assignedCount = base ? out.filter((a) => base.includes(a.unit.id)).length : out.length;
+		const src = l.sourceSetId ? setById.get(l.sourceSetId) : undefined;
+		const fromSet = l.sourceSetId ? (src ? String(src.name) : 'Set') : null;
 		if (l.kind === 'unit') {
 			const u = unitById.get(l.unitId!);
 			return {
@@ -544,7 +605,8 @@ export async function loadReservation(
 				quantity: 1,
 				issuedQty: 0,
 				returnedQty: 0,
-				assignedCount
+				assignedCount,
+				fromSet
 			};
 		}
 		if (l.kind === 'set') {
@@ -562,7 +624,8 @@ export async function loadReservation(
 				quantity: lineUnits(l, index, sets).length,
 				issuedQty: 0,
 				returnedQty: 0,
-				assignedCount
+				assignedCount,
+				fromSet
 			};
 		}
 		const a = articleById.get(l.articleId!);
@@ -579,7 +642,8 @@ export async function loadReservation(
 			quantity: l.quantity,
 			issuedQty: l.issuedQty,
 			returnedQty: l.returnedQty,
-			assignedCount
+			assignedCount,
+			fromSet
 		};
 	});
 

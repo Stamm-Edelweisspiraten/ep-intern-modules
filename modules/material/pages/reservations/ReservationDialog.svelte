@@ -87,6 +87,8 @@
 	const periodValid = $derived(!!startsOn && !!endsOn && endsOn >= startsOn);
 
 	function lineFromReservation(l: Reservation['lines'][number]): DraftLine | null {
+		// Mengen-Zeilen aus Sets legt der Server selbst an
+		if (l.fromSet) return null;
 		const key = crypto.randomUUID();
 		if (l.kind === 'unit' && l.unitId)
 			return {

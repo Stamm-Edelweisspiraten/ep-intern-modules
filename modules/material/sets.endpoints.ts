@@ -37,7 +37,7 @@ async function loadTemplates(tx: Tx, ids?: string[]): Promise<SetTemplate[]> {
 	);
 	const parts = await rows(
 		tx,
-		sql`SELECT p.template_id, p.article_id, p.quantity, a.name, a.kind
+		sql`SELECT p.template_id, p.article_id, p.quantity, a.name, a.kind, a.unit_label
 			FROM set_template_parts p JOIN articles a ON a.id = p.article_id
 			ORDER BY p.position, lower(a.name)`
 	);
@@ -54,6 +54,7 @@ async function loadTemplates(tx: Tx, ids?: string[]): Promise<SetTemplate[]> {
 					articleId: String(p.article_id),
 					articleName: String(p.name),
 					kind: String(p.kind) as ArticleKind,
+					unitLabel: str(p.unit_label) || 'Stück',
 					quantity: num(p.quantity)
 				}))
 		}));
@@ -72,14 +73,9 @@ async function writeParts(
 ) {
 	await tx.execute(sql`DELETE FROM set_template_parts WHERE template_id = ${templateId}`);
 	for (const [i, p] of parts.entries()) {
-		const [a] = await rows(tx, sql`SELECT kind FROM articles WHERE id = ${p.articleId}`);
+		const [a] = await rows(tx, sql`SELECT id FROM articles WHERE id = ${p.articleId}`);
 		if (!a)
 			throw errors.validation([{ path: ['parts', i, 'articleId'], message: 'Artikel fehlt' }]);
-		if (String(a.kind) !== 'unit') {
-			throw errors.validation([
-				{ path: ['parts', i, 'articleId'], message: 'Sets bestehen aus Einzelstücken' }
-			]);
-		}
 		await tx.execute(
 			sql`INSERT INTO set_template_parts (template_id, article_id, quantity, position)
 				VALUES (${templateId}, ${p.articleId}, ${p.quantity}, ${i})`
@@ -127,13 +123,21 @@ export async function loadSets(tx: Tx, ids?: string[]): Promise<MaterialSet[]> {
 			notes: str(s.notes),
 			units,
 			completeness: completeness(
-				template?.parts ?? [],
+				(template?.parts ?? []).filter((p) => p.kind === 'unit'),
 				units.map((u) => ({
 					articleId: u.articleId,
 					articleName: u.articleName,
 					usable: usable.get(u.id) ?? false
 				}))
 			),
+			bulkParts: (template?.parts ?? [])
+				.filter((p) => p.kind === 'bulk')
+				.map((p) => ({
+					articleId: p.articleId,
+					articleName: p.articleName,
+					unitLabel: p.unitLabel,
+					quantity: p.quantity
+				})),
 			issuedUnits: units.filter((u) => u.issued).length
 		};
 	});

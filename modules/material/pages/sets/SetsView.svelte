@@ -73,7 +73,7 @@
 
 	async function loadArticles() {
 		try {
-			articles = await apiFetch<Article[]>(`${API}/articles?kind=unit`);
+			articles = await apiFetch<Article[]>(`${API}/articles`);
 		} catch {
 			articles = [];
 		}
@@ -288,7 +288,9 @@
 									<span class="hidden text-right text-sm text-warning tabular-nums sm:block">
 										{s.issuedUnits ? `${s.issuedUnits} unterwegs` : ''}
 									</span>
-									<Badge variant={view.variant}>{view.label}</Badge>
+									<span class="flex w-24 shrink-0 justify-end">
+										<Badge variant={view.variant}>{view.label}</Badge>
+									</span>
 								</button>
 							</li>
 						{/each}

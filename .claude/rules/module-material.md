@@ -6,7 +6,7 @@ paths: ["src/lib/modules/material/**", "src/lib/sdk/labels/**", "src/lib/server/
 
 Überblick über das Material des Stammes: **was** da ist (Artikel → Einzelstücke mit Code **oder** Mengen), **wo** es liegt (Lagerorte als Baum,
 Kisten als Behälter, verschachtelbar), **wer** es wann braucht (Reservierungen, frei oder je Aktion) – mit Ausgabe/Rückgabe per Barcode/QR
-(Handy-Kamera, USB-Scanner) und Etiketten-Designer/-Druck (A4-Bögen und Etikettendrucker). Schema `mod_material`, Version 1.1.0, keine harten
+(Handy-Kamera, USB-Scanner) und Etiketten-Designer/-Druck (A4-Bögen und Etikettendrucker). Schema `mod_material`, Version 1.2.0, keine harten
 Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt „Materialwart*in“). Navigation „Material“ (Icon `boxes`, `order: 45`).
 
 ## Entscheidungen des Nutzers (2026-10-27, nicht ungefragt ändern)
@@ -31,6 +31,14 @@ Abhängigkeiten, optional `actions` (Reservierung je Aktion) und `offices` (Amt 
 - **PDF-Listen**: `GET /reservations/:id/handout.pdf` (Ausgabeliste zum Abhaken, nach Lagerort sortiert, Kisteninhalt eingerückt,
   Unterschriftszeilen) und `POST /inventory.pdf` (Bestandsliste A4 quer, Filter Ort inkl. Unterorte/Kategorie/Artikel/Zustand, Gruppierung,
   Spalten `INVENTORY_COLUMNS`, Mengen-Abschnitt). Weitere neue Endpunkte: `GET /catalog`, `GET /find` (`borrow.endpoints.ts`).
+
+## Set-Typen mit Mengen (2026-10-27, v1.2.0, Migr. 0003, Nutzerwunsch)
+- Teile eines Set-Typs dürfen **Mengenartikel** sein (z. B. 10 Heringe, Seile je Kohte). Konkrete Sets bestehen weiter nur aus Einzelstücken;
+  Vollständigkeit zählt nur die Einzelstück-Teile, die Mengen stehen als `MaterialSet.bulkParts` („Dazu aus dem Lager“).
+- Reservieren eines Sets (`kind: 'set'`): der Server legt je Mengenteil eine eigene Artikel-Zeile mit `reservation_lines.source_set_id` an
+  (`replaceLines` → `setBulkLines`), DTO `ReservationLine.fromSet` (Name des Sets). Prüfung mit `withSetBulk`; `POST /availability` meldet
+  Engpässe dieser Mengen am Set. Der Bearbeiten-Dialog schickt erzeugte Zeilen nicht zurück (sie entstehen beim Speichern neu).
+- Ausleihen eines ganzen Zelttyps nimmt die Mengenteile über die Teileliste mit; „frei“ eines Zelttyps berücksichtigt sie.
 
 ## Dateien (`src/lib/modules/material/`)
 | Datei | Inhalt |

@@ -53,8 +53,11 @@
 	const known = new SvelteMap<string, UnitSummary>();
 
 	const template = $derived(templates.find((t) => t.id === templateId) ?? null);
+	/** Einzelstück-Teile (bilden das Set); Mengen kommen beim Reservieren aus dem Lager dazu */
+	const unitParts = $derived((template?.parts ?? []).filter((p) => p.kind === 'unit'));
+	const bulkParts = $derived((template?.parts ?? []).filter((p) => p.kind === 'bulk'));
 	const filterOptions = $derived([
-		...(template?.parts.map((p) => ({ value: p.articleId, label: p.articleName })) ?? []),
+		...unitParts.map((p) => ({ value: p.articleId, label: p.articleName })),
 		{ value: ALL, label: 'Alle Artikel' }
 	]);
 
@@ -84,9 +87,10 @@
 		const t = template;
 		if (!open || !t || loadedTemplate === t.id) return;
 		loadedTemplate = t.id;
-		filter = t.parts[0]?.articleId ?? ALL;
+		const units = t.parts.filter((p) => p.kind === 'unit');
+		filter = units[0]?.articleId ?? ALL;
 		void Promise.all(
-			t.parts.map((p) =>
+			units.map((p) =>
 				apiFetch<{ items: UnitSummary[] }>(`${API}/units?articleId=${p.articleId}&limit=500`)
 					.then((r) => r.items.forEach((u) => known.set(u.id, u)))
 					.catch(() => undefined)
@@ -114,7 +118,7 @@
 		return m;
 	});
 	const others = $derived.by(() => {
-		const partIds = new Set(template?.parts.map((p) => p.articleId) ?? []);
+		const partIds = new Set(unitParts.map((p) => p.articleId));
 		const m = new Map<string, number>();
 		for (const u of chosen) {
 			if (!partIds.has(u.articleId)) m.set(u.articleName, (m.get(u.articleName) ?? 0) + 1);
@@ -239,7 +243,7 @@
 				<legend class="text-sm font-medium">Stücke</legend>
 				{#if template}
 					<ul class="flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="Teile laut Set-Typ">
-						{#each template.parts as p (p.articleId)}
+						{#each unitParts as p (p.articleId)}
 							{@const n = counts.get(p.articleId) ?? 0}
 							<li
 								class={n === p.quantity
@@ -259,6 +263,12 @@
 							</li>
 						{/each}
 					</ul>
+					{#if bulkParts.length}
+						<p class="text-xs text-muted-foreground">
+							Dazu aus dem Lager beim Reservieren:
+							{bulkParts.map((p) => `${p.quantity} ${p.unitLabel} ${p.articleName}`).join(', ')}
+						</p>
+					{/if}
 				{/if}
 				<div class="max-w-64">
 					<SelectField

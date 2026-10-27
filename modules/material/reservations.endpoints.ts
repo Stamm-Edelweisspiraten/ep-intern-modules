@@ -24,6 +24,8 @@ import {
 	loadReservation,
 	replaceLines,
 	requireEdit,
+	setBulkLines,
+	withSetBulk,
 	requireReservationRow
 } from './reservations.service';
 import {
@@ -224,14 +226,34 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 		permission: PERMISSIONS.view,
 		body: availabilityInput,
 		handler: ({ body }) =>
-			mdb().transaction((tx) =>
-				checkLines(tx, {
+			mdb().transaction(async (tx) => {
+				const extra = await setBulkLines(tx, body.lines);
+				const results = await checkLines(tx, {
 					startsOn: body.startsOn,
 					endsOn: body.endsOn < body.startsOn ? body.startsOn : body.endsOn,
 					excludeId: body.excludeReservationId ?? null,
-					lines: body.lines
-				})
-			)
+					lines: [
+						...body.lines,
+						...extra.map((e) => ({
+							kind: 'article' as const,
+							articleId: e.articleId,
+							quantity: e.quantity
+						}))
+					]
+				});
+				// Engpässe bei den Mengen eines Sets am Set melden
+				const own = results.slice(0, body.lines.length);
+				extra.forEach((e, j) => {
+					const r = results[body.lines.length + j];
+					if (!r || r.ok) return;
+					const i = body.lines.findIndex((l) => l.kind === 'set' && l.setId === e.sourceSetId);
+					const target = own[i];
+					if (!target) return;
+					target.ok = false;
+					target.message = [target.message, r.message].filter(Boolean).join(' ');
+				});
+				return own;
+			})
 	}),
 	defineEndpoint({
 		method: 'GET',
@@ -305,7 +327,7 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 				await assertLinesAvailable(tx, {
 					startsOn: body.startsOn,
 					endsOn: body.endsOn,
-					lines: body.lines
+					lines: await withSetBulk(tx, body.lines)
 				});
 				await tx.execute(
 					sql`INSERT INTO reservations (id, title, action_id, starts_on, ends_on, notes, created_by)
@@ -357,15 +379,22 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 				const current = await loadReservation(tx, ctx, params.id);
 				const lines =
 					body.lines ??
-					current.lines.map((l) =>
-						l.kind === 'unit'
-							? { kind: 'unit' as const, unitId: l.unitId! }
-							: l.kind === 'set'
-								? { kind: 'set' as const, setId: l.setId! }
-								: { kind: 'article' as const, articleId: l.articleId!, quantity: l.quantity }
-					);
+					current.lines
+						.filter((l) => !l.fromSet)
+						.map((l) =>
+							l.kind === 'unit'
+								? { kind: 'unit' as const, unitId: l.unitId! }
+								: l.kind === 'set'
+									? { kind: 'set' as const, setId: l.setId! }
+									: { kind: 'article' as const, articleId: l.articleId!, quantity: l.quantity }
+						);
 				if (status === 'reserved') {
-					await assertLinesAvailable(tx, { startsOn, endsOn, excludeId: params.id, lines });
+					await assertLinesAvailable(tx, {
+						startsOn,
+						endsOn,
+						excludeId: params.id,
+						lines: await withSetBulk(tx, lines)
+					});
 				} else if (body.endsOn && body.endsOn > dateStr(row.ends_on)) {
 					// Verlängern: noch nicht zurückgegebene Stücke und Mengen im neuen Zeitraum prüfen
 					const index = await loadPlaceIndex(tx);
