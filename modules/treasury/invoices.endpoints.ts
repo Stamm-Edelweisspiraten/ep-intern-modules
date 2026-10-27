@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import {
 	core,
@@ -22,9 +22,11 @@ import {
 import { formatIban, maskIban } from './iban';
 import {
 	collectIds,
+	CONTACT_BATCH,
 	idList,
 	invoiceMetricsSql,
 	invoiceStatusSql,
+	loadContactsByIds,
 	loadInvoiceDetailRaw,
 	loadPayerNames,
 	loadRawInvoices,
@@ -45,7 +47,13 @@ import {
 	type RawInvoice
 } from './db';
 import { csvCents, csvDocument } from '$lib/sdk/csv';
-import { distribute, formatDateDe, normalizeName as normalizeKey, suggestPayers } from './logic';
+import {
+	distribute,
+	formatDateDe,
+	groupBy,
+	normalizeName as normalizeKey,
+	suggestPayers
+} from './logic';
 import { notifyPaid, runReminderJob, sendManualReminders } from './notify';
 import {
 	CONTRIBUTIONS_CATEGORY_ID,
@@ -101,10 +109,73 @@ export async function loadSummaries(where = sql`TRUE`): Promise<LoadedInvoices> 
 	return { raw, names, summaries: raw.map((r) => toSummary(r, names, t)) };
 }
 
+/** Vergleichsform in SQL wie `normalizeName` (Kleinbuchstaben, ä → ae, ß → ss, Akzente weg, Sonstiges → Leerzeichen) */
+function foldedSql(expr: SQL): SQL {
+	return sql`regexp_replace(translate(
+		replace(replace(replace(replace(replace(replace(replace(lower(${expr}),
+			'ä', 'ae'), 'Ä', 'ae'), 'ö', 'oe'), 'Ö', 'oe'), 'ü', 'ue'), 'Ü', 'ue'), 'ß', 'ss'),
+		'àáâãåèéêëìíîïòóôõùúûýÿçñÀÁÂÃÅÈÉÊËÌÍÎÏÒÓÔÕÙÚÛÝÇÑ',
+		'aaaaaeeeeiiiiooooouuuyycnaaaaaeeeeiiiiooooouuuycn'), '[^a-z0-9]+', ' ', 'g')`;
+}
+
+/** Schreibvarianten für die Namenssuche im Dienst `members` (ILIKE kennt keine Umlaut-Gleichheit) */
+function umlautVariants(search: string): string[] {
+	const toUmlaut = search
+		.replace(/ae/gi, 'ä')
+		.replace(/oe/gi, 'ö')
+		.replace(/ue/gi, 'ü')
+		.replace(/ss/gi, 'ß');
+	const toAscii = search
+		.replace(/ä/gi, 'ae')
+		.replace(/ö/gi, 'oe')
+		.replace(/ü/gi, 'ue')
+		.replace(/ß/g, 'ss');
+	return [...new Set([search, toUmlaut, toAscii])];
+}
+
 /**
- * Rechnungsliste: Filter, Status, Sortierung, Summen und Seiten in SQL (`invoiceMetricsSql`); nur die
- * Rechnungen der Seite werden samt Posten geladen und ihre Namen aufgelöst. Die Suche (Umlaute egal,
- * auch über Mitglieds- und Aktionsnamen) prüft eine schlanke Kandidatenliste ohne Posten.
+ * Suchbedingung (Alias `i`) für die Rechnungsliste: Nummer und Empfänger*in in SQL (Umlaute egal),
+ * Mitglieds- und Aktionsnamen über die Namenssuche der Dienste (vor der Transaktion, je begrenzt).
+ */
+async function invoiceSearchSql(raw: string): Promise<SQL> {
+	const search = normalizeKey(raw);
+	if (!search) return sql`TRUE`;
+	const members = await membersService();
+	const memberIds = new Set<string>();
+	for (const variant of umlautVariants(raw.trim())) {
+		for (const m of await members.listMemberContacts({ search: variant, limit: CONTACT_BATCH })) {
+			memberIds.add(m.id);
+		}
+	}
+	const actionIds = (
+		await (await actionsService()).listActionRefs({ search: raw, limit: 200 })
+	).map((a) => a.id);
+	// `search` enthält nach `normalizeName` nur [a-z0-9ı ] – keine LIKE-Sonderzeichen
+	const pattern = `%${search}%`;
+	const conds: SQL[] = [
+		sql`${foldedSql(sql`i.number`)} LIKE ${pattern}`,
+		sql`${foldedSql(sql`i.recipient_name`)} LIKE ${pattern}`
+	];
+	if (memberIds.size) {
+		const ids = idList([...memberIds]);
+		conds.push(
+			sql`EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.member_id IN (${ids}))`,
+			sql`EXISTS (SELECT 1 FROM annual_fee_items x WHERE x.invoice_id = i.id AND x.member_id IN (${ids}))`
+		);
+	}
+	if (actionIds.length) {
+		const ids = idList(actionIds);
+		conds.push(
+			sql`i.action_id IN (${ids})`,
+			sql`EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.action_id IN (${ids}))`
+		);
+	}
+	return sql`(${sql.join(conds, sql` OR `)})`;
+}
+
+/**
+ * Rechnungsliste: Filter, Suche, Status, Sortierung, Summen und Seiten in SQL (`invoiceMetricsSql`);
+ * nur die Rechnungen der Seite werden samt Posten geladen und ihre Namen aufgelöst.
  */
 async function listInvoices(q: InvoiceListQuery): Promise<InvoiceList> {
 	const t = today();
@@ -116,66 +187,29 @@ async function listInvoices(q: InvoiceListQuery): Promise<InvoiceList> {
 		],
 		sql` AND `
 	);
-	const metrics = invoiceMetricsSql(where);
+	const searchCond = q.search ? await invoiceSearchSql(q.search) : sql`TRUE`;
+	const metrics = invoiceMetricsSql(sql`${where} AND ${searchCond}`);
 	const status = invoiceStatusSql(q.status, t);
 	const order = sql`ORDER BY m.issued_on DESC, m.number DESC`;
-	let pageIds: string[];
-	let total: number;
-	let totals: InvoiceList['totals'];
-	if (!q.search) {
-		const { page, agg } = await mdb().transaction(async (tx) => ({
-			page: await rows(
-				tx,
-				sql`SELECT m.id FROM ${metrics} WHERE ${status} ${order} LIMIT ${q.limit} OFFSET ${q.offset}`
-			),
-			agg: await rows(
-				tx,
-				sql`SELECT count(*) AS n, coalesce(sum(m.due_cents), 0) AS due, coalesce(sum(m.paid_cents), 0) AS paid,
-					coalesce(sum(m.open_cents), 0) AS open FROM ${metrics} WHERE ${status}`
-			)
-		}));
-		pageIds = page.map((r) => String(r.id));
-		total = num(agg[0]?.n);
-		totals = {
-			totalCents: num(agg[0]?.due),
-			paidCents: num(agg[0]?.paid),
-			openCents: num(agg[0]?.open)
-		};
-	} else {
-		const candidates = await mdb().transaction((tx) =>
-			rows(
-				tx,
-				sql`SELECT m.id, m.number, m.recipient_name, m.action_id, m.due_cents, m.paid_cents, m.open_cents,
-					(SELECT string_agg(DISTINCT l.member_id, ',') FROM invoice_lines l
-						WHERE l.invoice_id = m.id AND l.member_id IS NOT NULL) AS member_ids
-				FROM ${metrics} WHERE ${status} ${order}`
-			)
-		);
-		const memberIdsOf = (r: Record<string, unknown>) =>
-			r.member_ids ? String(r.member_ids).split(',') : [];
-		const names = await resolveNames({
-			memberIds: candidates.flatMap(memberIdsOf),
-			actionIds: candidates.flatMap((r) => (r.action_id ? [String(r.action_id)] : []))
-		});
-		const search = normalizeKey(q.search);
-		const hits = candidates.filter((r) =>
-			normalizeKey(
-				[
-					String(r.number),
-					String(r.recipient_name),
-					...memberIdsOf(r).map((id) => names.members.get(id) ?? ''),
-					r.action_id ? (names.actions.get(String(r.action_id)) ?? '') : ''
-				].join(' ')
-			).includes(search)
-		);
-		pageIds = hits.slice(q.offset, q.offset + q.limit).map((r) => String(r.id));
-		total = hits.length;
-		totals = {
-			totalCents: hits.reduce((s, r) => s + num(r.due_cents), 0),
-			paidCents: hits.reduce((s, r) => s + num(r.paid_cents), 0),
-			openCents: hits.reduce((s, r) => s + num(r.open_cents), 0)
-		};
-	}
+	// Auch mit Suche: Treffer, Summen und Seite vollständig in SQL – nie die ganze Kandidatenliste laden
+	const { page, agg } = await mdb().transaction(async (tx) => ({
+		page: await rows(
+			tx,
+			sql`SELECT m.id FROM ${metrics} WHERE ${status} ${order} LIMIT ${q.limit} OFFSET ${q.offset}`
+		),
+		agg: await rows(
+			tx,
+			sql`SELECT count(*) AS n, coalesce(sum(m.due_cents), 0) AS due, coalesce(sum(m.paid_cents), 0) AS paid,
+				coalesce(sum(m.open_cents), 0) AS open FROM ${metrics} WHERE ${status}`
+		)
+	}));
+	const pageIds = page.map((r) => String(r.id));
+	const total = num(agg[0]?.n);
+	const totals: InvoiceList['totals'] = {
+		totalCents: num(agg[0]?.due),
+		paidCents: num(agg[0]?.paid),
+		openCents: num(agg[0]?.open)
+	};
 	const { summaries } = pageIds.length
 		? await loadSummaries(sql`i.id IN (${idList(pageIds)})`)
 		: { summaries: [] as InvoiceSummary[] };
@@ -372,37 +406,53 @@ async function openItems(
 
 // --- Zahler --------------------------------------------------------------------
 
-export async function loadPayers(): Promise<Payer[]> {
-	const { payers, links, summaries } = await (async () => {
-		const base = await mdb().transaction(async (tx) => ({
-			payers: await rows(
-				tx,
-				sql`SELECT id, name, email, note, account_holder, iban_last4, bic FROM payers ORDER BY name, id`
-			),
-			links: await rows(tx, sql`SELECT payer_id, member_id FROM payer_members`)
-		}));
-		return { ...base, summaries: (await loadSummaries()).summaries };
-	})();
-	const contacts = links.length
-		? await (
-				await membersService()
-			).listMemberContacts({ ids: links.map((l) => String(l.member_id)) })
-		: [];
+/**
+ * Zahler mit Mitgliedern und Summen. Offen/überfällig/Guthaben per SQL-Aggregat je Zahler (kein Laden
+ * des Rechnungsbestands), Kontakte gesammelt je 1000 IDs. `ids` begrenzt auf einzelne Zahler.
+ */
+export async function loadPayers(ids?: string[]): Promise<Payer[]> {
+	if (ids && !ids.length) return [];
+	const t = today();
+	const only = ids ? sql`id IN (${idList(ids)})` : sql`TRUE`;
+	const { payers, links, stats } = await mdb().transaction(async (tx) => ({
+		payers: await rows(
+			tx,
+			sql`SELECT id, name, email, note, account_holder, iban_last4, bic FROM payers WHERE ${only}
+				ORDER BY name, id`
+		),
+		links: await rows(
+			tx,
+			sql`SELECT payer_id, member_id FROM payer_members
+				WHERE ${ids ? sql`payer_id IN (${idList(ids)})` : sql`TRUE`}`
+		),
+		stats: await rows(
+			tx,
+			sql`SELECT m.payer_id, coalesce(sum(m.open_cents), 0) AS open,
+				coalesce(sum(CASE WHEN m.due_on < ${t} THEN m.open_cents ELSE 0 END), 0) AS overdue,
+				coalesce(sum(m.credit_cents), 0) AS credit
+			FROM ${invoiceMetricsSql()}
+			WHERE m.payer_id IS NOT NULL ${ids ? sql`AND m.payer_id IN (${idList(ids)})` : sql``}
+			GROUP BY m.payer_id`
+		)
+	}));
+	const contacts = await loadContactsByIds(links.map((l) => String(l.member_id)));
+	const linksBy = groupBy(links, (l) => String(l.payer_id));
+	const statsBy = new Map(stats.map((r) => [String(r.payer_id), r]));
 	return payers.map((p) => {
-		const own = summaries.filter((s) => s.payer?.id === p.id);
+		const id = String(p.id);
+		const st = statsBy.get(id);
 		return {
-			id: String(p.id),
+			id,
 			name: String(p.name),
 			email: str(p.email),
 			note: str(p.note),
-			members: links
-				.filter((l) => l.payer_id === p.id)
-				.map((l) => contacts.find((c) => c.id === l.member_id))
-				.filter((c) => !!c)
-				.map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, emails: c.emails })),
-			openCents: own.reduce((s, i) => s + i.openCents, 0),
-			overdueCents: own.reduce((s, i) => s + (i.overdue ? i.openCents : 0), 0),
-			creditCents: own.reduce((s, i) => s + i.creditCents, 0),
+			members: (linksBy.get(id) ?? []).flatMap((l) => {
+				const c = contacts.get(String(l.member_id));
+				return c ? [{ id: c.id, name: `${c.firstName} ${c.lastName}`, emails: c.emails }] : [];
+			}),
+			openCents: num(st?.open),
+			overdueCents: num(st?.overdue),
+			creditCents: num(st?.credit),
 			accountHolder: str(p.account_holder),
 			ibanMasked: maskIban(str(p.iban_last4)),
 			bic: str(p.bic)
@@ -448,18 +498,34 @@ async function savePayer(tx: Tx, id: string, input: PayerInput) {
 
 // --- Aktionen ------------------------------------------------------------------
 
-async function actionReceivables(): Promise<ActionReceivables[]> {
-	const sources = await (await actionsService()).listReceivableSources();
-	const settings = await mdb().transaction((tx) =>
-		rows(
+/** Forderungen je Aktion: Summen per SQL-Aggregat (`GROUP BY action_id`), nicht stornierte Aktions-Rechnungen */
+async function actionReceivables(actionIds?: string[]): Promise<ActionReceivables[]> {
+	const sources = await (
+		await actionsService()
+	).listReceivableSources(actionIds ? { actionIds } : undefined);
+	if (!sources.length) return [];
+	const t = today();
+	const ids = idList(sources.map((s) => s.id));
+	const { settings, stats } = await mdb().transaction(async (tx) => ({
+		settings: await rows(
 			tx,
-			sql`SELECT action_id, excluded, to_char(due_on, 'YYYY-MM-DD') AS due_on FROM action_settings`
+			sql`SELECT action_id, excluded, to_char(due_on, 'YYYY-MM-DD') AS due_on FROM action_settings
+				WHERE action_id IN (${ids})`
+		),
+		stats: await rows(
+			tx,
+			sql`SELECT m.action_id, count(*) AS n, coalesce(sum(m.due_cents), 0) AS total,
+				coalesce(sum(m.paid_cents), 0) AS paid, coalesce(sum(m.open_cents), 0) AS open,
+				coalesce(sum(CASE WHEN m.due_on < ${t} THEN m.open_cents ELSE 0 END), 0) AS overdue
+			FROM ${invoiceMetricsSql(sql`i.source = 'action' AND i.cancelled_at IS NULL AND i.action_id IN (${ids})`)}
+			GROUP BY m.action_id`
 		)
-	);
-	const { summaries } = await loadSummaries(sql`i.source = 'action'`);
+	}));
+	const settingsBy = new Map(settings.map((r) => [String(r.action_id), r]));
+	const statsBy = new Map(stats.map((r) => [String(r.action_id), r]));
 	return sources.map((s) => {
-		const own = summaries.filter((i) => i.action?.id === s.id && i.status !== 'cancelled');
-		const st = settings.find((r) => r.action_id === s.id);
+		const st = settingsBy.get(s.id);
+		const agg = statsBy.get(s.id);
 		return {
 			actionId: s.id,
 			name: s.name,
@@ -469,11 +535,11 @@ async function actionReceivables(): Promise<ActionReceivables[]> {
 			excluded: Boolean(st?.excluded),
 			isPast: Boolean(s.isPast),
 			dueOn: str(st?.due_on),
-			invoiceCount: own.length,
-			totalCents: own.reduce((a, i) => a + i.totalCents, 0),
-			paidCents: own.reduce((a, i) => a + i.paidCents, 0),
-			openCents: own.reduce((a, i) => a + i.openCents, 0),
-			overdueCents: own.reduce((a, i) => a + (i.overdue ? i.openCents : 0), 0)
+			invoiceCount: num(agg?.n),
+			totalCents: num(agg?.total),
+			paidCents: num(agg?.paid),
+			openCents: num(agg?.open),
+			overdueCents: num(agg?.overdue)
 		};
 	});
 }
@@ -944,7 +1010,7 @@ export const invoiceEndpoints = [
 				metadata: { excluded: input.excluded, dueOn: input.dueOn }
 			});
 			await syncAction(ctx, id);
-			return (await actionReceivables()).find((a) => a.actionId === id) ?? null;
+			return (await actionReceivables([id]))[0] ?? null;
 		}
 	},
 	{
@@ -1000,7 +1066,7 @@ export const invoiceEndpoints = [
 				target: id,
 				metadata: { members: input.memberIds.length }
 			});
-			return (await loadPayers()).find((p) => p.id === id)!;
+			return (await loadPayers([id]))[0]!;
 		}
 	},
 	{
@@ -1028,7 +1094,7 @@ export const invoiceEndpoints = [
 				target: id,
 				metadata: { members: input.memberIds.length }
 			});
-			return (await loadPayers()).find((p) => p.id === id)!;
+			return (await loadPayers([id]))[0]!;
 		}
 	},
 	{

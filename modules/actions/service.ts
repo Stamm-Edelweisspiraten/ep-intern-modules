@@ -79,22 +79,28 @@ export const actionsService: ActionsService = {
 				WHERE p.action_id IN (${idList(actions.map((a) => a.id as string))})
 				ORDER BY p.created_at, p.id`
 			);
+			// Zuordnung per Map (linear statt Aktionen × Teilnehmende)
+			const peopleBy = new Map<string, Row[]>();
+			for (const p of people) {
+				const key = String(p.action_id);
+				const list = peopleBy.get(key);
+				if (list) list.push(p);
+				else peopleBy.set(key, [p]);
+			}
 			return actions.map((a): ReceivableSource => ({
 				...ref(a),
 				isPast: a.is_past === true || a.is_past === 't',
 				feeCents: Number(a.fee_cents),
 				teamFeeCents: a.team_fee_cents == null ? null : Number(a.team_fee_cents),
-				participants: people
-					.filter((p) => p.action_id === a.id)
-					.map((p) => ({
-						id: p.id as string,
-						name: p.name as string,
-						role: p.role === 'team' ? 'team' : 'participant',
-						birthDate: (p.birth_date as string | null) ?? null,
-						memberId: (p.member_id as string | null) ?? null,
-						contactEmail: (p.contact_email as string | null) ?? null,
-						groupLabel: (p.group_label as string | null) ?? null
-					}))
+				participants: (peopleBy.get(String(a.id)) ?? []).map((p) => ({
+					id: p.id as string,
+					name: p.name as string,
+					role: p.role === 'team' ? 'team' : 'participant',
+					birthDate: (p.birth_date as string | null) ?? null,
+					memberId: (p.member_id as string | null) ?? null,
+					contactEmail: (p.contact_email as string | null) ?? null,
+					groupLabel: (p.group_label as string | null) ?? null
+				}))
 			}));
 		});
 	},

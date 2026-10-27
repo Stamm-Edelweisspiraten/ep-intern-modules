@@ -12,7 +12,17 @@ import {
 	type OrderPayment,
 	type StockRow
 } from './schemas';
-import { idList, iso, isoOrNull, membersService, num, rows, str, treasuryService } from './db';
+import {
+	groupRows,
+	idList,
+	iso,
+	isoOrNull,
+	membersService,
+	num,
+	rows,
+	str,
+	treasuryService
+} from './db';
 import type { Row } from './db';
 import { userNames } from './db';
 import { billableCents, deficit, openQty, orderStatus } from './stock';
@@ -44,10 +54,11 @@ export async function loadOrders(tx: Tx, ids: string[]): Promise<OrderData[]> {
 			WHERE i.order_id IN (${idList(ids)}) ORDER BY i.position, i.id`
 	);
 	const byId = new Map(orders.map((o) => [String(o.id), o]));
+	const itemsBy = groupRows(items, (i) => String(i.order_id));
 	return ids
 		.map((id) => byId.get(id))
 		.filter((o): o is Row => !!o)
-		.map((order) => ({ order, items: items.filter((i) => i.order_id === order.id) }));
+		.map((order) => ({ order, items: itemsBy.get(String(order.id)) ?? [] }));
 }
 
 /** Eine Bestellung (optional gesperrt); 404, wenn sie fehlt */
