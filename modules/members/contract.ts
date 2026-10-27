@@ -101,8 +101,11 @@ export interface WebsiteGroupRef {
 	slug: string;
 	name: string;
 	type: 'meute' | 'sippe';
-	/** Freitext, z. B. „7 bis 10 Jahre“ */
+	/** Anzeigetext, z. B. „7 bis 10 Jahre“ (Altbestand ohne Zahlen: früherer Freitext) */
 	ageRange: string | null;
+	/** Alter von/bis in Jahren (`null` = ohne Grenze bzw. ohne Angabe) */
+	ageMin: number | null;
+	ageMax: number | null;
 }
 
 export interface GroupMailbox {

@@ -27,6 +27,30 @@ export const GROUP_IMAGE_VARIANT: ImageVariantSpec = {
 	quality: 82
 };
 
+/**
+ * Kleine Fassung für Karten auf der Website (angezeigt ≤ 330 px, doppelte Dichte): wird beim Abruf aus der
+ * gespeicherten Variante erzeugt (nicht gespeichert); die Website hält sie im Bild-Cache.
+ */
+export const GROUP_THUMB_VARIANT: ImageVariantSpec = {
+	name: 'thumb',
+	maxEdge: 640,
+	format: 'webp',
+	quality: 78
+};
+
+/** Verkleinert ein gespeichertes Gruppenbild auf `GROUP_THUMB_VARIANT` */
+export async function groupThumbnail(
+	bytes: Uint8Array
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+	const processed = await core.images.process(bytes, {
+		variants: [GROUP_THUMB_VARIANT],
+		maxInputBytes: Math.max(MAX_GROUP_IMAGE_BYTES, bytes.byteLength)
+	});
+	const variant = processed.variants[0];
+	if (!variant) throw errors.badRequest('Bild konnte nicht verarbeitet werden');
+	return { bytes: variant.bytes, contentType: variant.contentType };
+}
+
 /** Erkanntes Format → erlaubter, angegebener Content-Type */
 const FORMAT_CONTENT_TYPES: Record<string, string> = {
 	jpeg: 'image/jpeg',

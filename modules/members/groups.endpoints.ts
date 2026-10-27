@@ -15,6 +15,7 @@ import {
 	type Tx
 } from '$lib/sdk/server';
 import {
+	formatAgeRange,
 	groupInput,
 	idParams,
 	type Group,
@@ -39,11 +40,11 @@ async function loadGroups(tx: Tx, id?: string): Promise<Group[]> {
 		await tx.execute(
 			id
 				? sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
-						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
+						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range, age_min, age_max,
 						contact_email, created_at, updated_at
 						FROM groups WHERE id = ${id} ORDER BY name`
 				: sql`SELECT id, name, type, description, meeting_place, meeting_weekday, meeting_time, meeting_end_time, color,
-						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range,
+						(image_path IS NOT NULL) AS has_image, on_website, slug, website_description, age_range, age_min, age_max,
 						contact_email, created_at, updated_at
 						FROM groups ORDER BY name`
 		)
@@ -121,6 +122,8 @@ function websiteOf(g: Row): GroupWebsite {
 		slug: textOrNull(g.slug),
 		description: textOrNull(g.website_description),
 		ageRange: textOrNull(g.age_range),
+		ageMin: g.age_min == null ? null : Number(g.age_min),
+		ageMax: g.age_max == null ? null : Number(g.age_max),
 		contactEmail: textOrNull(g.contact_email)
 	};
 }
@@ -183,7 +186,8 @@ async function writeWebsite(
 ): Promise<void> {
 	await tx.execute(
 		sql`UPDATE groups SET on_website = ${w.onWebsite}, slug = ${w.slug},
-			website_description = ${w.description}, age_range = ${w.ageRange},
+			website_description = ${w.description}, age_min = ${w.ageMin}, age_max = ${w.ageMax},
+			age_range = ${formatAgeRange(w.ageMin, w.ageMax)},
 			contact_email = ${w.contactEmail}
 			WHERE id = ${groupId}`
 	);

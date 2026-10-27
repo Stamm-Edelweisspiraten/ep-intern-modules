@@ -7,6 +7,7 @@
  * Core-Aufrufe (Storage) laufen außerhalb der Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
+import { z } from 'zod';
 import {
 	type AnyApiEndpoint,
 	core,
@@ -19,6 +20,12 @@ import {
 	type Tx
 } from '$lib/sdk/server';
 import { groupSlugParams, type GroupType, type WebsiteGroup } from './schemas';
+import { groupThumbnail } from './group-image.service';
+
+const imageQuery = z.object({
+	/** `thumb` = kleine Fassung (lange Kante 640 px) für Karten */
+	size: z.enum(['web', 'thumb']).optional()
+});
 
 const MODULE = 'members';
 /** Systemkontext für den Storage-Abruf: der Website-Key hat kein `members.storage.read` */
@@ -37,7 +44,7 @@ const KEY_HINT =
 
 const textOrNull = (v: unknown): string | null => (v == null || v === '' ? null : String(v));
 
-const GROUP_SELECT = sql`SELECT id, name, type, description, website_description, age_range,
+const GROUP_SELECT = sql`SELECT id, name, type, description, website_description, age_range, age_min, age_max,
 	meeting_place, meeting_weekday, meeting_time, meeting_end_time, color, contact_email, slug,
 	(image_path IS NOT NULL) AS has_image, updated_at
 	FROM groups`;
@@ -81,6 +88,8 @@ function toWebsiteGroup(g: Row, leaders: string[]): WebsiteGroup {
 		type: g.type as GroupType,
 		description: textOrNull(g.website_description) ?? textOrNull(g.description),
 		ageRange: textOrNull(g.age_range),
+		ageMin: g.age_min == null ? null : Number(g.age_min),
+		ageMax: g.age_max == null ? null : Number(g.age_max),
 		meetingPlace: textOrNull(g.meeting_place),
 		meetingWeekday: g.meeting_weekday == null ? null : Number(g.meeting_weekday),
 		meetingTime: textOrNull(g.meeting_time),
@@ -159,14 +168,15 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 		path: '/website/groups/:slug/image',
 		summary: 'Gruppenbild für die Stammeswebsite',
 		description:
-			'Liefert das Bild roh (Content-Type wie gespeichert). 404, wenn die Gruppe nicht auf der ' +
+			'Liefert das Bild roh (Content-Type wie gespeichert), mit `?size=thumb` verkleinert (WebP, 640 px). 404, wenn die Gruppe nicht auf der ' +
 			'Website gezeigt wird, kein Bild hat oder kein Speicher eingerichtet ist. ' +
 			KEY_HINT,
 		tags,
 		permission: 'members.website.read',
 		params: groupSlugParams,
+		query: imageQuery,
 		rateLimit: IMAGE_RATE_LIMIT,
-		handler: async ({ params }) => {
+		handler: async ({ params, query }) => {
 			const ref = await moduleDb(MODULE).transaction(async (tx) => {
 				const [r] = resultRows(
 					await tx.execute(
@@ -187,12 +197,21 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 				// Kein Speicher eingerichtet oder Datei fehlt → für die Website schlicht „kein Bild“
 				throw errors.notFound(NO_IMAGE);
 			}
-			const { buffer, file } = download;
-			return new Response(buffer as BodyInit, {
+			let body: Uint8Array = download.buffer;
+			let contentType = download.file.contentType;
+			if (query.size === 'thumb') {
+				try {
+					({ bytes: body, contentType } = await groupThumbnail(body));
+				} catch (err) {
+					// nicht verkleinerbar (z. B. Altbestand) → Original ausliefern
+					console.warn('[members] Gruppenbild nicht verkleinerbar:', (err as Error).message);
+				}
+			}
+			return new Response(body as BodyInit, {
 				status: 200,
 				headers: {
-					'content-type': file.contentType,
-					'content-length': String(buffer.byteLength),
+					'content-type': contentType,
+					'content-length': String(body.byteLength),
 					'content-disposition': 'inline',
 					'cache-control': 'public, max-age=86400',
 					'x-content-type-options': 'nosniff'

@@ -5,7 +5,7 @@ paths: ["src/lib/modules/members/**", "tests/**/members*"]
 # Modul `members` (Mitglieder & Gruppen)
 
 Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Dokumente) und Gruppen
-(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.12.0, keine Abhängigkeiten.
+(Sippen/Meuten mit Leitern, Treffen, Farbe, Bild). Schema `mod_members`, Version 1.13.0, keine Abhängigkeiten.
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
@@ -38,7 +38,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `pages/` (weitere) | `FieldsPage` (Zusatzfelder, `FormBuilder`), `BulkDialog`, `LinksDialog`, öffentlich `LinkAccount`, `AddressFields` (+`countries.ts`), Profil `ProfileMembers`/`ProfileMemberCard`/`ProfileMailPrefs` (+`profile-shared.ts`), `download.ts`, Kachel `widgets/MyMembersWidget` |
 | `retention.service.ts`, `retention.endpoints.ts`, `pages/RetentionPage.svelte` | Löschfrist nach Austritt: Vorschlagsliste, Sammel-Anonymisieren (#30) |
 | `subject-export.ts` | Beitrag zur Datenauskunft (`subjectExport`: `findSubjects`, `resolve`, `run`) |
-| `migrations/0001_init.sql` … `0016_leader_users.sql` | Schema (0007 unbenutzt) |
+| `migrations/0001_init.sql` … `0017_group_age.sql` | Schema (0007 unbenutzt) |
 | `pages/LeaderUserPicker.svelte` | Auswahl von Benutzerkonten als Gruppenleitung (Chips + Suche `GET /groups/leader-users`) |
 
 ## Datenmodell
@@ -258,6 +258,13 @@ Einwilligungen, Ein-/Austritt, Adresse, Dokumente.
   lange Kante ≤ 1600 px); gespeichert und ausgeliefert wird nur diese Variante. Bestand: stündlicher, idempotenter Job `members.reprocess-group-images`
   (Pfade ≠ `groups/<id>/img-<uuid>.webp` werden neu verarbeitet, Verweis nur umgestellt, wenn unverändert; fehlende Datei → Verweis entfernt;
   nicht lesbare Bilder bleiben und werden gemeldet; ≤ 100 je Lauf; Audit `members.group.image.reprocessed` mit Zählern). Test `members-group-image.test.ts`.
+- **Alter von/bis (Migr. 0017, v1.13.0, 2026-10-27, Nutzerwunsch)**: `groups.age_min`/`age_max smallint` (0–99, CHECK bis ≥ von), Bestand aus dem
+  Freitext nach den Regeln von `parseAgeRange` übernommen (Test `members-age-migration.test.ts`). Eingabe `website.ageMin|ageMax` (statt `ageRange`; bis < von →
+  422 `website.ageMax`); `age_range` = abgeleiteter Anzeigetext `formatAgeRange` (`schemas.ts`: „6 bis 10 Jahre“, nur von → „ab 11 Jahren“, nur bis → „bis 10 Jahre“),
+  beim Speichern gesetzt. DTOs `GroupWebsite`/`WebsiteGroup`/`WebsiteGroupRef` haben `ageRange` **und** `ageMin`/`ageMax`. Dialog: Felder „von“/„bis“ + Vorschau,
+  Altbestand ohne Zahlen zeigt den alten Text als Hinweis.
+- **Kleines Gruppenbild** (2026-10-27): `GET /website/groups/:slug/image?size=thumb` → WebP lange Kante 640 px (`groupThumbnail`, beim Abruf erzeugt, nicht
+  gespeichert; nicht verkleinerbar → Original). Die Website cacht es je Größe.
 - Tests `tests/integration/members-website.test.ts`. Nutzerin: Stammeswebsite (`rules/website.md`).
 
 ### Datenschutz: Einwilligungsnachweis, Löschfrist, Auskunft (Migration 0013, #27/#30, 2026-10-20)

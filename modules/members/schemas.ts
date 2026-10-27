@@ -423,6 +423,25 @@ export const groupSlug = z
 	.max(MAX_GROUP_SLUG, `Höchstens ${MAX_GROUP_SLUG} Zeichen`)
 	.regex(GROUP_SLUG_PATTERN, 'Nur Kleinbuchstaben, Ziffern und Bindestriche');
 
+const groupAge = z
+	.number({ error: 'Bitte eine ganze Zahl angeben' })
+	.int('Bitte eine ganze Zahl angeben')
+	.min(0, 'Mindestens 0')
+	.max(99, 'Höchstens 99')
+	.nullish()
+	.transform((v) => v ?? null);
+
+/**
+ * Anzeigetext der Altersangabe einer Gruppe: „6 bis 10 Jahre“, „ab 11 Jahren“, „bis 10 Jahre“, „10 Jahre“;
+ * ohne Angabe `null`.
+ */
+export function formatAgeRange(min: number | null, max: number | null): string | null {
+	if (min != null && max != null) return min === max ? `${min} Jahre` : `${min} bis ${max} Jahre`;
+	if (min != null) return `ab ${min} Jahren`;
+	if (max != null) return `bis ${max} Jahre`;
+	return null;
+}
+
 export const groupWebsiteInput = z
 	.object({
 		onWebsite: z.boolean().default(false),
@@ -430,8 +449,9 @@ export const groupWebsiteInput = z
 		slug: groupSlug.nullish().transform((v) => v ?? null),
 		/** Text für die Website (ersetzt dort `description`, falls gesetzt) */
 		description: optionalText(5000, true),
-		/** Freitext, z. B. „7 bis 10 Jahre“ */
-		ageRange: optionalText(50),
+		/** Alter von/bis (Jahre, beide optional); Anzeige über `formatAgeRange` */
+		ageMin: groupAge,
+		ageMax: groupAge,
 		contactEmail: emailValue.nullish().transform((v) => v ?? null)
 	})
 	.superRefine((v, ctx) => {
@@ -440,6 +460,13 @@ export const groupWebsiteInput = z
 				code: 'custom',
 				path: ['slug'],
 				message: 'Für die Website wird eine Adresse benötigt'
+			});
+		}
+		if (v.ageMin != null && v.ageMax != null && v.ageMax < v.ageMin) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['ageMax'],
+				message: 'Mindestens so groß wie „von“'
 			});
 		}
 	});
@@ -452,7 +479,10 @@ export interface GroupWebsite {
 	onWebsite: boolean;
 	slug: string | null;
 	description: string | null;
+	/** Anzeigetext (aus von/bis; bei Altbestand ohne Zahlen der frühere Freitext) */
 	ageRange: string | null;
+	ageMin: number | null;
+	ageMax: number | null;
 	contactEmail: string | null;
 }
 
@@ -464,7 +494,10 @@ export interface WebsiteGroup {
 	type: GroupType;
 	/** Website-Text, sonst die interne Beschreibung */
 	description: string | null;
+	/** Anzeigetext, z. B. „6 bis 10 Jahre“ oder „ab 11 Jahren“ */
 	ageRange: string | null;
+	ageMin: number | null;
+	ageMax: number | null;
 	meetingPlace: string | null;
 	/** 1 = Montag … 7 = Sonntag */
 	meetingWeekday: number | null;

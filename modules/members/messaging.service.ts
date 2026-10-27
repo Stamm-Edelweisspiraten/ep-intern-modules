@@ -126,7 +126,7 @@ export const messagingService: Pick<
 		const rows = await moduleDb(MODULE_ID).transaction((tx) =>
 			rowsOf(
 				tx,
-				sql`SELECT id, slug, name, type, age_range FROM groups
+				sql`SELECT id, slug, name, type, age_range, age_min, age_max FROM groups
 					WHERE on_website = true AND slug IS NOT NULL
 					ORDER BY CASE type WHEN 'meute' THEN 0 ELSE 1 END, name, id`
 			)
@@ -136,7 +136,9 @@ export const messagingService: Pick<
 			slug: String(r.slug),
 			name: String(r.name),
 			type: r.type === 'sippe' ? 'sippe' : 'meute',
-			ageRange: r.age_range == null || r.age_range === '' ? null : String(r.age_range)
+			ageRange: r.age_range == null || r.age_range === '' ? null : String(r.age_range),
+			ageMin: r.age_min == null ? null : Number(r.age_min),
+			ageMax: r.age_max == null ? null : Number(r.age_max)
 		}));
 	}
 };

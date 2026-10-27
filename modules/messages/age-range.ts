@@ -1,6 +1,6 @@
 /**
- * Altersangaben der Gruppen (Freitext auf der Website, z. B. „6 bis 10 Jahre“, „ab 15 Jahren“, „11–14“) lesen
- * und die passende Gruppe für ein Alter finden – für Probestunden-Anfragen.
+ * Altersangaben der Gruppen (Zahlen von/bis, bei Altbestand ohne Zahlen der Freitext, z. B. „6 bis 10 Jahre“)
+ * lesen und die passende Gruppe für ein Alter finden – für Probestunden-Anfragen.
  *
  * Rein, ohne Importe: `website/src/lib/age-range.ts` ist eine **Kopie** (die Website importiert nichts aus `src/`),
  * `tests/unit/messages-trial.test.ts` hält beide gleich.
@@ -40,16 +40,28 @@ export function ageDistance(range: AgeRange, age: number): number {
 	return 0;
 }
 
+/** Altersangabe einer Gruppe als Zahlen; ohne `ageMin`/`ageMax` (Altbestand) aus dem Text gelesen */
+export interface AgeRangeSource {
+	ageRange: string | null;
+	ageMin?: number | null;
+	ageMax?: number | null;
+}
+
+export function groupAgeRange(g: AgeRangeSource): AgeRange | null {
+	if (g.ageMin != null || g.ageMax != null) return { min: g.ageMin ?? null, max: g.ageMax ?? null };
+	return parseAgeRange(g.ageRange);
+}
+
 /**
  * Gruppen, die zum Alter passen (Reihenfolge der Eingabe bleibt). Passt keine genau, die nächstgelegene(n),
- * `exact: false`. Gruppen ohne lesbare Altersangabe zählen nie.
+ * `exact: false`. Gruppen ohne Altersangabe zählen nie.
  */
-export function groupsForAge<T extends { ageRange: string | null }>(
+export function groupsForAge<T extends AgeRangeSource>(
 	groups: T[],
 	age: number
 ): { groups: T[]; exact: boolean } {
 	const scored = groups
-		.map((g) => ({ g, range: parseAgeRange(g.ageRange) }))
+		.map((g) => ({ g, range: groupAgeRange(g) }))
 		.filter((x): x is { g: T; range: AgeRange } => x.range !== null)
 		.map((x) => ({ g: x.g, d: ageDistance(x.range, age) }));
 	if (!scored.length || !Number.isFinite(age)) return { groups: [], exact: false };

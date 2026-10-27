@@ -251,8 +251,9 @@ Nachricht (freiwillig) –, die **passende Gruppe** bekommt die Nachricht.
   (`childName`, `childAge` 3–30, `name`, `email`, `phone` Pflicht, `message` ≤ 2000, `groupSlug` optional, `pow`). Aufgabe wie beim Kontaktformular
   (`/website/contact/challenge`); **eine Aufgabe gilt über alle Postfächer und beide Formulare nur einmal** (409).
 - Gruppe (`pickTrialGroup`): gewählter Website-Slug vor Alter; sonst `groupsForAge` über `MembersService.listWebsiteGroupRefs()` (neuer Dienst: Gruppen mit
-  `on_website` + Slug, Meute vor Sippe) und die Freitext-Altersangabe der Gruppe („6 bis 10 Jahre“, „ab 15“, „11–14“, „16+“, „bis 10“, „unter 10“);
-  passt keine genau, die nächstgelegene (Hinweis im Text). Gruppen ohne lesbare Altersangabe zählen nie.
+  `on_website` + Slug, Meute vor Sippe) und die Altersangabe der Gruppe: seit 2026-10-27 Zahlen `ageMin`/`ageMax` (`groupAgeRange`), nur bei Altbestand ohne
+  Zahlen der Freitext („6 bis 10 Jahre“, „ab 15“, „11–14“, „16+“, „bis 10“, „unter 10“); passt keine genau, die nächstgelegene (Hinweis im Text).
+  Gruppen ohne Altersangabe zählen nie.
 - Ablage (`storeWebsiteRequest` in `contact.service.ts`, gemeinsam mit dem Kontaktformular): Postfach `group:<id>`, wenn es im Verzeichnis steht
   (Kontakt-E-Mail der Gruppe) **und** mindestens eine Leitung mit eigenem Konto und `send` mitliest; sonst Stamm-Postfach mit Hinweis „bitte weiterleiten“,
   ohne Stamm-Adresse „Nicht zugeordnet“. Betreff „Probestunde: <Kind> (<Alter> Jahre)“, Antwort an die eingegebene Adresse, Benachrichtigung `inbox-new`.

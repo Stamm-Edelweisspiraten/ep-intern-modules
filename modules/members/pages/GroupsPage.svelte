@@ -42,6 +42,7 @@
 		MAX_GROUP_SLUG,
 		WEEKDAYS,
 		WEEKDAY_LABELS,
+		formatAgeRange,
 		groupInput,
 		type GroupFormInput,
 		type Group,
@@ -164,7 +165,18 @@
 	/** true, sobald die Adresse von Hand geändert wurde (dann folgt sie nicht mehr dem Namen) */
 	let slugTouched = $state(false);
 	let websiteText = $state('');
-	let ageRange = $state('');
+	// `type="number"` bindet Zahlen (leer → null)
+	let ageMin = $state<number | string | null>('');
+	let ageMax = $state<number | string | null>('');
+	/** Frühere Freitext-Angabe ohne lesbare Zahlen (nur Hinweis) */
+	let legacyAgeText = $state('');
+	const ageNumber = (v: number | string | null): number | null =>
+		v == null || String(v).trim() === '' ? null : Number(v);
+	const agePreview = $derived.by(() => {
+		const min = ageNumber(ageMin);
+		const max = ageNumber(ageMax);
+		return min != null && max != null && max < min ? null : formatAgeRange(min, max);
+	});
 	let contactEmail = $state('');
 	const nameSlug = $derived(slugFromName(name));
 	const slugPreview = $derived(slug.trim().toLowerCase() || nameSlug || 'adresse');
@@ -293,7 +305,10 @@
 		slug = g?.website.slug ?? (g ? slugFromName(g.name) : '');
 		slugTouched = Boolean(g?.website.slug);
 		websiteText = g?.website.description ?? '';
-		ageRange = g?.website.ageRange ?? '';
+		ageMin = g?.website.ageMin ?? '';
+		ageMax = g?.website.ageMax ?? '';
+		legacyAgeText =
+			g && g.website.ageMin == null && g.website.ageMax == null ? (g.website.ageRange ?? '') : '';
 		contactEmail = g?.website.contactEmail ?? '';
 	}
 
@@ -336,7 +351,8 @@
 		'website.onWebsite': 'g-web-on',
 		'website.slug': 'g-web-slug',
 		'website.description': 'g-web-text',
-		'website.ageRange': 'g-web-age',
+		'website.ageMin': 'g-web-age-min',
+		'website.ageMax': 'g-web-age-max',
 		'website.contactEmail': 'g-web-mail'
 	};
 
@@ -393,7 +409,8 @@
 				onWebsite,
 				slug: slug.trim() || null,
 				description: websiteText.trim() || null,
-				ageRange: ageRange.trim() || null,
+				ageMin: ageNumber(ageMin),
+				ageMax: ageNumber(ageMax),
 				contactEmail: contactEmail.trim() || null
 			}
 		};
@@ -890,16 +907,51 @@
 					</FormField>
 
 					<div class="grid gap-4 sm:grid-cols-2">
-						<FormField label="Alter" id="g-web-age" error={fieldErrors['website.ageRange']}>
-							<Input
-								id="g-web-age"
-								maxlength={50}
-								bind:value={ageRange}
-								placeholder="z. B. 7 bis 10 Jahre"
-								aria-invalid={!!fieldErrors['website.ageRange']}
-								aria-describedby={fieldErrors['website.ageRange'] ? 'g-web-age-error' : undefined}
-							/>
-						</FormField>
+						<fieldset class="grid gap-2">
+							<legend class="mb-2 text-sm font-medium">Alter</legend>
+							<div class="grid grid-cols-2 gap-3">
+								<FormField label="von" id="g-web-age-min" error={fieldErrors['website.ageMin']}>
+									<Input
+										id="g-web-age-min"
+										type="number"
+										inputmode="numeric"
+										min="0"
+										max="99"
+										bind:value={ageMin}
+										placeholder="z. B. 7"
+										aria-invalid={!!fieldErrors['website.ageMin']}
+										aria-describedby={fieldErrors['website.ageMin']
+											? 'g-web-age-min-error'
+											: 'g-web-age-hint'}
+									/>
+								</FormField>
+								<FormField label="bis" id="g-web-age-max" error={fieldErrors['website.ageMax']}>
+									<Input
+										id="g-web-age-max"
+										type="number"
+										inputmode="numeric"
+										min="0"
+										max="99"
+										bind:value={ageMax}
+										placeholder="offen"
+										aria-invalid={!!fieldErrors['website.ageMax']}
+										aria-describedby={fieldErrors['website.ageMax']
+											? 'g-web-age-max-error'
+											: 'g-web-age-hint'}
+									/>
+								</FormField>
+							</div>
+							<p id="g-web-age-hint" class="text-sm text-muted-foreground">
+								{#if agePreview}
+									Auf der Website: „{agePreview}“
+								{:else if legacyAgeText}
+									Bisher: „{legacyAgeText}“ – bitte als Zahlen eintragen.
+								{:else}
+									Nur „von“ ausgefüllt wird zu „ab … Jahren“. Die Probestunde ordnet Kinder danach
+									zu.
+								{/if}
+							</p>
+						</fieldset>
 						<FormField
 							label="E-Mail-Adresse der Gruppe"
 							id="g-web-mail"

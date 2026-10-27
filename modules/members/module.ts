@@ -48,13 +48,14 @@ import m0013 from './migrations/0013_privacy.sql?raw';
 import m0014 from './migrations/0014_link_token_hash_constraints.sql?raw';
 import m0015 from './migrations/0015_leader_self_link.sql?raw';
 import m0016 from './migrations/0016_leader_users.sql?raw';
+import m0017 from './migrations/0017_group_age.sql?raw';
 import { hashStoredLinkTokens, membersBackup } from './link-tokens';
 
 export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.12.0',
+		version: '1.13.0',
 		dependencies: [],
 		defaultRoleGrants: {
 			/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
@@ -209,7 +210,8 @@ export default defineModule({
 		{ name: '0013_privacy', sql: m0013 },
 		{ name: '0014_link_token_hash_constraints', sql: m0014 },
 		{ name: '0015_leader_self_link', sql: m0015 },
-		{ name: '0016_leader_users', sql: m0016 }
+		{ name: '0016_leader_users', sql: m0016 },
+		{ name: '0017_group_age', sql: m0017 }
 	],
 	search: membersSearch,
 	notifications: {

@@ -18,6 +18,8 @@ export const websiteGroupSchema = z
 		type: z.enum(GROUP_TYPES),
 		description: z.string().nullable(),
 		ageRange: z.string().nullable(),
+		ageMin: z.number().int().min(0).max(99).nullable(),
+		ageMax: z.number().int().min(0).max(99).nullable(),
 		meetingPlace: z.string().nullable(),
 		meetingWeekday: z.number().int().min(1).max(7).nullable(),
 		meetingTime: hhmm.nullable(),
