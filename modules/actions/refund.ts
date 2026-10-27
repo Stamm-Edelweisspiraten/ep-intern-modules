@@ -88,3 +88,62 @@ export function computeManualRefund(input: {
 	const totalCents = perHeadCents * count;
 	return { count, perHeadCents, totalCents, remainderCents: surplus - totalCents };
 }
+
+// --- Spende der Rückzahlung an den Stamm ----------------------------------------
+
+/** Wahl je Person: alles auszahlen, alles spenden oder einen Teil (ganze Euro) spenden. */
+export type DonationChoice = 'payout' | 'donate' | 'partial';
+
+/** Auszahlung = Anteil − Spende (nie negativ). */
+export const payoutCents = (item: { amountCents: number; donatedCents: number }): number =>
+	Math.max(0, safe(item.amountCents) - safe(item.donatedCents));
+
+/** Summen über alle Personen. */
+export function donationTotals(items: { amountCents: number; donatedCents: number }[]): {
+	donatedCents: number;
+	payoutCents: number;
+	donorCount: number;
+} {
+	let donated = 0;
+	let payout = 0;
+	let donors = 0;
+	for (const i of items) {
+		const d = Math.min(safe(i.donatedCents), safe(i.amountCents));
+		donated += d;
+		payout += safe(i.amountCents) - d;
+		if (d > 0) donors++;
+	}
+	return { donatedCents: donated, payoutCents: payout, donorCount: donors };
+}
+
+/**
+ * Spendenbetrag prüfen: 0 … Anteil, ganze Euro – „alles spenden“ ist auch bei krummem Anteil erlaubt.
+ * Liefert eine Fehlermeldung oder `null`.
+ */
+export function validateDonation(amountCents: number, donatedCents: number): string | null {
+	if (!Number.isInteger(donatedCents) || donatedCents < 0) {
+		return 'Der Spendenbetrag ist ungültig.';
+	}
+	if (donatedCents > amountCents) return 'Die Spende ist höher als die Rückzahlung.';
+	if (donatedCents !== amountCents && donatedCents % 100 !== 0) {
+		return 'Bitte nur ganze Euro spenden.';
+	}
+	return null;
+}
+
+/** Spendenbetrag zur Wahl (`partial` braucht einen Betrag). */
+export function donationForChoice(
+	amountCents: number,
+	choice: DonationChoice,
+	partialCents?: number
+): number {
+	if (choice === 'payout') return 0;
+	if (choice === 'donate') return safe(amountCents);
+	return safe(partialCents);
+}
+
+/** Wahl aus dem gespeicherten Betrag ableiten (für Anzeige). */
+export function choiceOf(item: { amountCents: number; donatedCents: number }): DonationChoice {
+	if (item.donatedCents <= 0) return 'payout';
+	return item.donatedCents >= item.amountCents ? 'donate' : 'partial';
+}

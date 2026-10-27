@@ -33,6 +33,7 @@ import m0011 from './migrations/0011_club_expenses.sql?raw';
 import m0012 from './migrations/0012_action_past_flag.sql?raw';
 import m0013 from './migrations/0013_entry_reimbursed_upfront.sql?raw';
 import { refundEndpoints } from './refund.endpoints';
+import { refundDonationEndpoints } from './refund-donation.endpoints';
 import { exportImportEndpoints } from './export-import.endpoints';
 import { actionsService } from './service';
 import type { ActionsService } from './contract';
@@ -50,6 +51,7 @@ import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
 import m0021 from './migrations/0021_camp_fees.sql?raw';
 import m0022 from './migrations/0022_principal_shares.sql?raw';
 import m0023 from './migrations/0023_subsidy_application.sql?raw';
+import m0024 from './migrations/0024_refund_donations.sql?raw';
 import {
 	PARISH_SETTING,
 	SUBSIDY_BANK_SETTINGS,
@@ -64,7 +66,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.6.0',
+		version: '1.7.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -232,7 +234,8 @@ export default defineModule({
 		{ name: '0020_link_token_hash_constraints', sql: m0020 },
 		{ name: '0021_camp_fees', sql: m0021 },
 		{ name: '0022_principal_shares', sql: m0022 },
-		{ name: '0023_subsidy_application', sql: m0023 }
+		{ name: '0023_subsidy_application', sql: m0023 },
+		{ name: '0024_refund_donations', sql: m0024 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [
@@ -285,6 +288,7 @@ export default defineModule({
 			...accountingEndpoints,
 			...payoutEndpoints,
 			...refundEndpoints,
+			...refundDonationEndpoints,
 			...exportImportEndpoints,
 			...interimEndpoints,
 			...expenseLinkEndpoints,

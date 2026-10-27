@@ -135,7 +135,15 @@ export interface ClosedAccountingDetail extends ClosedAccounting {
 	autoIncome: AutoIncome;
 	entries: AccountingEntry[];
 	payees: AccountingPayee[];
-	refund: { totalCents: number; count: number; remainderCents: number; bookedAt: string } | null;
+	/** `totalCents`/`count` = tatsächliche Auszahlungen; `donatedCents` = an den Stamm gespendet */
+	refund: {
+		totalCents: number;
+		count: number;
+		remainderCents: number;
+		bookedAt: string;
+		donatedCents: number;
+		donorCount: number;
+	} | null;
 }
 
 /** Aktion im Kalender-Abo (Modul `events`) */
@@ -209,7 +217,7 @@ export interface ActionsService {
 		withBank: boolean,
 		auditCtx: RequestContext
 	): Promise<{ data: Uint8Array; fileName: string }>;
-	/** Einzelbeträge gebuchter Rückzahlungen des Überschusses */
+	/** Einzelbeträge gebuchter Rückzahlungen des Überschusses (nur der auszuzahlende Teil, Spenden abgezogen; ganz gespendet → fehlt) */
 	listRefundItems(): Promise<RefundItemSource[]>;
 	/** Belege der Auslagen einer Empfänger*in (für die Kasse) */
 	listReimbursementReceipts(

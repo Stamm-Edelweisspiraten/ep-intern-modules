@@ -1,6 +1,14 @@
 /** Gemeinsame Datenbank-Hilfen der Abrechnung (Buchungen, Abschlussstatus). */
 import { sql } from 'drizzle-orm';
-import { core, errors, type RequestContext, rowsOf, toIso, type Tx } from '$lib/sdk/server';
+import {
+	core,
+	errors,
+	type RequestContext,
+	rowsOf,
+	toIso,
+	toIsoOrNull,
+	type Tx
+} from '$lib/sdk/server';
 import type {
 	AccountingClosedEvent,
 	ActionContributions,
@@ -384,14 +392,33 @@ export async function loadEntries(tx: Tx, actionId: string): Promise<AccountingE
 
 export interface RefundSnapshot {
 	bookedAt: string;
-	entryId: string;
+	/** Rückzahlungs-Buchung; `null`, wenn alle Personen alles spenden */
+	entryId: string | null;
 	surplusCents: number;
 	perHeadCents: number;
 	payingCount: number;
 	mode: 'auto' | 'manual';
 	totalCents: number;
 	remainderCents: number;
-	items: { participantId: string | null; name: string; amountCents: number }[];
+	/** Summe der Spenden an den Stamm (Teil von `totalCents`) */
+	donatedCents: number;
+	/** Tatsächlich auszuzahlen = `totalCents − donatedCents` */
+	payoutCents: number;
+	items: RefundSnapshotItem[];
+}
+
+export interface RefundSnapshotItem {
+	id: string;
+	participantId: string | null;
+	name: string;
+	/** Ursprünglicher Anteil */
+	amountCents: number;
+	/** An den Stamm gespendet (0 = alles auszahlen) */
+	donatedCents: number;
+	decidedVia: 'internal' | 'link' | null;
+	decidedAt: string | null;
+	/** Es gibt einen Link (Brief) für diese Person */
+	hasLink: boolean;
 }
 
 /** Gebuchte Rückzahlung (Snapshot) oder `null`. */
@@ -404,27 +431,38 @@ export async function loadRefundSnapshot(tx: Tx, actionId: string): Promise<Refu
 	if (!b) return null;
 	const rows = await rowsOf(
 		tx,
-		sql`SELECT participant_id, name, amount_cents FROM accounting_refunds
+		sql`SELECT id, participant_id, name, amount_cents, donated_cents, decided_via, decided_at,
+				token_hash IS NOT NULL AS has_link
+			FROM accounting_refunds
 			WHERE action_id = ${actionId} ORDER BY position, name, created_at, id`
 	);
-	const items = rows.map((r) => ({
+	const items: RefundSnapshotItem[] = rows.map((r) => ({
+		id: String(r.id),
 		participantId: r.participant_id == null ? null : String(r.participant_id),
 		name: String(r.name),
-		amountCents: Number(r.amount_cents)
+		amountCents: Number(r.amount_cents),
+		donatedCents: Number(r.donated_cents ?? 0),
+		decidedVia: r.decided_via === 'internal' || r.decided_via === 'link' ? r.decided_via : null,
+		decidedAt: toIsoOrNull(r.decided_at),
+		hasLink: r.has_link === true || r.has_link === 't'
 	}));
+	const donatedCents = items.reduce((a, i) => a + Math.min(i.donatedCents, i.amountCents), 0);
 	const mode = String(b.mode) === 'manual' ? 'manual' : 'auto';
+	const totalCents =
+		mode === 'manual'
+			? Number(b.surplus_cents) - Number(b.remainder_cents)
+			: items.reduce((a, i) => a + i.amountCents, 0);
 	return {
 		bookedAt: toIso(b.booked_at),
-		entryId: String(b.entry_id),
+		entryId: b.entry_id == null ? null : String(b.entry_id),
 		surplusCents: Number(b.surplus_cents),
 		perHeadCents: Number(b.per_head_cents),
 		payingCount: Number(b.paying_count),
 		mode,
-		totalCents:
-			mode === 'manual'
-				? Number(b.surplus_cents) - Number(b.remainder_cents)
-				: items.reduce((a, i) => a + i.amountCents, 0),
+		totalCents,
 		remainderCents: Number(b.remainder_cents),
+		donatedCents,
+		payoutCents: totalCents - donatedCents,
 		items
 	};
 }

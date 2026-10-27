@@ -60,7 +60,9 @@
 		if (booked) {
 			const n = booked.count ?? booked.items.length;
 			const per = booked.perHeadCents ?? booked.items[0]?.amountCents ?? 0;
-			return `Gebucht am ${fmtDate(booked.bookedAt)} · ${n} × ${formatEuro(per)}`;
+			const donated =
+				booked.donatedCents > 0 ? ` · ${formatEuro(booked.donatedCents)} gespendet` : '';
+			return `Gebucht am ${fmtDate(booked.bookedAt)} · ${n} × ${formatEuro(per)}${donated}`;
 		}
 		if (state_.blockers.length) return `Nicht möglich: ${state_.blockers[0]}`;
 		if (state_.canBook && maxPerHead > 0) {

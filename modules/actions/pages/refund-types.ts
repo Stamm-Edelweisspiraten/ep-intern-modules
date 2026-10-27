@@ -1,16 +1,29 @@
 /** Lokale Typen für die Rückzahlung des Überschusses (API: .../accounting/refund). */
 export interface RefundItem {
+	/** Posten-ID (nur gebucht) */
+	id: string | null;
 	participantId: string;
 	name: string;
 	amountCents: number;
+	/** An den Stamm gespendet */
+	donatedCents: number;
+	/** Auszuzahlen = Anteil − Spende */
+	payoutCents: number;
+	decidedVia: 'internal' | 'link' | null;
+	decidedAt: string | null;
+	hasLink: boolean;
+	/** Von der Kasse bereits überwiesen (> 0 = gesperrt) */
+	paidCents: number;
 }
 
 export interface RefundBooked {
 	bookedAt: string;
-	entryId: string;
+	entryId: string | null;
 	surplusCents: number;
 	totalCents: number;
 	remainderCents: number;
+	donatedCents: number;
+	payoutCents: number;
 	items: RefundItem[];
 	mode?: RefundMode;
 	count?: number;

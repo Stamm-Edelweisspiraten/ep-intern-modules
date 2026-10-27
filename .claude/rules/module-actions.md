@@ -6,7 +6,7 @@ paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*
 
 Freizeiten/Veranstaltungen: Stammdaten, Freigabe, Teilnehmende, Kalkulation (+ Zuschuss), öffentlicher Anmeldelink,
 Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Überschusses. Schema `mod_actions`,
-Version 1.1.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
+Version 1.7.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
 Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
 ## Dateien (`src/lib/modules/actions/`)
@@ -27,6 +27,7 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 | `accounting.ts` (rein), `accounting-core.ts`, `accounting.endpoints.ts` | Summen/Soll-Ist/CSV/PDF-Blöcke; DB-Hilfen (`assertOpen`, `loadRefundSnapshot`); Buchungen + Belege |
 | `payouts.endpoints.ts`, `iban.ts` | Empfänger, IBAN, Auszahlung, Abschluss, `report.pdf`; IBAN-Prüfung/Maske |
 | `refund.ts` (rein), `refund.endpoints.ts` | Rückzahlung |
+| `refund-donation.ts`, `refund-donation.endpoints.ts` | Rückzahlung spenden: Spende je Person, Link/Token je Person, Briefe mit QR-Code, öffentliche Wahl (siehe „Rückzahlung spenden“) |
 | `action-archive.ts` (rein), `export-import.endpoints.ts` | Export/Import als ZIP (Format, Zod, Limits, Pfadschutz; Endpoints) |
 | `health.ts` | Gesundheitsdaten: `canSeeHealth`, Erkennung gesundheitsbezogener Antworten, Ver-/Entschlüsselung, Bereinigung, Bestandsmigration (siehe „Gesundheitsdaten“) |
 | `contract.ts` / `service.ts` | Vertrag `ActionsService` / Umsetzung `actionsService` (`provides`, ohne Objektrechte): `listReceivableSources`, `listActionRefs`, `listReimbursements`, `markReimbursed`, `listRefundItems`, `listReimbursementReceipts`, `downloadReceipt`, `listClosedAccountings`/`getClosedAccounting`, `listClubExpenses`/`getClubExpenseIban`/`markClubExpensePaid`, `accountingReportPdf`, `listInterims`/`interimReportPdf`, `accountingCategoryLabels` |
@@ -80,6 +81,9 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
   Die Kategorien stehen **am Ende** von `CALC_CATEGORIES`, damit Belegnummern bestehender Abrechnungen gleich bleiben.
 - **0022** (2026-10-25) `action_shares`: `user_id` → `principal_id`, neue Spalte `principal_type` (CHECK everyone|group|role|user|member), PK
   `(action_id, principal_type, principal_id)`, Index `(principal_type, principal_id)`; Bestand wird `user`. Upgrade-Test in `module-data-migrations.test.ts`.
+- **0024** (2026-10-27) `accounting_refunds`: `donated_cents bigint` (CHECK 0…Anteil, ganze Euro außer „alles“), `decided_at/via (internal|link)/by`,
+  `donor_note` (≤ 300), `token_hash` (UNIQUE) + `token_enc` (Link je Person); `action_refund_booking.entry_id` nullbar, FK **SET NULL** (alles gespendet → keine Buchung).
+  Upgrade-Test `actions-refund-donation-migration.test.ts`.
 - **0023** (2026-10-26) `subsidy_applications` (1:1 Aktion: `freizeit_art`, `topic`, `inclusion`) und `subsidy_application_leaders`
   (`participant_id` FK CASCADE, `gender` female|male) – Geschlecht **nur** für den Zuschussantrag.
 - Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
@@ -284,6 +288,28 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Hinweis „Rückzahlung erfolgt erst, sobald alle Zahlungen einschließlich der Zuschüsse eingegangen sind“ **nur im PDF-Bericht**.
 - Blocker (`blockers[]`): bereits gebucht, abgeschlossen, kein Überschuss, kein Beitrag, keine Zahlenden, zu geringer Betrag.
 - „Zahlung an Personen“ = nur Markierung „als ausgezahlt“ (kein Zahlungsverkehr, kein SEPA).
+
+## Rückzahlung spenden (Migr. 0024, v1.7.0, 2026-10-27)
+- Nutzerentscheidung: Standard **auszahlen** (Kassen-Auszahlung entsteht sofort wie bisher); je Person **alles, nichts oder ein Teil (ganze Euro)**
+  an den Stamm spenden – intern oder über den Brief mit QR-Code; keine IBAN-Abfrage; Spende = **eigener Block**, keine zusätzliche Einnahme.
+- Auszahlung = `amount_cents − donated_cents`. `syncRefundEntry` (`refund-donation.ts`) setzt die `refund`-Buchung auf Σ Auszahlungen (Text „… k gespendet: x €“),
+  bei 0 wird sie gelöscht (Snapshot bleibt, `entryId: null`), bei neuer Auszahlung wieder angelegt (Datum heute). `listRefundItems` liefert nur den
+  auszuzahlenden Teil und lässt ganz gespendete weg → die Kasse storniert/verringert unbezahlte Auszahlungen automatisch.
+- Sperre: Hat die Kasse an `refund:<aktion>:<posten>` schon gezahlt (`TreasuryService.payableStatus`, vor der Transaktion), → **409**. Abgeschlossene Abrechnung → 409 bzw. Link 404.
+- API: `PUT …/refund/items/:itemId/donation { donatedCents }` (edit), `POST …/refund/items/:itemId/link { rotate? }` → `{ url }` (Token erzeugen/erneuern),
+  `POST …/refund/letters.pdf { itemIds? }` (Sammel-PDF `stamm-brief`, Anschrift aus verknüpftem Mitglied, Tokens bleiben bestehen),
+  öffentlich `GET/POST /public/refund-choices/:token` (60/60 s bzw. 10/600 s, `{ choice: payout|donate|partial, donatedCents?, note?, website }`, Honeypot).
+  Seite `/p/actions/rueckzahlung/<token>` (`PublicRefundChoice.svelte`). Wahl änderbar bis zur Überweisung bzw. zum Abschluss.
+- DTO je Posten: `id`, `donatedCents`, `payoutCents`, `decidedVia`, `decidedAt`, `hasLink`, `paidCents`; `booked.donatedCents|payoutCents`.
+- PDF-Bericht: Tabelle Anteil | gespendet | Auszahlung + Block „An den Stamm gespendet“, Buchungsanweisung „Davon an den Stamm gespendet“. Kasse:
+  `getClosedAccounting.refund` mit `donatedCents`/`donorCount` (`totalCents` = Auszahlung).
+- Archiv: `refund.entryRef` nullbar, `items[].donatedCents` optional (Tokens nie). `onMemberDeleted` anonymisiert Name/Notiz und löscht den Link;
+  Backup-Hook rehasht `accounting_refunds.token_hash`.
+- Audit `actions.accounting.refund-donation-set` (`itemId`, `donatedCents`, `via`), `refund-link-rotated`, `refund-letters-generated` – ohne Namen/Notiz.
+- UI: `RefundDialog` (gebucht) → `RefundDonationList` (je Person `SegmentedSlider` Auszahlen · Teilweise · Spenden, `MoneyInput`, Badge „über Link“/„überwiesen“,
+  Menü Brief/Link kopieren/erneuern, Knopf „Briefe mit QR-Code (PDF)“).
+- Tests: `tests/integration/actions-refund-donation.test.ts`, Unit `refund.test.ts`.
+- Offen: keine Spendenquittung, keine Benachrichtigung bei Wahl über den Link, Abschluss-Dialog nennt die Spenden nicht eigens.
 
 ## Export/Import (`action-archive.ts`, `export-import.endpoints.ts`)
 - **ZIP** (Bibliothek `fflate`, rein JS): `manifest.json` (`format: 'ep-intern-action'`, `formatVersion: 1`, `exportedAt`,

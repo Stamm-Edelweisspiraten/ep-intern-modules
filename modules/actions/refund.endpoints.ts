@@ -18,15 +18,44 @@ import {
 	refundThresholdOk,
 	type RefundPayer
 } from './refund';
+import { refundEntryText, treasuryPaidByItem } from './refund-donation';
 import { MODULE_ID, idParams, refundBodySchema, refundQuerySchema } from './schemas';
 
 const TAGS = ['Modul: actions'];
 
 interface RefundItemDto {
+	/** Posten-ID (nur gebucht; Vorschau `null`) */
+	id: string | null;
 	participantId: string | null;
 	name: string;
 	amountCents: number;
+	/** An den Stamm gespendet */
+	donatedCents: number;
+	/** Auszuzahlen = Anteil − Spende */
+	payoutCents: number;
+	decidedVia: 'internal' | 'link' | null;
+	decidedAt: string | null;
+	hasLink: boolean;
+	/** Von der Kasse bereits überwiesen (> 0 = Wahl gesperrt) */
+	paidCents: number;
 }
+
+const previewItem = (i: {
+	participantId: string | null;
+	name: string;
+	amountCents: number;
+}): RefundItemDto => ({
+	id: null,
+	participantId: i.participantId,
+	name: i.name,
+	amountCents: i.amountCents,
+	donatedCents: 0,
+	payoutCents: i.amountCents,
+	decidedVia: null,
+	decidedAt: null,
+	hasLink: false,
+	paidCents: 0
+});
 
 interface RefundState {
 	mode: 'auto' | 'manual';
@@ -44,10 +73,12 @@ interface RefundState {
 	remainderCents: number;
 	booked: null | {
 		bookedAt: string;
-		entryId: string;
+		entryId: string | null;
 		surplusCents: number;
 		totalCents: number;
 		remainderCents: number;
+		donatedCents: number;
+		payoutCents: number;
 		items: RefundItemDto[];
 	};
 	canBook: boolean;
@@ -55,8 +86,6 @@ interface RefundState {
 	feeCents: number | null;
 	teamFeeCents: number | null;
 }
-
-const euros = (cents: number): string => `${Math.floor(cents / 100)}`;
 
 /** Berechnung für GET/POST; `canEdit` fließt nur in `canBook` ein. */
 async function loadRefund(
@@ -122,18 +151,20 @@ async function loadRefund(
 	const calc = manualCalc
 		? {
 				items: (manualNames && manualCalc.perHeadCents > 0
-					? manualNames.map((name) => ({
-							participantId: crypto.randomUUID(),
-							name,
-							amountCents: manualCalc.perHeadCents
-						}))
+					? manualNames.map((name) =>
+							previewItem({
+								participantId: crypto.randomUUID(),
+								name,
+								amountCents: manualCalc.perHeadCents
+							})
+						)
 					: []) as RefundItemDto[],
 				totalCents: manualCalc.totalCents,
 				remainderCents: manualCalc.remainderCents,
 				perHeadCents: manualCalc.perHeadCents,
 				payingCount: manualCalc.perHeadCents > 0 ? manualCalc.count : 0
 			}
-		: autoCalc;
+		: { ...autoCalc, items: autoCalc.items.map(previewItem) };
 	// Schwelle: Betrag je Person (manuell) bzw. kleinster Einzelbetrag (Standard)
 	const checkCents = manualCalc ? manualCalc.perHeadCents : Number.isFinite(minItem) ? minItem : 0;
 	const thresholdOk = refundThresholdOk(checkCents);
@@ -152,6 +183,19 @@ async function loadRefund(
 		}
 	}
 
+	const bookedItems: RefundItemDto[] = (snapshot?.items ?? []).map((i) => ({
+		id: i.id,
+		participantId: i.participantId,
+		name: i.name,
+		amountCents: i.amountCents,
+		donatedCents: i.donatedCents,
+		payoutCents: Math.max(0, i.amountCents - i.donatedCents),
+		decidedVia: i.decidedVia,
+		decidedAt: i.decidedAt,
+		hasLink: i.hasLink,
+		paidCents: 0
+	}));
+
 	return {
 		mode,
 		count: snapshot ? snapshot.payingCount : manualCalc ? manualCalc.count : autoCalc.payingCount,
@@ -161,7 +205,7 @@ async function loadRefund(
 		surplusCents,
 		payingCount: snapshot ? snapshot.payingCount : calc.payingCount,
 		perHeadCents: snapshot ? snapshot.perHeadCents : calc.perHeadCents,
-		items: snapshot ? snapshot.items : calc.items,
+		items: snapshot ? bookedItems : calc.items,
 		totalCents: snapshot ? snapshot.totalCents : calc.totalCents,
 		remainderCents: snapshot ? snapshot.remainderCents : calc.remainderCents,
 		booked: snapshot
@@ -171,13 +215,32 @@ async function loadRefund(
 					surplusCents: snapshot.surplusCents,
 					totalCents: snapshot.totalCents,
 					remainderCents: snapshot.remainderCents,
-					items: snapshot.items
+					donatedCents: snapshot.donatedCents,
+					payoutCents: snapshot.payoutCents,
+					items: bookedItems
 				}
 			: null,
 		canBook: canEdit && blockers.length === 0,
 		blockers,
 		feeCents,
 		teamFeeCents
+	};
+}
+
+/** Überwiesene Beträge der Kasse an die gebuchten Posten hängen (nach der Transaktion) */
+async function withTreasuryPaid(actionId: string, state: RefundState): Promise<RefundState> {
+	if (!state.booked) return state;
+	const ids = state.booked.items.map((i) => i.id).filter((i): i is string => !!i);
+	const paid = await treasuryPaidByItem(actionId, ids);
+	if (!paid.size) return state;
+	const mark = (i: RefundItemDto): RefundItemDto => ({
+		...i,
+		paidCents: paid.get(i.id ?? '') ?? 0
+	});
+	return {
+		...state,
+		items: state.items.map(mark),
+		booked: { ...state.booked, items: state.booked.items.map(mark) }
 	};
 }
 
@@ -198,7 +261,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 			const id = (params as { id: string }).id;
 			const treasury = await loadTreasuryContributions(id);
 			const count = (query as { count?: number } | undefined)?.count;
-			return moduleDb(MODULE_ID).transaction(async (tx) => {
+			const state = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, id, 'read');
 				return loadRefund(
 					tx,
@@ -208,6 +271,7 @@ export const refundEndpoints: ApiEndpoint[] = [
 					treasury
 				);
 			});
+			return withTreasuryPaid(id, state);
 		}
 	} as ApiEndpoint,
 	{
@@ -247,12 +311,12 @@ export const refundEndpoints: ApiEndpoint[] = [
 						'Pro Person bleiben höchstens 5 EUR - eine Rückzahlung lohnt sich nicht.'
 					);
 				}
-				const same = new Set(cur.items.map((i) => i.amountCents)).size === 1;
-				const head =
-					cur.mode === 'manual'
-						? `${cur.count} × ${euros(cur.perHeadCents)} €`
-						: `${cur.items.length} × ${same ? '' : 'bis zu '}${euros(cur.perHeadCents)} €`;
-				const description = `Rückzahlung an Teilnehmende (${head})`;
+				const description = refundEntryText({
+					mode: cur.mode,
+					payingCount: cur.count,
+					perHeadCents: cur.perHeadCents,
+					items: cur.items
+				});
 				const entryId = crypto.randomUUID();
 				const today = todayBerlin();
 				await tx.execute(
@@ -306,7 +370,9 @@ export const refundEndpoints: ApiEndpoint[] = [
 				await assertOpen(tx, id);
 				const snap = await loadRefundSnapshot(tx, id);
 				if (!snap) throw errors.notFound('Es ist keine Rückzahlung gebucht');
-				await tx.execute(sql`DELETE FROM accounting_entries WHERE id = ${snap.entryId}`);
+				if (snap.entryId) {
+					await tx.execute(sql`DELETE FROM accounting_entries WHERE id = ${snap.entryId}`);
+				}
 				await tx.execute(sql`DELETE FROM accounting_refunds WHERE action_id = ${id}`);
 				await tx.execute(sql`DELETE FROM action_refund_booking WHERE action_id = ${id}`);
 				return {

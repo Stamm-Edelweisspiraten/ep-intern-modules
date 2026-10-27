@@ -895,6 +895,55 @@ export const refundQuerySchema = z.object({
 	count: z.coerce.number().int().min(1).max(1000).optional()
 });
 
+/** Params von …/accounting/refund/items/:itemId/… */
+export const refundItemParams = z.object({ id, itemId: z.uuid() });
+
+/** Body von PUT …/refund/items/:itemId/donation: Spende in Cent (0 = alles auszahlen). */
+export const refundDonationInput = z
+	.object({ donatedCents: z.number().int().min(0).max(100_000_000) })
+	.strict();
+export type RefundDonationInput = z.infer<typeof refundDonationInput>;
+
+/** Body von POST …/refund/letters.pdf: ohne `itemIds` alle Personen der Rückzahlung. */
+export const refundLettersInput = z
+	.object({ itemIds: z.array(z.uuid()).min(1).max(300).optional() })
+	.strict()
+	.optional();
+
+/** Body der öffentlichen Wahl (QR-Code-Brief). `donatedCents` nur bei `partial`. */
+export const publicRefundChoiceInput = z
+	.object({
+		choice: z.enum(['payout', 'donate', 'partial']),
+		donatedCents: z.number().int().min(100).max(100_000_000).optional(),
+		note: z
+			.string()
+			.trim()
+			.max(300)
+			.regex(/^[^\p{Cc}]*$/u, 'Steuerzeichen sind nicht erlaubt')
+			.optional(),
+		/** Honeypot – muss leer bleiben */
+		website: z.string().max(200).optional()
+	})
+	.strict();
+export type PublicRefundChoiceInput = z.infer<typeof publicRefundChoiceInput>;
+
+/** Antwort von GET /public/refund-choices/:token */
+export interface PublicRefundChoice {
+	actionName: string;
+	startsOn: string;
+	endsOn: string | null;
+	name: string;
+	amountCents: number;
+	donatedCents: number;
+	choice: 'payout' | 'donate' | 'partial';
+	/** Seit der letzten Wahl über den Link bzw. intern festgelegt */
+	decided: boolean;
+	/** Die Kasse hat schon überwiesen – keine Änderung mehr möglich */
+	locked: boolean;
+}
+
+export const REFUND_PUBLIC_PREFIX = '/p/actions/rueckzahlung';
+
 export const REFUND_CATEGORY = 'refund' as const;
 export const ACCOUNTING_CATEGORIES = [
 	...CALC_CATEGORIES,
@@ -1216,7 +1265,9 @@ export interface ReportInput {
 	}[];
 	/** Gebuchte Rückzahlung an Teilnehmende (Snapshot) oder `null` */
 	refund?: {
-		items: { name: string; amountCents: number }[];
+		/** `amountCents` = Anteil; `donatedCents` = davon an den Stamm gespendet (fehlt = 0) */
+		items: { name: string; amountCents: number; donatedCents?: number }[];
+		/** Summe der Anteile (Auszahlung + Spende) */
 		totalCents: number;
 		remainderCents: number;
 		bookedAt: string;

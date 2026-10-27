@@ -12,6 +12,7 @@
 	import { ConfirmDialog } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { fmtDate } from './format';
+	import RefundDonationList from './RefundDonationList.svelte';
 	import type { RefundMode, RefundState } from './refund-types';
 
 	let {
@@ -220,11 +221,16 @@
 {/snippet}
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-full sm:max-w-lg">
+	<Dialog.Content class="w-full max-w-full {data?.booked ? 'sm:max-w-2xl' : 'sm:max-w-lg'}">
 		<Dialog.Header>
 			<Dialog.Title>Rückzahlung des Überschusses</Dialog.Title>
 			<Dialog.Description>
-				Gleicher Betrag je Person, auf ganze Euro abgerundet; der Rest bleibt in der Stammkasse.
+				{#if data?.booked}
+					Je Person auszahlen oder ganz bzw. teilweise an den Stamm spenden – intern hier oder über
+					den Brief mit QR-Code.
+				{:else}
+					Gleicher Betrag je Person, auf ganze Euro abgerundet; der Rest bleibt in der Stammkasse.
+				{/if}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -337,12 +343,19 @@
 				{/if}
 
 				<div
-					class="grid grid-cols-2 gap-4 transition-opacity sm:grid-cols-3"
+					class="grid grid-cols-2 gap-4 transition-opacity {booked && booked.donatedCents > 0
+						? 'sm:grid-cols-4'
+						: 'sm:grid-cols-3'}"
 					class:opacity-60={loading}
 					aria-live="polite"
 				>
 					{@render stat('Betrag je Person', formatEuro(shown.perHeadCents))}
-					{@render stat('Summe', formatEuro(shown.totalCents))}
+					{#if booked && booked.donatedCents > 0}
+						{@render stat('Auszahlung', formatEuro(booked.payoutCents))}
+						{@render stat('An den Stamm gespendet', formatEuro(booked.donatedCents))}
+					{:else}
+						{@render stat('Summe', formatEuro(shown.totalCents))}
+					{/if}
 					{@render stat('Rest in der Stammkasse', formatEuro(shown.remainderCents))}
 				</div>
 
@@ -375,21 +388,15 @@
 						</p>
 					{/if}
 				{:else if booked && booked.items.length}
-					<div class="max-h-60 overflow-auto rounded-lg border">
-						<Table.Root>
-							<caption class="sr-only">Rückzahlung je Teilnehmende*r</caption>
-							<Table.Body>
-								{#each booked.items as it, i (i)}
-									<Table.Row>
-										<Table.Cell>{it.name}</Table.Cell>
-										<Table.Cell class="text-right tabular-nums">
-											{formatEuro(it.amountCents)}
-										</Table.Cell>
-									</Table.Row>
-								{/each}
-							</Table.Body>
-						</Table.Root>
-					</div>
+					<RefundDonationList
+						{actionId}
+						items={booked.items}
+						{editable}
+						onchanged={async () => {
+							await load();
+							await onchanged();
+						}}
+					/>
 				{/if}
 
 				{#if !booked && (data.blockers.length || !data.thresholdOk)}

@@ -126,6 +126,12 @@ export const onMemberDeleted: ModuleDefinition['onMemberDeleted'] = async (tx, {
 		memberIds.map((id) => sql`${id}`),
 		sql`, `
 	);
+	// Rückzahlung: Name, Notiz und Link der Person entfallen, Beträge (auch Spenden) bleiben für die Abrechnung
+	await tx.execute(
+		sql`UPDATE accounting_refunds SET name = ${ANONYMIZED_NAME}, donor_note = NULL,
+				token_hash = NULL, token_enc = NULL
+			WHERE participant_id IN (SELECT id FROM action_participants WHERE member_id IN (${list}))`
+	);
 	// Geschlecht für den Zuschussantrag gehört zur Person, nicht zur Aktion
 	await tx.execute(
 		sql`DELETE FROM subsidy_application_leaders WHERE participant_id IN

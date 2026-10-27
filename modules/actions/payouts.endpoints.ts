@@ -324,7 +324,11 @@ export async function buildAccountingReport(
 		payees,
 		refund: data.refund
 			? {
-					items: data.refund.items.map((i) => ({ name: i.name, amountCents: i.amountCents })),
+					items: data.refund.items.map((i) => ({
+						name: i.name,
+						amountCents: i.amountCents,
+						donatedCents: i.donatedCents
+					})),
 					totalCents: data.refund.totalCents,
 					remainderCents: data.refund.remainderCents,
 					bookedAt: data.refund.bookedAt

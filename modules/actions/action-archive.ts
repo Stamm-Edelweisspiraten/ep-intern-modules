@@ -284,7 +284,8 @@ const entrySchema = z
 	});
 
 const refundSchema = z.strictObject({
-	entryRef: exportId,
+	/** `null`, wenn alle Personen alles gespendet haben (keine Rückzahlungs-Buchung) */
+	entryRef: exportId.nullable(),
 	mode: z.enum(['auto', 'manual']),
 	bookedAt: isoStamp,
 	surplusCents: cents(0, 2_000_000_000),
@@ -296,7 +297,9 @@ const refundSchema = z.strictObject({
 			z.strictObject({
 				participantRef: exportId.nullable(),
 				name: participantInput.shape.name,
-				amountCents: cents(1, MAX_AMOUNT_CENTS)
+				amountCents: cents(1, MAX_AMOUNT_CENTS),
+				/** An den Stamm gespendet (fehlt in älteren Archiven = 0) */
+				donatedCents: cents(0, MAX_AMOUNT_CENTS).optional()
 			})
 		)
 		.max(1000)
@@ -532,10 +535,14 @@ export function validateReferences(doc: ArchiveDocument): void {
 	const refundEntries = doc.entries.filter((e) => e.category === REFUND_CATEGORY);
 	if (refundEntries.length > 1) throw new ArchiveError('Mehr als eine Rückzahlungs-Buchung');
 	if (doc.refund) {
-		if (refundEntries[0]?.id !== doc.refund.entryRef) {
+		if ((refundEntries[0]?.id ?? null) !== doc.refund.entryRef) {
 			throw new ArchiveError('Rückzahlung verweist auf keine passende Buchung');
 		}
 		for (const item of doc.refund.items) {
+			const donated = item.donatedCents ?? 0;
+			if (donated > item.amountCents || (donated % 100 !== 0 && donated !== item.amountCents)) {
+				throw new ArchiveError('Ungültige Spende in der Rückzahlung');
+			}
 			if (item.participantRef && !participants.has(item.participantRef)) {
 				throw new ArchiveError('Rückzahlung verweist auf unbekannte Teilnehmende');
 			}

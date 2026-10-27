@@ -3,6 +3,7 @@ import { todayBerlin } from '$lib/sdk/dates';
 import { csvCents, csvDocument } from '$lib/sdk/csv';
 import { formatEuro } from '$lib/components/layout/money';
 import { appliedAutoIncome } from './auto-income';
+import { donationTotals } from './refund';
 import {
 	ACCOUNTING_CATEGORY_LABELS,
 	CALC_CATEGORIES,
@@ -214,6 +215,12 @@ export function numberExpenses(
 /** Hinweis im Bericht einer Zwischenabrechnung (Stichtag als TT.MM.JJJJ). */
 export const interimNotice = (date: string): string =>
 	`Vorläufiger Stand zum ${date} – spätere Buchungen sind nicht enthalten.`;
+
+const withDonation = (i: { name: string; amountCents: number; donatedCents?: number }) => ({
+	name: i.name,
+	amountCents: cents(i.amountCents),
+	donatedCents: Math.min(cents(i.donatedCents ?? 0), cents(i.amountCents))
+});
 
 /** Inhaltsblöcke des PDF-Berichts (Gitter-Tabellen, Beleg-Nummern, Abschlussseite). */
 export function buildReportBlocks(input: ReportInput): PdfBlock[] {
@@ -445,16 +452,52 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 	}
 
 	const refund = interim ? null : (input.refund ?? null);
-	if (refund) {
-		blocks.push({
-			type: 'table',
-			variant: 'grid',
-			caption: { left: 'Rückzahlung an Teilnehmende', right: money(refund.totalCents) },
-			columns: ['Teilnehmende*r', 'Betrag'],
-			align: ['left', 'right'],
-			widths: [9, 2],
-			rows: refund.items.map((i) => [i.name, money(i.amountCents)])
-		});
+	const donation = refund ? donationTotals(refund.items.map(withDonation)) : null;
+	if (refund && donation) {
+		const donors = refund.items.map(withDonation).filter((i) => i.donatedCents > 0);
+		if (donors.length === 0) {
+			blocks.push({
+				type: 'table',
+				variant: 'grid',
+				caption: { left: 'Rückzahlung an Teilnehmende', right: money(refund.totalCents) },
+				columns: ['Teilnehmende*r', 'Betrag'],
+				align: ['left', 'right'],
+				widths: [9, 2],
+				rows: refund.items.map((i) => [i.name, money(i.amountCents)])
+			});
+		} else {
+			blocks.push({
+				type: 'table',
+				variant: 'grid',
+				caption: { left: 'Rückzahlung an Teilnehmende', right: money(donation.payoutCents) },
+				columns: ['Teilnehmende*r', 'Anteil', 'gespendet', 'Auszahlung'],
+				align: ['left', 'right', 'right', 'right'],
+				widths: [6, 2, 2, 2],
+				rows: refund.items
+					.map(withDonation)
+					.map((i) => [
+						i.name,
+						money(i.amountCents),
+						i.donatedCents > 0 ? money(i.donatedCents) : '–',
+						money(i.amountCents - i.donatedCents)
+					]),
+				totalRow: [
+					'Summe',
+					money(refund.totalCents),
+					money(donation.donatedCents),
+					money(donation.payoutCents)
+				]
+			});
+			blocks.push({
+				type: 'table',
+				variant: 'grid',
+				caption: { left: 'An den Stamm gespendet', right: money(donation.donatedCents) },
+				columns: ['Name', 'Betrag'],
+				align: ['left', 'right'],
+				widths: [9, 2],
+				rows: donors.map((i) => [i.name, money(i.donatedCents)])
+			});
+		}
 		blocks.push({
 			type: 'paragraph',
 			text: 'Hinweis: Die Rückzahlung erfolgt erst, sobald alle Zahlungen einschließlich der Zuschüsse eingegangen sind.'
@@ -472,7 +515,15 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 			`− ${money(payeesTotal)}`
 		]);
 	}
-	if (refund) instructions.push(['Rückzahlung an Teilnehmende', `− ${money(refund.totalCents)}`]);
+	if (refund && donation) {
+		instructions.push(['Rückzahlung an Teilnehmende', `− ${money(donation.payoutCents)}`]);
+		if (donation.donatedCents > 0) {
+			instructions.push([
+				`Davon an den Stamm gespendet (${donation.donorCount}, keine Auszahlung)`,
+				money(donation.donatedCents)
+			]);
+		}
+	}
 	blocks.push({
 		type: 'table',
 		variant: 'grid',

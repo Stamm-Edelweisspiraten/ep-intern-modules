@@ -113,6 +113,30 @@ export const actionsBackup: ModuleBackupHooks = {
 				updated++;
 			}
 		}
+		// Rückzahlungs-Links je Person (seit 0024, nur Hash + Chiffrat); nicht entschlüsselbar → Link entfällt
+		const refunds = (await tx.execute(
+			sql`SELECT id, token_hash, token_enc FROM accounting_refunds WHERE token_enc IS NOT NULL`
+		)) as unknown as { rows: Record<string, unknown>[] };
+		for (const r of refunds.rows) {
+			const id = String(r.id);
+			let plain: string | null;
+			try {
+				plain = helpers.decrypt(String(r.token_enc));
+			} catch {
+				plain = null;
+			}
+			if (plain === null) {
+				await tx.execute(
+					sql`UPDATE accounting_refunds SET token_hash = NULL, token_enc = NULL WHERE id = ${id}`
+				);
+				unrecoverable++;
+				continue;
+			}
+			const next = helpers.hash(plain);
+			if (next === r.token_hash) continue;
+			await tx.execute(sql`UPDATE accounting_refunds SET token_hash = ${next} WHERE id = ${id}`);
+			updated++;
+		}
 		return { updated, unrecoverable };
 	}
 };

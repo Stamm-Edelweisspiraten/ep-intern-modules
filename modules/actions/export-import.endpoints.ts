@@ -341,7 +341,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 		})),
 		refund: rows.refund
 			? {
-					entryRef: eid.get(rows.refund.entryId) ?? '',
+					entryRef: rows.refund.entryId ? (eid.get(rows.refund.entryId) ?? null) : null,
 					mode: rows.refund.mode,
 					bookedAt: rows.refund.bookedAt,
 					surplusCents: rows.refund.surplusCents,
@@ -351,7 +351,8 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 					items: rows.refund.items.map((i) => ({
 						participantRef: i.participantId == null ? null : (pid.get(i.participantId) ?? null),
 						name: i.name,
-						amountCents: i.amountCents
+						amountCents: i.amountCents,
+						...(i.donatedCents > 0 ? { donatedCents: i.donatedCents } : {})
 					}))
 				}
 			: null,
@@ -666,14 +667,17 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 
 			if (doc.refund) {
 				const r = doc.refund;
-				const entryId = eids.get(r.entryRef)!;
+				const entryId = r.entryRef ? eids.get(r.entryRef)! : null;
 				for (const [position, item] of r.items.entries()) {
+					const donated = item.donatedCents ?? 0;
 					await tx.execute(
 						sql`INSERT INTO accounting_refunds
-								(id, action_id, entry_id, participant_id, name, amount_cents, position)
+								(id, action_id, entry_id, participant_id, name, amount_cents, position,
+									donated_cents, decided_at, decided_via)
 							VALUES (${crypto.randomUUID()}, ${actionId}, ${entryId},
 								${item.participantRef ? pids.get(item.participantRef)! : null}, ${item.name},
-								${item.amountCents}, ${position})`
+								${item.amountCents}, ${position}, ${donated},
+								${donated > 0 ? now : null}, ${donated > 0 ? 'internal' : null})`
 					);
 				}
 				await tx.execute(

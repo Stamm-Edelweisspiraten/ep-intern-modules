@@ -496,6 +496,11 @@
 						Rückzahlung des Überschusses: {acc.refund.count} Personen, zusammen {formatEuro(
 							acc.refund.totalCents
 						)} (gebucht {fmtDate(acc.refund.bookedAt)}).
+						{#if acc.refund.donatedCents > 0}
+							{acc.refund.donorCount}
+							{acc.refund.donorCount === 1 ? 'Person hat' : 'Personen haben'}
+							{formatEuro(acc.refund.donatedCents)} an den Stamm gespendet.
+						{/if}
 					</p>
 				{/if}
 			</Card.Content>

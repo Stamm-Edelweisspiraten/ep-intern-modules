@@ -8,7 +8,8 @@ export default {
 	publicRoutes: {
 		'anmeldung/:token': () => import('./pages/PublicRegistration.svelte'),
 		'anmeldung-bestaetigen/:token': () => import('./pages/PublicConfirmRegistration.svelte'),
-		'auslagen/:token': () => import('./pages/PublicExpense.svelte')
+		'auslagen/:token': () => import('./pages/PublicExpense.svelte'),
+		'rueckzahlung/:token': () => import('./pages/PublicRefundChoice.svelte')
 	},
 	dashboardWidgets: [
 		{

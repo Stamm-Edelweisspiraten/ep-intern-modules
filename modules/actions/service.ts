@@ -204,9 +204,11 @@ export const actionsService: ActionsService = {
 		return moduleDb(MODULE_ID).transaction(async (tx) => {
 			const found = await rowsOf(
 				tx,
-				sql`SELECT r.id, r.action_id, r.participant_id, r.name, r.amount_cents, p.member_id,
+				sql`SELECT r.id, r.action_id, r.participant_id, r.name,
+					r.amount_cents - r.donated_cents AS payout_cents, p.member_id,
 					to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date
 				FROM accounting_refunds r LEFT JOIN action_participants p ON p.id = r.participant_id
+				WHERE r.amount_cents > r.donated_cents
 				ORDER BY r.action_id, r.position, r.id`
 			);
 			return found.map((r) => ({
@@ -214,7 +216,7 @@ export const actionsService: ActionsService = {
 				actionId: String(r.action_id),
 				participantId: (r.participant_id as string | null) ?? null,
 				name: String(r.name),
-				amountCents: Number(r.amount_cents),
+				amountCents: Number(r.payout_cents),
 				memberId: (r.member_id as string | null) ?? null,
 				birthDate: (r.birth_date as string | null) ?? null
 			}));
@@ -342,10 +344,12 @@ export const actionsService: ActionsService = {
 				payees: state.payees ?? [],
 				refund: refund
 					? {
-							totalCents: refund.totalCents,
-							count: refund.items.length,
+							totalCents: refund.payoutCents,
+							count: refund.items.filter((i) => i.amountCents > i.donatedCents).length,
 							remainderCents: refund.remainderCents,
-							bookedAt: refund.bookedAt
+							bookedAt: refund.bookedAt,
+							donatedCents: refund.donatedCents,
+							donorCount: refund.items.filter((i) => i.donatedCents > 0).length
 						}
 					: null
 			};

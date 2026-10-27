@@ -8,9 +8,9 @@
 import { core, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
 import type { TreasuryService } from '$lib/modules/treasury/contract';
 
-/** Schreibende Pfade ohne Einfluss auf die Kasse (Freigaben, Formular, Belegdateien, Kostenlink) */
+/** Schreibende Pfade ohne Einfluss auf die Kasse (Freigaben, Formular, Belegdateien, Kostenlink, Rückzahlungsbriefe/-links) */
 const IRRELEVANT =
-	/\/shares\/|\/form(\/|$)|\/receipt$|\/expense-link(\/|$)|\/expense-submissions\/[^/]+\/reject$|\/calculation$/;
+	/\/shares\/|\/form(\/|$)|\/receipt$|\/expense-link(\/|$)|\/expense-submissions\/[^/]+\/reject$|\/calculation$|\/refund\/letters\.pdf$|\/refund\/items\/[^/]+\/link$/;
 
 function actionIdOf(endpoint: ApiEndpoint, params: unknown, result: unknown): string | null {
 	if (endpoint.path === '/actions/import') {
