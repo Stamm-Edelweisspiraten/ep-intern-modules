@@ -143,7 +143,9 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - Quelle: Richtlinien Freizeitzuschüsse Bremische Evangelische Kirche, Stand 01.01.2026; **jährlich prüfen, vor Produktivbetrieb gegen Original abgleichen**.
 - Cent je Person und Nacht: extern Kinder 13 €, Jugend 14 €; ab 4 Nächten ohne Konfi 15 €/16 €; Gemeinderäume 3 €/4 € erst ab 3 Nächten; max. 14 Nächte.
 - Nur Teilnehmende aus Bremen/Bremerhaven; Kinder 0–11, Jugend 12–27 **inkl. Teamer*innen 12–27** (`teamYouth`).
-- Taschengeld Ehrenamtliche: mit Juleica 15 €, ohne 10 € je Nacht; Limit 1 je 5 Kinder (`kids`) bzw. 1 je 7 Jugendliche (`youth`).
+- Taschengeld Ehrenamtliche: mit Juleica 15 €, ohne 10 € je Nacht; Limit (`allowanceLimit`) = **alle zuschussfähigen Personen auf dem Antrag**
+  (Kinder + Jugendliche + Team auf der Liste, also auch die Leitungen selbst) ÷ 5 (`kids`) bzw. ÷ 7 (`youth`), abgerundet (Nutzerentscheidung 2026-10-27).
+  Gilt gleich in Kalkulation, automatischem Zuschuss und Antrag; Leitungen über 27/ohne Bremen stehen nicht auf der Liste und zählen nicht.
 - Warnungen als Texte im Ergebnis; Förder-Checkliste = `CHECKLIST_ITEMS` (5 Punkte, Autosave).
 
 ## Zuschussantrag (Migr. 0023, v1.6.0, 2026-10-26)
@@ -152,13 +154,14 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
   Koordinaten `PAGE1`/`PAGE2` aus den Linien der Vorlage, Helvetica/WinAnsi, unbekannte Zeichen → `?`, zu lange Texte verkleinert/gekürzt).
   Bei neuer Vorlage Koordinaten neu ausmessen und per Rendering prüfen.
 - Ausgefüllt: Art, Gemeinde (Einstellung `actions.subsidy.parish`), vom/bis, Ort, Thema (Standard Aktionsname), Leitungen weiblich/männlich, Kästchen Inklusion,
-  Kinder/Jugend: Anzahl + Nächte, Bank (`readSettings` aus `form.endpoints.ts`: Kasse, sonst `actions.bank.*`), Rückseite Namenslisten + Taschengeld
+  Kinder/Jugend: Anzahl + Nächte, Konto für Zuschussanträge (`actions.subsidy.bank.holder|name|iban|bic`, **eigene Einstellung ohne Rückfall** auf
+  Stammkonto/Kasse; Kontoinhaber auf „…auf unser Konto:“, Bank auf „bei der“, IBAN geprüft und gruppiert), Rückseite Namenslisten + Taschengeld
   (Name, Juleica-Kreuz, Nächte × Satz = Betrag). **Leer**: €-Spalte (Landesjugendpfarramt), Unterschriften, Beruf, „Bremen, den“.
 - Aufteilung `planSubsidyApplications` (rein): je Antrag ≤ 20 Kinder (0–11), ≤ 20 Jugendliche (12–27 **inkl. berechtigtem Team**), ≤ 5 Taschengeld-Zeilen.
   Klassifikation wie `deriveSubsidyCounts`. Nötig `max(1, ⌈K/20⌉, ⌈J/20⌉)`, möglich = Leitungspaare (je eine weibliche + männliche Leitung) → **so viele wie
   möglich** (Nutzerentscheidung), Rest in `unassigned` (`children-full|youth-full|allowance-limit`); ohne Paar trotzdem 1 Antrag + Warnung. Paar i → Antrag i,
   übriges Team gleichmäßig, Team-Jugend steht in der Liste **seines** Antrags; dann Jugend/Kinder ausgeglichen, alphabetisch (numerisch). Taschengeld je Antrag
-  1 je 5 Kinder (`kids`) bzw. 7 Jugendliche, Juleica zuerst. Beträge (`computeSubsidy` je Antrag) nur als Vorschau.
+  1 je 5 (`kids`) bzw. 7 Personen **dieses Antrags** (Kinder + Jugendliche inkl. Team), abgerundet, Juleica zuerst. Beträge (`computeSubsidy` je Antrag) nur als Vorschau.
 - Geschlecht wird **nur im Antrag** gepflegt (Nutzerentscheidung, kein Feld an Teilnehmenden/Mitgliedern); `onMemberDeleted` löscht es, `subjectExport` enthält
   `subsidyLeaderGender`. Archiv-Export/-Import enthält den Antrag **nicht**.
 - API: `GET /actions/:id/subsidy-application` (read; Angaben, Team mit Geschlecht, `plan`, Gemeinde/Bank), `PUT` (edit; `subsidyApplicationInput` strikt,

@@ -20,6 +20,19 @@ function toCount(v: unknown): number {
 	return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
 }
 
+/**
+ * Höchstzahl der Taschengelder: alle zuschussfähigen Personen auf dem Antrag (Kinder, Jugendliche
+ * und das Team auf der Liste) – 1 je 5 bei Kinderfreizeiten, 1 je 7 bei Jugendfreizeiten, abgerundet.
+ */
+export function allowanceLimit(
+	persons: number,
+	freizeitType: SubsidyInput['freizeitType']
+): number {
+	const R = SUBSIDY_RATES_2026;
+	const per = freizeitType === 'kids' ? R.childrenPerVolunteer : R.youthPerVolunteer;
+	return Math.floor(toCount(persons) / per);
+}
+
 /** Zuschuss und Taschengeld nach Richtlinie 2026. */
 export function computeSubsidy(input: SubsidyInput): SubsidyResult {
 	const R = SUBSIDY_RATES_2026;
@@ -79,10 +92,7 @@ export function computeSubsidy(input: SubsidyInput): SubsidyResult {
 	];
 	const subsidyCents = lines.reduce((s, l) => s + l.totalCents, 0);
 
-	const limit =
-		input.freizeitType === 'kids'
-			? Math.floor(children / R.childrenPerVolunteer)
-			: Math.floor(youthTotal / R.youthPerVolunteer);
+	const limit = allowanceLimit(children + youthTotal, input.freizeitType);
 	const withJuleica = Math.min(teamWithJuleica, limit);
 	const withoutJuleica = Math.min(teamWithoutJuleica, limit - withJuleica);
 	const allowanceTotal =
@@ -91,7 +101,7 @@ export function computeSubsidy(input: SubsidyInput): SubsidyResult {
 
 	if (teamWithJuleica + teamWithoutJuleica > limit) {
 		warnings.push(
-			`Es sind höchstens ${limit} Ehrenamtliche zuschussfähig (1 je 5 Kinder bzw. 7 Jugendliche).`
+			`Es sind höchstens ${limit} Ehrenamtliche zuschussfähig (1 je ${input.freizeitType === 'kids' ? 5 : 7} Personen auf dem Antrag, Team mitgezählt).`
 		);
 	}
 	if (children + youthTotal === 0) {

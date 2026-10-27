@@ -12,7 +12,7 @@ import {
 	type SubsidyApplicationPlan,
 	type UnassignedReason
 } from './schemas';
-import { SUBSIDY_RATES_2026, computeSubsidy } from './subsidy';
+import { SUBSIDY_RATES_2026, allowanceLimit, computeSubsidy } from './subsidy';
 import {
 	deriveSubsidyCounts,
 	effectiveSubsidyEligible,
@@ -28,6 +28,8 @@ import {
  *   Antrags-Dialog). Fehlen Leitungspaare, entstehen so viele Anträge wie möglich; der Rest steht in
  *   `unassigned`. Ohne jedes Paar gibt es trotzdem einen Antrag (mit Warnung).
  * - Klassifikation wie `deriveSubsidyCounts` (Zuschuss) bzw. Taschengeld-Kontingent (Team bis 27).
+ * - Taschengelder je Antrag: 1 je 5 (Kinderfreizeit) bzw. 7 (Jugendfreizeit) Personen auf dem Antrag,
+ *   Kinder und Jugendliche inkl. Team zusammen, abgerundet (`allowanceLimit`).
  */
 export interface ApplicationPlanInput {
 	participants: EligibilityParticipant[];
@@ -158,10 +160,8 @@ export function planSubsidyApplications(input: ApplicationPlanInput): SubsidyApp
 
 	const R = SUBSIDY_RATES_2026;
 	const forms: SubsidyApplicationForm[] = drafts.map((d, i) => {
-		const limit =
-			input.freizeitType === 'kids'
-				? Math.floor(d.children.length / R.childrenPerVolunteer)
-				: Math.floor(d.youth.length / R.youthPerVolunteer);
+		// Alle auf diesem Antrag zählen mit – auch das Team auf der Jugendliste
+		const limit = allowanceLimit(d.children.length + d.youth.length, input.freizeitType);
 		const slots = Math.min(limit, APPLICATION_ALLOWANCE_SLOTS);
 		const candidates = d.team
 			.filter(allowanceCandidate)

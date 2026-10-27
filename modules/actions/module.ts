@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineModule } from '$lib/sdk/server';
+import { isValidIban } from '$lib/sdk/iban';
 import {
 	NOTIFY_ACCOUNTING,
 	NOTIFY_ACTION_SHARED,
@@ -49,7 +50,11 @@ import m0020 from './migrations/0020_link_token_hash_constraints.sql?raw';
 import m0021 from './migrations/0021_camp_fees.sql?raw';
 import m0022 from './migrations/0022_principal_shares.sql?raw';
 import m0023 from './migrations/0023_subsidy_application.sql?raw';
-import { PARISH_SETTING, subsidyApplicationEndpoints } from './subsidy-application.endpoints';
+import {
+	PARISH_SETTING,
+	SUBSIDY_BANK_SETTINGS,
+	subsidyApplicationEndpoints
+} from './subsidy-application.endpoints';
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
@@ -126,9 +131,37 @@ export default defineModule({
 		{
 			key: PARISH_SETTING,
 			label: 'Gemeinde im Zuschussantrag',
-			description:
-				'Erscheint im Antrag beim Landesjugendpfarramt (Feld „Gemeinde“). Die Bankverbindung kommt aus der Kasse bzw. den Kontodaten oben.',
+			description: 'Erscheint im Antrag beim Landesjugendpfarramt (Feld „Gemeinde“).',
 			schema: z.string().max(120),
+			default: ''
+		},
+		{
+			key: SUBSIDY_BANK_SETTINGS.holder,
+			label: 'Zuschussantrag: Kontoinhaber',
+			description:
+				'Konto, auf das das Landesjugendpfarramt den Zuschuss überweist – unabhängig vom Stammkonto und der Kasse. Leer bleibt das Feld im Antrag leer.',
+			schema: z.string().max(100),
+			default: ''
+		},
+		{
+			key: SUBSIDY_BANK_SETTINGS.name,
+			label: 'Zuschussantrag: Bank',
+			schema: z.string().max(100),
+			default: ''
+		},
+		{
+			key: SUBSIDY_BANK_SETTINGS.iban,
+			label: 'Zuschussantrag: IBAN',
+			schema: z
+				.string()
+				.max(42)
+				.refine((v) => v.trim() === '' || isValidIban(v), 'Bitte eine gültige IBAN eingeben.'),
+			default: ''
+		},
+		{
+			key: SUBSIDY_BANK_SETTINGS.bic,
+			label: 'Zuschussantrag: BIC',
+			schema: z.string().max(20),
 			default: ''
 		},
 		healthRetentionSetting

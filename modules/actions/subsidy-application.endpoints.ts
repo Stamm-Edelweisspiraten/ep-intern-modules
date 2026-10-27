@@ -13,11 +13,11 @@ import {
 	secureFileResponse,
 	type Tx
 } from '$lib/sdk/server';
+import { formatIban } from '$lib/sdk/iban';
 import templateUrl from './assets/zuschussantrag-bek.pdf?inline';
 import { requireAccess } from './access';
 import { loadEligibilityParticipants } from './accounting-core';
 import { nightsBetween } from './calculation';
-import { readSettings } from './form.endpoints';
 import { safeFilename } from './form-support';
 import { planSubsidyApplications } from './subsidy-application';
 import { fillSubsidyApplicationPdf } from './subsidy-application-pdf';
@@ -37,6 +37,13 @@ import {
 
 const TAGS = ['Modul: actions'];
 export const PARISH_SETTING = 'actions.subsidy.parish';
+/** Eigenes Konto für Zuschussanträge – bewusst ohne Rückfall auf Stammkonto/Kasse */
+export const SUBSIDY_BANK_SETTINGS = {
+	holder: 'actions.subsidy.bank.holder',
+	name: 'actions.subsidy.bank.name',
+	iban: 'actions.subsidy.bank.iban',
+	bic: 'actions.subsidy.bank.bic'
+} as const;
 
 let templateBytes: Uint8Array | null = null;
 /** Original-Formular (als Data-URL eingebettet, siehe `assets/`) */
@@ -110,13 +117,23 @@ async function loadState(tx: Tx, id: string): Promise<State> {
 	};
 }
 
-/** Gemeinde + Bankverbindung (Kasse bzw. `actions.bank.*`) – Core-Aufrufe, nie in der Transaktion */
+/** Gemeinde + Konto für Zuschussanträge – Core-Aufruf, nie in der Transaktion */
 async function loadApplicant() {
-	const [s, bank] = await Promise.all([core.settings.getMany([PARISH_SETTING]), readSettings()]);
-	const parish = s[PARISH_SETTING];
+	const B = SUBSIDY_BANK_SETTINGS;
+	const s = await core.settings.getMany([PARISH_SETTING, B.holder, B.name, B.iban, B.bic]);
+	const text = (key: string) => {
+		const v = s[key];
+		return typeof v === 'string' ? v.trim() : '';
+	};
+	const iban = text(B.iban);
 	return {
-		parish: typeof parish === 'string' ? parish : '',
-		bank: { name: bank.bank, iban: bank.iban, bic: bank.bic }
+		parish: text(PARISH_SETTING),
+		bank: {
+			holder: text(B.holder),
+			name: text(B.name),
+			iban: iban ? formatIban(iban) : '',
+			bic: text(B.bic).toUpperCase()
+		}
 	};
 }
 

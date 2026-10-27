@@ -1608,7 +1608,7 @@ export const UNASSIGNED_REASON_LABELS: Record<UnassignedReason, string> = {
 	'children-full': 'Kein Platz mehr bei den Kindern (je Antrag 20)',
 	'youth-full': 'Kein Platz mehr bei den Jugendlichen (je Antrag 20)',
 	'allowance-limit':
-		'Kein Taschengeld (Grenze 1 je 5 Kinder bzw. 7 Jugendliche, je Antrag 5 Zeilen)'
+		'Kein Taschengeld (Grenze 1 je 5 bzw. 7 Personen auf dem Antrag inkl. Team, je Antrag 5 Zeilen)'
 };
 
 export interface SubsidyApplicationPlan {
@@ -1637,7 +1637,8 @@ export interface SubsidyApplicationDto {
 	plan: SubsidyApplicationPlan;
 	/** Aus den Einstellungen; leere Werte → Hinweis in der Oberfläche */
 	parish: string;
-	bank: { name: string; iban: string; bic: string };
+	/** Konto für Zuschussanträge (eigene Einstellung, unabhängig vom Stammkonto) */
+	bank: { holder: string; name: string; iban: string; bic: string };
 	action: {
 		name: string;
 		location: string | null;

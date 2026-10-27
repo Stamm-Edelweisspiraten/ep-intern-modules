@@ -19,7 +19,7 @@ export interface ApplicationHeader {
 	location: string;
 	topic: string;
 	inclusion: boolean;
-	bank: { name: string; iban: string; bic: string };
+	bank: { holder: string; name: string; iban: string; bic: string };
 }
 
 interface Field {
@@ -46,6 +46,9 @@ const PAGE1 = {
 	childNights: at(231.5, 467.2, 44),
 	youthCount: at(96.5, 440.2, 44),
 	youthNights: at(231.5, 440.2, 44),
+	/** „Wir bitten um Überweisung auf unser Konto:“ */
+	holder: at(201.5, 296.3, 160),
+	/** „bei der“ */
 	bankName: at(96.5, 275.2, 270),
 	iban: at(96.5, 253.8, 134),
 	bic: at(277.5, 253.8, 89)
@@ -154,6 +157,7 @@ export async function fillSubsidyApplicationPdf(
 		draw(p1, font, form.children.length ? String(form.nights) : '', PAGE1.childNights);
 		draw(p1, font, String(form.youth.length), PAGE1.youthCount);
 		draw(p1, font, form.youth.length ? String(form.nights) : '', PAGE1.youthNights);
+		draw(p1, font, header.bank.holder, PAGE1.holder);
 		draw(p1, font, header.bank.name, PAGE1.bankName);
 		draw(p1, font, header.bank.iban, PAGE1.iban);
 		draw(p1, font, header.bank.bic, PAGE1.bic);

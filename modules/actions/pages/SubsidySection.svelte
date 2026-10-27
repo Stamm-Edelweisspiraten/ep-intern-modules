@@ -256,7 +256,8 @@
 			<p class="text-muted-foreground text-xs">
 				Wird getrennt ausgezahlt und senkt den Beitrag nicht. Zuschussfähig sind höchstens
 				{subsidy.allowance.limit} Ehrenamtliche (mit Juleica: {subsidy.allowance.withJuleica}, ohne:
-				{subsidy.allowance.withoutJuleica}) für {subsidy.allowance.nights} Nächte.
+				{subsidy.allowance.withoutJuleica}) für {subsidy.allowance.nights} Nächte – 1 je
+				{settings.freizeitType === 'kids' ? 5 : 7} zuschussfähige Personen, Team mitgezählt.
 			</p>
 		</div>
 

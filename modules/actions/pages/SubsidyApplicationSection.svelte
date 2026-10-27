@@ -128,7 +128,13 @@
 
 	const plan = $derived(dto?.plan ?? null);
 	const missingApplicant = $derived(
-		dto ? [!dto.parish && 'Gemeinde', !dto.bank.iban && 'Bankverbindung'].filter(Boolean) : []
+		dto
+			? [
+					!dto.parish && 'Gemeinde',
+					!dto.bank.holder && 'Kontoinhaber',
+					!dto.bank.iban && 'IBAN'
+				].filter(Boolean)
+			: []
 	);
 	const subsidyTotal = $derived(plan ? plan.forms.reduce((s, f) => s + f.subsidyCents, 0) : 0);
 	const allowanceTotal = $derived(plan ? plan.forms.reduce((s, f) => s + f.allowanceCents, 0) : 0);
@@ -169,9 +175,9 @@
 
 		{#if missingApplicant.length}
 			<Alert variant="warning">
-				Im Antrag fehlt: {missingApplicant.join(' und ')}. Bitte unter Administration ›
-				Einstellungen › Module bei „Aktionen“ ergänzen (die Bankverbindung kommt bei aktiver Kasse
-				aus deren Einstellungen).
+				Im Antrag fehlt: {missingApplicant.join(', ')}. Bitte unter Administration › Einstellungen ›
+				Module bei „Aktionen“ ergänzen – das Konto für Zuschussanträge ist dort eigens einzutragen
+				(unabhängig vom Stammkonto und der Kasse).
 			</Alert>
 		{/if}
 
@@ -184,6 +190,7 @@
 							? ` – ${formatDateDe(dto.action.endsOn)}`
 							: ''}{dto.action.location ? ` · ${dto.action.location}` : ''}
 						{dto.parish ? ` · Gemeinde: ${dto.parish}` : ''}
+						{dto.bank.iban ? ` · Konto: ${dto.bank.iban}` : ''}
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="space-y-4">
