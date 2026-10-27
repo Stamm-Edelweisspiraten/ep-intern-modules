@@ -12,6 +12,7 @@ import {
 	loadTreasuryContributions
 } from './accounting-core';
 import {
+	deadlineRunning,
 	MIN_REFUND_PER_HEAD_CENTS,
 	computeManualRefund,
 	computeRefund,
@@ -79,6 +80,10 @@ interface RefundState {
 		remainderCents: number;
 		donatedCents: number;
 		payoutCents: number;
+		/** Rückmeldung bis einschließlich JJJJ-MM-TT (`null` = keine Frist) */
+		deadline: string | null;
+		/** Frist läuft noch: Link offen, Kasse zahlt noch nicht aus */
+		deadlineRunning: boolean;
 		items: RefundItemDto[];
 	};
 	canBook: boolean;
@@ -217,6 +222,8 @@ async function loadRefund(
 					remainderCents: snapshot.remainderCents,
 					donatedCents: snapshot.donatedCents,
 					payoutCents: snapshot.payoutCents,
+					deadline: snapshot.deadline,
+					deadlineRunning: deadlineRunning(snapshot.deadline, todayBerlin()),
 					items: bookedItems
 				}
 			: null,

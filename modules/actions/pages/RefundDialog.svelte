@@ -391,6 +391,8 @@
 					<RefundDonationList
 						{actionId}
 						items={booked.items}
+						deadline={booked.deadline}
+						deadlineRunning={booked.deadlineRunning}
 						{editable}
 						onchanged={async () => {
 							await load();

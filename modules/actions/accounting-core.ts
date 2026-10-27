@@ -404,6 +404,8 @@ export interface RefundSnapshot {
 	donatedCents: number;
 	/** Tatsächlich auszuzahlen = `totalCents − donatedCents` */
 	payoutCents: number;
+	/** Rückmeldung (Spende/Auszahlung) bis einschließlich JJJJ-MM-TT; `null` = keine Frist */
+	deadline: string | null;
 	items: RefundSnapshotItem[];
 }
 
@@ -425,7 +427,8 @@ export interface RefundSnapshotItem {
 export async function loadRefundSnapshot(tx: Tx, actionId: string): Promise<RefundSnapshot | null> {
 	const [b] = await rowsOf(
 		tx,
-		sql`SELECT entry_id, surplus_cents, per_head_cents, paying_count, remainder_cents, booked_at, mode
+		sql`SELECT entry_id, surplus_cents, per_head_cents, paying_count, remainder_cents, booked_at, mode,
+				to_char(choice_deadline, 'YYYY-MM-DD') AS choice_deadline
 			FROM action_refund_booking WHERE action_id = ${actionId}`
 	);
 	if (!b) return null;
@@ -463,6 +466,7 @@ export async function loadRefundSnapshot(tx: Tx, actionId: string): Promise<Refu
 		remainderCents: Number(b.remainder_cents),
 		donatedCents,
 		payoutCents: totalCents - donatedCents,
+		deadline: b.choice_deadline == null ? null : String(b.choice_deadline),
 		items
 	};
 }

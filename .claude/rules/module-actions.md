@@ -6,7 +6,7 @@ paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*
 
 Freizeiten/Veranstaltungen: Stammdaten, Freigabe, Teilnehmende, Kalkulation (+ Zuschuss), öffentlicher Anmeldelink,
 Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Überschusses. Schema `mod_actions`,
-Version 1.7.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
+Version 1.8.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
 Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
 ## Dateien (`src/lib/modules/actions/`)
@@ -84,6 +84,7 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 - **0024** (2026-10-27) `accounting_refunds`: `donated_cents bigint` (CHECK 0…Anteil, ganze Euro außer „alles“), `decided_at/via (internal|link)/by`,
   `donor_note` (≤ 300), `token_hash` (UNIQUE) + `token_enc` (Link je Person); `action_refund_booking.entry_id` nullbar, FK **SET NULL** (alles gespendet → keine Buchung).
   Upgrade-Test `actions-refund-donation-migration.test.ts`.
+- **0025** (2026-10-27) `action_refund_booking.choice_deadline date` (Rückmeldefrist, `NULL` = keine).
 - **0023** (2026-10-26) `subsidy_applications` (1:1 Aktion: `freizeit_art`, `topic`, `inclusion`) und `subsidy_application_leaders`
   (`participant_id` FK CASCADE, `gender` female|male) – Geschlecht **nur** für den Zuschussantrag.
 - Belege (`…/receipt`, Kosten-Link-Belege) über `secureFileResponse` (CSP-Sandbox, nosniff, RFC-5987-Name; #67 01b-11).
@@ -309,7 +310,12 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
 - UI: `RefundDialog` (gebucht) → `RefundDonationList` (je Person `SegmentedSlider` Auszahlen · Teilweise · Spenden, `MoneyInput`, Badge „über Link“/„überwiesen“,
   Menü Brief/Link kopieren/erneuern, Knopf „Briefe mit QR-Code (PDF)“).
 - Tests: `tests/integration/actions-refund-donation.test.ts`, Unit `refund.test.ts`.
-- Offen: keine Spendenquittung, keine Benachrichtigung bei Wahl über den Link, Abschluss-Dialog nennt die Spenden nicht eigens.
+- **Rückmeldefrist** (Migr. 0025, v1.8.0, Nutzerentscheidung 2026-10-27): `PUT …/refund/deadline { deadline: JJJJ-MM-TT | null }` (edit, offen, gebucht;
+  Vergangenheit → 422; Audit `refund-deadline-set`). Bis **einschließlich** Fristtag (`deadlineRunning` in `refund.ts`) ist der Link offen und
+  `listRefundItems` lässt die Posten der Aktion weg → die **Kasse wartet** (bestehende unbezahlte Auszahlungen werden storniert, danach reaktiviert der
+  stündliche Abgleich). Nach Ablauf: Link gesperrt (`lockedReason: 'deadline'`, POST 409), ohne Rückmeldung wird ausgezahlt; **intern bleibt die Wahl
+  änderbar**, bis die Kasse überwiesen hat. Frist steht im Brief, auf der öffentlichen Seite, in `RefundCard` und im Archiv (`refund.deadline`).
+- Offen: keine Spendenquittung, keine Benachrichtigung bei Wahl über den Link oder bei Fristablauf, Abschluss-Dialog nennt die Spenden nicht eigens.
 
 ## Export/Import (`action-archive.ts`, `export-import.endpoints.ts`)
 - **ZIP** (Bibliothek `fflate`, rein JS): `manifest.json` (`format: 'ep-intern-action'`, `formatVersion: 1`, `exportedAt`,

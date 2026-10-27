@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { formatEuro } from '$lib/components/layout/money';
-import { formatDateDe } from '$lib/sdk/dates';
+import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
 import {
 	type ApiEndpoint,
 	core,
@@ -37,6 +37,8 @@ import {
 	publicRefundChoiceInput,
 	publicTokenParams,
 	REFUND_PUBLIC_PREFIX,
+	type RefundDeadlineInput,
+	refundDeadlineInput,
 	refundDonationInput,
 	refundItemParams,
 	refundLettersInput
@@ -102,6 +104,7 @@ interface PublicItem {
 	amountCents: number;
 	donatedCents: number;
 	decided: boolean;
+	deadline: string | null;
 }
 
 /** Posten zum öffentlichen Token; `null` = unbekannt oder Abrechnung abgeschlossen */
@@ -110,8 +113,10 @@ async function loadByToken(tx: Tx, token: string, lock = false): Promise<PublicI
 		tx,
 		sql`SELECT r.id, r.action_id, r.name, r.amount_cents, r.donated_cents, r.decided_at,
 				a.name AS action_name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
-				to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on
+				to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on,
+				to_char(b.choice_deadline, 'YYYY-MM-DD') AS choice_deadline
 			FROM accounting_refunds r JOIN actions a ON a.id = r.action_id
+				JOIN action_refund_booking b ON b.action_id = r.action_id
 			WHERE r.token_hash = ${hashLinkToken(token)} ${lock ? sql`FOR UPDATE OF r` : sql``}`
 	);
 	if (!r) return null;
@@ -126,11 +131,20 @@ async function loadByToken(tx: Tx, token: string, lock = false): Promise<PublicI
 		name: String(r.name),
 		amountCents: Number(r.amount_cents),
 		donatedCents: Number(r.donated_cents ?? 0),
-		decided: r.decided_at != null
+		decided: r.decided_at != null,
+		deadline: str(r.choice_deadline)
 	};
 }
 
-function publicView(item: PublicItem, locked: boolean): PublicRefundChoice {
+/** Frist abgelaufen (die Kasse zahlt aus, die Wahl über den Link ist zu) */
+const deadlinePassed = (deadline: string | null): boolean =>
+	deadline != null && deadline < todayBerlin();
+
+const DEADLINE_PASSED_TEXT =
+	'Die Frist für die Rückmeldung ist abgelaufen – die Rückzahlung wird ausgezahlt bzw. wie gewählt behandelt.';
+
+function publicView(item: PublicItem, paid: boolean): PublicRefundChoice {
+	const lockedReason = paid ? 'paid' : deadlinePassed(item.deadline) ? 'deadline' : null;
 	return {
 		actionName: item.actionName,
 		startsOn: item.startsOn,
@@ -140,7 +154,9 @@ function publicView(item: PublicItem, locked: boolean): PublicRefundChoice {
 		donatedCents: item.donatedCents,
 		choice: choiceOf(item),
 		decided: item.decided,
-		locked
+		locked: lockedReason != null,
+		lockedReason,
+		deadline: item.deadline
 	};
 }
 
@@ -169,7 +185,7 @@ function dateRange(startsOn: string, endsOn: string | null): string {
 }
 
 async function letterInput(
-	action: { name: string; startsOn: string; endsOn: string | null },
+	action: { name: string; startsOn: string; endsOn: string | null; deadline: string | null },
 	row: LetterRow,
 	token: string,
 	contact: MemberContact | undefined
@@ -188,7 +204,9 @@ async function letterInput(
 			},
 			{
 				type: 'paragraph',
-				text: 'Sie können den Betrag ganz oder teilweise dem Stamm spenden – damit unterstützen Sie Material, Fahrten und Zuschüsse für Familien. Ohne Rückmeldung zahlen wir den Betrag aus.'
+				text: action.deadline
+					? `Sie können den Betrag ganz oder teilweise dem Stamm spenden – damit unterstützen Sie Material, Fahrten und Zuschüsse für Familien. Bitte geben Sie uns bis zum ${formatDateDe(action.deadline)} Bescheid; ohne Rückmeldung zahlen wir den Betrag danach aus.`
+					: 'Sie können den Betrag ganz oder teilweise dem Stamm spenden – damit unterstützen Sie Material, Fahrten und Zuschüsse für Familien. Ohne Rückmeldung zahlen wir den Betrag aus.'
 			},
 			{
 				type: 'box',
@@ -199,7 +217,9 @@ async function letterInput(
 				},
 				label: 'Ihre Rückzahlung',
 				value: amount,
-				lines: ['Spenden oder auszahlen lassen'],
+				lines: action.deadline
+					? ['Spenden oder auszahlen lassen', `Rückmeldung bis ${formatDateDe(action.deadline)}`]
+					: ['Spenden oder auszahlen lassen'],
 				linkLabel: 'Ohne Kamera: diese Adresse im Browser öffnen',
 				link: { href: url, text: url.replace(/^https?:\/\//, '') }
 			},
@@ -210,7 +230,9 @@ async function letterInput(
 				items: [
 					'QR-Code mit der Handykamera scannen oder die Adresse im Browser öffnen.',
 					'Auswählen: alles auszahlen, alles spenden oder einen Teil spenden.',
-					'Fertig – die Wahl lässt sich ändern, solange noch nicht überwiesen wurde.'
+					action.deadline
+						? `Fertig – die Wahl lässt sich bis zum ${formatDateDe(action.deadline)} ändern.`
+						: 'Fertig – die Wahl lässt sich ändern, solange noch nicht überwiesen wurde.'
 				]
 			},
 			{
@@ -223,6 +245,39 @@ async function letterInput(
 }
 
 export const refundDonationEndpoints: ApiEndpoint[] = [
+	{
+		method: 'PUT',
+		path: '/actions/:id/accounting/refund/deadline',
+		summary:
+			'Frist für die Rückmeldung setzen (bis dahin Link offen, Kasse zahlt erst danach aus) oder entfernen',
+		tags: TAGS,
+		permission: 'actions.action.view',
+		params: idParams,
+		body: refundDeadlineInput,
+		handler: async ({ ctx, params, body }) => {
+			const id = (params as { id: string }).id;
+			const { deadline } = body as RefundDeadlineInput;
+			if (deadline != null && deadline < todayBerlin()) {
+				throw errors.validation([
+					{ path: ['deadline'], message: 'Die Frist darf nicht in der Vergangenheit liegen.' }
+				]);
+			}
+			await moduleDb(MODULE_ID).transaction(async (tx) => {
+				await requireAccess(tx, ctx, id, 'edit');
+				await assertOpen(tx, id);
+				await assertBooked(tx, id);
+				await tx.execute(
+					sql`UPDATE action_refund_booking SET choice_deadline = ${deadline}
+						WHERE action_id = ${id}`
+				);
+			});
+			await core.audit.logFromContext(ctx, 'actions.accounting.refund-deadline-set', {
+				target: id,
+				metadata: { actionId: id, deadline }
+			});
+			return { deadline };
+		}
+	} as ApiEndpoint,
 	{
 		method: 'PUT',
 		path: '/actions/:id/accounting/refund/items/:itemId/donation',
@@ -301,8 +356,11 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 				await assertBooked(tx, id);
 				const [a] = await rowsOf(
 					tx,
-					sql`SELECT name, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
-							to_char(ends_on, 'YYYY-MM-DD') AS ends_on FROM actions WHERE id = ${id}`
+					sql`SELECT a.name, to_char(a.starts_on, 'YYYY-MM-DD') AS starts_on,
+							to_char(a.ends_on, 'YYYY-MM-DD') AS ends_on,
+							to_char(b.choice_deadline, 'YYYY-MM-DD') AS choice_deadline
+						FROM actions a JOIN action_refund_booking b ON b.action_id = a.id
+						WHERE a.id = ${id}`
 				);
 				const all = await rowsOf(
 					tx,
@@ -333,7 +391,8 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 					action: {
 						name: String(a!.name),
 						startsOn: String(a!.starts_on),
-						endsOn: str(a!.ends_on)
+						endsOn: str(a!.ends_on),
+						deadline: str(a!.choice_deadline)
 					},
 					selected,
 					tokens
@@ -414,6 +473,7 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 			// Honeypot: wie Erfolg antworten, nichts speichern
 			if (input.website) return publicView(found, paid > 0);
 			if (paid > 0) throw errors.conflict(TREASURY_PAID_TEXT);
+			if (deadlinePassed(found.deadline)) throw errors.conflict(DEADLINE_PASSED_TEXT);
 			if (input.choice === 'partial' && input.donatedCents == null) {
 				throw errors.validation([
 					{ path: ['donatedCents'], message: 'Bitte den Spendenbetrag angeben.' }
@@ -423,6 +483,7 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 			const updated = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				const item = await loadByToken(tx, token, true);
 				if (!item) throw errors.notFound(NOT_AVAILABLE);
+				if (deadlinePassed(item.deadline)) throw errors.conflict(DEADLINE_PASSED_TEXT);
 				const row = await lockRefundItem(tx, item.actionId, item.itemId);
 				if (!row) throw errors.notFound(NOT_AVAILABLE);
 				await applyDonation(tx, row, {

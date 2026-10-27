@@ -182,9 +182,18 @@
 
 				{#if info.locked}
 					<p class="text-sm" role="status">
-						{summary} Die Überweisung ist schon erfolgt – die Auswahl lässt sich nicht mehr ändern.
+						{summary}
+						{info.lockedReason === 'deadline' && info.deadline
+							? `Die Frist für die Rückmeldung ist am ${formatDateDe(info.deadline)} abgelaufen – die Auswahl lässt sich hier nicht mehr ändern.`
+							: 'Die Überweisung ist schon erfolgt – die Auswahl lässt sich nicht mehr ändern.'}
 					</p>
 				{:else}
+					{#if info.deadline}
+						<p class="text-sm" role="note">
+							Bitte wähle bis zum <strong>{formatDateDe(info.deadline)}</strong>. Ohne Rückmeldung
+							zahlen wir den Betrag danach aus.
+						</p>
+					{/if}
 					<fieldset class="space-y-2" disabled={busy}>
 						<legend class="mb-2 text-sm font-medium">Was sollen wir mit dem Betrag machen?</legend>
 						<div class="grid gap-2" role="radiogroup" aria-label="Auswahl">
@@ -259,7 +268,9 @@
 					</Button>
 					<p class="text-xs text-muted-foreground">
 						Die Auszahlung erfolgt in der Regel auf das Konto, von dem der Beitrag überwiesen wurde.
-						Du kannst die Auswahl ändern, bis überwiesen wurde.
+						{info.deadline
+							? `Du kannst die Auswahl bis zum ${formatDateDe(info.deadline)} ändern.`
+							: 'Du kannst die Auswahl ändern, bis überwiesen wurde.'}
 					</p>
 				{/if}
 			</Card.Content>

@@ -292,6 +292,12 @@ const refundSchema = z.strictObject({
 	perHeadCents: cents(0, 2_000_000_000),
 	payingCount: cents(0, 10_000),
 	remainderCents: cents(0, 2_000_000_000),
+	/** Rückmeldefrist (fehlt in älteren Archiven = keine Frist) */
+	deadline: z
+		.string()
+		.regex(/^\d{4}-\d{2}-\d{2}$/)
+		.nullable()
+		.optional(),
 	items: z
 		.array(
 			z.strictObject({

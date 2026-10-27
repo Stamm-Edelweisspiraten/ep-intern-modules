@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import { core, moduleDb, type Row, rowsOf } from '$lib/sdk/server';
 import type { ActionRef, ActionsService, InterimRef, ReceivableSource } from './contract';
 import { ACCOUNTING_CATEGORY_LABELS } from './schemas';
@@ -200,6 +201,7 @@ export const actionsService: ActionsService = {
 		return changed.length;
 	},
 
+	/** Läuft die Rückmeldefrist einer Aktion noch, fehlen deren Posten (danach gilt „auszahlen“). */
 	async listRefundItems() {
 		return moduleDb(MODULE_ID).transaction(async (tx) => {
 			const found = await rowsOf(
@@ -208,7 +210,9 @@ export const actionsService: ActionsService = {
 					r.amount_cents - r.donated_cents AS payout_cents, p.member_id,
 					to_char(p.birth_date, 'YYYY-MM-DD') AS birth_date
 				FROM accounting_refunds r LEFT JOIN action_participants p ON p.id = r.participant_id
+				JOIN action_refund_booking b ON b.action_id = r.action_id
 				WHERE r.amount_cents > r.donated_cents
+					AND (b.choice_deadline IS NULL OR b.choice_deadline < ${todayBerlin()}::date)
 				ORDER BY r.action_id, r.position, r.id`
 			);
 			return found.map((r) => ({

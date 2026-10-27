@@ -348,6 +348,7 @@ async function exportAction(ctx: RequestContext, id: string): Promise<Response> 
 					perHeadCents: rows.refund.perHeadCents,
 					payingCount: rows.refund.payingCount,
 					remainderCents: rows.refund.remainderCents,
+					...(rows.refund.deadline ? { deadline: rows.refund.deadline } : {}),
 					items: rows.refund.items.map((i) => ({
 						participantRef: i.participantId == null ? null : (pid.get(i.participantId) ?? null),
 						name: i.name,
@@ -682,9 +683,10 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 				}
 				await tx.execute(
 					sql`INSERT INTO action_refund_booking (action_id, entry_id, surplus_cents, per_head_cents,
-							paying_count, remainder_cents, booked_at, booked_by, mode)
+							paying_count, remainder_cents, booked_at, booked_by, mode, choice_deadline)
 						VALUES (${actionId}, ${entryId}, ${r.surplusCents}, ${r.perHeadCents},
-							${r.payingCount}, ${r.remainderCents}, ${r.bookedAt}, ${ownerId}, ${r.mode})`
+							${r.payingCount}, ${r.remainderCents}, ${r.bookedAt}, ${ownerId}, ${r.mode},
+							${r.deadline ?? null})`
 				);
 			}
 

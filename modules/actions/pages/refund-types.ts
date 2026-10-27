@@ -24,6 +24,10 @@ export interface RefundBooked {
 	remainderCents: number;
 	donatedCents: number;
 	payoutCents: number;
+	/** Rückmeldung bis einschließlich JJJJ-MM-TT (`null` = keine Frist) */
+	deadline: string | null;
+	/** Frist läuft noch: Link offen, Kasse zahlt noch nicht aus */
+	deadlineRunning: boolean;
 	items: RefundItem[];
 	mode?: RefundMode;
 	count?: number;

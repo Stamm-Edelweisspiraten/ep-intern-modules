@@ -8,22 +8,30 @@
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
 	import { MoneyInput } from '$lib/components/layout';
 	import { downloadPdf } from '$lib/components/layout/download';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
 	import { choiceOf, donationForChoice, validateDonation, type DonationChoice } from '../refund';
 	import type { RefundItem } from './refund-types';
 
 	let {
 		actionId,
 		items,
+		deadline = null,
+		deadlineRunning = false,
 		editable,
 		onchanged
 	}: {
 		actionId: string;
 		items: RefundItem[];
+		/** Rückmeldung bis einschließlich JJJJ-MM-TT (`null` = keine Frist) */
+		deadline?: string | null;
+		/** Frist läuft noch: Link offen, Kasse zahlt noch nicht aus */
+		deadlineRunning?: boolean;
 		/** Bearbeitungsrecht und Abrechnung offen */
 		editable: boolean;
 		onchanged: () => void | Promise<void>;
@@ -37,6 +45,10 @@
 	];
 
 	let busyId = $state<string | null>(null);
+	/** Entwurf der Frist; folgt dem gespeicherten Wert, bis man ihn ändert */
+	let deadlineDraft = $derived(deadline ?? '');
+	let deadlineBusy = $state(false);
+	let deadlineError = $state('');
 	let lettersBusy = $state(false);
 	/** Teilspende in Bearbeitung je Posten (Cent) */
 	let partial = $state<Record<string, number>>({});
@@ -127,6 +139,28 @@
 		}
 	}
 
+	async function saveDeadline(value: string | null) {
+		deadlineBusy = true;
+		deadlineError = '';
+		try {
+			await apiFetch(`${base}/deadline`, {
+				method: 'PUT',
+				body: JSON.stringify({ deadline: value })
+			});
+			toast.success(value ? `Rückmeldung bis ${formatDateDe(value)}` : 'Frist entfernt');
+			await onchanged();
+		} catch (e) {
+			const msg = errMsg(e, 'Frist konnte nicht gespeichert werden');
+			const details =
+				e instanceof ApiClientError && Array.isArray(e.details)
+					? (e.details as { path?: unknown[]; message?: string }[])
+					: [];
+			deadlineError = details.find((d) => d.path?.[0] === 'deadline')?.message ?? msg;
+		} finally {
+			deadlineBusy = false;
+		}
+	}
+
 	const totals = $derived(
 		items.reduce(
 			(a, i) => ({
@@ -140,6 +174,60 @@
 </script>
 
 <div class="space-y-3">
+	<div class="space-y-2 rounded-lg border p-3">
+		<div class="flex flex-wrap items-end gap-2">
+			<div class="space-y-1">
+				<label class="text-sm font-medium" for="refund-deadline">Rückmeldung bis</label>
+				<Input
+					id="refund-deadline"
+					type="date"
+					class="w-44"
+					min={todayBerlin()}
+					bind:value={deadlineDraft}
+					disabled={!editable || deadlineBusy}
+					aria-invalid={!!deadlineError}
+					aria-describedby="refund-deadline-hint{deadlineError ? ' refund-deadline-error' : ''}"
+				/>
+			</div>
+			{#if editable}
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={deadlineBusy || !deadlineDraft || deadlineDraft === (deadline ?? '')}
+					onclick={() => saveDeadline(deadlineDraft)}
+				>
+					{deadlineBusy ? 'Speichert …' : 'Frist speichern'}
+				</Button>
+				{#if deadline}
+					<Button
+						size="sm"
+						variant="ghost"
+						disabled={deadlineBusy}
+						onclick={() => saveDeadline(null)}
+					>
+						Frist entfernen
+					</Button>
+				{/if}
+			{/if}
+		</div>
+		{#if deadlineError}
+			<p id="refund-deadline-error" class="text-xs text-destructive" role="alert">
+				{deadlineError}
+			</p>
+		{/if}
+		<p id="refund-deadline-hint" class="text-xs text-muted-foreground">
+			{#if deadline && deadlineRunning}
+				Bis zum {formatDateDe(deadline)} kann jede Person über den Link wählen. Die Kasse zahlt erst danach
+				aus; ohne Rückmeldung wird ausgezahlt.
+			{:else if deadline}
+				Die Frist ist am {formatDateDe(deadline)} abgelaufen. Der Link ist geschlossen, die Kasse zahlt
+				aus. Nachträgliche Rückmeldungen kannst du hier noch eintragen.
+			{:else}
+				Ohne Frist zahlt die Kasse sofort aus. Mit Frist wartet sie, bis alle sich melden konnten.
+			{/if}
+		</p>
+	</div>
+
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<p class="text-sm text-muted-foreground" aria-live="polite">
 			Auszahlung {formatEuro(totals.payout)} · gespendet {formatEuro(totals.donated)}

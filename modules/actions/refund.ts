@@ -147,3 +147,10 @@ export function choiceOf(item: { amountCents: number; donatedCents: number }): D
 	if (item.donatedCents <= 0) return 'payout';
 	return item.donatedCents >= item.amountCents ? 'donate' : 'partial';
 }
+
+/**
+ * Frist für die Rückmeldung: bis einschließlich `deadline` (JJJJ-MM-TT) ist die Wahl über den Link offen und
+ * die Kasse zahlt noch nicht aus. Ohne Frist ist sofort auszahlbar.
+ */
+export const deadlineRunning = (deadline: string | null, today: string): boolean =>
+	deadline != null && deadline >= today;

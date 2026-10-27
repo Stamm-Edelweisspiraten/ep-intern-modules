@@ -904,6 +904,10 @@ export const refundDonationInput = z
 	.strict();
 export type RefundDonationInput = z.infer<typeof refundDonationInput>;
 
+/** Body von PUT …/refund/deadline: Rückmeldefrist (heute oder später) oder `null` = keine Frist */
+export const refundDeadlineInput = z.object({ deadline: date.nullable() }).strict();
+export type RefundDeadlineInput = z.infer<typeof refundDeadlineInput>;
+
 /** Body von POST …/refund/letters.pdf: ohne `itemIds` alle Personen der Rückzahlung. */
 export const refundLettersInput = z
 	.object({ itemIds: z.array(z.uuid()).min(1).max(300).optional() })
@@ -938,8 +942,12 @@ export interface PublicRefundChoice {
 	choice: 'payout' | 'donate' | 'partial';
 	/** Seit der letzten Wahl über den Link bzw. intern festgelegt */
 	decided: boolean;
-	/** Die Kasse hat schon überwiesen – keine Änderung mehr möglich */
+	/** Keine Änderung mehr möglich (Grund in `lockedReason`) */
 	locked: boolean;
+	/** `paid` = Kasse hat überwiesen, `deadline` = Frist abgelaufen */
+	lockedReason: 'paid' | 'deadline' | null;
+	/** Rückmeldung bis einschließlich JJJJ-MM-TT (`null` = keine Frist) */
+	deadline: string | null;
 }
 
 export const REFUND_PUBLIC_PREFIX = '/p/actions/rueckzahlung';

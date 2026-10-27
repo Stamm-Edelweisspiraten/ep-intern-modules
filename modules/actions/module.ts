@@ -52,6 +52,7 @@ import m0021 from './migrations/0021_camp_fees.sql?raw';
 import m0022 from './migrations/0022_principal_shares.sql?raw';
 import m0023 from './migrations/0023_subsidy_application.sql?raw';
 import m0024 from './migrations/0024_refund_donations.sql?raw';
+import m0025 from './migrations/0025_refund_choice_deadline.sql?raw';
 import {
 	PARISH_SETTING,
 	SUBSIDY_BANK_SETTINGS,
@@ -66,7 +67,7 @@ export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.7.0',
+		version: '1.8.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -235,7 +236,8 @@ export default defineModule({
 		{ name: '0021_camp_fees', sql: m0021 },
 		{ name: '0022_principal_shares', sql: m0022 },
 		{ name: '0023_subsidy_application', sql: m0023 },
-		{ name: '0024_refund_donations', sql: m0024 }
+		{ name: '0024_refund_donations', sql: m0024 },
+		{ name: '0025_refund_choice_deadline', sql: m0025 }
 	],
 	/** Altbestand der Gesundheitsdaten verschlüsseln (idempotent, siehe `health.ts`) */
 	jobs: [
