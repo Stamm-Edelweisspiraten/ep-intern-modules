@@ -78,6 +78,11 @@
 	let deleteParticipant = $state<Participant | null>(null);
 
 	const canEdit = $derived(action?.access.level === 'edit');
+	/**
+	 * Stabile ID für Kind-Komponenten: `action.id` direkt als Prop würde bei jedem Neuladen der Aktion
+	 * (neues Objekt) deren `$effect`s erneut auslösen (Reiter laden neu, Seite springt nach oben).
+	 */
+	const actionId = $derived(action?.id ?? id);
 	const canDelete = $derived(
 		!!action &&
 			can(permissions, 'actions.action.delete') &&
@@ -461,14 +466,14 @@
 				</Card.Content>
 			</Card.Root>
 			{#if can(permissions, 'tasks.board.view')}
-				<ActionTasksCard actionId={action.id} actionName={action.name} />
+				<ActionTasksCard {actionId} actionName={action.name} />
 			{/if}
 			{#if can(permissions, 'whiteboard.board.view')}
-				<ActionWhiteboardsCard actionId={action.id} actionName={action.name} />
+				<ActionWhiteboardsCard {actionId} actionName={action.name} />
 			{/if}
 			{#if can(permissions, 'material.inventory.view')}
 				<ActionMaterialCard
-					actionId={action.id}
+					{actionId}
 					actionName={action.name}
 					startsOn={action.startsOn}
 					endsOn={action.endsOn}
@@ -499,14 +504,14 @@
 
 		<Tabs.Content value="accounting">
 			{#if tab === 'accounting'}
-				<AccountingTab actionId={action.id} {canEdit} isPast={action.isPast} />
+				<AccountingTab {actionId} {canEdit} isPast={action.isPast} />
 			{/if}
 		</Tabs.Content>
 
 		<Tabs.Content value="registration">
 			{#if tab === 'registration'}
 				<RegistrationTab
-					actionId={action.id}
+					{actionId}
 					isPast={action.isPast}
 					{canEdit}
 					onchanged={loadAction}
@@ -519,7 +524,7 @@
 		<Tabs.Content value="calculation">
 			{#if tab === 'calculation'}
 				<CalculationTab
-					actionId={action.id}
+					{actionId}
 					startsOn={action.startsOn}
 					endsOn={action.endsOn}
 					{canEdit}

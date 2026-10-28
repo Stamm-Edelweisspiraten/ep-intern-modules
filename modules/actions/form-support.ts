@@ -3,6 +3,7 @@
  * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschlüssel, CSV.
  */
 import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
+import { fieldHasValue } from '$lib/forms';
 import { formatEuro } from '$lib/components/layout/money';
 import { csvFromRecords, type CsvColumn } from '$lib/sdk/csv';
 import { safeFileName } from '$lib/sdk/file-names';
@@ -261,7 +262,7 @@ export function identityValues(m: MemberForRegistration, accountEmail: string | 
 export function prefillValues(def: FormDefinition, custom: Record<string, unknown>): FormValues {
 	const out: FormValues = {};
 	for (const f of def.fields) {
-		if (!f.memberKey || f.hidden || f.type === 'info') continue;
+		if (!f.memberKey || f.hidden || !fieldHasValue(f)) continue;
 		const v = custom[f.memberKey];
 		out[f.key] =
 			typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || Array.isArray(v)
@@ -275,7 +276,7 @@ export function prefillValues(def: FormDefinition, custom: Record<string, unknow
 export function memberUpdates(def: FormDefinition, values: FormValues): FormValues {
 	const out: FormValues = {};
 	for (const f of def.fields) {
-		if (!f.memberKey || f.hidden || f.type === 'info' || !(f.key in values)) continue;
+		if (!f.memberKey || f.hidden || !fieldHasValue(f) || !(f.key in values)) continue;
 		out[f.memberKey] = values[f.key] ?? null;
 	}
 	return out;
@@ -367,7 +368,7 @@ export function mapStandardAnswers(def: FormDefinition, values: FormValues): Map
 	const standard = new Set<string>(Object.values(K));
 	const answers: Record<string, unknown> = {};
 	for (const f of def.fields) {
-		if (f.type === 'info' || f.hidden || standard.has(f.key)) continue;
+		if (!fieldHasValue(f) || f.hidden || standard.has(f.key)) continue;
 		if (f.key in values) answers[f.key] = values[f.key];
 	}
 	const br = values[K.bremenResident];

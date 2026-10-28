@@ -1,3 +1,4 @@
+import { sanitizeFormHtml } from './form-html';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { notifyRegistration } from './notify';
 import { todayBerlin } from '$lib/sdk/dates';
@@ -804,7 +805,7 @@ export const formEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
 			const input = body as FormConfigInput;
-			const definition = mergeStandardFields(input.definition);
+			const definition = sanitizeFormHtml(mergeStandardFields(input.definition));
 			// Aktives Formular nur mit Datenschutzhinweis (eigener Link oder globale Einstellung)
 			if (input.enabled && !input.privacyUrl && !(await globalPrivacyUrl())) {
 				throw errors.validation({ privacyUrl: PRIVACY_URL_REQUIRED }, PRIVACY_URL_REQUIRED);

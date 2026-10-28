@@ -6,6 +6,7 @@
  *
  * Core-Services (storage, crypto, audit) laufen immer außerhalb der Modul-Transaktion.
  */
+import { sanitizeFormHtml } from './form-html';
 import { sql } from 'drizzle-orm';
 import { todayBerlin } from '$lib/sdk/dates';
 import {
@@ -598,7 +599,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 
 			if (doc.form) {
 				const f = doc.form;
-				const definition = mergeStandardFields(f.definition);
+				const definition = sanitizeFormHtml(mergeStandardFields(f.definition));
 				const fresh = linkTokenValues(newToken());
 				await tx.execute(
 					sql`INSERT INTO action_forms (action_id, token_hash, token_enc, enabled, opens_at, closes_at,

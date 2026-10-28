@@ -91,7 +91,8 @@ function answerNotes(
 	for (const [key, raw] of Object.entries(answers)) {
 		if (skipMemberFields && key.startsWith('mf_')) continue;
 		const field = fields.find((f) => f.key === key);
-		if (field && (field.type === 'info' || field.type === 'consent')) continue;
+		if (field && (field.type === 'info' || field.type === 'section' || field.type === 'consent'))
+			continue;
 		const value = formatFieldValue(field, raw as FormValue);
 		if (value) out.push(`${field?.label ?? key}: ${value}`);
 	}
