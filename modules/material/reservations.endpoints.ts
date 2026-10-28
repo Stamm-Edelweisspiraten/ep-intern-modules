@@ -4,11 +4,15 @@
  */
 import { sql } from 'drizzle-orm';
 import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
-import { actionsService, mdb, rows, today } from './db';
+import { reassignAll } from './assign.service';
+import { AvailabilityIndex, type Booking } from './availability';
+import { actionsService, mdb, num, rows, str, today } from './db';
+import { loadBookings, loadStock } from './inventory';
 import { notifyReservationCreated } from './notify';
 import {
 	assertLinesAvailable,
 	canEditReservation,
+	canHandOut,
 	checkLines,
 	checkPurpose,
 	fullReservation,
@@ -22,9 +26,11 @@ import {
 import {
 	PERMISSIONS,
 	actionParams,
+	assignmentInput,
 	availabilityInput,
 	catalogQuery,
 	idParams,
+	lineParams,
 	reservationInput,
 	reservationListQuery,
 	type Catalog,
@@ -36,6 +42,8 @@ import {
 } from './schemas';
 
 const tags = ['Modul: material'];
+
+const HANDED_OUT = 'Das Material ist ausgegeben – erst die Ausgabe zurücknehmen';
 
 const lock = (tx: Tx) =>
 	tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'material:reservations'}))`);
@@ -69,7 +77,7 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 			if (body.endsOn < body.startsOn) {
 				throw errors.validation([{ path: ['endsOn'], message: 'Ende liegt vor dem Beginn' }]);
 			}
-			return mdb().transaction((tx) => checkLines(tx, body));
+			return mdb().transaction((tx) => checkLines(tx, body, { preview: true }));
 		}
 	}),
 	defineEndpoint({
@@ -145,6 +153,7 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 							${body.startsOn}::date, ${body.endsOn}::date, ${body.notes}, ${ctx.userId ?? null})`
 				);
 				await replaceLines(tx, id, lines);
+				await reassignAll(tx);
 			});
 			await core.audit.logFromContext(ctx, 'material.reservation.created', {
 				target: id,
@@ -173,6 +182,7 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 					throw errors.forbidden('Nur eigene Reservierungen können geändert werden');
 				}
 				if (current.status !== 'reserved') throw errors.conflict('Die Reservierung ist storniert');
+				if (current.handedOutAt) throw errors.conflict(HANDED_OUT);
 				await assertLinesAvailable(tx, { ...body, lines, excludeReservationId: params.id });
 				await tx.execute(
 					sql`UPDATE reservations SET title = ${body.title}, purpose = ${body.purpose},
@@ -180,7 +190,10 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 						ends_on = ${body.endsOn}::date, notes = ${body.notes}, updated_at = now()
 						WHERE id = ${params.id}`
 				);
-				await replaceLines(tx, params.id, lines);
+				await replaceLines(tx, params.id, lines, {
+					keepPins: current.startsOn === body.startsOn && current.endsOn === body.endsOn
+				});
+				await reassignAll(tx);
 			});
 			await core.audit.logFromContext(ctx, 'material.reservation.updated', {
 				target: params.id,
@@ -203,10 +216,16 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 					throw errors.forbidden('Nur eigene Reservierungen können storniert werden');
 				}
 				if (current.status === 'cancelled') return;
+				if (current.handedOutAt) throw errors.conflict(HANDED_OUT);
+				await lock(tx);
 				await tx.execute(
 					sql`UPDATE reservations SET status = 'cancelled', cancelled_at = now(), updated_at = now()
 						WHERE id = ${params.id}`
 				);
+				await tx.execute(
+					sql`DELETE FROM reservation_assignments WHERE reservation_id = ${params.id}`
+				);
+				await reassignAll(tx);
 			});
 			await core.audit.logFromContext(ctx, 'material.reservation.cancelled', { target: params.id });
 			return fullReservation(ctx, params.id);
@@ -235,5 +254,177 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 			await core.audit.logFromContext(ctx, 'material.reservation.deleted', { target: params.id });
 			return { deleted: true };
 		}
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/reservations/:id/hand-out',
+		summary: 'Material als ausgegeben markieren (Zuteilung wird festgeschrieben)',
+		tags,
+		permission: PERMISSIONS.view,
+		params: idParams,
+		handler: async ({ ctx, params }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Ausgabe nur mit Verwaltungsrecht');
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (current.status !== 'reserved') throw errors.conflict('Die Reservierung ist storniert');
+				if (current.handedOutAt) return;
+				// Zuteilung vorher vervollständigen, damit die festgeschriebene Liste stimmt
+				await reassignAll(tx);
+				await tx.execute(
+					sql`UPDATE reservations SET handed_out_at = now(), handed_out_by = ${ctx.userId ?? null},
+						updated_at = now() WHERE id = ${params.id}`
+				);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.handed-out', {
+				target: params.id
+			});
+			return fullReservation(ctx, params.id);
+		}
+	}),
+	defineEndpoint({
+		method: 'DELETE',
+		path: '/reservations/:id/hand-out',
+		summary: 'Ausgabe zurücknehmen (Zuteilung wird wieder umplanbar)',
+		tags,
+		permission: PERMISSIONS.view,
+		params: idParams,
+		handler: async ({ ctx, params }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Ausgabe nur mit Verwaltungsrecht');
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (!current.handedOutAt) return;
+				await tx.execute(
+					sql`UPDATE reservations SET handed_out_at = NULL, handed_out_by = NULL, updated_at = now()
+						WHERE id = ${params.id}`
+				);
+				await reassignAll(tx);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.hand-out-undone', {
+				target: params.id
+			});
+			return fullReservation(ctx, params.id);
+		}
+	}),
+	defineEndpoint({
+		method: 'PUT',
+		path: '/reservations/:id/lines/:lineId/assignment',
+		summary: 'Zuteilung einer Typ-Zeile von Hand festlegen (angeheftet; Rest teilt das System zu)',
+		tags,
+		permission: PERMISSIONS.view,
+		params: lineParams,
+		body: assignmentInput,
+		handler: async ({ ctx, params, body }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Zuteilung nur mit Verwaltungsrecht');
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (current.status !== 'reserved') throw errors.conflict('Die Reservierung ist storniert');
+				const [line] = await rows(
+					tx,
+					sql`SELECT id, type_id, quantity FROM reservation_lines
+						WHERE id = ${params.lineId} AND reservation_id = ${params.id}`
+				);
+				if (!line) throw errors.notFound('Position nicht gefunden');
+				const typeId = str(line.type_id);
+				if (!typeId) throw errors.badRequest('Nur Positionen mit beliebigen Artikeln eines Typs');
+				const wanted = mergeAssignment(body.items);
+				await assertAssignable(tx, current, params.lineId, typeId, num(line.quantity), wanted);
+				await tx.execute(sql`DELETE FROM reservation_assignments WHERE line_id = ${params.lineId}`);
+				for (const a of wanted) {
+					await tx.execute(
+						sql`INSERT INTO reservation_assignments (id, reservation_id, line_id, item_id, quantity, pinned, slot)
+							VALUES (${crypto.randomUUID()}, ${params.id}, ${params.lineId}, ${a.itemId}, ${a.quantity}, true, 0)`
+					);
+				}
+				await reassignAll(tx);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.assignment-changed', {
+				target: params.id,
+				metadata: { line: params.lineId, items: body.items.length }
+			});
+			return fullReservation(ctx, params.id);
+		}
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/reservations/:id/reassign',
+		summary: 'Von Hand festgelegte Zuteilungen lösen und neu zuteilen',
+		tags,
+		permission: PERMISSIONS.view,
+		params: idParams,
+		handler: async ({ ctx, params }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Zuteilung nur mit Verwaltungsrecht');
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (current.status !== 'reserved') throw errors.conflict('Die Reservierung ist storniert');
+				if (current.handedOutAt) throw errors.conflict(HANDED_OUT);
+				await tx.execute(
+					sql`DELETE FROM reservation_assignments WHERE reservation_id = ${params.id}`
+				);
+				await reassignAll(tx);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.reassigned', {
+				target: params.id
+			});
+			return fullReservation(ctx, params.id);
+		}
 	})
 ];
+
+function mergeAssignment(items: { itemId: string; quantity: number }[]) {
+	const map = new Map<string, number>();
+	for (const a of items) map.set(a.itemId, (map.get(a.itemId) ?? 0) + a.quantity);
+	return [...map.entries()].map(([itemId, quantity]) => ({ itemId, quantity }));
+}
+
+/**
+ * Von Hand gewählte Artikel prüfen: gleicher Typ, nutzbar, höchstens die Anzahl der Zeile und im Zeitraum
+ * frei – gegen andere Reservierungen und gegen die übrigen Positionen dieser Reservierung
+ */
+async function assertAssignable(
+	tx: Tx,
+	r: { id: string; startsOn: string; endsOn: string },
+	lineId: string,
+	typeId: string,
+	lineQuantity: number,
+	wanted: { itemId: string; quantity: number }[]
+): Promise<void> {
+	if (wanted.reduce((n, a) => n + a.quantity, 0) > lineQuantity) {
+		throw errors.validation([{ path: ['items'], message: `Höchstens ${lineQuantity} zuteilen` }]);
+	}
+	const own: Booking[] = (
+		await rows(
+			tx,
+			sql`SELECT item_id, quantity FROM reservation_lines
+				WHERE reservation_id = ${r.id} AND item_id IS NOT NULL
+				UNION ALL SELECT item_id, quantity FROM reservation_assignments
+				WHERE reservation_id = ${r.id} AND line_id <> ${lineId}`
+		)
+	).map((x) => ({
+		startsOn: r.startsOn,
+		endsOn: r.endsOn,
+		typeId: null,
+		itemId: String(x.item_id),
+		quantity: num(x.quantity),
+		assigned: true
+	}));
+	const index = new AvailabilityIndex(
+		await loadStock(tx),
+		await loadBookings(tx, r.startsOn, r.endsOn, r.id)
+	);
+	const period = { from: r.startsOn, to: r.endsOn };
+	wanted.forEach((a, i) => {
+		const s = index.item(a.itemId);
+		if (!s || s.typeId !== typeId || !s.usable) {
+			throw errors.validation([
+				{ path: ['items', i, 'itemId'], message: 'Artikel passt nicht oder ist nicht nutzbar' }
+			]);
+		}
+		if (index.freeItem(a.itemId, period, own) < a.quantity) {
+			throw errors.conflict('Ein gewählter Artikel ist im Zeitraum schon fest vergeben');
+		}
+	});
+}

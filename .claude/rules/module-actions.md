@@ -17,6 +17,7 @@ Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anm
 | `access.ts` | `resolveAccess`/`requireAccess`/`visibleActionsFilter`/`editableActionsFilter` (Objektzugriff über `createShareAccess`), `loadActionKeys`/`withActionKeys` (Principal-Schlüssel vor der Transaktion) |
 | `shares.endpoints.ts` | Freigaben an Principals (`GET/PUT /actions/:id/shares`, Kurzform `PUT/DELETE …/shares/:userId`), `/principals`, `/users`, `shareLevelsFor` |
 | `accessible.ts` | Dienst `accessibleActions(ctx, { ids? })` → sichtbare Aktionen mit Stufe (für Boards im Modul `tasks`) |
+| `form-html.ts` | `sanitizeFormHtml(def)`: formatierte Infotexte (`info`, `format: html`) des Anmeldeformulars serverseitig bereinigen (`sanitizeRichText`) |
 | `actions.endpoints.ts`, `participants.endpoints.ts` | Aktionen, Teilnehmende |
 | `calculation.ts` (rein), `calculation.endpoints.ts` | Kalkulation, Vorschläge, Beitrag übernehmen |
 | `subsidy.ts` (rein) | Zuschuss/Taschengeld Richtlinie 2026 |

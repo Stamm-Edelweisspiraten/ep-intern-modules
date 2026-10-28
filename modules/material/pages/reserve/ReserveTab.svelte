@@ -54,6 +54,7 @@
 		fromReservation,
 		itemQuantityInCart,
 		lineKey,
+		tentQuantityInCart,
 		loadDraft,
 		reconcileCart,
 		saveDraft,
@@ -240,15 +241,20 @@
 
 	// --- Verfügbarkeit des Warenkorbs ------------------------------------------------
 	let issues = $state<Record<string, string>>({});
+	/** Voraussichtliche Zuteilung („aus Set KJ1“, „gemischt …“) */
+	let notes = $state<Record<string, string>>({});
 	let availSeq = 0;
 
 	function applyChecks(checks: LineAvailability[], lines: CartLine[]) {
 		const next: Record<string, string> = {};
+		const nextNotes: Record<string, string> = {};
 		for (const c of checks) {
 			const line = lines[c.index];
 			if (line && !c.ok) next[lineKey(line)] = c.message ?? 'Im Zeitraum nicht frei';
+			if (line && c.note) nextNotes[lineKey(line)] = c.note;
 		}
 		issues = next;
+		notes = nextNotes;
 	}
 
 	$effect(() => {
@@ -258,6 +264,7 @@
 		const to = draft.to;
 		if (!lines.length) {
 			issues = {};
+			notes = {};
 			return;
 		}
 		const t = setTimeout(async () => {
@@ -301,13 +308,16 @@
 				e.name.toLowerCase().includes(q) ||
 				e.description.toLowerCase().includes(q) ||
 				(e.code ?? '').toLowerCase() === q ||
-				e.items.some((i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase() === q)
+				e.items.some((i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase() === q) ||
+				e.sets.some((s) => s.name.toLowerCase().includes(q)) ||
+				e.parts.some((p) => p.name.toLowerCase().includes(q))
 			);
 		});
 	});
 
 	function inCartOf(e: CatalogEntry): number {
 		if (e.kind === 'item') return itemQuantityInCart(draft.lines, e.id);
+		if (e.kind === 'tent') return tentQuantityInCart(draft.lines, e.id);
 		return (
 			typeQuantityInCart(draft.lines, e.id) +
 			e.items.reduce((s, i) => s + itemQuantityInCart(draft.lines, i.id), 0)
@@ -510,6 +520,7 @@
 	<CartPanel
 		bind:draft
 		{issues}
+		{notes}
 		{errors}
 		{options}
 		{optionsError}

@@ -97,10 +97,52 @@ const kohtenBahnen = [
 	...(await items({ typeId: kohte.id, name: 'K2.', count: 4, locationId: regalZelte.id })),
 	...(await items({ typeId: kohte.id, name: 'K3.', count: 4, locationId: garage.id }))
 ];
-const jurte = await type('Jurtenbahn', zelte.id, 'Dachbahnen und Seitenbahnen für die Jurte.');
+// Jurtendächer: je sechs Kohtenbahnen gehören zusammen (Sets KJ1, KJ2)
+const kjBahnen = [
+	await items({ typeId: kohte.id, name: 'KJ1.', count: 6, locationId: regalZelte.id }),
+	await items({ typeId: kohte.id, name: 'KJ2.', count: 6, locationId: regalZelte.id })
+];
+const jurte = await type('Jurtenbahn', zelte.id, 'Seitenbahnen für die Jurte.');
 await items({ typeId: jurte.id, name: 'J1.', count: 8, locationId: regalZelte.id });
 const kreuz = await type('Kohtenkreuz', zelte.id);
 await items({ typeId: kreuz.id, name: 'Kohtenkreuz ', count: 3, locationId: garage.id });
+const [abspannseil] = await items({
+	name: 'Abspannseil Jurte',
+	categoryId: zelte.id,
+	quantity: 2,
+	locationId: garage.id
+});
+
+// --- Sets und Zelte -------------------------------------------------------------------
+const set = async (name, list, notes = '') =>
+	call('POST', `${M}/sets`, { name, notes, itemIds: list.map((i) => i.id) });
+await set('K1', kohtenBahnen.slice(0, 4), 'Kohte K1');
+await set('K2', kohtenBahnen.slice(4, 8), 'Kohte K2');
+await set('KJ1', kjBahnen[0], 'Jurtendach');
+await set('KJ2', kjBahnen[1], 'Jurtendach');
+const kohteZelt = (
+	await call('POST', `${M}/tents`, {
+		name: 'Kohte',
+		categoryId: zelte.id,
+		description: 'Vier Bahnen und ein Kreuz.',
+		parts: [
+			{ kind: 'type', typeId: kohte.id, label: 'Bahnen', quantity: 4, fromOneSet: true },
+			{ kind: 'type', typeId: kreuz.id, quantity: 1 }
+		]
+	})
+).data;
+const jurteZelt = (
+	await call('POST', `${M}/tents`, {
+		name: 'Jurte',
+		categoryId: zelte.id,
+		description: 'Dach aus sechs Kohtenbahnen eines Sets, Wand aus Jurtenbahnen.',
+		parts: [
+			{ kind: 'type', typeId: kohte.id, label: 'Dach', quantity: 6, fromOneSet: true },
+			{ kind: 'type', typeId: jurte.id, label: 'Wand', quantity: 4 },
+			...(abspannseil ? [{ kind: 'item', itemId: abspannseil.id, quantity: 1 }] : [])
+		]
+	})
+).data;
 const topf = await type('Kochtopf 20 l', kueche.id);
 await items({ typeId: topf.id, name: 'Topf ', count: 2, locationId: kiste1.id });
 const kocher = await type('Gaskocher', kueche.id, 'Zweiflammig, mit Schlauch und Druckminderer.');
@@ -141,7 +183,7 @@ await call('POST', `${M}/reservations`, {
 	endsOn: kopenhagen?.endsOn ?? inDays(37),
 	notes: 'Bitte vorher imprägnieren.',
 	lines: [
-		{ kind: 'type', typeId: kohte.id, quantity: 8 },
+		...(kohteZelt ? [{ kind: 'tent', tentId: kohteZelt.id, quantity: 2 }] : []),
 		{ kind: 'type', typeId: kocher.id, quantity: 2 },
 		...(tassen ? [{ kind: 'item', itemId: tassen.id, quantity: 20 }] : [])
 	]
@@ -165,7 +207,7 @@ await call('POST', `${M}/reservations`, {
 	startsOn: inDays(10),
 	endsOn: inDays(11),
 	lines: [
-		{ kind: 'type', typeId: jurte.id, quantity: 8 },
+		...(jurteZelt ? [{ kind: 'tent', tentId: jurteZelt.id, quantity: 2 }] : []),
 		{ kind: 'type', typeId: topf.id, quantity: 1 }
 	]
 });

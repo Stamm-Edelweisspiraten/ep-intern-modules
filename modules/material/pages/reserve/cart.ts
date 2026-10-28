@@ -1,6 +1,7 @@
 /**
- * Warenkorb zum Reservieren (rein, ohne Svelte): Zeilen nach Typ + Anzahl („3 beliebige Kohtenbahnen“)
- * oder konkrete Artikel („Kohtenbahn K1.1“, „Tampen“ × 5) plus Entwurf der Angaben (Zeitraum, Titel, Zweck).
+ * Warenkorb zum Reservieren (rein, ohne Svelte): Zeilen nach Typ + Anzahl („3 beliebige Kohtenbahnen“),
+ * konkrete Artikel („Kohtenbahn K1.1“, „Tampen“ × 5) oder Zelte („2 × Jurte“) plus Entwurf der Angaben
+ * (Zeitraum, Titel, Zweck).
  * Gespeichert in `sessionStorage` – Bearbeiten einer Reservierung nutzt einen eigenen Schlüssel.
  */
 import {
@@ -33,7 +34,16 @@ export interface ItemCartLine {
 	max: number | null;
 }
 
-export type CartLine = TypeCartLine | ItemCartLine;
+/** Zelt (Bauplan); die Teile teilt der Server zu */
+export interface TentCartLine {
+	kind: 'tent';
+	tentId: string;
+	name: string;
+	thumbUrl: string | null;
+	quantity: number;
+}
+
+export type CartLine = TypeCartLine | ItemCartLine | TentCartLine;
 
 export interface CartDraft {
 	lines: CartLine[];
@@ -52,7 +62,7 @@ export const editCartKey = (reservationId: string) => `material.cart.v2.edit.${r
 
 /** Eindeutiger Schlüssel einer Zeile */
 export const lineKey = (l: CartLine): string =>
-	l.kind === 'type' ? `t:${l.typeId}` : `i:${l.itemId}`;
+	l.kind === 'type' ? `t:${l.typeId}` : l.kind === 'item' ? `i:${l.itemId}` : `z:${l.tentId}`;
 
 /** `JJJJ-MM-TT` + Tage (UTC-Rechnung, unabhängig von der Zeitzone) */
 export function shiftDate(iso: string, days: number): string {
@@ -91,6 +101,15 @@ function parseLine(v: unknown): CartLine | null {
 		return {
 			kind: 'type',
 			typeId: o.typeId,
+			name: str(o.name),
+			thumbUrl: strOrNull(o.thumbUrl),
+			quantity: clampQty(o.quantity)
+		};
+	}
+	if (o.kind === 'tent' && typeof o.tentId === 'string' && o.tentId) {
+		return {
+			kind: 'tent',
+			tentId: o.tentId,
 			name: str(o.name),
 			thumbUrl: strOrNull(o.thumbUrl),
 			quantity: clampQty(o.quantity)
@@ -230,12 +249,15 @@ export function reconcileCart(
 	catalog: Pick<Catalog, 'entries'>
 ): { lines: CartLine[]; removed: string[]; changed: boolean } {
 	const types = new Map<string, { name: string; thumbUrl: string | null }>();
+	const tents = new Map<string, { name: string; thumbUrl: string | null }>();
 	const items = new Map<
 		string,
 		{ name: string; code: string | null; thumbUrl: string | null; quantity: number }
 	>();
 	for (const e of catalog.entries) {
-		if (e.kind === 'type') {
+		if (e.kind === 'tent') {
+			tents.set(e.id, { name: e.name, thumbUrl: e.thumbUrl });
+		} else if (e.kind === 'type') {
 			types.set(e.id, { name: e.name, thumbUrl: e.thumbUrl });
 			for (const i of e.items) {
 				items.set(i.id, { name: i.name, code: i.code, thumbUrl: e.thumbUrl, quantity: i.quantity });
@@ -248,13 +270,13 @@ export function reconcileCart(
 	let changed = false;
 	const next: CartLine[] = [];
 	for (const l of lines) {
-		if (l.kind === 'type') {
-			const hit = types.get(l.typeId);
+		if (l.kind === 'type' || l.kind === 'tent') {
+			const hit = l.kind === 'type' ? types.get(l.typeId) : tents.get(l.tentId);
 			if (!hit) {
 				removed.push(l.name);
 				continue;
 			}
-			const updated: TypeCartLine = { ...l, name: hit.name, thumbUrl: hit.thumbUrl };
+			const updated = { ...l, name: hit.name, thumbUrl: hit.thumbUrl };
 			if (updated.name !== l.name || updated.thumbUrl !== l.thumbUrl) changed = true;
 			next.push(updated);
 		} else {
@@ -291,7 +313,9 @@ export function toLines(lines: readonly CartLine[]): ReservationLineInput[] {
 	return lines.map((l) =>
 		l.kind === 'type'
 			? { kind: 'type', typeId: l.typeId, quantity: l.quantity }
-			: { kind: 'item', itemId: l.itemId, quantity: l.quantity }
+			: l.kind === 'item'
+				? { kind: 'item', itemId: l.itemId, quantity: l.quantity }
+				: { kind: 'tent', tentId: l.tentId, quantity: l.quantity }
 	);
 }
 
@@ -303,6 +327,14 @@ export function fromReservation(r: Reservation): CartDraft {
 			lines.push({
 				kind: 'type',
 				typeId: l.typeId,
+				name: l.name,
+				thumbUrl: l.thumbUrl,
+				quantity: clampQty(l.quantity)
+			});
+		} else if (l.kind === 'tent' && l.tentId) {
+			lines.push({
+				kind: 'tent',
+				tentId: l.tentId,
 				name: l.name,
 				thumbUrl: l.thumbUrl,
 				quantity: clampQty(l.quantity)
@@ -339,4 +371,9 @@ export function itemQuantityInCart(lines: readonly CartLine[], itemId: string): 
 /** Beliebige Anzahl eines Typs im Warenkorb */
 export function typeQuantityInCart(lines: readonly CartLine[], typeId: string): number {
 	return lines.reduce((s, l) => (l.kind === 'type' && l.typeId === typeId ? s + l.quantity : s), 0);
+}
+
+/** Anzahl eines Zelts im Warenkorb */
+export function tentQuantityInCart(lines: readonly CartLine[], tentId: string): number {
+	return lines.reduce((s, l) => (l.kind === 'tent' && l.tentId === tentId ? s + l.quantity : s), 0);
 }

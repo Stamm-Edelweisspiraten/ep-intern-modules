@@ -27,6 +27,7 @@ import {
 	userNames
 } from './db';
 import { loadCategories, loadItem, loadItems, loadLocations, loadTypes } from './inventory';
+import { reassignLocked } from './assign.service';
 import { notifyDamage } from './notify';
 import { removeImagesOf } from './images.endpoints';
 import { listReservations } from './reservations.service';
@@ -69,7 +70,12 @@ async function assertIcon(icon: string | null | undefined) {
 /** Verweise prüfen (422 mit Feldpfad, wenn unbekannt) */
 async function assertRefs(
 	tx: Tx,
-	refs: { typeId?: string | null; categoryId?: string | null; locationId?: string | null }
+	refs: {
+		typeId?: string | null;
+		categoryId?: string | null;
+		locationId?: string | null;
+		setId?: string | null;
+	}
 ) {
 	const check = async (table: string, id: string | null | undefined, path: string, msg: string) => {
 		if (!id) return;
@@ -79,6 +85,7 @@ async function assertRefs(
 	await check('types', refs.typeId, 'typeId', 'Typ nicht gefunden');
 	await check('categories', refs.categoryId, 'categoryId', 'Kategorie nicht gefunden');
 	await check('locations', refs.locationId, 'locationId', 'Lagerort nicht gefunden');
+	await check('sets', refs.setId, 'setId', 'Set nicht gefunden');
 }
 
 async function requireItem(tx: Tx, id: string): Promise<Item> {
@@ -122,31 +129,35 @@ const nextPosition = async (tx: Tx, table: 'locations' | 'categories') => {
 	return num(r?.p);
 };
 
-/** Filter der Lagertabelle auf Artikel (Alias `i`, `t`, `c`, `l`) */
+/** Filter der Lagertabelle auf Artikel (Alias `i`, `t`, `c`, `l`, `s`) */
 function itemFilter(q: {
 	search?: string;
 	categoryId?: string;
 	locationId?: string;
 	condition?: Condition;
+	setId?: string;
 	archived?: '0' | '1';
 }): SQL {
 	const parts: SQL[] = [q.archived === '1' ? sql`TRUE` : sql`i.archived_at IS NULL`];
 	if (q.search) {
 		const p = likePattern(q.search);
 		parts.push(
-			sql`(i.name ILIKE ${p} OR i.code ILIKE ${p} OR t.name ILIKE ${p} OR i.notes ILIKE ${p})`
+			sql`(i.name ILIKE ${p} OR i.code ILIKE ${p} OR t.name ILIKE ${p} OR i.notes ILIKE ${p}
+				OR s.name ILIKE ${p})`
 		);
 	}
 	if (q.categoryId) parts.push(sql`c.id = ${q.categoryId}`);
 	if (q.locationId === 'none') parts.push(sql`i.location_id IS NULL`);
 	else if (q.locationId) parts.push(sql`i.location_id = ${q.locationId}`);
 	if (q.condition) parts.push(sql`i.condition = ${q.condition}`);
+	if (q.setId === 'none') parts.push(sql`i.set_id IS NULL`);
+	else if (q.setId) parts.push(sql`i.set_id = ${q.setId}`);
 	return sql.join(parts, sql` AND `);
 }
 
 async function loadInventory(tx: Tx, q: Parameters<typeof itemFilter>[0]): Promise<Inventory> {
 	const items = await loadItems(tx, itemFilter(q));
-	const filtered = !!(q.search || q.categoryId || q.locationId || q.condition);
+	const filtered = !!(q.search || q.categoryId || q.locationId || q.condition || q.setId);
 	const typeWhere: SQL[] = [q.archived === '1' ? sql`TRUE` : sql`t.archived_at IS NULL`];
 	const typeIds = [...new Set(items.map((i) => i.typeId).filter((v): v is string => !!v))];
 	if (filtered) {
@@ -155,7 +166,9 @@ async function loadInventory(tx: Tx, q: Parameters<typeof itemFilter>[0]): Promi
 		if (q.search) own.push(sql`t.name ILIKE ${likePattern(q.search)}`);
 		if (q.categoryId) own.push(sql`t.category_id = ${q.categoryId}`);
 		const selfMatch =
-			own.length && !q.locationId && !q.condition ? sql.join(own, sql` AND `) : sql`FALSE`;
+			own.length && !q.locationId && !q.condition && !q.setId
+				? sql.join(own, sql` AND `)
+				: sql`FALSE`;
 		typeWhere.push(sql`(t.id IN (${idList(typeIds)}) OR ${selfMatch})`);
 	}
 	const types = await loadTypes(tx, sql.join(typeWhere, sql` AND `));
@@ -541,11 +554,12 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				const [used] = await rows(
 					tx,
 					sql`SELECT (SELECT count(*) FROM items WHERE type_id = ${params.id})
-						+ (SELECT count(*) FROM reservation_lines WHERE type_id = ${params.id}) AS n`
+						+ (SELECT count(*) FROM reservation_lines WHERE type_id = ${params.id})
+						+ (SELECT count(*) FROM tent_parts WHERE type_id = ${params.id}) AS n`
 				);
 				if (num(used?.n) > 0) {
 					throw errors.conflict(
-						'Der Typ hat noch Artikel oder Reservierungen – stattdessen archivieren'
+						'Der Typ hat noch Artikel, Reservierungen oder steht in einem Zelt – stattdessen archivieren'
 					);
 				}
 			});
@@ -600,15 +614,16 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				const now = new Date().toISOString();
 				for (const [i, id] of ids.entries()) {
 					await tx.execute(
-						sql`INSERT INTO items (id, type_id, name, category_id, quantity, location_id, code,
+						sql`INSERT INTO items (id, type_id, name, category_id, quantity, location_id, set_id, code,
 								condition, condition_note, condition_reported_by, condition_reported_at, notes, created_by)
 							VALUES (${id}, ${body.typeId}, ${names[i]!}, ${body.typeId ? null : body.categoryId},
-								${body.quantity}, ${body.locationId}, ${codes[i]!}, ${body.condition},
+								${body.quantity}, ${body.locationId}, ${body.setId}, ${codes[i]!}, ${body.condition},
 								${body.conditionNote},
 								${body.condition === 'ok' ? null : (ctx.userId ?? null)},
 								${body.condition === 'ok' ? null : now}, ${body.notes}, ${ctx.userId ?? null})`
 					);
 				}
+				await reassignLocked(tx);
 				return loadItems(tx, sql`i.id IN (${idList(ids)})`);
 			});
 			await core.audit.logFromContext(ctx, 'material.item.created', {
@@ -663,6 +678,7 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				else if (body.categoryId !== undefined) sets.push(sql`category_id = ${body.categoryId}`);
 				if (body.quantity !== undefined) sets.push(sql`quantity = ${body.quantity}`);
 				if (body.locationId !== undefined) sets.push(sql`location_id = ${body.locationId}`);
+				if (body.setId !== undefined) sets.push(sql`set_id = ${body.setId}`);
 				if (body.code !== undefined && body.code !== current.code) {
 					sets.push(sql`code = ${await claimCode(tx, body.code, params.id)}`);
 				}
@@ -681,6 +697,16 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 							: sql`archived_at = NULL`
 					);
 				await tx.execute(sql`UPDATE items SET ${sql.join(sets, sql`, `)} WHERE id = ${params.id}`);
+				// Typ, Anzahl, Zustand, Archiv oder Set ändern die Zuteilung
+				if (
+					body.typeId !== undefined ||
+					body.quantity !== undefined ||
+					body.condition !== undefined ||
+					body.archived !== undefined ||
+					body.setId !== undefined
+				) {
+					await reassignLocked(tx);
+				}
 				return requireItem(tx, params.id);
 			});
 			await core.audit.logFromContext(ctx, 'material.item.updated', { target: params.id });
@@ -707,6 +733,7 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 						condition_reported_by = ${ctx.userId ?? null}, condition_reported_at = now(), updated_at = now()
 						WHERE id = ${params.id}`
 				);
+				await reassignLocked(tx);
 				return requireItem(tx, params.id);
 			});
 			await core.audit.logFromContext(ctx, 'material.item.condition-reported', {
@@ -731,14 +758,26 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				await requireItem(tx, params.id);
 				const [used] = await rows(
 					tx,
-					sql`SELECT count(*) AS n FROM reservation_lines WHERE item_id = ${params.id}`
+					sql`SELECT (SELECT count(*) FROM reservation_lines WHERE item_id = ${params.id})
+						+ (SELECT count(*) FROM tent_parts WHERE item_id = ${params.id})
+						+ (SELECT count(*) FROM reservation_assignments a
+							JOIN reservations r ON r.id = a.reservation_id
+							WHERE a.item_id = ${params.id}
+								AND (a.pinned OR r.handed_out_at IS NOT NULL OR r.starts_on <= ${today()}::date)) AS n`
 				);
 				if (num(used?.n) > 0) {
-					throw errors.conflict('Der Artikel steht in Reservierungen – stattdessen archivieren');
+					throw errors.conflict(
+						'Der Artikel steht in Reservierungen oder einem Zelt – stattdessen archivieren'
+					);
 				}
 			});
 			await removeImagesOf('items', params.id);
-			await mdb().transaction((tx) => tx.execute(sql`DELETE FROM items WHERE id = ${params.id}`));
+			await mdb().transaction(async (tx) => {
+				// Automatische Zuteilungen kommender Reservierungen gehen an andere Artikel
+				await tx.execute(sql`DELETE FROM reservation_assignments WHERE item_id = ${params.id}`);
+				await tx.execute(sql`DELETE FROM items WHERE id = ${params.id}`);
+				await reassignLocked(tx);
+			});
 			await core.audit.logFromContext(ctx, 'material.item.deleted', { target: params.id });
 			return { deleted: true };
 		}

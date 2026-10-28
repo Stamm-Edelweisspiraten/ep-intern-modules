@@ -18,6 +18,18 @@
 	} = $props();
 
 	const none = $derived(entry.free <= 0);
+	const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+	const subtitle = $derived(
+		entry.kind === 'tent'
+			? `Zelt · ${count(entry.parts.length, 'Teil', 'Teile')}`
+			: [
+					entry.category?.name ?? 'Ohne Kategorie',
+					entry.kind === 'type' ? count(entry.items.length, 'Artikel', 'Artikel') : '',
+					entry.kind === 'type' && entry.sets.length ? count(entry.sets.length, 'Set', 'Sets') : ''
+				]
+					.filter(Boolean)
+					.join(' · ')
+	);
 </script>
 
 <Card.Root class="flex h-full flex-col gap-0 overflow-hidden py-0">
@@ -46,8 +58,7 @@
 	<div class="flex flex-1 flex-col gap-1.5 p-4">
 		<h3 class="leading-snug font-semibold">{entry.name}</h3>
 		<p class="truncate text-xs text-muted-foreground">
-			{entry.category?.name ?? 'Ohne Kategorie'}{#if entry.kind === 'type'}
-				· {entry.items.length === 1 ? '1 Artikel' : `${entry.items.length} Artikel`}{/if}
+			{subtitle}
 		</p>
 		<div class="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2">
 			<span class={['text-sm tabular-nums', none ? 'text-muted-foreground' : 'font-medium']}>

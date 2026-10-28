@@ -2,6 +2,7 @@
 	// Warenkorb zum Reservieren (wie `orders/CartPanel`): Zeilen mit Anzahl/Entfernen und Warnung,
 	// darunter Titel, Zweck (Aktion/Gruppe/Sonstiges), Notiz und Absenden. Absenden übernimmt der Aufrufer.
 	import Boxes from '@lucide/svelte/icons/boxes';
+	import Info from '@lucide/svelte/icons/info';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -25,6 +26,7 @@
 	let {
 		draft = $bindable(),
 		issues,
+		notes = {},
 		errors,
 		options,
 		optionsError,
@@ -38,6 +40,8 @@
 		draft: CartDraft;
 		/** Warnung je Zeile (`lineKey` → Text) */
 		issues: Record<string, string>;
+		/** Voraussichtliche Zuteilung je Zeile (`lineKey` → Text, z. B. „aus Set KJ1“) */
+		notes?: Record<string, string>;
 		/** Feldfehler (`title`, `actionId`, `groupId`, `notes`, …) */
 		errors: Record<string, string>;
 		options: PurposeOptions | null;
@@ -106,6 +110,8 @@
 								<p class="text-xs text-muted-foreground">
 									{#if line.kind === 'type'}
 										beliebige
+									{:else if line.kind === 'tent'}
+										Zelt
 									{:else}
 										<span class="font-mono">{line.code ?? ''}</span>
 									{/if}
@@ -122,7 +128,7 @@
 								<Trash2 />
 							</Button>
 						</div>
-						{#if line.kind === 'type' || (line.max ?? 2) > 1}
+						{#if line.kind !== 'item' || (line.max ?? 2) > 1}
 							<NumberStepper
 								label={`Anzahl ${line.name}`}
 								value={line.quantity}
@@ -137,6 +143,11 @@
 							<p class="flex items-start gap-1 text-xs text-warning" role="alert">
 								<TriangleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 								{issue}
+							</p>
+						{:else if notes[key]}
+							<p class="flex items-start gap-1 text-xs text-muted-foreground">
+								<Info class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+								{notes[key]}
 							</p>
 						{/if}
 					</div>

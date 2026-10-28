@@ -69,8 +69,8 @@
 							{formatPeriod(r.startsOn, r.endsOn)}{r.itemSummary ? ` · ${r.itemSummary}` : ''}
 						</span>
 					</span>
-					<Badge variant={STATE_VARIANTS[r.state]} class="shrink-0">
-						{RESERVATION_STATE_LABELS[r.state]}
+					<Badge variant={r.handedOut ? 'success' : STATE_VARIANTS[r.state]} class="shrink-0">
+						{r.handedOut ? 'Ausgegeben' : RESERVATION_STATE_LABELS[r.state]}
 					</Badge>
 				</a>
 			</li>

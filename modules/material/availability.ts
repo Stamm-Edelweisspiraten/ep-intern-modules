@@ -5,7 +5,8 @@
  * oder „N von Artikel I“. Je Tag gilt:
  * - Artikel I: frei = Anzahl(I, nutzbar) − Σ Artikel-Zeilen(I)
  * - Typ T: frei = Σ nutzbare Anzahl der Artikel von T − Σ Artikel-Zeilen(Artikel von T) − Σ Typ-Zeilen(T)
- * Das reicht aus, weil Typ-Zeilen jeden Artikel des Typs nehmen dürfen. Über einen Zeitraum zählt das
+ * Feste Zuteilungen (`assigned`) zählen nur beim Artikel. Das reicht aus, weil Typ-Zeilen jeden Artikel des
+ * Typs nehmen dürfen. Über einen Zeitraum zählt das
  * Minimum aller Tage; geprüft werden nur der Beginn und die Tage, an denen eine Belegung beginnt
  * (dort ist die Summe der Belegungen am größten).
  */
@@ -24,6 +25,11 @@ export interface Booking {
 	typeId: string | null;
 	itemId: string | null;
 	quantity: number;
+	/**
+	 * Feste Zuteilung eines Artikels zu einer Typ-Zeile (angeheftet oder ausgegeben): belegt den Artikel,
+	 * zählt aber nicht noch einmal gegen den Typ (das tut die Typ-Zeile schon)
+	 */
+	assigned?: boolean;
 }
 
 export interface Period {
@@ -108,7 +114,7 @@ export class AvailabilityIndex {
 		const usableIds = new Set(members.filter((s) => s.usable).map((s) => s.id));
 		const total = this.totalType(typeId);
 		const list = this.relevant(extra).filter(
-			(b) => b.typeId === typeId || (b.itemId !== null && usableIds.has(b.itemId))
+			(b) => !b.assigned && (b.typeId === typeId || (b.itemId !== null && usableIds.has(b.itemId)))
 		);
 		let min = total;
 		for (const day of checkDays(list, p)) {

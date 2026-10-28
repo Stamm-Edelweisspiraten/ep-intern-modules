@@ -15,7 +15,8 @@
 		selected = $bindable([]),
 		label = 'Suchen',
 		id = 'item-picker',
-		max = 200
+		max = 200,
+		seed = []
 	}: {
 		/** Lagerartikel oder Lagerorte */
 		target: 'item' | 'location';
@@ -26,6 +27,8 @@
 		id?: string;
 		/** Höchstzahl wählbarer Objekte */
 		max?: number;
+		/** Bekannte Einträge für schon gewählte IDs (Chips mit Namen, bevor die Suche sie liefert) */
+		seed?: { id: string; title: string; detail?: string; code: string }[];
 	} = $props();
 
 	interface Option {
@@ -49,7 +52,9 @@
 	const itemOption = (i: Item): Option => ({
 		id: i.id,
 		title: i.quantity > 1 ? `${i.name} (${i.quantity} ×)` : i.name,
-		detail: [i.typeName, i.locationName].filter(Boolean).join(' · '),
+		detail: [i.typeName, i.setName ? `Set ${i.setName}` : '', i.locationName]
+			.filter(Boolean)
+			.join(' · '),
 		code: i.code
 	});
 	const locationOption = (l: Location): Option => ({
@@ -62,6 +67,10 @@
 	function remember(list: Option[]) {
 		for (const o of list) known.set(o.id, o);
 	}
+
+	$effect(() => {
+		for (const o of seed) if (!known.has(o.id)) known.set(o.id, { detail: '', ...o });
+	});
 
 	async function search(q: string) {
 		const mine = ++seq;

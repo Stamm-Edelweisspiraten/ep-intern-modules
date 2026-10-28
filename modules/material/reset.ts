@@ -7,22 +7,26 @@ export const resetAreas: ResetArea[] = [
 		id: 'reservations',
 		label: 'Reservierungen',
 		description: 'Löscht alle Materialreservierungen.',
-		tables: ['reservation_lines', 'reservations']
+		tables: ['reservation_assignments', 'reservation_lines', 'reservations']
 	},
 	{
 		id: 'all',
 		label: 'Gesamter Materialbestand',
 		description:
-			'Löscht Lagerorte, Kategorien, Typen, Lagerartikel (inkl. Bilder), Reservierungen und Etiketten.',
+			'Löscht Lagerorte, Kategorien, Typen, Lagerartikel (inkl. Bilder), Sets, Zelte, Reservierungen und Etiketten.',
 		implies: [
 			{ area: 'material:reservations', reason: 'Reservierungen verweisen auf den Bestand' }
 		],
 		// Kind vor Eltern
 		tables: [
+			'reservation_assignments',
 			'reservation_lines',
 			'reservations',
+			'tent_parts',
+			'tents',
 			'images',
 			'items',
+			'sets',
 			'types',
 			'categories',
 			'locations',
@@ -44,6 +48,8 @@ export const USER_COLUMNS: [string, string][] = [
 	['items', 'condition_reported_by'],
 	['images', 'uploaded_by'],
 	['reservations', 'created_by'],
+	['reservations', 'handed_out_by'],
+	['tents', 'created_by'],
 	['label_templates', 'created_by'],
 	['reserved_codes', 'created_by']
 ];

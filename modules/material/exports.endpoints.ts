@@ -32,6 +32,7 @@ import {
 	type InventoryColumn,
 	type Item,
 	type Reservation,
+	type ReservationLine,
 	type ReservationListItem
 } from './schemas';
 
@@ -103,6 +104,8 @@ function itemCell(item: Item, column: InventoryColumn, pdf: boolean): string {
 			return item.category?.name ?? '';
 		case 'location':
 			return item.locationName ?? '';
+		case 'set':
+			return item.setName ?? '';
 		case 'quantity':
 			return String(item.quantity);
 		case 'condition':
@@ -214,16 +217,56 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 		handler: async ({ ctx, params, query }) => {
 			const r = await fullReservation(ctx, params.id);
 			const places = await typePlaces(
-				r.lines.flatMap((l) => (l.kind === 'type' && l.typeId ? [l.typeId] : []))
+				r.lines
+					.flatMap((l) => (l.kind === 'tent' ? l.parts : [l]))
+					.flatMap((l) => (l.kind === 'type' && l.typeId ? [l.typeId] : []))
 			);
 			const lines = r.lines
-				.map((l) => ({
-					name: l.kind === 'type' ? `${l.name} (beliebige)` : l.name,
-					code: l.code ?? '',
-					place: l.kind === 'type' ? (places.get(l.typeId ?? '') ?? '') : (l.locationName ?? ''),
-					quantity: String(l.quantity)
-				}))
-				.sort((a, b) => a.place.localeCompare(b.place, 'de') || a.name.localeCompare(b.name, 'de'));
+				.flatMap((l): { line: ReservationLine; tent: ReservationLine | null }[] =>
+					l.kind === 'tent' ? l.parts.map((p) => ({ line: p, tent: l })) : [{ line: l, tent: null }]
+				)
+				.flatMap(({ line: l, tent }) => {
+					const group = (setName: string | null) =>
+						[
+							tent ? `${tent.name}${l.label ? ` – ${l.label}` : ''}` : '',
+							setName ? `Set ${setName}` : ''
+						]
+							.filter(Boolean)
+							.join(' · ');
+					if (l.kind !== 'type') {
+						return [
+							{
+								name: l.name,
+								code: l.code ?? '',
+								place: l.locationName ?? '',
+								group: group(null),
+								quantity: String(l.quantity)
+							}
+						];
+					}
+					const out = l.assignments.map((a) => ({
+						name: a.name,
+						code: a.code,
+						place: a.locationName ?? '',
+						group: group(a.setName),
+						quantity: String(a.quantity)
+					}));
+					if (l.missing > 0) {
+						out.push({
+							name: `${l.name} (beliebige, noch nicht zugeteilt)`,
+							code: '',
+							place: places.get(l.typeId ?? '') ?? '',
+							group: group(null),
+							quantity: String(l.missing)
+						});
+					}
+					return out;
+				})
+				.sort(
+					(a, b) =>
+						a.place.localeCompare(b.place, 'de') ||
+						a.name.localeCompare(b.name, 'de', { numeric: true })
+				);
 			const pdf = query.format === 'pdf';
 			await core.audit.logFromContext(ctx, 'material.reservation.packing-list', {
 				target: r.id,
@@ -245,15 +288,17 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 							'Material',
 							'Code',
 							'Lagerort',
+							'Zelt / Set',
 							'Anzahl',
 							...(pdf ? ['Gepackt', 'Zurück'] : [])
 						],
-						widths: pdf ? [32, 12, 28, 8, 10, 10] : undefined,
-						align: ['left', 'left', 'left', 'right', 'center', 'center'],
+						widths: pdf ? [26, 11, 20, 21, 7, 8, 7] : undefined,
+						align: ['left', 'left', 'left', 'left', 'right', 'center', 'center'],
 						rows: lines.map((l) => [
 							l.name,
 							l.code,
 							l.place,
+							l.group,
 							l.quantity,
 							...(pdf ? ['☐', '☐'] : [])
 						])

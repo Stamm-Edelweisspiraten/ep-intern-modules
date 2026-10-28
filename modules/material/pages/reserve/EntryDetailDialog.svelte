@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Eintrag ansehen und in den Warenkorb legen (wie `orders/ArticleDetailDialog`). Typen: beliebige
-	// Anzahl UND/ODER konkrete Artikel ankreuzen. Artikel ohne Typ: Anzahl. Der Aufrufer rendert den
-	// Dialog per `{#key}` neu, damit die Auswahl bei jedem Öffnen frisch beginnt.
+	// Anzahl UND/ODER ganze Sets bzw. konkrete Artikel ankreuzen. Artikel ohne Typ: Anzahl. Zelte: Anzahl
+	// (die Teile teilt der Server zu). Der Aufrufer rendert den Dialog per `{#key}` neu, damit die Auswahl
+	// bei jedem Öffnen frisch beginnt.
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import MapPin from '@lucide/svelte/icons/map-pin';
@@ -11,10 +12,20 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { NumberStepper } from '$lib/components/layout';
 	import { cn } from '$lib/utils';
-	import { isUsableCondition, type CatalogEntry, type CatalogItem } from '../../schemas';
+	import {
+		isUsableCondition,
+		type CatalogEntry,
+		type CatalogItem,
+		type CatalogSet
+	} from '../../schemas';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
-	import { itemQuantityInCart, typeQuantityInCart, type CartLine } from './cart';
+	import {
+		itemQuantityInCart,
+		tentQuantityInCart,
+		typeQuantityInCart,
+		type CartLine
+	} from './cart';
 
 	let {
 		open = $bindable(false),
@@ -75,15 +86,48 @@
 		if (anyQty > maxAny) anyQty = maxAny;
 	}
 
+	// --- Ganze Sets (Typ) ------------------------------------------------------------
+	const setSelectable = (s: CatalogSet) =>
+		s.wholeFree && s.itemIds.every((id) => itemQuantityInCart(lines, id) === 0);
+	const setPicked = (s: CatalogSet) => s.itemIds.every((id) => picked.includes(id));
+
+	function toggleSet(s: CatalogSet, on: boolean) {
+		const ids = new Set(s.itemIds);
+		picked = on
+			? [...picked.filter((x) => !ids.has(x)), ...s.itemIds]
+			: picked.filter((x) => !ids.has(x));
+		if (anyQty > maxAny) anyQty = maxAny;
+	}
+
+	// --- Zelt ------------------------------------------------------------------------
+	const isTent = $derived(entry.kind === 'tent');
+	const inCartTent = $derived(isTent ? tentQuantityInCart(lines, entry.id) : 0);
+	const maxTent = $derived(Math.max(0, entry.free - inCartTent));
+	let tentQty = $state(1);
+
 	// --- Artikel ohne Typ ----------------------------------------------------------
 	let qty = $state(1);
 	const maxItem = $derived(Math.max(0, entry.free - (isType ? 0 : inCartItems)));
 
-	const canAdd = $derived(isType ? anyQty > 0 || picked.length > 0 : maxItem > 0 && qty >= 1);
+	const canAdd = $derived(
+		isTent
+			? maxTent > 0 && tentQty >= 1
+			: isType
+				? anyQty > 0 || picked.length > 0
+				: maxItem > 0 && qty >= 1
+	);
 
 	function add() {
 		const out: CartLine[] = [];
-		if (isType) {
+		if (isTent) {
+			out.push({
+				kind: 'tent',
+				tentId: entry.id,
+				name: entry.name,
+				thumbUrl: entry.thumbUrl,
+				quantity: Math.min(tentQty, maxTent)
+			});
+		} else if (isType) {
 			if (anyQty > 0) {
 				out.push({
 					kind: 'type',
@@ -126,7 +170,8 @@
 		<Dialog.Header>
 			<Dialog.Title>{entry.name}</Dialog.Title>
 			<Dialog.Description class="tabular-nums">
-				{entry.category?.name ?? 'Ohne Kategorie'} · frei {entry.free} von {entry.total} · {period}
+				{isTent ? 'Zelt' : (entry.category?.name ?? 'Ohne Kategorie')} · frei {entry.free} von {entry.total}
+				· {period}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -187,6 +232,27 @@
 				{#if entry.description}
 					<p class="text-sm whitespace-pre-line">{entry.description}</p>
 				{/if}
+				{#if isTent}
+					<div class="space-y-1">
+						<h3 class="text-sm font-medium">Je Zelt</h3>
+						<ul class="divide-y rounded-md border text-sm">
+							{#each entry.parts as p, i (i)}
+								<li class="flex items-baseline justify-between gap-3 px-3 py-2">
+									<span class="min-w-0">
+										{#if p.label}<span class="font-medium">{p.label}:</span>{/if}
+										{p.name}
+										{#if p.fromOneSet}
+											<span class="block text-xs text-muted-foreground"
+												>möglichst aus einem Set</span
+											>
+										{/if}
+									</span>
+									<span class="shrink-0 tabular-nums">{p.quantity} ×</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
 				{#if entry.kind === 'item' && (entry.code || entry.locationName)}
 					<p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 						{#if entry.locationName}
@@ -205,11 +271,27 @@
 					<p class="text-xs text-muted-foreground">
 						Du darfst das Material ansehen, aber nicht reservieren.
 					</p>
+				{:else if isTent}
+					<div class="space-y-2">
+						<span class="text-sm font-medium">Anzahl Zelte</span>
+						<p class="text-xs text-muted-foreground">
+							Die Bahnen werden automatisch zugeteilt – möglichst zusammengehörige Sets. Ist keins
+							mehr vollständig frei, werden Bahnen aus verschiedenen Sets kombiniert.
+							{#if inCartTent}Schon im Warenkorb: {inCartTent}.{/if}
+						</p>
+						{#if maxTent > 0}
+							<NumberStepper label="Anzahl Zelte" bind:value={tentQty} min={1} max={maxTent} />
+						{:else}
+							<p class="text-sm text-muted-foreground">
+								{inCartTent ? 'Alle freien liegen schon im Warenkorb.' : 'Im Zeitraum nicht frei.'}
+							</p>
+						{/if}
+					</div>
 				{:else if entry.kind === 'type'}
 					<div class="space-y-2">
 						<span class="text-sm font-medium">Beliebige {entry.name}</span>
 						<p class="text-xs text-muted-foreground">
-							Die Materialwart*in sucht passende Artikel aus.
+							Konkrete Artikel werden automatisch zugeteilt – bevorzugt ganze Sets.
 							{#if inCartType}Schon im Warenkorb: {inCartType}.{/if}
 						</p>
 						<NumberStepper
@@ -220,6 +302,43 @@
 							disabled={maxAny === 0 && anyQty === 0}
 						/>
 					</div>
+
+					{#if entry.sets.length}
+						<fieldset class="space-y-2">
+							<legend class="mb-1 text-sm font-medium">Oder ganze Sets</legend>
+							<ul class="divide-y rounded-md border">
+								{#each entry.sets as s (s.id)}
+									{@const ok = setSelectable(s)}
+									<li>
+										<label
+											class={cn(
+												'flex items-center gap-3 px-3 py-2',
+												ok ? 'cursor-pointer hover:bg-muted/50' : 'opacity-60'
+											)}
+										>
+											<Checkbox
+												checked={setPicked(s)}
+												disabled={!ok}
+												onCheckedChange={(v) => toggleSet(s, v === true)}
+											/>
+											<span class="min-w-0 flex-1 text-sm">
+												<span class="font-medium">Set {s.name}</span>
+												<span class="text-muted-foreground tabular-nums"> · {s.size} Stück</span>
+											</span>
+											<span
+												class={cn(
+													'shrink-0 text-xs',
+													ok ? 'text-success' : 'text-muted-foreground'
+												)}
+											>
+												{ok ? 'Ganz frei' : s.wholeFree ? 'Im Warenkorb' : 'Teilweise belegt'}
+											</span>
+										</label>
+									</li>
+								{/each}
+							</ul>
+						</fieldset>
+					{/if}
 
 					{#if entry.items.length}
 						<fieldset class="space-y-2">
@@ -246,8 +365,11 @@
 													<ConditionBadge condition={i.condition} hideOk />
 												</span>
 												<span class="block text-xs text-muted-foreground">
-													<span class="font-mono">{i.code}</span>{#if i.locationName}
-														· {i.locationName}{/if}
+													<span class="font-mono">{i.code}</span>
+													{[i.setName ? `Set ${i.setName}` : '', i.locationName ?? '']
+														.filter(Boolean)
+														.map((x) => ` · ${x}`)
+														.join('')}
 												</span>
 											</span>
 											<span
@@ -282,6 +404,8 @@
 						<span class="text-sm text-muted-foreground tabular-nums">
 							{#if entry.free <= 0}
 								Im Zeitraum nicht frei
+							{:else if isTent}
+								frei {maxTent} von {entry.total}
 							{:else}
 								frei {restFree} von {entry.total}
 							{/if}

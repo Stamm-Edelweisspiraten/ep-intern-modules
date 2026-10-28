@@ -139,6 +139,7 @@ async function labelValues(
 				type: i.typeName ?? '',
 				category: i.category?.name ?? '',
 				location: i.locationName ?? '',
+				set: i.setName ?? '',
 				quantity: String(i.quantity)
 			};
 		});

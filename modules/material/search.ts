@@ -1,5 +1,6 @@
 /**
- * Globale Suche (Befehlspalette): Lagerartikel (Code, Name), Typen, Lagerorte und offene Reservierungen.
+ * Globale Suche (Befehlspalette): Lagerartikel (Code, Name), Typen, Sets, Zelte, Lagerorte und offene
+ * Reservierungen.
  * Alles mit `material.inventory.view` sichtbar (wie in der Oberfläche).
  */
 import { sql } from 'drizzle-orm';
@@ -42,6 +43,33 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				title: String(t.name),
 				subtitle: 'Typ',
 				href: `${BASE_PATH}?tab=lager&type=${String(t.id)}`,
+				icon: 'boxes'
+			});
+		}
+		for (const s of await rows(
+			tx,
+			sql`SELECT id, name FROM sets WHERE name ILIKE ${p} ORDER BY lower(name) LIMIT ${limit}`
+		)) {
+			hits.push({
+				id: `set:${String(s.id)}`,
+				type: 'Material-Set',
+				title: String(s.name),
+				subtitle: 'Set',
+				href: `${BASE_PATH}?tab=lager&set=${String(s.id)}`,
+				icon: 'boxes'
+			});
+		}
+		for (const z of await rows(
+			tx,
+			sql`SELECT id, name FROM tents WHERE archived_at IS NULL AND name ILIKE ${p}
+				ORDER BY lower(name) LIMIT ${limit}`
+		)) {
+			hits.push({
+				id: `tent:${String(z.id)}`,
+				type: 'Zelt',
+				title: String(z.name),
+				subtitle: 'Zelt (Bauplan)',
+				href: `${BASE_PATH}?tab=lager&view=tents&tent=${String(z.id)}`,
 				icon: 'boxes'
 			});
 		}

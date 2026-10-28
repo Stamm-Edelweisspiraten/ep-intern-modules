@@ -22,6 +22,7 @@
 		type ImageRef,
 		type Item,
 		type Location,
+		type MaterialSet,
 		type MaterialType
 	} from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
@@ -30,6 +31,7 @@
 		categoryOptions,
 		conditionOptions,
 		locationOptions,
+		setOptions,
 		previewNames,
 		typeOptions,
 		type ItemPreset
@@ -41,6 +43,7 @@
 		preset = {},
 		categories,
 		locations,
+		sets = [],
 		onsaved
 	}: {
 		open?: boolean;
@@ -49,6 +52,8 @@
 		preset?: ItemPreset;
 		categories: Category[];
 		locations: Location[];
+		/** Sets zur Auswahl (ein Artikel gehört höchstens zu einem Set) */
+		sets?: MaterialSet[];
 		/** Nach dem Speichern (angelegte bzw. geänderte Artikel) */
 		onsaved: (items: Item[]) => void;
 	} = $props();
@@ -63,6 +68,7 @@
 	let categoryId = $state<string | null>(null);
 	let quantity = $state(1);
 	let locationId = $state<string | null>(null);
+	let setId = $state<string | null>(null);
 	let code = $state('');
 	let condition = $state<string | null>('ok');
 	let conditionNote = $state('');
@@ -91,6 +97,7 @@
 			categoryId = item?.typeId ? null : (item?.categoryId ?? null);
 			quantity = item?.quantity ?? 1;
 			locationId = item?.locationId ?? preset.locationId ?? null;
+			setId = item?.setId ?? preset.setId ?? null;
 			code = item?.code ?? preset.code ?? '';
 			condition = item?.condition ?? 'ok';
 			conditionNote = item?.conditionNote ?? '';
@@ -140,6 +147,7 @@
 			categoryId: typeId ? null : categoryId,
 			quantity,
 			locationId,
+			setId,
 			condition: (condition ?? 'ok') as Condition,
 			conditionNote: condition === 'ok' ? '' : conditionNote,
 			notes
@@ -355,6 +363,23 @@
 						/>
 					</FormField>
 				</div>
+
+				{#if sets.length || setId}
+					<FormField
+						label="Set"
+						id="item-set"
+						hint="Zusammengehörige Artikel, z. B. die sechs Bahnen einer Jurte. Beim Reservieren werden ganze Sets bevorzugt."
+						error={errors.setId}
+					>
+						<SelectField
+							id="item-set"
+							label="Set"
+							options={setOptions(sets)}
+							emptyLabel="Kein Set"
+							bind:value={setId}
+						/>
+					</FormField>
+				{/if}
 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<FormField label="Zustand" id="item-condition" error={errors.condition}>

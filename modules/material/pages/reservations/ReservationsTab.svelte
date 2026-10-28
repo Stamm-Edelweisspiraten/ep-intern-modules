@@ -229,7 +229,11 @@
 			</Table.Cell>
 			{#if scope === 'all'}<Table.Cell>{r.createdByName}</Table.Cell>{/if}
 			<Table.Cell>
-				<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
+				<span class="flex flex-wrap gap-1">
+					<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
+					{#if r.handedOut && r.state !== 'cancelled'}<Badge variant="success">Ausgegeben</Badge
+						>{/if}
+				</span>
 			</Table.Cell>
 		</Table.Row>
 	{/each}

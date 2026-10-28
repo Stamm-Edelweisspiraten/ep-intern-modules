@@ -169,6 +169,7 @@ export const LABEL_FIELDS: Record<LabelTarget, { key: string; label: string; sam
 		{ key: 'url', label: 'Scan-Link (für QR)', sample: `${URL_SAMPLE}M-000123` },
 		{ key: 'category', label: 'Kategorie', sample: 'Zelte' },
 		{ key: 'location', label: 'Lagerort', sample: 'Kiste 1' },
+		{ key: 'set', label: 'Set', sample: 'KJ1' },
 		{ key: 'quantity', label: 'Anzahl', sample: '21' },
 		ORG_FIELD
 	],
@@ -311,6 +312,8 @@ export const itemInput = z
 		categoryId: optionalId,
 		quantity: quantity.default(1),
 		locationId: optionalId,
+		/** Set, zu dem der Artikel gehört (z. B. „KJ1“) */
+		setId: optionalId,
 		/** Eigener Code (z. B. vorab gedrucktes Etikett); leer = automatisch */
 		code: code.nullish().transform((v) => v ?? null),
 		condition: z.enum(CONDITIONS).default('ok'),
@@ -337,6 +340,7 @@ export const itemUpdateInput = z.object({
 	categoryId: optionalId.optional(),
 	quantity: quantity.optional(),
 	locationId: optionalId.optional(),
+	setId: optionalId.optional(),
 	code: code.optional(),
 	condition: z.enum(CONDITIONS).optional(),
 	conditionNote: text(MAX_NOTE).optional(),
@@ -368,6 +372,8 @@ export interface Item {
 	quantity: number;
 	locationId: string | null;
 	locationName: string | null;
+	setId: string | null;
+	setName: string | null;
 	condition: Condition;
 	conditionNote: string;
 	conditionReportedAt: string | null;
@@ -395,8 +401,102 @@ export const inventoryQuery = z.object({
 	/** UUID oder `none` (ohne Ort) */
 	locationId: z.union([z.uuid(), z.literal('none')]).optional(),
 	condition: z.enum(CONDITIONS).optional(),
+	/** UUID oder `none` (ohne Set) */
+	setId: z.union([z.uuid(), z.literal('none')]).optional(),
 	archived: z.enum(['0', '1']).optional()
 });
+
+// --- Sets ----------------------------------------------------------------------
+
+/** Ein Set fasst zusammengehörige Artikel zusammen (z. B. „KJ1“ = Kohtenbahnen KJ1.1–KJ1.6) */
+export const setInput = z.object({ name, notes: text(MAX_TEXT) });
+export const setUpdateInput = setInput.partial();
+export const setItemsInput = z.object({ itemIds: z.array(z.uuid()).max(MAX_BATCH_ITEMS) });
+
+export interface SetMember {
+	id: string;
+	name: string;
+	code: string;
+	typeId: string | null;
+	typeName: string | null;
+	quantity: number;
+	condition: Condition;
+	usable: boolean;
+	locationName: string | null;
+}
+
+export interface MaterialSet {
+	id: string;
+	name: string;
+	notes: string;
+	position: number;
+	items: SetMember[];
+	/** Einheiten gesamt / davon nutzbar */
+	total: number;
+	usable: number;
+	complete: boolean;
+	/** Nächste laufende oder kommende Reservierung, der Artikel des Sets zugeteilt sind */
+	nextUse: ReservationRef | null;
+}
+
+// --- Zelte (Bauplan) -----------------------------------------------------------
+
+export const MAX_TENT_PARTS = 30;
+export const MAX_PART_LABEL = 60;
+
+const partLabel = z
+	.string()
+	.trim()
+	.max(MAX_PART_LABEL, `Höchstens ${MAX_PART_LABEL} Zeichen`)
+	.nullish()
+	.transform((v) => v ?? '');
+
+export const tentPartInput = z.discriminatedUnion('kind', [
+	z.object({
+		kind: z.literal('type'),
+		typeId: z.uuid(),
+		label: partLabel,
+		quantity,
+		/** Je Zelt möglichst alle Einheiten aus einem Set (z. B. Dach aus KJ1) */
+		fromOneSet: z.boolean().default(false)
+	}),
+	z.object({ kind: z.literal('item'), itemId: z.uuid(), label: partLabel, quantity })
+]);
+export type TentPartInput = z.input<typeof tentPartInput>;
+
+export const tentInput = z.object({
+	name,
+	description: text(MAX_TEXT),
+	categoryId: optionalId,
+	parts: z.array(tentPartInput).min(1, 'Mindestens ein Teil').max(MAX_TENT_PARTS)
+});
+export const tentUpdateInput = tentInput.partial().extend({ archived: z.boolean().optional() });
+
+export interface TentPart {
+	id: string;
+	kind: 'type' | 'item';
+	typeId: string | null;
+	itemId: string | null;
+	/** Typ- bzw. Artikelname */
+	name: string;
+	label: string;
+	quantity: number;
+	fromOneSet: boolean;
+}
+
+export interface Tent {
+	id: string;
+	name: string;
+	description: string;
+	categoryId: string | null;
+	category: CategoryRef | null;
+	archived: boolean;
+	parts: TentPart[];
+	/** Bild des ersten Teils mit Bild */
+	thumbUrl: string | null;
+	/** In Reservierungen verwendet (dann nur archivieren) */
+	used: boolean;
+}
 
 /** Große Lagertabelle: Typen mit ihren Artikeln, dazu Artikel ohne Typ */
 export interface Inventory {
@@ -426,11 +526,25 @@ export interface CatalogItem {
 	condition: Condition;
 	/** Eigenes Bild bzw. Titelbild des Typs */
 	thumbUrl: string | null;
+	setId: string | null;
+	setName: string | null;
+}
+
+/** Set innerhalb eines Typs im Katalog („ganzes Set KJ1 wählen“) */
+export interface CatalogSet {
+	id: string;
+	name: string;
+	/** Nutzbare Artikel dieses Typs im Set */
+	itemIds: string[];
+	/** Einheiten des Typs im Set */
+	size: number;
+	/** Alle Einheiten im Zeitraum frei */
+	wholeFree: boolean;
 }
 
 export interface CatalogEntry {
-	/** `type` = Typ mit Artikeln, `item` = Artikel ohne Typ */
-	kind: 'type' | 'item';
+	/** `type` = Typ mit Artikeln, `item` = Artikel ohne Typ, `tent` = Zelt (Bauplan) */
+	kind: 'type' | 'item' | 'tent';
 	id: string;
 	name: string;
 	description: string;
@@ -445,6 +559,10 @@ export interface CatalogEntry {
 	/** Nur `item`: Code und Ort */
 	code: string | null;
 	locationName: string | null;
+	/** Nur `type`: Sets mit Artikeln dieses Typs */
+	sets: CatalogSet[];
+	/** Nur `tent`: Bestandteile je Zelt */
+	parts: { label: string; name: string; quantity: number; fromOneSet: boolean }[];
 }
 
 export interface Catalog {
@@ -457,7 +575,8 @@ export interface Catalog {
 
 export const reservationLineInput = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('type'), typeId: z.uuid(), quantity }),
-	z.object({ kind: z.literal('item'), itemId: z.uuid(), quantity })
+	z.object({ kind: z.literal('item'), itemId: z.uuid(), quantity }),
+	z.object({ kind: z.literal('tent'), tentId: z.uuid(), quantity })
 ]);
 export type ReservationLineInput = z.infer<typeof reservationLineInput>;
 
@@ -515,18 +634,52 @@ export interface ReservationRef {
 	status: ReservationStatus;
 }
 
+export const lineParams = z.object({ id: z.uuid(), lineId: z.uuid() });
+
+/** Zuteilung einer Typ-Zeile von Hand festlegen (angeheftet; den Rest teilt das System zu) */
+export const assignmentInput = z.object({
+	items: z.array(z.object({ itemId: z.uuid(), quantity })).max(MAX_RESERVATION_LINES)
+});
+
+/** Konkreter Artikel einer Typ-Zeile */
+export interface LineAssignment {
+	itemId: string;
+	name: string;
+	code: string;
+	setId: string | null;
+	setName: string | null;
+	locationName: string | null;
+	quantity: number;
+	/** Von Hand festgelegt (wird nicht umgeplant) */
+	pinned: boolean;
+	/** Nummer des Zelts (bei Zelt-Teilen) */
+	slot: number;
+}
+
 export interface ReservationLine {
 	id: string;
-	kind: 'type' | 'item';
+	kind: 'type' | 'item' | 'tent';
 	typeId: string | null;
 	itemId: string | null;
-	/** Typ- bzw. Artikelname */
+	tentId: string | null;
+	/** Typ-, Artikel- bzw. Zeltname */
 	name: string;
+	/** Bezeichnung des Zelt-Teils („Dach“) */
+	label: string;
 	/** Nur Artikel */
 	code: string | null;
 	locationName: string | null;
 	quantity: number;
 	thumbUrl: string | null;
+	/** Nur Typ-Zeilen: zugeteilte Artikel */
+	assignments: LineAssignment[];
+	/** Nur Typ-Zeilen: noch nicht zugeteilt */
+	missing: number;
+	/** Nur Zelt-Teile mit „aus einem Set“: Einheiten je Zelt und Zelte ohne einheitliches Set */
+	slotSize: number | null;
+	mixedSlots: number;
+	/** Nur Zelt-Zeilen: die Teile */
+	parts: ReservationLine[];
 }
 
 export interface Reservation extends ReservationRef {
@@ -542,6 +695,12 @@ export interface Reservation extends ReservationRef {
 	createdAt: string;
 	lines: ReservationLine[];
 	canEdit: boolean;
+	handedOutAt: string | null;
+	handedOutByName: string | null;
+	/** Ausgabe markieren/zurücknehmen und Zuteilung ändern (Verwaltung) */
+	canHandOut: boolean;
+	/** Hinweise zur Zuteilung („Jurte: 1 von 2 aus Bahnen verschiedener Sets“, „2 nicht zugeteilt“) */
+	notices: string[];
 }
 
 export interface ReservationListItem extends ReservationRef {
@@ -557,6 +716,7 @@ export interface ReservationListItem extends ReservationRef {
 	itemSummary: string;
 	mine: boolean;
 	canEdit: boolean;
+	handedOut: boolean;
 }
 
 export interface ReservationPage {
@@ -571,6 +731,8 @@ export interface LineAvailability {
 	/** Höchstens so viele wären im Zeitraum frei */
 	available: number;
 	message: string | null;
+	/** Voraussichtliche Zuteilung („aus Set KJ1“, „gemischt aus KJ1 + KJ3“) */
+	note: string | null;
 }
 
 /** Auswahl für den Zweck */
@@ -661,6 +823,7 @@ export const INVENTORY_COLUMNS = [
 	{ key: 'type', label: 'Typ', default: true },
 	{ key: 'category', label: 'Kategorie', default: false },
 	{ key: 'location', label: 'Lagerort', default: false },
+	{ key: 'set', label: 'Set', default: false },
 	{ key: 'quantity', label: 'Anzahl', default: true },
 	{ key: 'condition', label: 'Zustand', default: true },
 	{ key: 'notes', label: 'Notizen', default: false },

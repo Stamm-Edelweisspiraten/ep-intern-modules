@@ -10,6 +10,7 @@ import {
 	type Category,
 	type Item,
 	type Location,
+	type MaterialSet,
 	type MaterialType
 } from '../../schemas';
 
@@ -17,6 +18,7 @@ import {
 export interface ItemPreset {
 	typeId?: string | null;
 	locationId?: string | null;
+	setId?: string | null;
 	/** Vorab gedruckter (reservierter) Code */
 	code?: string | null;
 }
@@ -36,6 +38,9 @@ export const categoryOptions = (list: readonly Category[]): Option[] =>
 
 export const locationOptions = (list: readonly Location[]): Option[] =>
 	list.map((l) => ({ value: l.id, label: l.name }));
+
+export const setOptions = (list: readonly MaterialSet[]): Option[] =>
+	list.map((s) => ({ value: s.id, label: s.name }));
 
 export const typeOptions = (list: readonly MaterialType[]): Option[] =>
 	list.map((t) => ({ value: t.id, label: t.name }));
