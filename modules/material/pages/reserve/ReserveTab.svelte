@@ -5,7 +5,6 @@
 	import { MediaQuery } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Search from '@lucide/svelte/icons/search';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
@@ -31,7 +30,14 @@
 		type PurposeOptions,
 		type Reservation
 	} from '../../schemas';
-	import { API, apiFieldErrors, errorText, fieldErrors, formatPeriod } from '../helpers';
+	import {
+		API,
+		apiFieldErrors,
+		errorText,
+		fieldErrors,
+		formatPeriod,
+		safeReplaceState
+	} from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ScanButton from '../shared/ScanButton.svelte';
 	import { resolveScan } from '../shared/scan';
@@ -59,11 +65,14 @@
 
 	let {
 		editId,
-		onsaved
+		onsaved,
+		oncanceledit
 	}: {
 		/** Bestehende Reservierung bearbeiten (`?edit=`) */
 		editId: string | null;
 		onsaved: (id: string, mine: boolean) => void;
+		/** Bearbeiten abbrechen: der Aufrufer zeigt wieder den leeren Katalog */
+		oncanceledit?: () => void;
 	} = $props();
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
@@ -112,9 +121,10 @@
 	function cancelEdit() {
 		ready = false;
 		clearDraft(storageKey);
+		if (oncanceledit) return oncanceledit();
 		const url = new URL(page.url);
 		url.searchParams.delete('edit');
-		replaceState(url, {});
+		safeReplaceState(url);
 	}
 
 	/** Vorbelegung aus der Aktions-Karte: `?action=&from=&to=&title=` */
@@ -137,7 +147,7 @@
 		if (title) draft.title = title.slice(0, 150);
 		const url = new URL(page.url);
 		for (const k of keys) url.searchParams.delete(k);
-		replaceState(url, {});
+		safeReplaceState(url);
 	}
 
 	// --- Zweck ---------------------------------------------------------------------

@@ -4,7 +4,6 @@
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
@@ -25,7 +24,7 @@
 	import * as Table from '$lib/components/ui/table';
 	import { DataTable, MobileActionBar } from '$lib/components/layout';
 	import type { Category, Condition, Inventory, Item, Location, MaterialType } from '../../schemas';
-	import { API, errorText } from '../helpers';
+	import { API, errorText, safeReplaceState } from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
@@ -264,7 +263,7 @@
 		if (open) openItem(open);
 		if (open || loc || type) {
 			for (const key of ['open', 'location', 'type']) url.searchParams.delete(key);
-			replaceState(url, {});
+			safeReplaceState(url);
 		}
 	});
 

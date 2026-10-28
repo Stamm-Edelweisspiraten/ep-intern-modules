@@ -3,7 +3,6 @@
 	// Tabelle mit Filtern, Seitenwechsel, Detail-Dialog per Zeilenklick (`?open=`), Export.
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
@@ -26,17 +25,21 @@
 		RESERVATION_STATE_LABELS,
 		STATE_VARIANTS,
 		errorText,
-		formatPeriod
+		formatPeriod,
+		safeReplaceState
 	} from '../helpers';
 	import ReservationDetailDialog from './ReservationDetailDialog.svelte';
 	import ReservationsExportDialog from './ReservationsExportDialog.svelte';
 
 	let {
 		scope,
+		openId = null,
 		onedit,
 		onreserve
 	}: {
 		scope: 'mine' | 'all';
+		/** Reservierung direkt öffnen (nach dem Speichern oder per `?open=`) */
+		openId?: string | null;
 		onedit: (id: string) => void;
 		onreserve: () => void;
 	} = $props();
@@ -107,12 +110,12 @@
 	}
 
 	onMount(() => {
-		const id = page.url.searchParams.get('open');
+		const id = openId ?? page.url.searchParams.get('open');
 		if (id) {
 			openDetail(id);
 			const url = new URL(page.url);
 			url.searchParams.delete('open');
-			replaceState(url, {});
+			safeReplaceState(url);
 		}
 	});
 

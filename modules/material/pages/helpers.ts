@@ -1,6 +1,7 @@
 /**
  * Hilfen für die Oberfläche des Moduls `material` (ohne Server-Imports).
  */
+import { replaceState } from '$app/navigation';
 import { ApiClientError } from '$lib/sdk/client';
 import { formatDateDe } from '$lib/sdk/dates';
 import type { BadgeVariant } from '$lib/components/ui/badge';
@@ -80,3 +81,21 @@ export const reservationHref = (id: string, mine = true) =>
 /** Anzahl mit Name: „3 × Kohtenbahn“ bzw. „Kohtenbahn“ */
 export const qtyName = (quantity: number, name: string) =>
 	quantity > 1 ? `${quantity} × ${name}` : name;
+
+/**
+ * URL ohne Navigation ersetzen. Direkt beim ersten Laden ist der Router noch nicht bereit und
+ * `replaceState` wirft – dann einen Takt später erneut versuchen, statt die Seite zu blockieren.
+ */
+export function safeReplaceState(url: URL): void {
+	try {
+		replaceState(url, {});
+	} catch {
+		setTimeout(() => {
+			try {
+				replaceState(url, {});
+			} catch {
+				// URL bleibt stehen; der Zustand der Seite ist davon unabhängig
+			}
+		}, 0);
+	}
+}
