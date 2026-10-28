@@ -234,7 +234,7 @@ export function createElement(
 		return { x: round2((W - bw) / 2), y: round2((H - bh) / 2), w: bw, h: bh };
 	};
 	const id = newElementId();
-	const hasName = (LABEL_FIELDS[opts.target ?? 'unit'] ?? []).some((f) => f.key === 'name');
+	const hasName = (LABEL_FIELDS[opts.target ?? 'item'] ?? []).some((f) => f.key === 'name');
 	switch (type) {
 		case 'text':
 			return {
@@ -286,6 +286,16 @@ export function createElement(
 export function duplicateElement(el: LabelElement, bounds?: Bounds): LabelElement {
 	const moved = moveBox(el, 2, 2, { step: 0, bounds });
 	return { ...el, ...moved, id: newElementId() };
+}
+
+/** Millimeter deutsch mit höchstens zwei Nachkommastellen („63,5“) */
+export function formatMm(n: number): string {
+	return n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+/** Etikettgröße „63,5 × 33,9 mm“ */
+export function formatSize(f: { labelWidthMm: number; labelHeightMm: number }): string {
+	return `${formatMm(f.labelWidthMm)} × ${formatMm(f.labelHeightMm)} mm`;
 }
 
 /** Beispielwerte eines Ziels für die Vorschau */

@@ -3,6 +3,7 @@
  * Wird von Server UND UI genutzt – keine Server-Imports.
  */
 import { z } from 'zod';
+import { styleColor as folderColor, styleIcon as folderIcon } from '$lib/sdk/style-presets';
 import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalInfo } from '$lib/sdk/types/sharing';
 
@@ -193,33 +194,12 @@ export type FolderCreateInput = z.input<typeof folderCreateInput>;
 
 export const renameInput = z.object({ name: nodeName }).strict();
 
-/** Vorschlagsfarben für Ordner (Schnellwahl im Menü und im Dialog „Aussehen ändern“) */
-export const FOLDER_COLORS: readonly { value: string; label: string }[] = [
-	{ value: '#2563eb', label: 'Blau' },
-	{ value: '#16a34a', label: 'Grün' },
-	{ value: '#0d9488', label: 'Türkis' },
-	{ value: '#ca8a04', label: 'Gelb' },
-	{ value: '#ea580c', label: 'Orange' },
-	{ value: '#dc2626', label: 'Rot' },
-	{ value: '#db2777', label: 'Pink' },
-	{ value: '#7c3aed', label: 'Lila' },
-	{ value: '#92400e', label: 'Braun' },
-	{ value: '#52525b', label: 'Grau' }
-];
-
-/** Farbe `#rrggbb` (wird klein gespeichert) */
-export const folderColor = z
-	.string()
-	.trim()
-	.regex(/^#[0-9a-fA-F]{6}$/, 'Farbe im Format #RRGGBB')
-	.transform((v) => v.toLowerCase());
-
-/** Icon-Name aus der Icon-Bibliothek (`tree-pine`); ob es das Icon gibt, prüft der Server */
-export const folderIcon = z
-	.string()
-	.trim()
-	.max(64, 'Ungültiges Icon')
-	.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Ungültiges Icon');
+/** Vorschlagsfarben für Ordner, Farbe und Icon: gemeinsam mit anderen Modulen (`$lib/sdk/style-presets`) */
+export {
+	STYLE_COLORS as FOLDER_COLORS,
+	styleColor as folderColor,
+	styleIcon as folderIcon
+} from '$lib/sdk/style-presets';
 
 /**
  * POST `/nodes/style` – Aussehen eines oder mehrerer Ordner. Fehlendes Feld = unverändert, `null` = zurücksetzen.

@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Neues Etikett-Layout: Startpunkt wählen → Designer (`labels/new?starter=…`), gespeichert wird dort.
+	// Neues Etikett: Startpunkt wählen → Designer (`labels/new?starter=…`), gespeichert wird dort.
 	import { goto } from '$app/navigation';
 	import { LABEL_FORMAT_PRESETS } from '$lib/sdk/labels';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -29,9 +29,9 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="sm:max-w-3xl">
 		<Dialog.Header>
-			<Dialog.Title>Neues Etikett-Layout</Dialog.Title>
+			<Dialog.Title>Neues Etikett</Dialog.Title>
 			<Dialog.Description>
-				Wähle einen Startpunkt – Format, Ziel und alle Elemente kannst du danach im Designer ändern.
+				Wähle einen Startpunkt – Größe, Ziel und alle Elemente kannst du danach im Designer ändern.
 			</Dialog.Description>
 		</Dialog.Header>
 		<ul class="grid gap-3 sm:grid-cols-2">

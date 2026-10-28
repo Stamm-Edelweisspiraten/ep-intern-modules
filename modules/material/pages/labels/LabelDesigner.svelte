@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Etiketten-Designer (vollflächig): Zeichenfläche in mm, Elemente, Eigenschaften, Verlauf,
-	// Format/Ziel, Speichern und Probedruck. `params.id` = Layout-ID oder `new` (`?starter=`).
+	// Format/Ziel, Speichern und Testdruck. `params.id` = Layout-ID oder `new` (`?starter=`).
 	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -61,12 +61,14 @@
 	import { API, errorText, fieldErrors } from '../helpers';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
 	import DesignerCanvas from './DesignerCanvas.svelte';
+	import FormatDialog from './FormatDialog.svelte';
 	import ElementProperties from './ElementProperties.svelte';
 	import {
 		clamp,
 		createElement,
 		createHistory,
 		duplicateElement,
+		formatSize,
 		MAX_ELEMENTS,
 		nudge,
 		overflowing,
@@ -91,7 +93,7 @@
 	const canPrint = $derived(canDesign || can(permissions, PERMISSIONS.manage));
 	const phone = $derived(deviceLayout() === 'phone');
 	const readonly = $derived(!canDesign || phone);
-	const BACK = `${BASE_PATH}/etiketten`;
+	const BACK = `${BASE_PATH}?tab=etiketten`;
 
 	type DesignState = { layout: LabelLayout; formatKey: string };
 
@@ -100,7 +102,7 @@
 	let loadError = $state('');
 	let templateId = $state<string | null>(null);
 	let name = $state('');
-	let target = $state<LabelTarget>('unit');
+	let target = $state<LabelTarget>('item');
 	let hist = $state<History<DesignState>>(
 		createHistory({ layout: { widthMm: 70, heightMm: 37, elements: [] }, formatKey: '' })
 	);
@@ -116,6 +118,9 @@
 	let rawPlaceholders = $state(false);
 	let scaleOnFormat = $state(true);
 	let printOpen = $state(false);
+	let newFormatOpen = $state(false);
+	/** Neu aufbauen der Größen-Auswahl, damit „Neue Größe …“ nicht ausgewählt stehen bleibt */
+	let formatPickerKey = $state(0);
 	let stageWidth = $state(0);
 	let stageHeight = $state(0);
 	let fitted = false;
@@ -317,6 +322,26 @@
 		setElements(layout.elements.map((e) => (e.id === id ? { ...e, ...box } : e)));
 	}
 
+	const NEW_FORMAT = '__new-format__';
+
+	function pickFormat(key: string | null) {
+		if (key === NEW_FORMAT) {
+			formatPickerKey++;
+			newFormatOpen = true;
+			return;
+		}
+		changeFormat(key);
+	}
+
+	async function onFormatCreated(entry: LabelFormatEntry) {
+		try {
+			formats = await apiFetch<LabelFormatEntry[]>(`${API}/label-formats`);
+		} catch {
+			formats = [...formats, entry];
+		}
+		changeFormat(entry.key);
+	}
+
 	function changeFormat(key: string | null) {
 		if (readonly || !key || key === formatKey) return;
 		const f = formats.find((x) => x.key === key);
@@ -345,7 +370,7 @@
 	// --- Tastatur ----------------------------------------------------------------------
 
 	function onKeydown(e: KeyboardEvent) {
-		if (loading || loadError || printOpen) return;
+		if (loading || loadError || printOpen || newFormatOpen) return;
 		const t = e.target as HTMLElement | null;
 		if (
 			t &&
@@ -466,9 +491,16 @@
 		if (!confirm('Das Layout hat ungespeicherte Änderungen. Trotzdem verlassen?')) nav.cancel();
 	});
 
-	const formatOptions = $derived(
-		formats.map((f) => ({ value: f.key, label: f.preset ? f.name : `${f.name} (eigenes)` }))
-	);
+	// Eigene Größen zuerst, dann Vorgaben, am Ende „Neue Größe …“
+	const formatOptions = $derived([
+		...formats
+			.filter((f) => !f.preset)
+			.map((f) => ({ value: f.key, label: `${f.name} · ${formatSize(f.format)} (eigene)` })),
+		...formats
+			.filter((f) => f.preset)
+			.map((f) => ({ value: f.key, label: `${f.name} · ${formatSize(f.format)}` })),
+		...(canDesign ? [{ value: NEW_FORMAT, label: 'Neue Größe …' }] : [])
+	]);
 	const fmtMm = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 
 	const ELEMENT_LABELS: Record<LabelElementType, string> = {
@@ -556,7 +588,7 @@
 				onclick={testPrint}
 				disabled={loading || !!loadError || (!templateId && readonly)}
 			>
-				<Printer aria-hidden="true" /><span class="hidden sm:inline">Probedruck</span>
+				<Printer aria-hidden="true" /><span class="hidden sm:inline">Testdruck</span>
 			</Button>
 		{/if}
 		{#if !readonly}
@@ -758,21 +790,23 @@
 								/>
 							</FormField>
 							<FormField
-								label="Format"
+								label="Etikettgröße"
 								id="designer-format"
-								hint="Die Etikettgröße des Formats ist die Größe des Layouts."
+								hint="Bogen oder Rolle – die Etikettgröße ist die Größe des Layouts. Eigene Größen über „Neue Größe …“."
 							>
-								<SelectField
-									id="designer-format"
-									label="Format"
-									options={formatOptions}
-									value={formatKey || null}
-									onchange={changeFormat}
-								/>
+								{#key formatPickerKey}
+									<SelectField
+										id="designer-format"
+										label="Etikettgröße"
+										options={formatOptions}
+										value={formatKey || null}
+										onchange={pickFormat}
+									/>
+								{/key}
 							</FormField>
 							<div class="flex items-center gap-2">
 								<Checkbox id="designer-scale" bind:checked={scaleOnFormat} />
-								<Label for="designer-scale">Elemente beim Formatwechsel mitskalieren</Label>
+								<Label for="designer-scale">Elemente beim Größenwechsel mitskalieren</Label>
 							</div>
 						{/if}
 						{#if outside.length}
@@ -830,5 +864,14 @@
 </div>
 
 {#if templateId}
-	<PrintLabelsDialog bind:open={printOpen} {target} ids={[]} {templateId} />
+	<PrintLabelsDialog
+		bind:open={printOpen}
+		{target}
+		ids={[]}
+		{templateId}
+		title={name || undefined}
+	/>
+{/if}
+{#if canDesign}
+	<FormatDialog bind:open={newFormatOpen} entry={null} onsaved={onFormatCreated} />
 {/if}

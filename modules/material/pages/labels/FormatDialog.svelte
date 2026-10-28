@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Eigenes Etikettenformat anlegen/bearbeiten (Bogen oder Rolle) mit Live-Vorschau des Bogens.
+	// Eigene Etikettgröße (Format) anlegen/bearbeiten (Bogen oder Rolle) mit Live-Vorschau des Bogens.
 	import { toast } from 'svelte-sonner';
 	import { apiFetch } from '$lib/sdk/client';
 	import {
@@ -120,7 +120,7 @@
 						method: 'POST',
 						body: JSON.stringify(parsed.data)
 					});
-			toast.success(entry ? 'Format gespeichert' : 'Format angelegt');
+			toast.success(entry ? 'Etikettgröße gespeichert' : 'Etikettgröße angelegt');
 			open = false;
 			await onsaved?.(saved);
 		} catch (err) {
@@ -153,7 +153,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content class="sm:max-w-3xl">
 		<Dialog.Header>
-			<Dialog.Title>{entry ? 'Format bearbeiten' : 'Eigenes Format'}</Dialog.Title>
+			<Dialog.Title>{entry ? 'Etikettgröße bearbeiten' : 'Neue Etikettgröße'}</Dialog.Title>
 			<Dialog.Description>
 				Maße laut Packung des Etikettenbogens bzw. der Etikettenrolle, alles in Millimetern.
 			</Dialog.Description>

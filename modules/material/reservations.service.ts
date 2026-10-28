@@ -1,671 +1,478 @@
 /**
- * Reservierungen: Belegungen anderer Reservierungen laden, Positionen gegen den Bestand prüfen,
- * Reservierungen lesen. Nur Datenbankzugriffe (läuft in Modul-Transaktionen).
+ * Reservierungen: Laden (Liste/Detail), Verfügbarkeit prüfen, Katalog für das Reservieren, Zweck
+ * (Aktion/Gruppe) prüfen und auflösen. Funktionen mit `ctx` rufen Dienste und `core.*` selbst
+ * AUSSERHALB der Modul-Transaktionen auf.
  */
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { CoreError, errors, type RequestContext, type Tx } from '$lib/sdk/server';
-import { allocate, type Candidate } from './allocation';
-import { blockedUnits, freeQuantity, freeUnitCount, overlaps, type Booking } from './availability';
-import { canHandleAll, dateStr, iso, isoOrNull, num, rows, str, today } from './db';
+import { AvailabilityIndex } from './availability';
 import {
-	containedUnits,
-	isUsable,
-	loadPlaceIndex,
-	unitSummaries,
-	UNIT_SELECT,
-	toUnitSummary,
-	type PlaceIndex
-} from './inventory';
+	actionsService,
+	canManageReservations,
+	dateStr,
+	iso,
+	likePattern,
+	mdb,
+	membersService,
+	num,
+	rows,
+	str,
+	today,
+	userNames,
+	type Row
+} from './db';
+import { imagesFor, loadBookings, loadItems, loadStock, loadTypes } from './inventory';
 import {
 	PERMISSIONS,
-	type ArticleKind,
-	type AssignedUnit,
-	type Condition,
+	reservationListQuery,
+	reservationState,
+	type Catalog,
+	type CatalogEntry,
 	type LineAvailability,
-	type LineKind,
+	type Purpose,
+	type PurposeOptions,
 	type Reservation,
 	type ReservationLine,
 	type ReservationLineInput,
+	type ReservationListItem,
+	type ReservationPage,
 	type ReservationStatus
 } from './schemas';
+import type { z } from 'zod';
 
-interface LineRow {
-	id: string;
-	reservationId: string;
-	kind: LineKind;
-	unitId: string | null;
-	setId: string | null;
-	articleId: string | null;
-	quantity: number;
-	issuedQty: number;
-	returnedQty: number;
-	sourceSetId: string | null;
+export type ReservationListQuery = z.output<typeof reservationListQuery>;
+
+/** Ändern/Stornieren: Ersteller*in (mit Reservierungsrecht) oder Verwaltung */
+export function canEditReservation(ctx: RequestContext, createdBy: string | null): boolean {
+	if (canManageReservations(ctx)) return true;
+	return ctx.permissions.has(PERMISSIONS.reserve) && !!ctx.userId && createdBy === ctx.userId;
 }
 
-function toLineRow(r: Record<string, unknown>): LineRow {
+// --- Zweck: Aktion und Gruppe ----------------------------------------------------
+
+export async function actionNames(ids: (string | null)[]): Promise<Map<string, string>> {
+	const unique = [...new Set(ids.filter((x): x is string => !!x))];
+	if (!unique.length) return new Map();
+	const service = await actionsService();
+	if (!service) return new Map();
+	return new Map((await service.listActionRefs({ ids: unique })).map((a) => [a.id, a.name]));
+}
+
+export async function groupNames(ids: (string | null)[]): Promise<Map<string, string>> {
+	if (!ids.some(Boolean)) return new Map();
+	const service = await membersService();
+	if (!service) return new Map();
+	return new Map((await service.listGroups()).map((g) => [g.id, g.name]));
+}
+
+/** Aktion (für `ctx` sichtbar) bzw. Gruppe (existiert) prüfen; vor der Transaktion */
+export async function checkPurpose(
+	ctx: RequestContext,
+	input: { actionId: string | null; groupId: string | null }
+): Promise<void> {
+	if (input.actionId) {
+		const service = await actionsService();
+		if (!service)
+			throw errors.validation([{ path: ['actionId'], message: 'Aktionen sind nicht aktiv' }]);
+		const [a] = await service.accessibleActions(ctx, { ids: [input.actionId] });
+		if (!a) throw errors.validation([{ path: ['actionId'], message: 'Aktion nicht gefunden' }]);
+	}
+	if (input.groupId) {
+		const service = await membersService();
+		if (!service)
+			throw errors.validation([{ path: ['groupId'], message: 'Gruppen sind nicht aktiv' }]);
+		const groups = await service.listGroups();
+		if (!groups.some((g) => g.id === input.groupId)) {
+			throw errors.validation([{ path: ['groupId'], message: 'Gruppe nicht gefunden' }]);
+		}
+	}
+}
+
+/** Auswahl für den Zweck: sichtbare, nicht lange vergangene Aktionen und alle Gruppen */
+export async function purposeOptions(ctx: RequestContext): Promise<PurposeOptions> {
+	const [actions, members] = await Promise.all([actionsService(), membersService()]);
+	const cutoff = today();
+	const list = actions ? await actions.accessibleActions(ctx) : [];
+	const groups = members ? await members.listGroups() : [];
 	return {
-		id: String(r.id),
-		reservationId: String(r.reservation_id),
-		kind: String(r.kind) as LineKind,
-		unitId: r.unit_id ? String(r.unit_id) : null,
-		setId: r.set_id ? String(r.set_id) : null,
-		articleId: r.article_id ? String(r.article_id) : null,
-		quantity: num(r.quantity),
-		issuedQty: num(r.issued_qty),
-		returnedQty: num(r.returned_qty),
-		sourceSetId: r.source_set_id ? String(r.source_set_id) : null
+		actionsActive: !!actions,
+		groupsActive: !!members,
+		actions: list
+			.filter((a) => (a.endsOn ?? a.startsOn) >= cutoff)
+			.sort((a, b) => a.startsOn.localeCompare(b.startsOn))
+			.map((a) => ({ id: a.id, name: a.name, startsOn: a.startsOn, endsOn: a.endsOn })),
+		groups: groups
+			.map((g) => ({ id: g.id, name: g.name, color: g.color }))
+			.sort((a, b) => a.name.localeCompare(b.name, 'de'))
 	};
 }
 
-/** Stücke je Set (aktuelle Zusammensetzung) */
-export async function setUnitMap(tx: Tx): Promise<Map<string, string[]>> {
-	const out = new Map<string, string[]>();
-	for (const r of await rows(tx, sql`SELECT set_id, unit_id FROM set_units`)) {
-		const key = String(r.set_id);
-		const list = out.get(key) ?? [];
-		list.push(String(r.unit_id));
-		out.set(key, list);
-	}
-	return out;
-}
+// --- Laden -----------------------------------------------------------------------------
 
-/** Konkrete Stücke einer Zeile (Kisten mit Inhalt, Sets mit ihren Stücken und deren Inhalt) */
-function lineUnits(line: LineRow, index: PlaceIndex, sets: Map<string, string[]>): string[] {
-	const base =
-		line.kind === 'unit' && line.unitId
-			? [line.unitId]
-			: line.kind === 'set' && line.setId
-				? (sets.get(line.setId) ?? [])
-				: [];
-	const out = new Set<string>();
-	for (const id of base) {
-		out.add(id);
-		if (index.units.get(id)?.isContainer) for (const c of containedUnits(index, id)) out.add(c);
-	}
-	return [...out];
-}
-
-/**
- * Belegungen aller offenen Reservierungen (reserviert/ausgegeben), die `from..to` überschneiden.
- * Ausgegebene Reservierungen gelten mindestens bis heute (überfällige Rückgabe blockiert weiter).
- */
-export async function loadBookings(
-	tx: Tx,
-	window: { from: string; to: string; excludeId?: string | null },
-	ctx?: { index?: PlaceIndex; sets?: Map<string, string[]> }
-): Promise<{ bookings: Booking[]; titles: Map<string, string> }> {
-	const index = ctx?.index ?? (await loadPlaceIndex(tx));
-	const sets = ctx?.sets ?? (await setUnitMap(tx));
-	const todayStr = today();
-	const resRows = await rows(
-		tx,
-		sql`SELECT id, title, status, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
-				to_char(ends_on, 'YYYY-MM-DD') AS ends_on
-			FROM reservations
-			WHERE status IN ('reserved', 'issued')
-				AND id::text <> ${window.excludeId ?? ''}
-				AND starts_on <= ${window.to}::date
-				AND (ends_on >= ${window.from}::date OR status = 'issued')`
-	);
-	const res = resRows
-		.map((r) => {
-			const status = String(r.status) as ReservationStatus;
-			const endsOn = dateStr(r.ends_on);
-			return {
-				id: String(r.id),
-				title: String(r.title),
-				startsOn: dateStr(r.starts_on),
-				endsOn: status === 'issued' && endsOn < todayStr ? todayStr : endsOn,
-				status
-			};
-		})
-		.filter((r) => overlaps(r.startsOn, r.endsOn, window.from, window.to));
-	const titles = new Map(res.map((r) => [r.id, r.title]));
-	if (!res.length) return { bookings: [], titles };
-	const ids = res.map((r) => r.id);
-	const lines = (
-		await rows(
-			tx,
-			sql`SELECT * FROM reservation_lines WHERE reservation_id::text IN (${sql.join(
-				ids.map((id) => sql`${id}`),
-				sql`, `
-			)})`
-		)
-	).map(toLineRow);
-	const assigned = await rows(
-		tx,
-		sql`SELECT reservation_id, unit_id, line_id, returned_at FROM reservation_units
-			WHERE reservation_id::text IN (${sql.join(
-				ids.map((id) => sql`${id}`),
-				sql`, `
-			)})`
-	);
-	const articleKinds = new Map(
-		(await rows(tx, sql`SELECT id, kind FROM articles`)).map((r) => [String(r.id), String(r.kind)])
-	);
-	const bookings: Booking[] = res.map((r) => {
-		const myLines = lines.filter((l) => l.reservationId === r.id);
-		const myAssigned = assigned.filter((a) => String(a.reservation_id) === r.id);
-		const unitIds = new Set<string>();
-		for (const l of myLines) for (const u of lineUnits(l, index, sets)) unitIds.add(u);
-		for (const a of myAssigned) if (a.returned_at == null) unitIds.add(String(a.unit_id));
-		const counts = new Map<string, number>();
-		for (const l of myLines) {
-			if (l.kind !== 'article' || !l.articleId) continue;
-			let need: number;
-			if (articleKinds.get(l.articleId) === 'bulk') {
-				need = Math.max(l.quantity, l.issuedQty) - l.returnedQty;
-			} else {
-				const done = myAssigned.filter((a) => String(a.line_id ?? '') === l.id).length;
-				need = l.quantity - done;
-			}
-			if (need > 0) counts.set(l.articleId, (counts.get(l.articleId) ?? 0) + need);
-		}
-		return {
-			reservationId: r.id,
-			startsOn: r.startsOn,
-			endsOn: r.endsOn,
-			unitIds: [...unitIds],
-			counts
-		};
-	});
-	return { bookings, titles };
-}
-
-interface UnitInfo {
+interface RawReservation {
 	id: string;
-	name: string;
-	articleId: string;
-	usable: boolean;
-	setId: string | null;
-	setName: string | null;
+	title: string;
+	purpose: Purpose;
+	actionId: string | null;
+	groupId: string | null;
+	startsOn: string;
+	endsOn: string;
+	status: ReservationStatus;
+	notes: string;
+	createdBy: string | null;
+	createdAt: string;
 }
 
-async function unitInfos(tx: Tx): Promise<Map<string, UnitInfo>> {
+const RES_SELECT = sql`SELECT r.id, r.title, r.purpose, r.action_id, r.group_id,
+		to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on, to_char(r.ends_on, 'YYYY-MM-DD') AS ends_on,
+		r.status, r.notes, r.created_by, r.created_at
+	FROM reservations r`;
+
+const toRaw = (r: Row): RawReservation => ({
+	id: String(r.id),
+	title: String(r.title),
+	purpose: String(r.purpose) as Purpose,
+	actionId: str(r.action_id) || null,
+	groupId: str(r.group_id) || null,
+	startsOn: dateStr(r.starts_on),
+	endsOn: dateStr(r.ends_on),
+	status: String(r.status) as ReservationStatus,
+	notes: str(r.notes),
+	createdBy: str(r.created_by) || null,
+	createdAt: iso(r.created_at)
+});
+
+/** Zeilen je Reservierung (Typ- bzw. Artikelname, Code, Ort, Vorschaubild) */
+export async function loadLines(tx: Tx, ids: string[]): Promise<Map<string, ReservationLine[]>> {
+	const map = new Map<string, ReservationLine[]>();
+	if (!ids.length) return map;
 	const list = await rows(
 		tx,
-		sql`SELECT u.id, u.label, u.article_id, u.condition, u.retired_at, a.name AS article_name,
-				su.set_id, s.name AS set_name
-			FROM units u JOIN articles a ON a.id = u.article_id
-			LEFT JOIN set_units su ON su.unit_id = u.id LEFT JOIN sets s ON s.id = su.set_id`
+		sql`SELECT l.id, l.reservation_id, l.type_id, l.item_id, l.quantity,
+				coalesce(i.name, t.name) AS name, i.code, loc.name AS location_name,
+				coalesce(i.type_id, l.type_id) AS cover_type
+			FROM reservation_lines l
+			LEFT JOIN types t ON t.id = l.type_id
+			LEFT JOIN items i ON i.id = l.item_id
+			LEFT JOIN locations loc ON loc.id = i.location_id
+			WHERE l.reservation_id IN (${sql.join(
+				ids.map((id) => sql`${id}`),
+				sql`, `
+			)})
+			ORDER BY l.position, l.id`
 	);
-	return new Map(
-		list.map((r) => [
-			String(r.id),
-			{
-				id: String(r.id),
-				name: str(r.label) || String(r.article_name),
-				articleId: String(r.article_id),
-				usable: isUsable(r),
-				setId: r.set_id ? String(r.set_id) : null,
-				setName: r.set_name ? String(r.set_name) : null
-			}
-		])
+	const itemImages = await imagesFor(tx, 'items', list.map((r) => str(r.item_id)).filter(Boolean));
+	const typeImages = await imagesFor(
+		tx,
+		'types',
+		list.map((r) => str(r.cover_type)).filter(Boolean)
+	);
+	for (const r of list) {
+		const itemId = str(r.item_id) || null;
+		const cover =
+			(itemId ? itemImages.get(itemId)?.[0] : undefined) ?? typeImages.get(str(r.cover_type))?.[0];
+		const line: ReservationLine = {
+			id: String(r.id),
+			kind: itemId ? 'item' : 'type',
+			typeId: str(r.type_id) || null,
+			itemId,
+			name: str(r.name),
+			code: str(r.code) || null,
+			locationName: str(r.location_name) || null,
+			quantity: num(r.quantity),
+			thumbUrl: cover?.thumbUrl ?? null
+		};
+		const arr = map.get(String(r.reservation_id)) ?? [];
+		arr.push(line);
+		map.set(String(r.reservation_id), arr);
+	}
+	return map;
+}
+
+export async function requireReservationRow(tx: Tx, id: string): Promise<RawReservation> {
+	const [r] = await rows(tx, sql`${RES_SELECT} WHERE r.id = ${id}`);
+	if (!r) throw errors.notFound('Reservierung nicht gefunden');
+	return toRaw(r);
+}
+
+/** Detail mit Namen (Benutzer, Aktion, Gruppe) – eigene Transaktion, Dienste danach */
+export async function fullReservation(ctx: RequestContext, id: string): Promise<Reservation> {
+	const { raw, lines } = await mdb().transaction(async (tx) => {
+		const raw = await requireReservationRow(tx, id);
+		const lines = (await loadLines(tx, [id])).get(id) ?? [];
+		return { raw, lines };
+	});
+	const [users, actions, groups] = await Promise.all([
+		userNames(ctx, [raw.createdBy]),
+		actionNames([raw.actionId]),
+		groupNames([raw.groupId])
+	]);
+	return {
+		...raw,
+		state: reservationState(raw, today()),
+		actionName: raw.actionId ? (actions.get(raw.actionId) ?? null) : null,
+		groupName: raw.groupId ? (groups.get(raw.groupId) ?? null) : null,
+		createdByName: raw.createdBy ? (users.get(raw.createdBy) ?? 'Unbekannt') : 'Unbekannt',
+		lines,
+		canEdit: raw.status === 'reserved' && canEditReservation(ctx, raw.createdBy)
+	};
+}
+
+export function summarizeLines(lines: ReservationLine[], max = 4): string {
+	const parts = lines.map((l) => (l.quantity > 1 ? `${l.quantity} × ${l.name}` : l.name));
+	return (
+		parts.slice(0, max).join(', ') +
+		(parts.length > max ? ` und ${parts.length - max} weitere` : '')
 	);
 }
 
-/**
- * Positionen einer (neuen oder geänderten) Reservierung gegen den Bestand prüfen. Liefert je Zeile
- * das Ergebnis; Aufrufer entscheidet, ob er bei Fehlern abbricht (`assertLinesAvailable`).
- */
+async function toListItems(
+	ctx: RequestContext,
+	raws: RawReservation[],
+	lines: Map<string, ReservationLine[]>
+): Promise<ReservationListItem[]> {
+	const [users, actions, groups] = await Promise.all([
+		userNames(
+			ctx,
+			raws.map((r) => r.createdBy)
+		),
+		actionNames(raws.map((r) => r.actionId)),
+		groupNames(raws.map((r) => r.groupId))
+	]);
+	const t = today();
+	return raws.map((r) => {
+		const l = lines.get(r.id) ?? [];
+		return {
+			id: r.id,
+			title: r.title,
+			startsOn: r.startsOn,
+			endsOn: r.endsOn,
+			status: r.status,
+			state: reservationState(r, t),
+			purpose: r.purpose,
+			actionId: r.actionId,
+			actionName: r.actionId ? (actions.get(r.actionId) ?? null) : null,
+			groupId: r.groupId,
+			groupName: r.groupId ? (groups.get(r.groupId) ?? null) : null,
+			createdByName: r.createdBy ? (users.get(r.createdBy) ?? 'Unbekannt') : 'Unbekannt',
+			lineCount: l.length,
+			itemSummary: summarizeLines(l),
+			mine: !!ctx.userId && r.createdBy === ctx.userId,
+			canEdit: r.status === 'reserved' && canEditReservation(ctx, r.createdBy)
+		};
+	});
+}
+
+/** Liste nach Filter; `scope: 'all'` nur mit Verwaltungsrecht (sonst 403) */
+export async function listReservations(
+	ctx: RequestContext,
+	q: Omit<ReservationListQuery, 'scope' | 'state'> & {
+		scope: 'mine' | 'all';
+		state: ReservationListQuery['state'];
+		/** Nur diese Aktion (Karte in der Aktion; Zugriff prüft der Aufrufer) */
+		actionId?: string;
+	}
+): Promise<ReservationPage> {
+	if (q.scope === 'all' && !canManageReservations(ctx) && !q.actionId) {
+		throw errors.forbidden('Alle Reservierungen nur mit Verwaltungsrecht');
+	}
+	const t = today();
+	const where: SQL[] = [];
+	if (q.scope === 'mine') where.push(sql`r.created_by = ${ctx.userId ?? ''}`);
+	if (q.actionId) where.push(sql`r.action_id = ${q.actionId}`);
+	if (q.state === 'open') where.push(sql`r.status = 'reserved' AND r.ends_on >= ${t}::date`);
+	if (q.state === 'past') where.push(sql`r.status = 'reserved' AND r.ends_on < ${t}::date`);
+	if (q.state === 'cancelled') where.push(sql`r.status = 'cancelled'`);
+	if (q.purpose) where.push(sql`r.purpose = ${q.purpose}`);
+	if (q.from) where.push(sql`r.ends_on >= ${q.from}::date`);
+	if (q.to) where.push(sql`r.starts_on <= ${q.to}::date`);
+	if (q.search) where.push(sql`r.title ILIKE ${likePattern(q.search)}`);
+	const cond = where.length ? sql.join(where, sql` AND `) : sql`TRUE`;
+	const order = q.state === 'past' || q.state === 'cancelled' ? sql`DESC` : sql`ASC`;
+	const { raws, lines, total } = await mdb().transaction(async (tx) => {
+		const [c] = await rows(tx, sql`SELECT count(*) AS n FROM reservations r WHERE ${cond}`);
+		const raws = (
+			await rows(
+				tx,
+				sql`${RES_SELECT} WHERE ${cond} ORDER BY r.starts_on ${order}, r.created_at ${order}, r.id
+					LIMIT ${q.limit} OFFSET ${q.offset}`
+			)
+		).map(toRaw);
+		const lines = await loadLines(
+			tx,
+			raws.map((r) => r.id)
+		);
+		return { raws, lines, total: num(c?.n) };
+	});
+	return { items: await toListItems(ctx, raws, lines), total };
+}
+
+// --- Verfügbarkeit ----------------------------------------------------------------------
+
+/** Je Zeile prüfen (innerhalb der Transaktion); Meldungen mit Namen */
 export async function checkLines(
 	tx: Tx,
 	input: {
 		startsOn: string;
 		endsOn: string;
-		excludeId?: string | null;
+		excludeReservationId?: string | null;
 		lines: ReservationLineInput[];
 	}
 ): Promise<LineAvailability[]> {
-	const index = await loadPlaceIndex(tx);
-	const sets = await setUnitMap(tx);
-	const { bookings, titles } = await loadBookings(
-		tx,
-		{ from: input.startsOn, to: input.endsOn, excludeId: input.excludeId },
-		{ index, sets }
-	);
-	const blocked = blockedUnits(bookings, input.startsOn, input.endsOn);
-	const units = await unitInfos(tx);
-	const articles = new Map(
-		(
-			await rows(
-				tx,
-				sql`SELECT a.id, a.name, a.kind, a.archived_at,
-						(SELECT coalesce(sum(quantity), 0) FROM stock s WHERE s.article_id = a.id) AS total
-					FROM articles a`
-			)
-		).map((r) => [
-			String(r.id),
-			{
-				name: String(r.name),
-				kind: String(r.kind) as ArticleKind,
-				archived: r.archived_at != null,
-				total: num(r.total)
-			}
-		])
-	);
-	const setNames = new Map(
-		(await rows(tx, sql`SELECT id, name FROM sets`)).map((r) => [String(r.id), String(r.name)])
-	);
-	const usableByArticle = new Map<string, string[]>();
-	for (const u of units.values()) {
-		if (!u.usable) continue;
-		const list = usableByArticle.get(u.articleId) ?? [];
-		list.push(u.id);
-		usableByArticle.set(u.articleId, list);
-	}
-	const blockedBy = (id: string) =>
-		(blocked.get(id) ?? []).map((r) => `„${titles.get(r) ?? 'andere Reservierung'}“`).join(', ');
-
-	const results: LineAvailability[] = input.lines.map((_, index) => ({
-		index,
-		ok: true,
-		available: null,
-		message: null,
-		notes: []
-	}));
-	const fail = (i: number, message: string) => {
-		const r = results[i]!;
-		r.ok = false;
-		r.message = r.message ? `${r.message} ${message}` : message;
-	};
-
-	// konkrete Stücke der eigenen Reservierung (je Artikel) und doppelte Nennungen
-	const mine = new Map<string, Set<string>>();
-	const seen = new Map<string, number>();
-	const addMine = (unitId: string, i: number) => {
-		const u = units.get(unitId);
-		if (!u) return;
-		const prev = seen.get(unitId);
-		if (prev !== undefined && prev !== i)
-			fail(i, `${u.name} ist schon in einer anderen Zeile enthalten.`);
-		seen.set(unitId, i);
-		const set = mine.get(u.articleId) ?? new Set<string>();
-		set.add(unitId);
-		mine.set(u.articleId, set);
-	};
-
-	input.lines.forEach((line, i) => {
-		if (line.kind === 'unit') {
-			const u = units.get(line.unitId);
-			if (!u) return fail(i, 'Stück nicht gefunden.');
-			if (!u.usable) fail(i, `${u.name} ist defekt, verloren oder ausgemustert.`);
-			const all = [
-				line.unitId,
-				...(index.units.get(line.unitId)?.isContainer ? containedUnits(index, line.unitId) : [])
-			];
-			for (const id of all) {
-				if (blocked.has(id)) {
-					fail(
-						i,
-						`${units.get(id)?.name ?? 'Stück'} ist im Zeitraum schon verplant (${blockedBy(id)}).`
-					);
-				}
-				addMine(id, i);
-			}
-			if (u.setId) results[i]!.notes.push(`Aus Set ${u.setName ?? ''} – das Set wird aufgeteilt.`);
-		} else if (line.kind === 'set') {
-			const list = sets.get(line.setId);
-			const name = setNames.get(line.setId);
-			if (!name) return fail(i, 'Set nicht gefunden.');
-			if (!list?.length) return fail(i, `Set ${name} ist leer.`);
-			for (const id of list) {
-				const all = [id, ...(index.units.get(id)?.isContainer ? containedUnits(index, id) : [])];
-				for (const x of all) {
-					if (blocked.has(x)) {
-						fail(
-							i,
-							`${units.get(x)?.name ?? 'Stück'} aus Set ${name} ist schon verplant (${blockedBy(x)}).`
-						);
-					}
-					addMine(x, i);
-				}
-				if (!units.get(id)?.usable) {
-					results[i]!.notes.push(`${units.get(id)?.name ?? 'Ein Stück'} ist defekt oder verloren.`);
-				}
-			}
-		} else {
-			const a = articles.get(line.articleId);
-			if (!a) return fail(i, 'Artikel nicht gefunden.');
-			if (a.archived) fail(i, `${a.name} ist archiviert.`);
-		}
-	});
-
-	// Anzahl-Zeilen je Artikel gesammelt prüfen
-	const countLines = new Map<string, number[]>();
-	input.lines.forEach((line, i) => {
-		if (line.kind !== 'article') return;
-		const list = countLines.get(line.articleId) ?? [];
-		list.push(i);
-		countLines.set(line.articleId, list);
-	});
-	const articleIds = new Set<string>([...countLines.keys(), ...mine.keys()]);
-	for (const articleId of articleIds) {
-		const a = articles.get(articleId);
-		if (!a) continue;
-		const idxs = countLines.get(articleId) ?? [];
-		const wanted = idxs.reduce((s, i) => {
-			const l = input.lines[i]!;
-			return s + (l.kind === 'article' ? l.quantity : 0);
-		}, 0);
-		if (a.kind === 'bulk') {
-			const free = freeQuantity(a.total, articleId, bookings, input.startsOn, input.endsOn);
-			for (const i of idxs) results[i]!.available = free;
-			if (wanted > free) {
-				for (const i of idxs) fail(i, `Nur ${free} von ${a.total} ${a.name} im Zeitraum frei.`);
-			}
-			continue;
-		}
-		const usable = usableByArticle.get(articleId) ?? [];
-		const free = freeUnitCount(usable, articleId, bookings, input.startsOn, input.endsOn);
-		const concrete = mine.get(articleId)?.size ?? 0;
-		for (const i of idxs) results[i]!.available = Math.max(0, free - concrete);
-		if (concrete + wanted > free) {
-			const msg =
-				wanted > 0
-					? `Nur ${Math.max(0, free - concrete)} ${a.name} im Zeitraum frei.`
-					: `Alle ${a.name} sind im Zeitraum schon verplant.`;
-			const targets = idxs.length
-				? idxs
-				: input.lines
-						.map((l, i) => ({ l, i }))
-						.filter(({ l }) => l.kind !== 'article')
-						.filter(({ i }) => [...(mine.get(articleId) ?? [])].some((u) => seen.get(u) === i))
-						.map(({ i }) => i);
-			for (const i of targets) fail(i, msg);
-		} else if (wanted > 0) {
-			// Vorschau der Zuteilung: würden Sets aufgeteilt?
-			const taken = new Set<string>([...blocked.keys(), ...(mine.get(articleId) ?? [])]);
-			const candidates = candidatesFor(usable, taken, units, sets);
-			const plan = allocate(candidates, wanted);
-			if (plan.splitSets.length) {
-				for (const i of idxs) {
-					results[i]!.notes.push(
-						`Dafür werden voraussichtlich Sets aufgeteilt: ${plan.splitSets.join(', ')}.`
-					);
-				}
-			}
+	const stock = await loadStock(tx);
+	const bookings = await loadBookings(tx, input.startsOn, input.endsOn, input.excludeReservationId);
+	const index = new AvailabilityIndex(stock, bookings);
+	const typeIds = input.lines.flatMap((l) => (l.kind === 'type' ? [l.typeId] : []));
+	const itemIds = input.lines.flatMap((l) => (l.kind === 'item' ? [l.itemId] : []));
+	const names = new Map<string, { name: string; archived: boolean }>();
+	if (typeIds.length || itemIds.length) {
+		for (const r of await rows(
+			tx,
+			sql`SELECT id, name, archived_at FROM types WHERE id::text IN (${sql.join(
+				[...typeIds, ''].map((v) => sql`${v}`),
+				sql`, `
+			)})
+				UNION ALL SELECT id, name, archived_at FROM items WHERE id::text IN (${sql.join(
+					[...itemIds, ''].map((v) => sql`${v}`),
+					sql`, `
+				)})`
+		)) {
+			names.set(String(r.id), { name: String(r.name), archived: !!r.archived_at });
 		}
 	}
-	return results;
+	const checks = index.check(
+		input.lines.map((l) => ({
+			typeId: l.kind === 'type' ? l.typeId : null,
+			itemId: l.kind === 'item' ? l.itemId : null,
+			quantity: l.quantity
+		})),
+		{ from: input.startsOn, to: input.endsOn }
+	);
+	return checks.map((c, i) => {
+		const line = input.lines[i]!;
+		const id = line.kind === 'type' ? line.typeId : line.itemId;
+		const known = names.get(id);
+		if (!known) {
+			return { index: i, ok: false, available: 0, message: 'Nicht gefunden' };
+		}
+		if (known.archived) {
+			return { index: i, ok: false, available: 0, message: `${known.name} ist archiviert` };
+		}
+		const message = c.ok
+			? null
+			: c.available === 0
+				? `${known.name} ist im Zeitraum nicht frei`
+				: `Von ${known.name} sind im Zeitraum nur ${c.available} frei`;
+		return { index: i, ok: c.ok, available: c.available, message };
+	});
 }
 
-/** Freie Kandidaten eines Artikels für die Zuteilung */
-export function candidatesFor(
-	usable: readonly string[],
-	taken: ReadonlySet<string>,
-	units: ReadonlyMap<
-		string,
-		{ setId: string | null; setName: string | null; articleId: string; usable: boolean }
-	>,
-	sets: ReadonlyMap<string, string[]>
-): Candidate[] {
-	return usable
-		.filter((id) => !taken.has(id))
-		.map((id) => {
-			const u = units.get(id)!;
-			const setSize = u.setId
-				? (sets.get(u.setId) ?? []).filter((x) => {
-						const o = units.get(x);
-						return o?.articleId === u.articleId && o.usable;
-					}).length
-				: 0;
-			return { unitId: id, setId: u.setId, setName: u.setName, setSize };
-		});
-}
-
-/** Bricht mit 409 ab, wenn eine Zeile nicht verfügbar ist */
+/** 409 mit `details.lines`, wenn eine Zeile nicht passt */
 export async function assertLinesAvailable(
 	tx: Tx,
 	input: Parameters<typeof checkLines>[1]
 ): Promise<void> {
-	const results = await checkLines(tx, input);
-	const failed = results.filter((r) => !r.ok);
-	if (failed.length) {
-		throw new CoreError('conflict', failed.map((f) => f.message).join(' '), {
-			lines: failed.map((f) => ({ index: f.index, message: f.message }))
+	const checks = await checkLines(tx, input);
+	const bad = checks.filter((c) => !c.ok);
+	if (bad.length) {
+		throw new CoreError('conflict', bad.map((c) => c.message ?? 'Nicht verfügbar').join(' · '), {
+			lines: checks
 		});
 	}
 }
 
-/** Mengen-Zeile, die der Server zu einem reservierten Set anlegt (Mengenteile des Set-Typs) */
-export interface SetBulkLine {
-	kind: 'article';
-	articleId: string;
-	quantity: number;
-	sourceSetId: string;
-}
+// --- Katalog ------------------------------------------------------------------------------
 
-/** Mengenteile der Set-Typen aller Set-Zeilen (z. B. 20 Heringe je Kohte) */
-export async function setBulkLines(tx: Tx, lines: ReservationLineInput[]): Promise<SetBulkLine[]> {
-	const setIds = lines
-		.filter((l) => l.kind === 'set')
-		.map((l) => (l.kind === 'set' ? l.setId : ''));
-	if (!setIds.length) return [];
-	const parts = await rows(
-		tx,
-		sql`SELECT s.id AS set_id, p.article_id, p.quantity
-			FROM sets s
-			JOIN set_template_parts p ON p.template_id = s.template_id
-			JOIN articles a ON a.id = p.article_id
-			WHERE a.kind = 'bulk' AND s.id::text IN (${sql.join(
-				setIds.map((id) => sql`${id}`),
-				sql`, `
-			)})
-			ORDER BY p.position`
-	);
-	return parts.map((r) => ({
-		kind: 'article',
-		articleId: String(r.article_id),
-		quantity: num(r.quantity),
-		sourceSetId: String(r.set_id)
-	}));
-}
-
-/** Zeilen zum Prüfen: eigene Zeilen plus Mengen-Zeilen der Sets */
-export async function withSetBulk(
+export async function loadCatalog(
 	tx: Tx,
-	lines: ReservationLineInput[]
-): Promise<ReservationLineInput[]> {
-	const extra = await setBulkLines(tx, lines);
-	return [
-		...lines,
-		...extra.map((e) => ({
-			kind: 'article' as const,
-			articleId: e.articleId,
-			quantity: e.quantity
-		}))
-	];
+	q: { from: string; to: string; excludeReservationId?: string }
+): Promise<Catalog> {
+	const p = { from: q.from, to: q.to };
+	const index = new AvailabilityIndex(
+		await loadStock(tx),
+		await loadBookings(tx, q.from, q.to, q.excludeReservationId)
+	);
+	const types = await loadTypes(tx, sql`t.archived_at IS NULL`);
+	const items = await loadItems(tx, sql`i.archived_at IS NULL`);
+	const byType = new Map<string, typeof items>();
+	for (const item of items) {
+		if (!item.typeId) continue;
+		const list = byType.get(item.typeId) ?? [];
+		list.push(item);
+		byType.set(item.typeId, list);
+	}
+	const entries: CatalogEntry[] = [];
+	for (const t of types) {
+		const members = byType.get(t.id) ?? [];
+		const typeFree = Math.max(0, index.freeType(t.id, p));
+		entries.push({
+			kind: 'type',
+			id: t.id,
+			name: t.name,
+			description: t.description,
+			category: t.category,
+			images: t.images,
+			thumbUrl: t.images[0]?.thumbUrl ?? members.find((m) => m.thumbUrl)?.thumbUrl ?? null,
+			total: index.totalType(t.id),
+			free: typeFree,
+			items: members.map((m) => ({
+				id: m.id,
+				name: m.name,
+				code: m.code,
+				quantity: m.quantity,
+				free: Math.max(0, Math.min(index.freeItem(m.id, p), typeFree)),
+				locationName: m.locationName,
+				condition: m.condition,
+				thumbUrl: m.thumbUrl
+			})),
+			code: null,
+			locationName: null
+		});
+	}
+	for (const m of items.filter((i) => !i.typeId)) {
+		entries.push({
+			kind: 'item',
+			id: m.id,
+			name: m.name,
+			description: m.notes,
+			category: m.category,
+			images: m.images,
+			thumbUrl: m.thumbUrl,
+			total: index.totalItem(m.id),
+			free: Math.max(0, index.freeItem(m.id, p)),
+			items: [],
+			code: m.code,
+			locationName: m.locationName
+		});
+	}
+	entries.sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true }));
+	return { from: q.from, to: q.to, entries };
 }
 
-/** Zeilen einer Reservierung ersetzen; zu Sets werden deren Mengenteile als eigene Zeilen angelegt */
+/** Zeilen einer Reservierung ersetzen (zusammengefasst je Typ/Artikel) */
 export async function replaceLines(
 	tx: Tx,
 	reservationId: string,
 	lines: ReservationLineInput[]
 ): Promise<void> {
 	await tx.execute(sql`DELETE FROM reservation_lines WHERE reservation_id = ${reservationId}`);
-	for (const [i, l] of lines.entries()) {
+	for (const [i, l] of mergeLines(lines).entries()) {
 		await tx.execute(
-			sql`INSERT INTO reservation_lines (id, reservation_id, kind, unit_id, set_id, article_id, quantity, position)
-				VALUES (${crypto.randomUUID()}, ${reservationId}, ${l.kind},
-					${l.kind === 'unit' ? l.unitId : null}, ${l.kind === 'set' ? l.setId : null},
-					${l.kind === 'article' ? l.articleId : null}, ${l.kind === 'article' ? l.quantity : 1}, ${i})`
-		);
-	}
-	for (const [j, b] of (await setBulkLines(tx, lines)).entries()) {
-		await tx.execute(
-			sql`INSERT INTO reservation_lines (id, reservation_id, kind, article_id, quantity, position, source_set_id)
-				VALUES (${crypto.randomUUID()}, ${reservationId}, 'article', ${b.articleId}, ${b.quantity},
-					${lines.length + j}, ${b.sourceSetId})`
+			sql`INSERT INTO reservation_lines (id, reservation_id, type_id, item_id, quantity, position)
+				VALUES (${crypto.randomUUID()}, ${reservationId}, ${l.kind === 'type' ? l.typeId : null},
+					${l.kind === 'item' ? l.itemId : null}, ${l.quantity}, ${i})`
 		);
 	}
 }
 
-export async function requireReservationRow(tx: Tx, id: string): Promise<Record<string, unknown>> {
-	const [r] = await rows(
-		tx,
-		sql`SELECT id, title, action_id, status, notes, created_by, created_at, issued_at, returned_at,
-				to_char(starts_on, 'YYYY-MM-DD') AS starts_on, to_char(ends_on, 'YYYY-MM-DD') AS ends_on
-			FROM reservations WHERE id = ${id}`
-	);
-	if (!r) throw errors.notFound('Reservierung nicht gefunden');
-	return r;
-}
-
-/** Darf `ctx` die Reservierung ändern bzw. aus-/zurückgeben? (Ersteller*in oder Verwaltung) */
-export function canEditReservation(ctx: RequestContext, createdBy: unknown): boolean {
-	if (canHandleAll(ctx)) return true;
-	return (
-		!!ctx.userId &&
-		String(createdBy ?? '') === ctx.userId &&
-		ctx.permissions.has(PERMISSIONS.reserve)
-	);
-}
-
-export function requireEdit(ctx: RequestContext, row: Record<string, unknown>): void {
-	if (!canEditReservation(ctx, row.created_by)) {
-		throw errors.forbidden('Nur die Ersteller*in oder die Materialverwaltung darf das');
+/** Gleiche Typen/Artikel zusammenfassen (Reihenfolge des ersten Auftretens) */
+export function mergeLines(lines: ReservationLineInput[]): ReservationLineInput[] {
+	const out = new Map<string, ReservationLineInput>();
+	for (const l of lines) {
+		const key = l.kind === 'type' ? `t:${l.typeId}` : `i:${l.itemId}`;
+		const prev = out.get(key);
+		if (prev) prev.quantity += l.quantity;
+		else out.set(key, { ...l });
 	}
-}
-
-/** Reservierung vollständig laden (ohne Namen von Konten/Aktionen – die setzt der Aufrufer) */
-export async function loadReservation(
-	tx: Tx,
-	ctx: RequestContext,
-	id: string
-): Promise<Omit<Reservation, 'createdByName' | 'actionName'>> {
-	const r = await requireReservationRow(tx, id);
-	const index = await loadPlaceIndex(tx);
-	const sets = await setUnitMap(tx);
-	const lines = (
-		await rows(
-			tx,
-			sql`SELECT * FROM reservation_lines WHERE reservation_id = ${id} ORDER BY position`
-		)
-	).map(toLineRow);
-	const assignedRows = await rows(
-		tx,
-		sql`SELECT unit_id, line_id, issued_at, returned_at, return_condition, return_note
-			FROM reservation_units WHERE reservation_id = ${id} ORDER BY issued_at, unit_id`
-	);
-	const assignedUnits = await unitSummaries(
-		tx,
-		assignedRows.map((a) => String(a.unit_id)),
-		index
-	);
-	const byUnit = new Map(assignedUnits.map((u) => [u.id, u]));
-	const assigned: AssignedUnit[] = assignedRows
-		.filter((a) => byUnit.has(String(a.unit_id)))
-		.map((a) => ({
-			unit: byUnit.get(String(a.unit_id))!,
-			lineId: a.line_id ? String(a.line_id) : null,
-			issuedAt: iso(a.issued_at),
-			returnedAt: isoOrNull(a.returned_at),
-			returnCondition: a.return_condition ? (String(a.return_condition) as Condition) : null,
-			returnNote: str(a.return_note)
-		}));
-
-	const unitIds = lines.filter((l) => l.unitId).map((l) => l.unitId!);
-	const unitRows = unitIds.length
-		? await rows(
-				tx,
-				sql`${UNIT_SELECT} WHERE u.id::text IN (${sql.join(
-					unitIds.map((x) => sql`${x}`),
-					sql`, `
-				)})`
-			)
-		: [];
-	const unitById = new Map(unitRows.map((u) => [String(u.id), toUnitSummary(index, u)]));
-	const setRows = await rows(tx, sql`SELECT id, name, code FROM sets`);
-	const setById = new Map(setRows.map((s) => [String(s.id), s]));
-	const articleRows = await rows(tx, sql`SELECT id, name, kind, unit_label FROM articles`);
-	const articleById = new Map(articleRows.map((a) => [String(a.id), a]));
-
-	const outLines: ReservationLine[] = lines.map((l) => {
-		// Zähler je Zeile ohne Kisteninhalt: Stück = 0/1, Set = Stücke des Sets, Artikel = zugeteilte Stücke
-		const out = assigned.filter((a) => a.lineId === l.id);
-		const base =
-			l.kind === 'unit' ? [l.unitId!] : l.kind === 'set' ? (sets.get(l.setId!) ?? []) : null;
-		const assignedCount = base ? out.filter((a) => base.includes(a.unit.id)).length : out.length;
-		const src = l.sourceSetId ? setById.get(l.sourceSetId) : undefined;
-		const fromSet = l.sourceSetId ? (src ? String(src.name) : 'Set') : null;
-		if (l.kind === 'unit') {
-			const u = unitById.get(l.unitId!);
-			return {
-				id: l.id,
-				kind: l.kind,
-				unitId: l.unitId,
-				setId: null,
-				articleId: u?.articleId ?? null,
-				name: u ? u.name : 'Unbekanntes Stück',
-				code: u?.code ?? null,
-				articleKind: 'unit',
-				unitLabel: 'Stück',
-				quantity: 1,
-				issuedQty: 0,
-				returnedQty: 0,
-				assignedCount,
-				fromSet
-			};
-		}
-		if (l.kind === 'set') {
-			const s = setById.get(l.setId!);
-			return {
-				id: l.id,
-				kind: l.kind,
-				unitId: null,
-				setId: l.setId,
-				articleId: null,
-				name: s ? `Set ${String(s.name)}` : 'Unbekanntes Set',
-				code: s ? String(s.code) : null,
-				articleKind: null,
-				unitLabel: 'Stück',
-				quantity: lineUnits(l, index, sets).length,
-				issuedQty: 0,
-				returnedQty: 0,
-				assignedCount,
-				fromSet
-			};
-		}
-		const a = articleById.get(l.articleId!);
-		return {
-			id: l.id,
-			kind: l.kind,
-			unitId: null,
-			setId: null,
-			articleId: l.articleId,
-			name: a ? String(a.name) : 'Unbekannter Artikel',
-			code: null,
-			articleKind: a ? (String(a.kind) as ArticleKind) : null,
-			unitLabel: a ? str(a.unit_label) || 'Stück' : 'Stück',
-			quantity: l.quantity,
-			issuedQty: l.issuedQty,
-			returnedQty: l.returnedQty,
-			assignedCount,
-			fromSet
-		};
-	});
-
-	const status = String(r.status) as ReservationStatus;
-	const endsOn = dateStr(r.ends_on);
-	const editable = canEditReservation(ctx, r.created_by);
-	return {
-		id,
-		title: String(r.title),
-		startsOn: dateStr(r.starts_on),
-		endsOn,
-		status,
-		actionId: r.action_id ? String(r.action_id) : null,
-		notes: str(r.notes),
-		createdBy: r.created_by ? String(r.created_by) : null,
-		createdAt: iso(r.created_at),
-		issuedAt: isoOrNull(r.issued_at),
-		returnedAt: isoOrNull(r.returned_at),
-		lines: outLines,
-		assigned,
-		canEdit: editable && (status === 'reserved' || status === 'issued'),
-		canHandle: editable && (status === 'reserved' || status === 'issued'),
-		overdue: status === 'issued' && endsOn < today()
-	};
+	return [...out.values()];
 }

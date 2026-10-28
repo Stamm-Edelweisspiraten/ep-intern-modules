@@ -64,10 +64,11 @@ const qr = (x: number, y: number, side: number, value = '{url}'): Draft => ({
 
 export const LABEL_STARTERS: LabelStarter[] = [
 	{
-		id: 'box-large',
-		name: 'Kiste groß (QR + Name + Inhalt)',
-		description: 'Großes Etikett für Kisten: QR-Code zum Scannen, Name, Code und Inhaltsliste.',
-		target: 'unit',
+		id: 'item-large',
+		name: 'Kiste groß (QR + Name + Lagerort)',
+		description:
+			'Großes Etikett für Kisten und große Artikel: QR-Code zum Scannen, Name, Code, Typ, Kategorie und Lagerort.',
+		target: 'item',
 		formatKey: 'zweckform-3427',
 		widthMm: 105,
 		heightMm: 74,
@@ -75,19 +76,19 @@ export const LABEL_STARTERS: LabelStarter[] = [
 			qr(5, 5, 36),
 			text(45, 5, 55, 16, '{name}', { size: 18, bold: true, lines: 2 }),
 			text(45, 22, 55, 6, '{code}', { size: 10 }),
-			text(45, 29, 55, 10, '{location}', { size: 9, lines: 2 }),
+			text(45, 29, 55, 10, '{type} · {category}', { size: 9, lines: 2 }),
 			{ type: 'line', x: 5, y: 44, w: 95, h: 1, stroke: 0.3, orientation: 'horizontal' },
-			text(5, 46, 95, 17, 'Inhalt: {contents}', { size: 10, lines: 4 }),
+			text(5, 46, 95, 17, 'Lagerort: {location}', { size: 11, lines: 3 }),
 			{ type: 'image', x: 5, y: 64, w: 7, h: 7, logo: 'lilie' },
 			text(14, 65, 86, 5, '{org}', { size: 8, valign: 'middle' })
 		]
 	},
 	{
-		id: 'shelf-article',
-		name: 'Regalfach / Artikel (QR + Name + Lagerorte)',
+		id: 'shelf-item',
+		name: 'Regalfach / Artikel (QR + Name + Lagerort)',
 		description:
-			'Für Regalfächer und Mengenartikel wie Tassen oder Heringe: Name groß, Kategorie, Lagerorte, QR-Code und Code.',
-		target: 'article',
+			'Für Regalfächer und Mengenartikel wie Tassen oder Heringe: Name groß, Kategorie, Lagerort, QR-Code und Code.',
+		target: 'item',
 		formatKey: 'avery-l7159',
 		widthMm: 63.5,
 		heightMm: 33.9,
@@ -96,16 +97,16 @@ export const LABEL_STARTERS: LabelStarter[] = [
 			{ type: 'line', x: 29.5, y: 3, w: 1, h: 27.9, stroke: 0.3, orientation: 'vertical' },
 			text(31.5, 2, 30, 10, '{name}', { size: 13, bold: true, lines: 2 }),
 			text(31.5, 12.5, 30, 4.5, '{category}', { size: 8 }),
-			text(31.5, 17.5, 30, 8.5, '{locations}', { size: 7, lines: 2 }),
+			text(31.5, 17.5, 30, 8.5, '{location}', { size: 7, lines: 2 }),
 			text(31.5, 27, 30, 4.5, '{code}', { size: 8, bold: true, valign: 'bottom' })
 		]
 	},
 	{
-		id: 'box-small',
-		name: 'Kiste klein (QR + Name + Inhalt)',
+		id: 'item-small',
+		name: 'Artikel klein (QR + Name + Typ)',
 		description:
-			'Kleines Kisten-Etikett für A4-Bögen (24 je Seite): QR-Code, Name, Code, Inhalt und Wappen in Schwarz-Weiß.',
-		target: 'unit',
+			'Kleines Etikett für A4-Bögen (24 je Seite): QR-Code, Name, Code, Typ und Wappen in Schwarz-Weiß.',
+		target: 'item',
 		formatKey: 'avery-l7159',
 		widthMm: 63.5,
 		heightMm: 33.9,
@@ -113,7 +114,7 @@ export const LABEL_STARTERS: LabelStarter[] = [
 			qr(2, 3, 27),
 			text(31.5, 2, 30, 9, '{name}', { size: 12, bold: true, lines: 2 }),
 			text(31.5, 11.5, 30, 4.5, '{code}', { size: 8 }),
-			text(31.5, 16.5, 30, 10, '{contents}', { size: 7, lines: 3 }),
+			text(31.5, 16.5, 30, 10, '{type}', { size: 7, lines: 3 }),
 			{ type: 'image', x: 31.5, y: 27.5, w: 5, h: 5, logo: 'wappen', monochrome: true },
 			text(37.5, 27.5, 24, 5, '{org}', { size: 6, valign: 'middle' })
 		]
@@ -122,7 +123,7 @@ export const LABEL_STARTERS: LabelStarter[] = [
 		id: 'tent-small',
 		name: 'Zeltbahn klein (Code 128 + Name)',
 		description: 'Schmales Etikett für Zeltbahnen und Stangen mit Strichcode für den Handscanner.',
-		target: 'unit',
+		target: 'item',
 		formatKey: 'brother-62x29',
 		widthMm: 62,
 		heightMm: 29,
@@ -134,8 +135,9 @@ export const LABEL_STARTERS: LabelStarter[] = [
 	},
 	{
 		id: 'location',
-		name: 'Lagerort (QR + Pfad)',
-		description: 'Für Regale und Fächer: QR-Code, Name groß, voller Pfad klein.',
+		name: 'Lagerort (QR + Name + Beschreibung)',
+		description:
+			'Für Regale, Fächer und Kisten-Stellplätze: QR-Code, Name groß, Beschreibung klein.',
 		target: 'location',
 		formatKey: 'zweckform-3474',
 		widthMm: 70,
@@ -143,29 +145,15 @@ export const LABEL_STARTERS: LabelStarter[] = [
 		elements: [
 			qr(3, 3, 31),
 			text(37, 3, 31, 12, '{name}', { size: 14, bold: true, lines: 2 }),
-			text(37, 16, 31, 12, '{path}', { size: 8, lines: 3 }),
+			text(37, 16, 31, 12, '{description}', { size: 8, lines: 3 }),
 			text(37, 29, 31, 5, '{code}', { size: 8, valign: 'bottom' })
-		]
-	},
-	{
-		id: 'set',
-		name: 'Set / Zelt (QR + Name + Teile)',
-		description: 'Für Zeltsäcke: QR-Code, Name des Sets, Typ und Teileliste.',
-		target: 'set',
-		formatKey: 'zweckform-3474',
-		widthMm: 70,
-		heightMm: 37,
-		elements: [
-			qr(3, 3, 31),
-			text(37, 3, 31, 9, '{name}', { size: 14, bold: true }),
-			text(37, 12, 31, 5, '{template} · {code}', { size: 8 }),
-			text(37, 18, 31, 16, '{parts}', { size: 8, lines: 4 })
 		]
 	},
 	{
 		id: 'blank',
 		name: 'Leer-Code (QR + Code)',
-		description: 'Kleine Etiketten mit vorab vergebenen Codes – erst später einem Stück zuordnen.',
+		description:
+			'Kleine Etiketten mit vorab vergebenen Codes – erst später einem Artikel zuordnen.',
 		target: 'blank',
 		formatKey: 'avery-l7651',
 		widthMm: 38.1,
@@ -178,9 +166,9 @@ export const LABEL_STARTERS: LabelStarter[] = [
 	},
 	{
 		id: 'empty',
-		name: 'Leeres Layout',
-		description: 'Ohne Elemente – Ziel und Format frei wählen.',
-		target: 'unit',
+		name: 'Leeres Etikett',
+		description: 'Ohne Elemente – Ziel und Größe frei wählen.',
+		target: 'item',
 		formatKey: 'zweckform-3474',
 		widthMm: 70,
 		heightMm: 37,

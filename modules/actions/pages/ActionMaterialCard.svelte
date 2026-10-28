@@ -1,9 +1,10 @@
 <script lang="ts">
 	// Karte „Material“ in der Übersicht: Materialreservierungen dieser Aktion, Knopf „Material reservieren“.
 	// Nur über die REST-API von `material` (kein Import aus dem Modul); ohne aktives Modul/Recht/Zugriff unsichtbar.
+	import { page } from '$app/state';
 	import Boxes from '@lucide/svelte/icons/boxes';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { apiFetch, formatDateDe } from '$lib/sdk/client';
+	import { apiFetch, can, formatDateDe } from '$lib/sdk/client';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -15,27 +16,35 @@
 		endsOn = null
 	}: { actionId: string; actionName: string; startsOn: string; endsOn?: string | null } = $props();
 
-	type Status = 'reserved' | 'issued' | 'returned' | 'cancelled';
+	// Lokale Typen (Auszug aus `material/schemas.ts` – kein Import aus dem Modul, ESLint-Modulgrenze)
+	type State = 'upcoming' | 'running' | 'past' | 'cancelled';
 	interface MaterialReservation {
 		id: string;
 		title: string;
 		startsOn: string;
 		endsOn: string;
-		status: Status;
+		state: State;
 		itemSummary: string;
-		overdue: boolean;
+		mine: boolean;
 	}
 	interface ByAction {
 		reservations: MaterialReservation[];
 		canCreate: boolean;
 	}
 
-	const STATUS: Record<Status, { label: string; variant: BadgeVariant }> = {
-		reserved: { label: 'Reserviert', variant: 'info' },
-		issued: { label: 'Ausgegeben', variant: 'warning' },
-		returned: { label: 'Zurückgegeben', variant: 'secondary' },
+	const STATE: Record<State, { label: string; variant: BadgeVariant }> = {
+		upcoming: { label: 'Reserviert', variant: 'info' },
+		running: { label: 'Läuft', variant: 'warning' },
+		past: { label: 'Vergangen', variant: 'secondary' },
 		cancelled: { label: 'Storniert', variant: 'outline' }
 	};
+
+	// „Alle Reservierungen“ sieht nur die Verwaltung; sonst öffnet „Meine“ die Reservierung per `open`
+	const canManageAll = $derived(
+		can((page.data.permissions ?? []) as string[], 'material.reservation.manage')
+	);
+	const reservationHref = (r: MaterialReservation) =>
+		`/modules/material?tab=${r.mine || !canManageAll ? 'meine' : 'alle'}&open=${r.id}`;
 
 	let info = $state<ByAction | null>(null);
 
@@ -83,7 +92,7 @@
 					{#each info.reservations as r (r.id)}
 						<li class="py-2">
 							<a
-								href={`/modules/material/reservierung/${r.id}`}
+								href={reservationHref(r)}
 								class="flex items-start justify-between gap-2 rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 							>
 								<span class="min-w-0">
@@ -92,13 +101,9 @@
 										{period(r.startsOn, r.endsOn)}{r.itemSummary ? ` · ${r.itemSummary}` : ''}
 									</span>
 								</span>
-								{#if r.overdue}
-									<Badge variant="destructive" class="shrink-0">Überfällig</Badge>
-								{:else}
-									<Badge variant={STATUS[r.status].variant} class="shrink-0">
-										{STATUS[r.status].label}
-									</Badge>
-								{/if}
+								<Badge variant={STATE[r.state].variant} class="shrink-0">
+									{STATE[r.state].label}
+								</Badge>
 							</a>
 						</li>
 					{/each}

@@ -7,13 +7,10 @@ import type { BadgeVariant } from '$lib/components/ui/badge';
 import {
 	BASE_PATH,
 	CONDITION_LABELS,
-	RESERVATION_STATUS_LABELS,
+	RESERVATION_STATE_LABELS,
 	type Condition,
-	type ReservationStatus
+	type ReservationState
 } from '../schemas';
-
-/** Pseudo-Ort im Lager: Stücke ohne Lagerort und ohne Kiste */
-export const UNPLACED = '__unplaced';
 
 /** Basis für `apiFetch` */
 export const API = BASE_PATH;
@@ -62,20 +59,24 @@ export const CONDITION_VARIANTS: Record<Condition, BadgeVariant> = {
 	lost: 'destructive'
 };
 
-export const STATUS_VARIANTS: Record<ReservationStatus, BadgeVariant> = {
-	reserved: 'info',
-	issued: 'warning',
-	returned: 'secondary',
+export const STATE_VARIANTS: Record<ReservationState, BadgeVariant> = {
+	upcoming: 'info',
+	running: 'warning',
+	past: 'secondary',
 	cancelled: 'outline'
 };
 
-export { CONDITION_LABELS, RESERVATION_STATUS_LABELS };
+export { CONDITION_LABELS, RESERVATION_STATE_LABELS };
 
-/** Link zur Detailansicht eines Stücks/einer Kiste (öffnet das Blatt im Bestand) */
-export const unitHref = (id: string) => `${BASE_PATH}/lager?open=${id}`;
-/** Link zu einem Set */
-export const setHref = (id: string) => `${BASE_PATH}/lager?view=sets&open=${id}`;
+/** Reiter der Materialseite (`?tab=`) */
+export type MaterialTab = 'reservieren' | 'meine' | 'alle' | 'lager' | 'etiketten';
+
+/** Link zu einem Artikel im Lager (öffnet den Artikel-Dialog) */
+export const itemHref = (id: string) => `${BASE_PATH}?tab=lager&open=${id}`;
 /** Link zu einer Reservierung */
-export const reservationHref = (id: string) => `${BASE_PATH}/reservierung/${id}`;
-/** Link zu einem Artikel im Lager */
-export const articleHref = (id: string) => `${BASE_PATH}/lager?view=articles&open=${id}`;
+export const reservationHref = (id: string, mine = true) =>
+	`${BASE_PATH}?tab=${mine ? 'meine' : 'alle'}&open=${id}`;
+
+/** Anzahl mit Name: „3 × Kohtenbahn“ bzw. „Kohtenbahn“ */
+export const qtyName = (quantity: number, name: string) =>
+	quantity > 1 ? `${quantity} × ${name}` : name;

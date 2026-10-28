@@ -1,82 +1,76 @@
 /**
- * Globale Suche (Befehlspalette): Stücke/Kisten (Code, Bezeichnung), Sets, Artikel und offene
- * Reservierungen. Alles mit `material.inventory.view` sichtbar (wie in der Oberfläche).
+ * Globale Suche (Befehlspalette): Lagerartikel (Code, Name), Typen, Lagerorte und offene Reservierungen.
+ * Alles mit `material.inventory.view` sichtbar (wie in der Oberfläche).
  */
 import { sql } from 'drizzle-orm';
 import type { ModuleSearchProvider, RequestContext } from '$lib/sdk/server';
 import type { SearchHit } from '$lib/sdk/types/search';
 import { formatDateDe } from '$lib/sdk/dates';
-import { dateStr, mdb, rows, str } from './db';
+import { dateStr, likePattern, mdb, rows, str, today } from './db';
+import { itemLink, reservationLink } from './notify';
 import { BASE_PATH, PERMISSIONS, normalizeCode } from './schemas';
 
-const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
 async function run(_ctx: RequestContext, query: string, limit: number): Promise<SearchHit[]> {
-	const p = like(query);
+	const p = likePattern(query);
 	const code = normalizeCode(query);
 	return mdb().transaction(async (tx) => {
 		const hits: SearchHit[] = [];
-		const units = await rows(
+		for (const i of await rows(
 			tx,
-			sql`SELECT u.id, u.code, u.label, u.is_container, a.name FROM units u
-				JOIN articles a ON a.id = u.article_id
-				WHERE u.retired_at IS NULL AND (u.code = ${code} OR u.label ILIKE ${p})
-				ORDER BY (u.code = ${code}) DESC, lower(u.label) LIMIT ${limit}`
-		);
-		for (const u of units) {
+			sql`SELECT i.id, i.code, i.name, t.name AS type_name FROM items i
+				LEFT JOIN types t ON t.id = i.type_id
+				WHERE i.archived_at IS NULL AND (i.code = ${code} OR i.name ILIKE ${p})
+				ORDER BY (i.code = ${code}) DESC, lower(i.name) LIMIT ${limit}`
+		)) {
 			hits.push({
-				id: `unit:${String(u.id)}`,
-				type: u.is_container === true || u.is_container === 't' ? 'Kiste' : 'Material',
-				title: str(u.label) || String(u.name),
-				subtitle: `${String(u.code)} · ${String(u.name)}`,
-				href: `${BASE_PATH}/lager?open=${String(u.id)}`,
+				id: `item:${String(i.id)}`,
+				type: 'Material',
+				title: String(i.name),
+				subtitle: [String(i.code), str(i.type_name)].filter(Boolean).join(' · '),
+				href: itemLink(String(i.id)),
 				icon: 'boxes'
 			});
 		}
-		const sets = await rows(
+		for (const t of await rows(
 			tx,
-			sql`SELECT s.id, s.code, s.name, t.name AS template FROM sets s
-				JOIN set_templates t ON t.id = s.template_id
-				WHERE s.code = ${code} OR s.name ILIKE ${p} ORDER BY lower(s.name) LIMIT ${limit}`
-		);
-		for (const s of sets) {
-			hits.push({
-				id: `set:${String(s.id)}`,
-				type: 'Set',
-				title: String(s.name),
-				subtitle: `${String(s.code)} · ${String(s.template)}`,
-				href: `${BASE_PATH}/lager?view=sets&open=${String(s.id)}`,
-				icon: 'boxes'
-			});
-		}
-		const articles = await rows(
-			tx,
-			sql`SELECT id, name, kind FROM articles WHERE archived_at IS NULL AND name ILIKE ${p}
+			sql`SELECT id, name FROM types WHERE archived_at IS NULL AND name ILIKE ${p}
 				ORDER BY lower(name) LIMIT ${limit}`
-		);
-		for (const a of articles) {
+		)) {
 			hits.push({
-				id: `article:${String(a.id)}`,
-				type: 'Artikel',
-				title: String(a.name),
-				subtitle: String(a.kind) === 'bulk' ? 'Menge' : 'Einzelstücke',
-				href: `${BASE_PATH}/lager?view=articles&open=${String(a.id)}`,
+				id: `type:${String(t.id)}`,
+				type: 'Materialtyp',
+				title: String(t.name),
+				subtitle: 'Typ',
+				href: `${BASE_PATH}?tab=lager&type=${String(t.id)}`,
 				icon: 'boxes'
 			});
 		}
-		const res = await rows(
+		for (const l of await rows(
+			tx,
+			sql`SELECT id, name, code FROM locations WHERE code = ${code} OR name ILIKE ${p}
+				ORDER BY lower(name) LIMIT ${limit}`
+		)) {
+			hits.push({
+				id: `location:${String(l.id)}`,
+				type: 'Lagerort',
+				title: String(l.name),
+				subtitle: String(l.code),
+				href: `${BASE_PATH}?tab=lager&location=${String(l.id)}`,
+				icon: 'boxes'
+			});
+		}
+		for (const r of await rows(
 			tx,
 			sql`SELECT id, title, to_char(starts_on, 'YYYY-MM-DD') AS starts_on FROM reservations
-				WHERE status IN ('reserved', 'issued') AND title ILIKE ${p}
+				WHERE status = 'reserved' AND ends_on >= ${today()}::date AND title ILIKE ${p}
 				ORDER BY starts_on LIMIT ${limit}`
-		);
-		for (const r of res) {
+		)) {
 			hits.push({
 				id: `reservation:${String(r.id)}`,
 				type: 'Reservierung',
 				title: String(r.title),
 				subtitle: `ab ${formatDateDe(dateStr(r.starts_on))}`,
-				href: `${BASE_PATH}/reservierung/${String(r.id)}`,
+				href: reservationLink(String(r.id)),
 				icon: 'boxes'
 			});
 		}

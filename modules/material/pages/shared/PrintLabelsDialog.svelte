@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Etiketten drucken: Layout (passend zum Ziel), Format, Kopien, Startfeld auf angebrochenen Bögen,
-	// Umrisse für den Probedruck → PDF (`POST /labels.pdf`). Ohne `ids` (Probedruck aus dem Designer)
-	// werden die Objekte hier gewählt.
+	// Umrisse für den Testdruck → PDF (`POST /labels.pdf`). Ohne `ids` (Testdruck aus Etikettenseite/Designer)
+	// werden die Objekte hier gewählt (`ItemPicker`).
+	// API: `<PrintLabelsDialog bind:open target={'item' | 'location' | 'blank'} ids={string[]} title?={string} />`
 	import Printer from '@lucide/svelte/icons/printer';
 	import { toast } from 'svelte-sonner';
 	import { apiFetch } from '$lib/sdk/client';
@@ -12,41 +13,40 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { ErrorState, FormField, LoadingState, NumberStepper } from '$lib/components/layout';
 	import { downloadPdf } from '$lib/components/layout/download';
 	import {
 		BASE_PATH,
 		LABEL_TARGET_LABELS,
-		type Article,
 		type LabelFormatEntry,
 		type LabelTarget,
-		type LabelTemplate,
-		type Location,
-		type MaterialSet
+		type LabelTemplate
 	} from '../../schemas';
 	import { API, errorText } from '../helpers';
-	import { sampleValues } from '../labels/designer';
+	import { formatSize, sampleValues } from '../labels/designer';
 	import LabelPreview from './LabelPreview.svelte';
 	import SheetPreview from './SheetPreview.svelte';
-	import UnitPicker from './UnitPicker.svelte';
+	import ItemPicker from './ItemPicker.svelte';
 
 	let {
 		open = $bindable(false),
 		target,
 		ids = [],
 		codes = [],
+		title,
 		templateId
 	}: {
 		/** Dialog offen */
 		open?: boolean;
 		/** Art der Objekte */
 		target: LabelTarget;
-		/** IDs der Objekte (Stücke/Kisten, Artikel, Sets oder Lagerorte), Reihenfolge = Druckreihenfolge */
+		/** IDs der Objekte (Lagerartikel oder Lagerorte), Reihenfolge = Druckreihenfolge; leer = hier wählen */
 		ids?: string[];
+		/** Untertitel, z. B. Name des Artikels („Kohtenbahn K1.1“) */
+		title?: string;
 		/** Nur `blank`: vorab vergebene Codes */
 		codes?: string[];
-		/** Layout vorwählen (z. B. Probedruck aus dem Designer) */
+		/** Layout vorwählen (z. B. Testdruck aus dem Designer) */
 		templateId?: string;
 	} = $props();
 
@@ -63,9 +63,8 @@
 	let startIndex = $state(0);
 	let outlines = $state(false);
 
-	// Probedruck ohne vorgegebene Objekte
+	// Testdruck ohne vorgegebene Objekte
 	let pickedIds = $state<string[]>([]);
-	let options = $state<{ value: string; label: string }[]>([]);
 
 	const probe = $derived(target === 'blank' ? codes.length === 0 : ids.length === 0);
 	const PROBE_CODES = ['M-PROBE'];
@@ -122,28 +121,10 @@
 			const pre = own.find((x) => x.id === templateId) ?? own[0] ?? null;
 			chosenTemplate = pre?.id ?? null;
 			formatKey = pre?.formatKey ?? null;
-			if (probe && (target === 'set' || target === 'location' || target === 'article'))
-				await loadOptions();
 		} catch (e) {
 			loadError = errorText(e, 'Etiketten-Layouts konnten nicht geladen werden.');
 		} finally {
 			loading = false;
-		}
-	}
-
-	async function loadOptions() {
-		if (target === 'article') {
-			const articles = await apiFetch<Article[]>(`${API}/articles`);
-			options = articles.map((a) => ({
-				value: a.id,
-				label: a.code ? `${a.name} (${a.code})` : a.name
-			}));
-		} else if (target === 'set') {
-			const sets = await apiFetch<MaterialSet[]>(`${API}/sets`);
-			options = sets.map((s) => ({ value: s.id, label: `${s.name} (${s.code})` }));
-		} else {
-			const locs = await apiFetch<Location[]>(`${API}/locations`);
-			options = locs.map((l) => ({ value: l.id, label: `${l.path} (${l.code})` }));
 		}
 	}
 
@@ -154,14 +135,11 @@
 		startIndex = 0;
 	}
 
-	const PROBE_LABELS: Partial<Record<LabelTarget, string>> = {
-		set: 'Sets für den Probedruck',
-		location: 'Lagerorte für den Probedruck',
-		article: 'Artikel für den Probedruck'
-	};
-
 	const formatOptions = $derived(
-		formats.map((f) => ({ value: f.key, label: f.preset ? f.name : `${f.name} (eigenes)` }))
+		formats.map((f) => ({
+			value: f.key,
+			label: `${f.name} · ${formatSize(f.format)}${f.preset ? '' : ' (eigene)'}`
+		}))
 	);
 
 	async function print() {
@@ -205,9 +183,11 @@
 		<Dialog.Header>
 			<Dialog.Title>Etiketten drucken</Dialog.Title>
 			<Dialog.Description>
-				{LABEL_TARGET_LABELS[target]}{probe
-					? ' – Probedruck'
-					: ` – ${objectCount} ${objectCount === 1 ? 'Objekt' : 'Objekte'}`}
+				{title ?? LABEL_TARGET_LABELS[target]}{probe
+					? ' – Testdruck'
+					: ids.length > 1 || !title
+						? ` – ${objectCount} ${objectCount === 1 ? 'Objekt' : 'Objekte'}`
+						: ''}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -220,7 +200,10 @@
 				<Alert.Title>Noch kein passendes Layout</Alert.Title>
 				<Alert.Description>
 					Für „{LABEL_TARGET_LABELS[target]}“ gibt es noch kein Etikett-Layout.
-					<a class="text-link underline-offset-4 hover:underline" href={`${BASE_PATH}/etiketten`}>
+					<a
+						class="text-link underline-offset-4 hover:underline"
+						href={`${BASE_PATH}?tab=etiketten`}
+					>
 						Layout anlegen
 					</a>
 				</Alert.Description>
@@ -238,7 +221,7 @@
 						/>
 					</FormField>
 					<FormField
-						label="Format"
+						label="Etikettgröße"
 						id="print-format"
 						hint={scaled
 							? `Das Layout wird auf ${Math.round(scaled * 100)} % skaliert.`
@@ -246,7 +229,7 @@
 					>
 						<SelectField
 							id="print-format"
-							label="Format"
+							label="Etikettgröße"
 							options={formatOptions}
 							value={formatKey}
 							onchange={(v) => {
@@ -256,26 +239,23 @@
 						/>
 					</FormField>
 
-					{#if probe && target === 'unit'}
+					{#if probe && target !== 'blank'}
 						<div class="space-y-1.5">
-							<Label>Stücke für den Probedruck</Label>
-							<UnitPicker bind:selected={pickedIds} label="Stücke für den Probedruck suchen" />
-						</div>
-					{:else if probe && target !== 'blank'}
-						<FormField
-							label={PROBE_LABELS[target] ?? 'Objekte für den Probedruck'}
-							id="print-objects"
-						>
-							<MultiSelect
+							<Label for="print-objects">
+								{target === 'location'
+									? 'Lagerorte für den Testdruck'
+									: 'Artikel für den Testdruck'}
+							</Label>
+							<ItemPicker
 								id="print-objects"
-								label="Objekte für den Probedruck"
-								{options}
-								bind:value={pickedIds}
+								{target}
+								bind:selected={pickedIds}
+								label={target === 'location' ? 'Lagerorte suchen' : 'Artikel suchen'}
 							/>
-						</FormField>
+						</div>
 					{:else if probe}
 						<p class="text-xs text-muted-foreground">
-							Probedruck mit dem Beispiel-Code „{PROBE_CODES[0]}“ (wird keinem Stück zugeordnet).
+							Testdruck mit dem Beispiel-Code „{PROBE_CODES[0]}“ (wird keinem Artikel zugeordnet).
 						</p>
 					{/if}
 
@@ -294,7 +274,7 @@
 						<div class="grid gap-0.5">
 							<Label for="print-outlines">Umrisse drucken</Label>
 							<span class="text-xs text-muted-foreground">
-								Für einen Probedruck auf normalem Papier – zum Abgleich mit dem Etikettenbogen.
+								Für einen Testdruck auf normalem Papier – zum Abgleich mit dem Etikettenbogen.
 							</span>
 						</div>
 					</div>

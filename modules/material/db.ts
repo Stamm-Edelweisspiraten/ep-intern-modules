@@ -1,6 +1,6 @@
 /**
- * Gemeinsame Server-Helfer des Moduls `material`: Transaktion, Zeilen, Codes, Verlauf, Namen und
- * optionale Dienste. Dienste (`actions`, `offices`) und `core.*` nur AUSSERHALB offener
+ * Gemeinsame Server-Helfer des Moduls `material`: Transaktion, Zeilen, Codes, Namen und optionale
+ * Dienste. Dienste (`actions`, `offices`, `members`) und `core.*` nur AUSSERHALB offener
  * Modul-Transaktionen aufrufen (PGlite hat eine Sitzung).
  */
 import { sql } from 'drizzle-orm';
@@ -21,6 +21,7 @@ import {
 import { todayBerlin } from '$lib/sdk/dates';
 import type { ActionsService } from '$lib/modules/actions/contract';
 import type { OfficesService } from '$lib/modules/offices/contract';
+import type { PrincipalProvider } from '$lib/sdk/types/sharing';
 import { CODE_PREFIX, MODULE_ID, PERMISSIONS, type CodeKind } from './schemas';
 
 export { idList, iso, isoOrNull, num, rows, strOrNull, type Row };
@@ -42,21 +43,20 @@ export function dateStr(v: unknown): string {
 }
 
 export const canManage = (ctx: RequestContext) => ctx.permissions.has(PERMISSIONS.manage);
-export const canHandleAll = (ctx: RequestContext) => ctx.permissions.has(PERMISSIONS.reservations);
+export const canManageReservations = (ctx: RequestContext) =>
+	ctx.permissions.has(PERMISSIONS.reservations);
 
 /** Code formatieren: `M-000123` */
 export function formatCode(kind: CodeKind, value: number): string {
 	return `${CODE_PREFIX[kind]}-${String(value).padStart(6, '0')}`;
 }
 
-/** Ist der Code irgendwo vergeben (Stück, Set, Ort)? */
+/** Ist der Code irgendwo vergeben (Artikel, Ort)? */
 export async function codeInUse(tx: Tx, code: string, except?: string): Promise<boolean> {
 	const [r] = await rows(
 		tx,
-		sql`SELECT 1 AS x FROM units WHERE code = ${code} AND id::text <> ${except ?? ''}
-			UNION ALL SELECT 1 FROM sets WHERE code = ${code} AND id::text <> ${except ?? ''}
+		sql`SELECT 1 AS x FROM items WHERE code = ${code} AND id::text <> ${except ?? ''}
 			UNION ALL SELECT 1 FROM locations WHERE code = ${code} AND id::text <> ${except ?? ''}
-			UNION ALL SELECT 1 FROM articles WHERE code = ${code} AND id::text <> ${except ?? ''}
 			LIMIT 1`
 	);
 	return !!r;
@@ -100,26 +100,6 @@ export async function claimCode(tx: Tx, code: string, except?: string): Promise<
 	return code;
 }
 
-export interface MovementInput {
-	kind: string;
-	unitId?: string | null;
-	articleId?: string | null;
-	quantity?: number | null;
-	detail?: string;
-	note?: string;
-	reservationId?: string | null;
-}
-
-/** Verlaufseintrag schreiben (gleiche Transaktion wie die Änderung) */
-export async function logMovement(tx: Tx, ctx: RequestContext, m: MovementInput): Promise<void> {
-	await tx.execute(
-		sql`INSERT INTO movements (id, kind, unit_id, article_id, quantity, detail, note, reservation_id, actor_id)
-			VALUES (${crypto.randomUUID()}, ${m.kind}, ${m.unitId ?? null}, ${m.articleId ?? null},
-				${m.quantity ?? null}, ${m.detail ?? ''}, ${m.note ?? ''}, ${m.reservationId ?? null},
-				${ctx.userId ?? null})`
-	);
-}
-
 /** Namen von Benutzer*innen; Unbekannte fehlen */
 export async function userNames(
 	ctx: RequestContext,
@@ -141,3 +121,11 @@ export function actionsService(): Promise<ActionsService | null> {
 export function officesService(): Promise<OfficesService | null> {
 	return core.modules.useOptional<OfficesService>('offices', MODULE_ID);
 }
+
+/** `null`, wenn `members` nicht aktiv ist (Gruppen für den Zweck „Gruppe“) */
+export function membersService(): Promise<PrincipalProvider | null> {
+	return core.modules.useOptional<PrincipalProvider>('members', MODULE_ID);
+}
+
+/** LIKE-Muster mit maskierten Sonderzeichen */
+export const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

@@ -1,6 +1,5 @@
 /**
- * Etiketten: Formate (Vorgaben + eigene), Layouts (Designer), Druck als PDF über `core.pdf.labels`,
- * dazu die Übersicht des Moduls.
+ * Etiketten: Formate (Vorgaben + eigene), Layouts (Designer), Druck als PDF über `core.pdf.labels`.
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -18,9 +17,8 @@ import {
 	type LabelFormat,
 	type LabelLayout
 } from '$lib/sdk/labels';
-import { iso, mdb, num, rows, str, today } from './db';
-import { holderText, loadPlaceIndex, placeText, unitSummaries } from './inventory';
-import { loadSets } from './sets.endpoints';
+import { idList, iso, mdb, num, rows, str } from './db';
+import { loadItems } from './inventory';
 import {
 	MAX_LABELS,
 	PERMISSIONS,
@@ -34,8 +32,7 @@ import {
 	scanPath,
 	type LabelFormatEntry,
 	type LabelTarget,
-	type LabelTemplate,
-	type Overview
+	type LabelTemplate
 } from './schemas';
 
 const tags = ['Modul: material'];
@@ -130,109 +127,28 @@ async function labelValues(
 			return common(code);
 		});
 	}
-	if (target === 'unit') {
-		const index = await loadPlaceIndex(tx);
-		const units = await unitSummaries(tx, ids, index);
-		if (units.length !== new Set(ids).size) throw errors.notFound('Stück nicht gefunden');
-		const byId = new Map(units.map((u) => [u.id, u]));
-		const contents = new Map<string, string>();
-		for (const u of units.filter((x) => x.isContainer)) {
-			const parts = await rows(
-				tx,
-				sql`SELECT a.name, count(*) AS n FROM units x JOIN articles a ON a.id = x.article_id
-					WHERE x.container_id = ${u.id} AND x.retired_at IS NULL GROUP BY a.name
-					UNION ALL
-					SELECT a.name, sum(s.quantity) FROM stock s JOIN articles a ON a.id = s.article_id
-					WHERE s.container_id = ${u.id} AND s.quantity > 0 GROUP BY a.name
-					ORDER BY 1`
-			);
-			contents.set(
-				u.id,
-				parts
-					.map((p) => (num(p.n) > 1 ? `${num(p.n)} × ${String(p.name)}` : String(p.name)))
-					.join(', ')
-			);
-		}
+	if (target === 'item') {
+		const items = await loadItems(tx, sql`i.id IN (${idList(ids)})`);
+		if (items.length !== new Set(ids).size) throw errors.notFound('Artikel nicht gefunden');
+		const byId = new Map(items.map((i) => [i.id, i]));
 		return ids.map((id) => {
-			const u = byId.get(id)!;
+			const i = byId.get(id)!;
 			return {
-				...common(u.code),
-				name: u.name,
-				article: u.articleName,
-				category: u.categoryName ?? '',
-				location: placeText(index, u.id),
-				set: u.setName ?? '',
-				contents: contents.get(u.id) ?? ''
+				...common(i.code),
+				name: i.name,
+				type: i.typeName ?? '',
+				category: i.category?.name ?? '',
+				location: i.locationName ?? '',
+				quantity: String(i.quantity)
 			};
 		});
 	}
-	if (target === 'article') {
-		const index = await loadPlaceIndex(tx);
-		const list = await rows(
-			tx,
-			sql`SELECT a.id, a.code, a.name, a.kind, a.unit_label, c.name AS category,
-					(SELECT coalesce(sum(quantity), 0) FROM stock s WHERE s.article_id = a.id) AS stock_total,
-					(SELECT count(*) FROM units u WHERE u.article_id = a.id AND u.retired_at IS NULL) AS unit_total
-				FROM articles a LEFT JOIN categories c ON c.id = a.category_id
-				WHERE a.id::text IN (${sql.join(
-					(ids.length ? ids : ['00000000-0000-0000-0000-000000000000']).map((id) => sql`${id}`),
-					sql`, `
-				)})`
-		);
-		if (list.length !== new Set(ids).size) throw errors.notFound('Artikel nicht gefunden');
-		const byId = new Map(list.map((r) => [String(r.id), r]));
-		const out: Record<string, string>[] = [];
-		for (const id of ids) {
-			const r = byId.get(id)!;
-			const places = new Set<string>();
-			if (String(r.kind) === 'bulk') {
-				for (const h of await rows(
-					tx,
-					sql`SELECT location_id, container_id FROM stock WHERE article_id = ${id} AND quantity > 0
-						ORDER BY quantity DESC`
-				)) {
-					places.add(
-						holderText(index, {
-							locationId: h.location_id ? String(h.location_id) : null,
-							containerId: h.container_id ? String(h.container_id) : null
-						})
-					);
-				}
-			} else {
-				for (const u of index.units.values()) {
-					if (u.articleId === id) places.add(placeText(index, u.id));
-				}
-			}
-			const where = [...places];
-			out.push({
-				...common(String(r.code)),
-				name: String(r.name),
-				category: str(r.category),
-				unit: str(r.unit_label) || 'Stück',
-				total: String(String(r.kind) === 'bulk' ? num(r.stock_total) : num(r.unit_total)),
-				locations: where.slice(0, 3).join(', ') + (where.length > 3 ? ' …' : '')
-			});
-		}
-		return out;
-	}
-	if (target === 'set') {
-		const sets = await loadSets(tx, ids);
-		if (sets.length !== new Set(ids).size) throw errors.notFound('Set nicht gefunden');
-		const byId = new Map(sets.map((s) => [s.id, s]));
-		return ids.map((id) => {
-			const s = byId.get(id)!;
-			const counts = new Map<string, number>();
-			for (const u of s.units) counts.set(u.articleName, (counts.get(u.articleName) ?? 0) + 1);
-			return {
-				...common(s.code),
-				name: s.name,
-				template: s.templateName,
-				parts: [...counts].map(([n, c]) => `${c} × ${n}`).join(', ')
-			};
-		});
-	}
-	const index = await loadPlaceIndex(tx);
-	const locs = await rows(tx, sql`SELECT id, name, code FROM locations`);
+	const locs = await rows(
+		tx,
+		sql`SELECT l.id, l.name, l.description, l.code,
+				(SELECT count(*) FROM items i WHERE i.location_id = l.id AND i.archived_at IS NULL) AS n
+			FROM locations l WHERE l.id IN (${idList(ids)})`
+	);
 	const byId = new Map(locs.map((l) => [String(l.id), l]));
 	return ids.map((id) => {
 		const l = byId.get(id);
@@ -240,68 +156,16 @@ async function labelValues(
 		return {
 			...common(String(l.code)),
 			name: String(l.name),
-			path: index.locationPaths.get(id) ?? String(l.name)
+			description: str(l.description),
+			count: String(num(l.n))
 		};
 	});
-}
-
-async function overview(tx: Tx): Promise<Overview> {
-	const t = today();
-	const [c] = await rows(
-		tx,
-		sql`SELECT
-			(SELECT count(*) FROM articles WHERE archived_at IS NULL) AS articles,
-			(SELECT count(*) FROM units WHERE retired_at IS NULL AND NOT is_container) AS units,
-			(SELECT count(*) FROM units WHERE retired_at IS NULL AND is_container) AS containers,
-			(SELECT count(*) FROM sets) AS sets,
-			(SELECT count(*) FROM locations) AS locations,
-			(SELECT count(*) FROM units WHERE issued_reservation_id IS NOT NULL) AS issued,
-			(SELECT count(*) FROM reservations WHERE status = 'issued' AND ends_on < ${t}::date) AS overdue,
-			(SELECT count(*) FROM units WHERE retired_at IS NULL AND condition IN ('damaged', 'defect')) AS damaged,
-			(SELECT count(*) FROM reservations WHERE status = 'reserved' AND starts_on >= ${t}::date) AS upcoming,
-			(SELECT count(*) FROM units WHERE retired_at IS NULL AND location_id IS NULL AND container_id IS NULL) AS unplaced`
-	);
-	const low = await rows(
-		tx,
-		sql`SELECT a.id, a.name, a.min_quantity,
-				(SELECT coalesce(sum(quantity), 0) FROM stock s WHERE s.article_id = a.id) AS total
-			FROM articles a
-			WHERE a.kind = 'bulk' AND a.archived_at IS NULL AND a.min_quantity > 0
-				AND (SELECT coalesce(sum(quantity), 0) FROM stock s WHERE s.article_id = a.id) < a.min_quantity
-			ORDER BY lower(a.name) LIMIT 20`
-	);
-	return {
-		articles: num(c?.articles),
-		units: num(c?.units),
-		containers: num(c?.containers),
-		sets: num(c?.sets),
-		locations: num(c?.locations),
-		issuedUnits: num(c?.issued),
-		overdueReservations: num(c?.overdue),
-		damagedUnits: num(c?.damaged),
-		upcomingReservations: num(c?.upcoming),
-		unplacedUnits: num(c?.unplaced),
-		lowStock: low.map((l) => ({
-			articleId: String(l.id),
-			name: String(l.name),
-			total: num(l.total),
-			min: num(l.min_quantity)
-		}))
-	};
 }
 
 const canPrint = (ctx: RequestContext) =>
 	ctx.permissions.has(PERMISSIONS.manage) || ctx.permissions.has(PERMISSIONS.labels);
 
 export const labelsEndpoints: AnyApiEndpoint[] = [
-	defineEndpoint({
-		method: 'GET',
-		path: '/overview',
-		summary: 'Kennzahlen (Bestand, Ausgaben, Überfälliges, Mindestbestand)',
-		tags,
-		permission: PERMISSIONS.view,
-		handler: () => mdb().transaction(overview)
-	}),
 	defineEndpoint({
 		method: 'GET',
 		path: '/label-formats',

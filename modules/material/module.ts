@@ -1,24 +1,19 @@
 import { defineModule } from '$lib/sdk/server';
-import { borrowEndpoints } from './borrow.endpoints';
 import { catalogEndpoints } from './catalog.endpoints';
-import { handoutEndpoints } from './handout.endpoints';
+import { codesEndpoints } from './codes.endpoints';
+import { exportsEndpoints } from './exports.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { labelsEndpoints } from './labels.endpoints';
-import { runOverdueJob } from './notify';
+import { runLegacyCleanup } from './legacy-cleanup';
 import { reservationsEndpoints } from './reservations.endpoints';
 import { resetAreas, resetUsers } from './reset';
 import { materialSearch } from './search';
-import { setsEndpoints } from './sets.endpoints';
-import { stockEndpoints } from './stock.endpoints';
 import { subjectExport } from './subject-export';
-import { unitsEndpoints } from './units.endpoints';
 import { onUserDeleted } from './user-deleted';
 import {
 	LEADER_ROLE_NAME,
 	MANAGER_ROLE_NAME,
 	NOTIFY_DAMAGE,
-	NOTIFY_MY_OVERDUE,
-	NOTIFY_OVERDUE,
 	NOTIFY_RESERVATION_CREATED,
 	OFFICE_KEY,
 	PERMISSIONS
@@ -26,6 +21,7 @@ import {
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_article_codes.sql?raw';
 import m0003 from './migrations/0003_set_bulk_lines.sql?raw';
+import m0004 from './migrations/0004_rebuild.sql?raw';
 
 const ALL = [
 	PERMISSIONS.view,
@@ -40,23 +36,22 @@ export default defineModule({
 		id: 'material',
 		name: 'Material',
 		description:
-			'Materialverwaltung: Bestand mit Lagerorten und Kisten, Zelt-Sets, Reservierungen für Aktionen, ' +
-			'Ausgabe/Rückgabe per Barcode und Etiketten-Druck',
-		version: '1.2.0',
-		/** Aktionen: Reservierung je Aktion; Ämter: Vorlage „Materialwart*in“ mit Benachrichtigungen */
+			'Materialverwaltung: Lager mit Typen, Artikeln, Kategorien und Lagerorten, Reservierungen für ' +
+			'Aktionen und Gruppen, Scannen per Kamera oder USB-Scanner, Etiketten und Listen',
+		version: '2.0.0',
+		/** Aktionen/Gruppen als Zweck einer Reservierung; Ämter: Vorlage „Materialwart*in“ */
 		dependencies: [],
-		optionalDependencies: ['actions', 'offices'],
+		optionalDependencies: ['actions', 'members', 'offices'],
 		permissions: ALL,
 		permissionDescriptions: {
 			[PERMISSIONS.view]:
-				'Materialbestand, Lagerorte, Sets und Reservierungen ansehen, Codes scannen; Grundrecht für das Modul',
+				'Lager, Kategorien, Lagerorte und Reservierungen ansehen, Codes scannen, Listen exportieren; Grundrecht für das Modul',
 			[PERMISSIONS.manage]:
-				'Bestand pflegen: Lagerorte, Kategorien, Artikel, Stücke, Kisten, Mengen, Sets und Set-Vorlagen; Etiketten drucken',
+				'Lager pflegen: Typen, Lagerartikel, Kategorien, Lagerorte und Bilder; Etiketten drucken',
 			[PERMISSIONS.reserve]:
-				'Material reservieren (frei oder für eine Aktion), eigene Reservierungen ändern, ausgeben, zurücknehmen und Schäden melden',
-			[PERMISSIONS.reservations]:
-				'Alle Reservierungen ändern, stornieren, ausgeben und zurücknehmen',
-			[PERMISSIONS.labels]: 'Etikettenformate und Etikett-Layouts gestalten; Etiketten drucken'
+				'Material reservieren (für Aktion, Gruppe oder Sonstiges), eigene Reservierungen ändern und stornieren, Schäden melden',
+			[PERMISSIONS.reservations]: 'Alle Reservierungen sehen, ändern, stornieren und löschen',
+			[PERMISSIONS.labels]: 'Etikettengrößen und Etiketten gestalten; Etiketten drucken'
 		},
 		defaultRoleGrants: {
 			[MANAGER_ROLE_NAME]: ALL,
@@ -67,24 +62,18 @@ export default defineModule({
 				key: OFFICE_KEY,
 				name: 'Materialwart*in',
 				description:
-					'Verwaltet das Material des Stammes: Bestand, Lager, Zelte, Reservierungen, Ausgabe und Rückgabe. ' +
+					'Verwaltet das Material des Stammes: Lager, Reservierungen und Etiketten. ' +
 					'Tipp: die Rolle „Materialwart*in“ mit diesem Amt verknüpfen.',
 				notifications: [
 					{
 						key: NOTIFY_RESERVATION_CREATED,
-						label: 'Neue Reservierung für eine Aktion',
-						description: 'Jemand hat Material für eine Aktion reserviert'
+						label: 'Neue Reservierung',
+						description: 'Jemand hat Material reserviert'
 					},
 					{
 						key: NOTIFY_DAMAGE,
 						label: 'Schaden oder Verlust',
-						description:
-							'Bei der Rückgabe wurde etwas als beschädigt, defekt oder verloren gemeldet'
-					},
-					{
-						key: NOTIFY_OVERDUE,
-						label: 'Rückgabe überfällig',
-						description: 'Täglich, wenn ausgegebenes Material nach dem Ende nicht zurück ist'
+						description: 'Ein Artikel wurde als beschädigt, defekt oder verloren gemeldet'
 					}
 				]
 			}
@@ -102,7 +91,8 @@ export default defineModule({
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_article_codes', sql: m0002 },
-		{ name: '0003_set_bulk_lines', sql: m0003 }
+		{ name: '0003_set_bulk_lines', sql: m0003 },
+		{ name: '0004_rebuild', sql: m0004 }
 	],
 	resetAreas,
 	resetUsers,
@@ -111,32 +101,18 @@ export default defineModule({
 	search: materialSearch,
 	jobs: [
 		{
-			id: 'overdue',
-			summary: 'Überfällige Rückgaben melden',
-			schedule: 'daily',
-			run: runOverdueJob
+			id: 'legacy-cleanup',
+			summary: 'Bilddateien des alten Materialbestands löschen (einmalig nach dem Neuaufbau)',
+			schedule: 'hourly',
+			run: runLegacyCleanup
 		}
 	],
-	notifications: {
-		types: [
-			{
-				key: NOTIFY_MY_OVERDUE,
-				label: 'Meine Reservierung: Rückgabe überfällig',
-				description:
-					'Wenn ausgegebenes Material aus deiner Reservierung nach dem Ende nicht zurück ist.',
-				permission: PERMISSIONS.reserve
-			}
-		]
-	},
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade vor `:id`)
 	endpoints: [
 		...imagesEndpoints,
+		...exportsEndpoints,
 		...catalogEndpoints,
-		...unitsEndpoints,
-		...stockEndpoints,
-		...setsEndpoints,
-		...handoutEndpoints,
-		...borrowEndpoints,
+		...codesEndpoints,
 		...reservationsEndpoints,
 		...labelsEndpoints
 	]

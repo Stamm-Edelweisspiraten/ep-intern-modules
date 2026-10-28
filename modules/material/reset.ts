@@ -6,40 +6,31 @@ export const resetAreas: ResetArea[] = [
 	{
 		id: 'reservations',
 		label: 'Reservierungen',
-		description:
-			'Löscht alle Reservierungen samt Ausgaben/Rückgaben; ausgegebene Stücke gelten danach als zurück.',
-		tables: ['reservation_units', 'reservation_lines', 'reservations']
+		description: 'Löscht alle Materialreservierungen.',
+		tables: ['reservation_lines', 'reservations']
 	},
 	{
 		id: 'all',
 		label: 'Gesamter Materialbestand',
 		description:
-			'Löscht Lagerorte, Kategorien, Artikel (inkl. Bilder), Stücke, Kisten, Bestand, Sets, Reservierungen, ' +
-			'Verlauf und Etiketten-Layouts.',
+			'Löscht Lagerorte, Kategorien, Typen, Lagerartikel (inkl. Bilder), Reservierungen und Etiketten.',
 		implies: [
 			{ area: 'material:reservations', reason: 'Reservierungen verweisen auf den Bestand' }
 		],
 		// Kind vor Eltern
 		tables: [
-			'movements',
-			'reservation_units',
 			'reservation_lines',
-			'set_units',
-			'sets',
-			'set_template_parts',
-			'set_templates',
-			'container_targets',
-			'stock',
-			'units',
 			'reservations',
-			'article_images',
-			'articles',
+			'images',
+			'items',
+			'types',
 			'categories',
 			'locations',
 			'label_templates',
 			'label_formats',
 			'reserved_codes',
-			'code_counters'
+			'code_counters',
+			'legacy_cleanup'
 		],
 		storagePrefixes: 'all',
 		rebuild: true
@@ -48,15 +39,11 @@ export const resetAreas: ResetArea[] = [
 
 /** Spalten mit Benutzer-IDs (ohne FK auf den Core) */
 export const USER_COLUMNS: [string, string][] = [
-	['articles', 'created_by'],
-	['article_images', 'uploaded_by'],
-	['units', 'created_by'],
+	['types', 'created_by'],
+	['items', 'created_by'],
+	['items', 'condition_reported_by'],
+	['images', 'uploaded_by'],
 	['reservations', 'created_by'],
-	['reservations', 'issued_by'],
-	['reservations', 'returned_by'],
-	['reservation_units', 'issued_by'],
-	['reservation_units', 'returned_by'],
-	['movements', 'actor_id'],
 	['label_templates', 'created_by'],
 	['reserved_codes', 'created_by']
 ];

@@ -1,13 +1,20 @@
 <script lang="ts">
-	// Dashboard-Kachel „Meine Materialreservierungen“: offene eigene Reservierungen, überfällige zuerst.
+	// Dashboard-Kachel „Meine Materialreservierungen“: eigene laufende und kommende Reservierungen.
 	import { onMount } from 'svelte';
 	import Boxes from '@lucide/svelte/icons/boxes';
 	import { apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
+	import { Badge } from '$lib/components/ui/badge';
 	import { DashboardCard } from '$lib/components/layout';
 	import type { ReservationListItem } from '../../schemas';
-	import { API, errorText, formatPeriod, reservationHref } from '../helpers';
-	import StatusBadge from '../shared/StatusBadge.svelte';
+	import {
+		API,
+		RESERVATION_STATE_LABELS,
+		STATE_VARIANTS,
+		errorText,
+		formatPeriod,
+		reservationHref
+	} from '../helpers';
 
 	let { onstatus }: DashboardWidgetProps = $props();
 
@@ -22,8 +29,7 @@
 		error = '';
 		onstatus?.('loading');
 		try {
-			const list = await apiFetch<ReservationListItem[]>(`${API}/my/reservations`);
-			items = [...list].sort((a, b) => Number(b.overdue) - Number(a.overdue));
+			items = await apiFetch<ReservationListItem[]>(`${API}/my/reservations`);
 			onstatus?.(items.length ? 'ready' : 'empty');
 		} catch (e) {
 			error = errorText(e, 'Reservierungen konnten nicht geladen werden.');
@@ -38,29 +44,23 @@
 	});
 
 	const shown = $derived(items.slice(0, LIMIT));
-	const overdue = $derived(items.filter((r) => r.overdue).length);
 </script>
 
 <DashboardCard
 	title="Meine Materialreservierungen"
 	icon={Boxes}
-	href="/modules/material/meine"
+	href="/modules/material?tab=meine"
 	{loading}
 	{error}
 	onretry={load}
 	empty={!items.length}
-	emptyText="Keine offenen Reservierungen."
+	emptyText="Keine laufenden oder kommenden Reservierungen."
 >
-	{#if overdue}
-		<p class="mb-2 text-sm text-destructive">
-			{overdue === 1 ? 'Eine Rückgabe ist' : `${overdue} Rückgaben sind`} überfällig.
-		</p>
-	{/if}
 	<ul class="divide-y">
 		{#each shown as r (r.id)}
 			<li class="py-2">
 				<a
-					href={reservationHref(r.id)}
+					href={reservationHref(r.id, true)}
 					class="flex items-start justify-between gap-2 rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<span class="min-w-0">
@@ -69,7 +69,9 @@
 							{formatPeriod(r.startsOn, r.endsOn)}{r.itemSummary ? ` · ${r.itemSummary}` : ''}
 						</span>
 					</span>
-					<StatusBadge status={r.status} overdue={r.overdue} class="shrink-0" />
+					<Badge variant={STATE_VARIANTS[r.state]} class="shrink-0">
+						{RESERVATION_STATE_LABELS[r.state]}
+					</Badge>
 				</a>
 			</li>
 		{/each}
