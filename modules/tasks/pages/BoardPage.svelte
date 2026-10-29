@@ -4,56 +4,80 @@
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
+	import CopyPlus from '@lucide/svelte/icons/copy-plus';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Flag from '@lucide/svelte/icons/flag';
+	import MoveHorizontal from '@lucide/svelte/icons/move-horizontal';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Pin from '@lucide/svelte/icons/pin';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tent from '@lucide/svelte/icons/tent';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
-	import { apiFetch } from '$lib/sdk/client';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Label } from '$lib/components/ui/label';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		ConfirmDialog,
+		deviceLayout,
 		EmptyState,
 		ErrorState,
 		FormField,
 		LoadingState,
+		NumberStepper,
 		PageHeader,
 		PageTitle,
 		ShareMenu,
+		toastWithUndo,
 		type ShareCandidate,
 		type ShareEntry
 	} from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
 		MAX_COLUMN_NAME,
-		PRIORITIES,
-		PRIORITY_LABELS,
-		SHARE_LEVELS,
+		MAX_SHIFT_DAYS,
+		MAX_TASKS_PER_BOARD,
+		MAX_TEMPLATE_NAME,
+		PERM,
 		SHARE_LEVEL_LABELS,
+		SHARE_LEVELS,
+		VIEW_LABELS,
+		VIEWS,
 		type BoardDetail,
 		type BoardShares,
+		type BoardView,
 		type Column,
-		type TaskCard
+		type TaskCard,
+		type UserRef
 	} from '../schemas';
+	import type { DateRange, TimelineTarget } from '../timeline';
 	import BoardDialog from './BoardDialog.svelte';
-	import TaskCardView from './TaskCardView.svelte';
-	import TaskDialog from './TaskDialog.svelte';
+	import BoardFilters from './board/BoardFilters.svelte';
+	import MobileBoard from './board/MobileBoard.svelte';
+	import PhaseStrip from './board/PhaseStrip.svelte';
+	import PhasesDialog from './board/PhasesDialog.svelte';
+	import { emptyFilter, matchesFilter, activeFilterCount, type TaskFilter } from './filter';
 	import { BASE, errMsg } from './helpers';
+	import TaskSheet from './task/TaskSheet.svelte';
+	import CalendarView from './views/CalendarView.svelte';
+	import KanbanView from './views/KanbanView.svelte';
+	import ListView from './views/ListView.svelte';
+	import TimelineView from './views/TimelineView.svelte';
 
 	let { params }: ModulePageProps = $props();
 	const id = $derived(params.id ?? '');
 	const myId = $derived((page.data.user as { id?: string } | null | undefined)?.id ?? null);
+	const permissions = $derived((page.data.permissions ?? []) as string[]);
+	const phone = $derived(deviceLayout() === 'phone');
 
 	let board = $state<BoardDetail | null>(null);
 	let loading = $state(true);
@@ -61,16 +85,21 @@
 	let notFound = $state(false);
 	let shares = $state<BoardShares | null>(null);
 
-	// Filter (lokal)
-	let search = $state('');
-	let onlyMine = $state(false);
-	let priorityFilter = $state<string | null>(null);
+	let filter = $state<TaskFilter>(emptyFilter());
+	let grouping = $state(false);
+
+	// Aufgaben-Blatt
+	let sheetOpen = $state(false);
+	let sheetTask = $state<string | null>(null);
+	let sheetDefaults = $state<{
+		columnId?: string | null;
+		phaseId?: string | null;
+		dueOn?: string | null;
+	}>({});
 
 	// Dialoge
-	let taskOpen = $state(false);
-	let taskId = $state<string | null>(null);
-	let newTaskColumn = $state<string | null>(null);
 	let editOpen = $state(false);
+	let phasesOpen = $state(false);
 	let deleteOpen = $state(false);
 	let columnOpen = $state(false);
 	let columnEdit = $state<Column | null>(null);
@@ -78,11 +107,30 @@
 	let columnError = $state('');
 	let columnDelete = $state<Column | null>(null);
 	let columnMoveTo = $state<string | null>(null);
-	let quickAdd = $state<Record<string, string>>({});
+	let templateOpen = $state(false);
+	let templateName = $state('');
+	let templateError = $state('');
+	let shiftOpen = $state(false);
+	let shiftDays = $state(7);
 
 	const canEdit = $derived(board?.access.level === 'edit');
 	const shareLevels = SHARE_LEVELS.map((l) => ({ value: l, label: SHARE_LEVEL_LABELS[l] }));
-	const priorityOptions = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] }));
+	const doneIds = $derived(new Set(board?.columns.filter((c) => c.isDone).map((c) => c.id) ?? []));
+	const isDone = (t: TaskCard) => doneIds.has(t.columnId);
+
+	// --- Ansicht (URL `?view=`, sonst Standard des Boards) ---
+	const urlView = $derived(page.url.searchParams.get('view'));
+	const view = $derived<BoardView>(
+		urlView && (VIEWS as readonly string[]).includes(urlView)
+			? (urlView as BoardView)
+			: (board?.defaultView ?? 'board')
+	);
+
+	function setView(v: string) {
+		const url = new URL(page.url);
+		url.searchParams.set('view', v);
+		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
+	}
 
 	async function load() {
 		try {
@@ -109,6 +157,7 @@
 		void id;
 		untrack(() => {
 			loading = true;
+			filter = emptyFilter();
 			void load();
 			void loadShares();
 			// Deep-Link `?task=<id>` (Benachrichtigung, Suche) öffnet die Aufgabe
@@ -122,155 +171,187 @@
 		});
 	});
 
-	// --- Filter und Spalten ----------------------------------------------------
+	// --- Filter ---
+	const today = todayBerlin();
+	const visible = $derived(
+		(board?.tasks ?? []).filter((t) => matchesFilter(t, filter, { myId, canEdit, today, isDone }))
+	);
+	const filtering = $derived(activeFilterCount(filter) > 0);
+	const people = $derived.by(() => {
+		const map = new Map<string, UserRef>();
+		for (const t of board?.tasks ?? []) for (const a of t.assignees) map.set(a.id, a);
+		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+	});
+	/** Reihenfolge für Vor/Zurück im Blatt: wie im Board (Spalte, Position) */
+	const order = $derived(
+		[...visible]
+			.sort(
+				(a, b) =>
+					(board?.columns.findIndex((c) => c.id === a.columnId) ?? 0) -
+						(board?.columns.findIndex((c) => c.id === b.columnId) ?? 0) || a.position - b.position
+			)
+			.map((t) => t.id)
+	);
 
-	function matches(t: TaskCard): boolean {
-		// „Nur meine“: direkt zugewiesen; bei Lesezugriff zeigt `canMove` auch Unteraufgaben-Zuweisungen
-		const mine = t.assignees.some((a) => a.id === myId) || (!canEdit && t.canMove);
-		if (onlyMine && !mine) return false;
-		if (priorityFilter && t.priority !== priorityFilter) return false;
-		const q = search.trim().toLowerCase();
-		return !q || t.title.toLowerCase().includes(q);
+	// --- Aufgaben ---
+	function openTask(tid: string) {
+		sheetTask = tid;
+		sheetOpen = true;
 	}
 
-	const filtering = $derived(!!(search.trim() || onlyMine || priorityFilter));
-
-	function tasksOf(columnId: string): TaskCard[] {
-		return (board?.tasks ?? [])
-			.filter((t) => t.columnId === columnId && matches(t))
-			.sort((a, b) => a.position - b.position);
+	function newTask(defaults: typeof sheetDefaults = {}) {
+		sheetDefaults = {
+			phaseId: filter.phaseId && filter.phaseId !== 'none' ? filter.phaseId : null,
+			...defaults
+		};
+		sheetTask = null;
+		sheetOpen = true;
 	}
 
-	function countOf(columnId: string): number {
-		return (board?.tasks ?? []).filter((t) => t.columnId === columnId).length;
-	}
-
-	// --- Ziehen und Ablegen ----------------------------------------------------
-
-	let dragId = $state<string | null>(null);
-	let dropTarget = $state<{ columnId: string; index: number } | null>(null);
-
-	function onDragStart(e: DragEvent, task: TaskCard) {
-		dragId = task.id;
-		e.dataTransfer?.setData('text/plain', task.id);
-		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-	}
-
-	function onDragEnd() {
-		dragId = null;
-		dropTarget = null;
-	}
-
-	/** Einfügeposition aus der Mausposition über den Karten der Spalte */
-	function indexAt(e: DragEvent, list: HTMLElement): number {
-		const cards = [...list.querySelectorAll<HTMLElement>('[data-task-id]')].filter(
-			(el) => el.dataset.taskId !== dragId
-		);
-		for (let i = 0; i < cards.length; i++) {
-			const r = cards[i]!.getBoundingClientRect();
-			if (e.clientY < r.top + r.height / 2) return i;
-		}
-		return cards.length;
-	}
-
-	function onDragOver(e: DragEvent, columnId: string) {
-		if (!dragId) return;
-		e.preventDefault();
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		dropTarget = { columnId, index: indexAt(e, e.currentTarget as HTMLElement) };
-	}
-
-	async function onDrop(e: DragEvent, columnId: string) {
-		e.preventDefault();
-		const moved = dragId ?? e.dataTransfer?.getData('text/plain') ?? null;
-		// `dragleave` kann das Ziel kurz vor dem Ablegen gelöscht haben → Position direkt bestimmen
-		const index = indexAt(e, e.currentTarget as HTMLElement);
-		onDragEnd();
-		if (!moved || !board || !board.tasks.some((t) => t.id === moved && t.canMove)) return;
-		// sichtbare Reihenfolge → Position in der vollständigen Spalte
-		const visible = tasksOf(columnId).filter((t) => t.id !== moved);
-		const all = board.tasks
-			.filter((t) => t.columnId === columnId && t.id !== moved)
-			.sort((a, b) => a.position - b.position);
-		const anchor = visible[index];
-		const position = anchor ? all.findIndex((t) => t.id === anchor.id) : all.length;
-		await moveTask(moved, columnId, position);
-	}
-
-	async function moveTask(taskIdToMove: string, columnId: string, position: number) {
+	async function moveTask(
+		taskId: string,
+		columnId: string,
+		position: number,
+		phaseId?: string | null
+	) {
 		if (!board) return;
 		// sofort anzeigen, danach mit dem Server abgleichen
 		const done = board.columns.find((c) => c.id === columnId)?.isDone ?? false;
 		const others = board.tasks
-			.filter((t) => t.columnId === columnId && t.id !== taskIdToMove)
+			.filter((t) => t.columnId === columnId && t.id !== taskId)
 			.sort((a, b) => a.position - b.position);
-		const task = board.tasks.find((t) => t.id === taskIdToMove);
+		const task = board.tasks.find((t) => t.id === taskId);
 		if (!task) return;
 		others.splice(Math.min(position, others.length), 0, task);
-		const order = new Map(others.map((t, i) => [t.id, i]));
+		const pos = new Map(others.map((t, i) => [t.id, i]));
 		board.tasks = board.tasks.map((t) =>
-			t.id === taskIdToMove
+			t.id === taskId
 				? {
 						...t,
 						columnId,
-						position: order.get(t.id)!,
+						position: pos.get(t.id)!,
+						phaseId: phaseId === undefined ? t.phaseId : phaseId,
 						completedAt: done ? (t.completedAt ?? new Date().toISOString()) : null
 					}
-				: order.has(t.id)
-					? { ...t, position: order.get(t.id)! }
+				: pos.has(t.id)
+					? { ...t, position: pos.get(t.id)! }
 					: t
 		);
 		try {
-			await apiFetch(`${BASE}/tasks/${taskIdToMove}/move`, {
+			await apiFetch(`${BASE}/tasks/${taskId}/move`, {
 				method: 'POST',
 				body: JSON.stringify({ columnId, position })
 			});
+			if (phaseId !== undefined) {
+				await apiFetch(`${BASE}/tasks/${taskId}`, {
+					method: 'PATCH',
+					body: JSON.stringify({ phaseId })
+				});
+			}
 		} catch (e) {
 			toast.error(errMsg(e, 'Verschieben fehlgeschlagen'));
 		}
 		await load();
 	}
 
-	/** Tastatur/Mobil: in die Nachbarspalte schieben */
-	async function shift(task: TaskCard, dir: -1 | 1) {
+	function moveToEnd(taskId: string, columnId: string) {
+		void moveTask(taskId, columnId, MAX_TASKS_PER_BOARD);
+	}
+
+	function toggleDone(t: TaskCard, done: boolean) {
 		if (!board) return;
-		const idx = board.columns.findIndex((c) => c.id === task.columnId);
-		const next = board.columns[idx + dir];
-		if (next) await moveTask(task.id, next.id, countOf(next.id));
+		const target = done
+			? board.columns.find((c) => c.isDone)
+			: board.columns.find((c) => !c.isDone);
+		if (!target) {
+			toast.error(done ? 'Das Board hat keine Erledigt-Spalte' : 'Keine offene Spalte vorhanden');
+			return;
+		}
+		moveToEnd(t.id, target.id);
 	}
 
-	// --- Aufgaben --------------------------------------------------------------
-
-	function openTask(tid: string) {
-		taskId = tid;
-		newTaskColumn = null;
-		taskOpen = true;
-	}
-
-	function newTask(columnId: string | null) {
-		taskId = null;
-		newTaskColumn = columnId;
-		taskOpen = true;
-	}
-
-	async function addQuick(columnId: string) {
-		const title = (quickAdd[columnId] ?? '').trim();
-		if (!title) return;
-		quickAdd[columnId] = '';
+	async function quickAdd(
+		columnId: string,
+		phaseId: string | null,
+		title: string
+	): Promise<boolean> {
 		try {
 			await apiFetch(`${BASE}/boards/${id}/tasks`, {
 				method: 'POST',
-				body: JSON.stringify({ columnId, title })
+				body: JSON.stringify({ columnId, title, phaseId })
 			});
 			await load();
+			return true;
 		} catch (e) {
-			quickAdd[columnId] = title;
 			toast.error(errMsg(e, 'Anlegen fehlgeschlagen'));
+			return false;
 		}
 	}
 
-	// --- Spalten ---------------------------------------------------------------
+	async function assignMe(t: TaskCard) {
+		if (!myId) return;
+		try {
+			await apiFetch(`${BASE}/tasks/${t.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({ assigneeIds: [...t.assignees.map((a) => a.id), myId] })
+			});
+			toast.success('Dir zugewiesen');
+			await load();
+		} catch (e) {
+			toast.error(errMsg(e, 'Zuweisen fehlgeschlagen'));
+		}
+	}
 
+	// --- Zeitleiste ---
+	function datesFor(target: TimelineTarget, r: DateRange): Record<string, string | null> | null {
+		if (!board) return null;
+		if (target.kind === 'task') {
+			const t = board.tasks.find((x) => x.id === target.id);
+			if (!t) return null;
+			if (t.isMilestone || (!t.startsOn && r.from === r.to)) return { dueOn: r.to };
+			if (!t.dueOn) return { startsOn: r.from };
+			return { startsOn: r.from, dueOn: r.to };
+		}
+		const p = board.phases.find((x) => x.id === target.id);
+		if (!p) return null;
+		if ((p.startsOn && p.endsOn) || r.from !== r.to) return { startsOn: r.from, endsOn: r.to };
+		return p.startsOn ? { startsOn: r.from } : { endsOn: r.to };
+	}
+
+	async function patchDates(target: TimelineTarget, body: Record<string, string | null>) {
+		const path =
+			target.kind === 'task'
+				? `${BASE}/tasks/${target.id}`
+				: `${BASE}/boards/${id}/phases/${target.id}`;
+		await apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) });
+	}
+
+	async function changeDates(target: TimelineTarget, next: DateRange, prev: DateRange) {
+		const body = datesFor(target, next);
+		if (!body || !board) return;
+		let before: Record<string, string | null>;
+		if (target.kind === 'task') {
+			const t = board.tasks.find((x) => x.id === target.id)!;
+			before = t.isMilestone ? { dueOn: t.dueOn } : { startsOn: t.startsOn, dueOn: t.dueOn };
+		} else {
+			const p = board.phases.find((x) => x.id === target.id)!;
+			before = { startsOn: p.startsOn, endsOn: p.endsOn };
+		}
+		try {
+			await patchDates(target, body);
+			await load();
+			toastWithUndo({
+				message: prev.from === next.from && prev.to !== next.to ? 'Ende geändert' : 'Verschoben',
+				undo: () => patchDates(target, before),
+				onundone: load
+			});
+		} catch (e) {
+			toast.error(errMsg(e, 'Speichern fehlgeschlagen'));
+			await load();
+		}
+	}
+
+	// --- Spalten ---
 	function openColumn(col: Column | null) {
 		columnEdit = col;
 		columnName = col?.name ?? '';
@@ -298,20 +379,18 @@
 		}
 	}
 
-	async function columnAction(
-		path: string,
-		init: Parameters<typeof apiFetch>[1],
-		fallback: string
-	) {
+	async function boardAction(path: string, init: Parameters<typeof apiFetch>[1], fallback: string) {
 		try {
 			board = await apiFetch<BoardDetail>(`${BASE}/boards/${id}${path}`, init);
+			return true;
 		} catch (e) {
 			toast.error(errMsg(e, fallback));
+			return false;
 		}
 	}
 
-	function markDone(col: Column) {
-		void columnAction(
+	function toggleDoneColumn(col: Column) {
+		void boardAction(
 			`/columns/${col.id}`,
 			{ method: 'PATCH', body: JSON.stringify({ isDone: !col.isDone }) },
 			'Speichern fehlgeschlagen'
@@ -325,12 +404,15 @@
 		const j = i + dir;
 		if (j < 0 || j >= ids.length) return;
 		[ids[i], ids[j]] = [ids[j]!, ids[i]!];
-		void columnAction(
+		void boardAction(
 			'/columns/order',
 			{ method: 'PUT', body: JSON.stringify({ ids }) },
 			'Umsortieren fehlgeschlagen'
 		);
 	}
+
+	const countOf = (columnId: string) =>
+		board?.tasks.filter((t) => t.columnId === columnId).length ?? 0;
 
 	function askDeleteColumn(col: Column) {
 		columnDelete = col;
@@ -341,7 +423,7 @@
 		const col = columnDelete;
 		if (!col) return;
 		const hasTasks = countOf(col.id) > 0;
-		await columnAction(
+		await boardAction(
 			`/columns/${col.id}${hasTasks && columnMoveTo ? `?moveTo=${columnMoveTo}` : ''}`,
 			{ method: 'DELETE' },
 			'Löschen fehlgeschlagen'
@@ -349,8 +431,7 @@
 		columnDelete = null;
 	}
 
-	// --- Board -----------------------------------------------------------------
-
+	// --- Board ---
 	async function deleteBoard() {
 		try {
 			await apiFetch(`${BASE}/boards/${id}`, { method: 'DELETE' });
@@ -361,8 +442,63 @@
 		}
 	}
 
-	// --- Freigaben -------------------------------------------------------------
+	async function setDefaultView() {
+		if (
+			await boardAction(
+				'',
+				{ method: 'PATCH', body: JSON.stringify({ defaultView: view }) },
+				'Speichern fehlgeschlagen'
+			)
+		) {
+			toast.success(`„${VIEW_LABELS[view]}“ ist jetzt die Standardansicht`);
+		}
+	}
 
+	async function shift(days: number, apply = true) {
+		const before = board?.anchorOn;
+		if (
+			await boardAction(
+				'/shift',
+				{ method: 'POST', body: JSON.stringify({ days, apply }) },
+				'Verschieben fehlgeschlagen'
+			)
+		) {
+			if (apply) {
+				toastWithUndo({
+					message: `Alle Daten um ${Math.abs(days)} ${Math.abs(days) === 1 ? 'Tag' : 'Tage'} verschoben`,
+					undo: () =>
+						apiFetch(`${BASE}/boards/${id}/shift`, {
+							method: 'POST',
+							body: JSON.stringify({ days: -days })
+						}),
+					onundone: load
+				});
+			} else if (before !== board?.anchorOn) {
+				toast.success('Hinweis ausgeblendet, Daten bleiben unverändert');
+			}
+		}
+	}
+
+	async function saveTemplate(e: SubmitEvent) {
+		e.preventDefault();
+		const name = templateName.trim();
+		if (!name) {
+			templateError = 'Pflichtfeld';
+			return;
+		}
+		try {
+			await apiFetch(`${BASE}/boards/${id}/template`, {
+				method: 'POST',
+				body: JSON.stringify({ name })
+			});
+			templateOpen = false;
+			toast.success('Vorlage gespeichert – sie steht beim Anlegen neuer Boards zur Auswahl');
+		} catch (err) {
+			templateError = errMsg(err, 'Speichern fehlgeschlagen');
+		}
+	}
+
+	// --- Freigaben ---
 	async function searchPrincipals(q: string): Promise<ShareCandidate[]> {
 		const found = await apiFetch<PrincipalInfo[]>(
 			`${BASE}/principals?search=${encodeURIComponent(q)}`
@@ -406,6 +542,14 @@
 		if (current.some((s) => shareKey(s) === shareKey(entry))) return;
 		await saveShares([...current, entry]);
 	}
+
+	const subtitle = $derived.by(() => {
+		if (!board) return undefined;
+		const parts = [board.description];
+		if (board.counts.total)
+			parts.push(`${board.counts.total} Aufgaben, ${board.counts.done} erledigt`);
+		return parts.filter(Boolean).join(' · ') || undefined;
+	});
 </script>
 
 <PageTitle title={board?.name ?? 'Board'} />
@@ -431,12 +575,12 @@
 {:else if loadError && !board}
 	<ErrorState message={loadError} onretry={load} />
 {:else if board}
-	<PageHeader title={board.name} description={board.description ?? undefined}>
+	<PageHeader title={board.name} description={subtitle}>
 		{#snippet actions()}
 			{#if board?.action}
 				<Button variant="outline" href={`/modules/actions/${board.action.id}`}>
 					<Tent />
-					{board.action.name}
+					<span class="max-w-40 truncate">{board.action.name}</span>
 				</Button>
 			{/if}
 			{#if shares && board}
@@ -466,208 +610,181 @@
 				/>
 			{/if}
 			{#if canEdit}
-				<Button onclick={() => newTask(null)}><Plus /> Aufgabe</Button>
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button {...props} variant="outline" aria-label="Mehr"><Ellipsis /></Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-56">
-						<DropdownMenu.Item onclick={() => (editOpen = true)}>
-							<Pencil /> Board bearbeiten
-						</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={() => openColumn(null)}>
-							<Plus /> Spalte hinzufügen
-						</DropdownMenu.Item>
-						{#if board?.access.canShare}
-							<DropdownMenu.Separator />
-							<DropdownMenu.Item class="text-destructive" onclick={() => (deleteOpen = true)}>
-								<Trash2 /> Board löschen
-							</DropdownMenu.Item>
-						{/if}
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
+				<Button onclick={() => newTask()}><Plus /> Aufgabe</Button>
 			{/if}
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" size="icon" aria-label="Mehr zum Board"
+							><Ellipsis /></Button
+						>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-64">
+					{#if canEdit}
+						<DropdownMenu.Item onclick={() => (editOpen = true)}
+							><Pencil /> Board bearbeiten</DropdownMenu.Item
+						>
+						<DropdownMenu.Item onclick={() => (phasesOpen = true)}
+							><Flag /> Phasen verwalten</DropdownMenu.Item
+						>
+						<DropdownMenu.Item onclick={() => openColumn(null)}
+							><Plus /> Spalte hinzufügen</DropdownMenu.Item
+						>
+						<DropdownMenu.Item onclick={() => (shiftOpen = true)}>
+							<MoveHorizontal /> Alle Daten verschieben …
+						</DropdownMenu.Item>
+						<DropdownMenu.Item disabled={board?.defaultView === view} onclick={setDefaultView}>
+							<Pin /> „{VIEW_LABELS[view]}“ als Standardansicht
+						</DropdownMenu.Item>
+					{/if}
+					{#if can(permissions, PERM.create)}
+						<DropdownMenu.Item
+							onclick={() => {
+								templateName = board?.name ?? '';
+								templateError = '';
+								templateOpen = true;
+							}}
+						>
+							<CopyPlus /> Als Vorlage speichern
+						</DropdownMenu.Item>
+					{/if}
+					{#if board?.access.canShare}
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item class="text-destructive" onclick={() => (deleteOpen = true)}>
+							<Trash2 /> Board löschen
+						</DropdownMenu.Item>
+					{/if}
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		{/snippet}
 	</PageHeader>
 
-	<div class="mb-4 flex flex-wrap items-center gap-3">
-		<Input
-			class="w-full sm:w-64"
-			type="search"
-			placeholder="Aufgaben filtern …"
-			aria-label="Aufgaben filtern"
-			bind:value={search}
-		/>
-		<SelectField
-			class="w-full sm:w-44"
-			label="Priorität"
-			options={priorityOptions}
-			bind:value={priorityFilter}
-			emptyLabel="Alle Prioritäten"
-			placeholder="Alle Prioritäten"
-		/>
-		{#if myId}
-			<div class="flex items-center gap-2">
-				<Switch id="only-mine" bind:checked={onlyMine} />
-				<Label for="only-mine">Nur meine</Label>
-			</div>
-		{/if}
-		{#if board.access.level === 'read'}
-			<Badge variant="secondary"
-				>Nur Ansicht{board.tasks.some((t) => t.canMove)
-					? ' – eigene Aufgaben verschiebbar'
-					: ''}</Badge
-			>
-		{/if}
-	</div>
-
-	<div
-		class="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4 sm:snap-none"
-		role="list"
-		aria-label="Spalten"
-	>
-		{#each board.columns as col, ci (col.id)}
-			{@const list = tasksOf(col.id)}
-			<section
-				class="flex w-[85vw] max-w-80 shrink-0 snap-start flex-col rounded-lg border bg-muted/40 sm:w-72"
-				role="listitem"
-				aria-labelledby={`col-${col.id}`}
-			>
-				<header class="flex items-center gap-2 px-3 pt-3 pb-2">
-					<h2 id={`col-${col.id}`} class="min-w-0 flex-1 truncate text-sm font-semibold">
-						{col.name}
-					</h2>
-					{#if col.isDone}
-						<CircleCheck class="size-4 text-success" aria-label="Erledigt-Spalte" />
-					{/if}
-					<span class="text-xs text-muted-foreground tabular-nums" aria-label="Anzahl">
-						{filtering ? `${list.length}/${countOf(col.id)}` : countOf(col.id)}
+	<div class="space-y-4">
+		{#if board.actionShift && canEdit}
+			{@const days = board.actionShift}
+			<Alert variant="info">
+				<CalendarRange />
+				<AlertDescription class="flex flex-wrap items-center gap-x-3 gap-y-2">
+					<span>
+						Die Aktion beginnt jetzt {Math.abs(days)}
+						{Math.abs(days) === 1 ? 'Tag' : 'Tage'}
+						{days > 0 ? 'später' : 'früher'}. Sollen Phasen und Fristen mitwandern?
 					</span>
-					{#if canEdit}
-						<DropdownMenu.Root>
-							<DropdownMenu.Trigger>
-								{#snippet child({ props })}
-									<Button
-										{...props}
-										variant="ghost"
-										size="icon"
-										class="size-7"
-										aria-label={`Spalte „${col.name}“`}
-									>
-										<Ellipsis />
-									</Button>
-								{/snippet}
-							</DropdownMenu.Trigger>
-							<DropdownMenu.Content align="end" class="w-60">
-								<DropdownMenu.Item onclick={() => newTask(col.id)}
-									><Plus /> Aufgabe hinzufügen</DropdownMenu.Item
-								>
-								<DropdownMenu.Item onclick={() => openColumn(col)}
-									><Pencil /> Umbenennen</DropdownMenu.Item
-								>
-								<DropdownMenu.Item onclick={() => markDone(col)}>
-									<CircleCheck />
-									{col.isDone
-										? 'Nicht mehr als „erledigt“ werten'
-										: 'Als Erledigt-Spalte festlegen'}
-								</DropdownMenu.Item>
-								<DropdownMenu.Item disabled={ci === 0} onclick={() => moveColumn(col, -1)}>
-									<ArrowLeft /> Nach links
-								</DropdownMenu.Item>
-								<DropdownMenu.Item
-									disabled={ci === board.columns.length - 1}
-									onclick={() => moveColumn(col, 1)}
-								>
-									<ArrowRight /> Nach rechts
-								</DropdownMenu.Item>
-								<DropdownMenu.Separator />
-								<DropdownMenu.Item
-									class="text-destructive"
-									disabled={board.columns.length <= 1}
-									onclick={() => askDeleteColumn(col)}
-								>
-									<Trash2 /> Spalte löschen
-								</DropdownMenu.Item>
-							</DropdownMenu.Content>
-						</DropdownMenu.Root>
-					{/if}
-				</header>
+					<span class="flex gap-2">
+						<Button size="sm" onclick={() => shift(days)}>Mitverschieben</Button>
+						<Button size="sm" variant="outline" onclick={() => shift(days, false)}
+							>Nicht verschieben</Button
+						>
+					</span>
+				</AlertDescription>
+			</Alert>
+		{/if}
 
-				<ul
-					class="flex min-h-24 flex-1 flex-col gap-2 px-2 pb-2"
-					class:ring-2={dropTarget?.columnId === col.id}
-					class:ring-ring={dropTarget?.columnId === col.id}
-					class:rounded-md={dropTarget?.columnId === col.id}
-					aria-label={`Aufgaben in ${col.name}`}
-					ondragover={(e) => onDragOver(e, col.id)}
-					ondragleave={(e) => {
-						if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) {
-							if (dropTarget?.columnId === col.id) dropTarget = null;
-						}
-					}}
-					ondrop={(e) => onDrop(e, col.id)}
-				>
-					{#each list as task, ti (task.id)}
-						{#if dropTarget?.columnId === col.id && dropTarget.index === ti && dragId !== task.id}
-							<li class="h-1 rounded-full bg-primary" aria-hidden="true"></li>
-						{/if}
-						<li data-task-id={task.id} class:opacity-40={dragId === task.id}>
-							<TaskCardView
-								{task}
-								done={col.isDone}
-								canLeft={ci > 0}
-								canRight={ci < board.columns.length - 1}
-								onopen={() => openTask(task.id)}
-								ondragstart={(e) => onDragStart(e, task)}
-								ondragend={onDragEnd}
-								onshift={(dir) => shift(task, dir)}
-							/>
-						</li>
+		{#if board.phases.length}
+			<PhaseStrip
+				phases={board.phases}
+				tasks={board.tasks}
+				{isDone}
+				selected={filter.phaseId}
+				{canEdit}
+				onselect={(pid) => (filter.phaseId = pid)}
+				onmanage={() => (phasesOpen = true)}
+			/>
+		{:else if canEdit}
+			<button
+				type="button"
+				class="focus-ring inline-flex items-center gap-1.5 rounded-sm text-sm text-link hover:underline"
+				onclick={() => (phasesOpen = true)}
+			>
+				<Flag class="size-4" aria-hidden="true" /> Phasen anlegen (z. B. Planung, Durchführung, Nachbereitung)
+			</button>
+		{/if}
+
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<Tabs.Root value={view} onValueChange={setView}>
+				<Tabs.List aria-label="Ansicht">
+					{#each VIEWS as v (v)}
+						<Tabs.Trigger value={v}>{VIEW_LABELS[v]}</Tabs.Trigger>
 					{/each}
-					{#if dropTarget?.columnId === col.id && list.some((t) => t.id !== dragId) && dropTarget.index >= list.filter((t) => t.id !== dragId).length}
-						<li class="h-1 rounded-full bg-primary" aria-hidden="true"></li>
-					{/if}
-					{#if !list.length}
-						<li class="px-2 py-6 text-center text-xs text-muted-foreground">
-							{filtering && countOf(col.id) ? 'Keine Treffer' : 'Keine Aufgaben'}
-						</li>
-					{/if}
-				</ul>
-
-				{#if canEdit}
-					<form
-						class="px-2 pb-2"
-						onsubmit={(e) => {
-							e.preventDefault();
-							void addQuick(col.id);
-						}}
-					>
-						<Input
-							class="h-8 bg-background"
-							placeholder="+ Aufgabe hinzufügen"
-							aria-label={`Neue Aufgabe in ${col.name}`}
-							maxlength={200}
-							value={quickAdd[col.id] ?? ''}
-							oninput={(e) => (quickAdd[col.id] = e.currentTarget.value)}
-						/>
-					</form>
+				</Tabs.List>
+			</Tabs.Root>
+			<div class="flex flex-wrap items-center gap-2">
+				{#if board.access.level === 'read'}
+					<Badge variant="secondary">
+						Nur Ansicht{board.tasks.some((t) => t.canMove) ? ' – eigene Aufgaben verschiebbar' : ''}
+					</Badge>
 				{/if}
-			</section>
-		{/each}
+				<BoardFilters
+					bind:filter
+					bind:grouping
+					{people}
+					phases={board.phases}
+					showMine={!!myId}
+					canGroup={view === 'board' && !phone}
+				/>
+			</div>
+		</div>
+
+		{#if view === 'board'}
+			{#if phone}
+				<MobileBoard
+					{board}
+					{visible}
+					{myId}
+					{canEdit}
+					{isDone}
+					onopen={openTask}
+					onmove={moveToEnd}
+					onassignme={assignMe}
+				/>
+			{:else}
+				<KanbanView
+					{board}
+					{visible}
+					{canEdit}
+					{filtering}
+					{grouping}
+					onopen={openTask}
+					onmove={moveTask}
+					onquickadd={quickAdd}
+					onrename={openColumn}
+					ontoggledone={toggleDoneColumn}
+					onmovecolumn={moveColumn}
+					ondeletecolumn={askDeleteColumn}
+				/>
+			{/if}
+		{:else if view === 'list'}
+			<ListView {board} {visible} {isDone} ontoggle={toggleDone} onopen={openTask} />
+		{:else if view === 'timeline'}
+			<TimelineView {board} {visible} {isDone} {canEdit} onopen={openTask} onchange={changeDates} />
+		{:else}
+			<CalendarView
+				{board}
+				{visible}
+				{isDone}
+				{canEdit}
+				onopen={openTask}
+				onday={(date) => newTask({ dueOn: date })}
+			/>
+		{/if}
 	</div>
 
-	<TaskDialog
-		bind:open={taskOpen}
-		{taskId}
+	<TaskSheet
+		bind:open={sheetOpen}
+		bind:taskId={sheetTask}
 		boardId={board.id}
+		boardName={board.name}
 		columns={board.columns}
-		defaultColumnId={newTaskColumn}
+		phases={board.phases}
+		tasks={board.tasks}
+		{order}
+		defaults={sheetDefaults}
 		canEditBoard={canEdit}
 		onchanged={load}
 	/>
 	<BoardDialog bind:open={editOpen} {board} onsaved={(b) => (board = b)} />
+	<PhasesDialog bind:open={phasesOpen} {board} onchanged={(b) => (board = b)} />
 {/if}
 
 <Dialog.Root bind:open={columnOpen}>
@@ -724,10 +841,72 @@
 	</Dialog.Content>
 </Dialog.Root>
 
+<Dialog.Root bind:open={templateOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Als Vorlage speichern</Dialog.Title>
+			<Dialog.Description>
+				Spalten, Phasen und Aufgaben samt Unteraufgaben werden gespeichert, ohne Zuständige und
+				Erledigt-Stand. Daten zählen ab dem Beginn der Aktion bzw. des Boards.
+			</Dialog.Description>
+		</Dialog.Header>
+		<form class="space-y-4" onsubmit={saveTemplate} novalidate>
+			<FormField label="Name der Vorlage" id="template-name" required error={templateError}>
+				<Input
+					id="template-name"
+					bind:value={templateName}
+					maxlength={MAX_TEMPLATE_NAME}
+					autocomplete="off"
+				/>
+			</FormField>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" onclick={() => (templateOpen = false)}
+					>Abbrechen</Button
+				>
+				<Button type="submit">Speichern</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={shiftOpen}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Alle Daten verschieben</Dialog.Title>
+			<Dialog.Description>
+				Phasen, Beginn und Fälligkeit aller Aufgaben und Unteraufgaben wandern um die gewählte Zahl
+				an Tagen (negativ = früher).
+			</Dialog.Description>
+		</Dialog.Header>
+		<FormField label="Tage" id="shift-days">
+			<NumberStepper
+				id="shift-days"
+				label="Tage"
+				unit="Tage"
+				bind:value={shiftDays}
+				min={-MAX_SHIFT_DAYS}
+				max={MAX_SHIFT_DAYS}
+			/>
+		</FormField>
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (shiftOpen = false)}>Abbrechen</Button>
+			<Button
+				disabled={!shiftDays}
+				onclick={() => {
+					shiftOpen = false;
+					void shift(shiftDays);
+				}}
+			>
+				Verschieben
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
 <ConfirmDialog
 	bind:open={deleteOpen}
 	title="Board löschen?"
-	description="Das Board mit allen Spalten, Aufgaben und Unteraufgaben wird endgültig gelöscht."
+	description="Das Board mit allen Spalten, Phasen, Aufgaben und Unteraufgaben wird endgültig gelöscht."
 	confirmLabel="Löschen"
 	destructive
 	onconfirm={deleteBoard}

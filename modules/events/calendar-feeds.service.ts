@@ -24,6 +24,7 @@ import {
 	toIsoOrNull
 } from '$lib/sdk/server';
 import type { ActionsService } from '$lib/modules/actions/contract';
+import type { TaskRefsService } from '$lib/modules/tasks/contract';
 import { visibleEventsFilter } from './access';
 import {
 	EVENT_COLUMNS,
@@ -88,6 +89,7 @@ function toDto(r: Record<string, unknown>): CalendarFeed {
 		name: str(r.name),
 		includeEvents: r.include_events === true || r.include_events === 't',
 		includeActions: r.include_actions === true || r.include_actions === 't',
+		includeTasks: r.include_tasks === true || r.include_tasks === 't',
 		groupIds: jsonList(r.group_ids),
 		tags: jsonList(r.tags),
 		url,
@@ -106,6 +108,10 @@ async function actionsService(): Promise<ActionsService | null> {
 	return core.modules.useOptional<ActionsService>('actions', MODULE_ID);
 }
 
+async function tasksService(): Promise<TaskRefsService | null> {
+	return core.modules.useOptional<TaskRefsService>('tasks', MODULE_ID);
+}
+
 async function loadOwnFeed(userId: string, id: string): Promise<Record<string, unknown>> {
 	const [row] = await mdb().transaction((tx) =>
 		rowsOf(tx, sql`SELECT * FROM calendar_feeds WHERE id = ${id} AND user_id = ${userId}`)
@@ -122,6 +128,7 @@ export async function listFeeds(ctx: RequestContext): Promise<CalendarFeedList> 
 	return {
 		feeds: rows.map(toDto),
 		actionsAvailable: (await actionsService()) !== null,
+		tasksAvailable: (await tasksService()) !== null,
 		max: MAX_CALENDAR_FEEDS
 	};
 }
@@ -145,9 +152,10 @@ export async function createFeed(
 		}
 		await tx.execute(
 			sql`INSERT INTO calendar_feeds (id, user_id, name, token_hash, token_enc, include_events,
-					include_actions, group_ids, tags)
+					include_actions, include_tasks, group_ids, tags)
 				VALUES (${id}, ${userId}, ${input.name}, ${crypt().hash(token)}, ${crypt().encrypt(token)},
-					${input.includeEvents}, ${input.includeActions}, ${JSON.stringify(input.groupIds)}::jsonb,
+					${input.includeEvents}, ${input.includeActions}, ${input.includeTasks},
+					${JSON.stringify(input.groupIds)}::jsonb,
 					${JSON.stringify(input.tags)}::jsonb)`
 		);
 	});
@@ -161,6 +169,7 @@ export async function createFeed(
 const feedMetadata = (input: CalendarFeedInput) => ({
 	events: input.includeEvents,
 	actions: input.includeActions,
+	tasks: input.includeTasks,
 	groups: input.groupIds.length,
 	tags: input.tags.length
 });
@@ -177,7 +186,7 @@ export async function updateFeed(
 	await mdb().transaction((tx) =>
 		tx.execute(
 			sql`UPDATE calendar_feeds SET name = ${input.name}, include_events = ${input.includeEvents},
-					include_actions = ${input.includeActions}, group_ids = ${JSON.stringify(input.groupIds)}::jsonb,
+					include_actions = ${input.includeActions}, include_tasks = ${input.includeTasks}, group_ids = ${JSON.stringify(input.groupIds)}::jsonb,
 					tags = ${JSON.stringify(input.tags)}::jsonb, updated_at = now()
 				WHERE id = ${id} AND user_id = ${userId}`
 		)
@@ -325,6 +334,25 @@ export async function renderFeed(token: string): Promise<Response> {
 				startsTime: a.startsTime,
 				endsOn: a.endsOn,
 				endsTime: a.endsTime
+			});
+		}
+	}
+
+	if (dto.includeTasks) {
+		const tasks = await tasksService();
+		for (const m of (await tasks?.calendarMilestones(ctx, window)) ?? []) {
+			const url = `${origin}${m.href}`;
+			events.push({
+				uid: `milestone-${m.id}@tasks.${host}`,
+				title: `◆ ${m.title}${m.done ? ' (erledigt)' : ''}`,
+				description: withLink(`Meilenstein im Board „${m.boardName}“`, url),
+				url,
+				categories: ['Meilenstein'],
+				startsOn: m.dueOn,
+				startsTime: null,
+				endsOn: null,
+				endsTime: null,
+				updatedAt: m.updatedAt
 			});
 		}
 	}

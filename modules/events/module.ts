@@ -16,6 +16,7 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_recurrence.sql?raw';
 import m0003 from './migrations/0003_checks.sql?raw';
 import m0004 from './migrations/0004_calendar_feeds.sql?raw';
+import m0005 from './migrations/0005_feed_tasks.sql?raw';
 import { calendarEndpoints } from './calendar.endpoints';
 import { calendarFeedsBackup } from './calendar-feeds.service';
 
@@ -24,10 +25,10 @@ export default defineModule({
 		id: 'events',
 		name: 'Termine',
 		description: 'Interne Termine und Termine für die Stammeswebsite',
-		version: '1.3.0',
+		version: '1.4.0',
 		dependencies: [],
 		/** Gruppen und Mitglieder für Zuordnung und Sichtbarkeit (ohne `members`: nur Stamm, Rollen, Benutzer) */
-		optionalDependencies: ['members', 'actions'],
+		optionalDependencies: ['members', 'actions', 'tasks'],
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen die für sie sichtbaren Termine */
 		defaultRoleGrants: { Mitglied: ['events.event.view'] },
 		permissions: [
@@ -72,7 +73,8 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_recurrence', sql: m0002 },
 		{ name: '0003_checks', sql: m0003 },
-		{ name: '0004_calendar_feeds', sql: m0004 }
+		{ name: '0004_calendar_feeds', sql: m0004 },
+		{ name: '0005_feed_tasks', sql: m0005 }
 	],
 	search: eventsSearch,
 	/** Übersicht: Termine der Woche (Serien je Vorkommen) */

@@ -2,6 +2,7 @@ import { defineModule } from '$lib/sdk/server';
 import { withTaskContext } from './access';
 import { boardEndpoints } from './boards.endpoints';
 import { taskEndpoints } from './tasks.endpoints';
+import { planningEndpoints } from './planning.endpoints';
 import { sendDueReminders } from './notify';
 import { onUserDeleted, resetAreas, resetUsers, subjectExport } from './privacy';
 import { tasksSearch } from './search';
@@ -10,14 +11,15 @@ import { taskRefsService } from './refs.service';
 import type { TaskRefsService } from './contract';
 import { NOTIFY_BOARD_SHARED, NOTIFY_TASK_ASSIGNED, NOTIFY_TASK_DUE, PERM } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_planning.sql?raw';
 
 export default defineModule({
 	manifest: {
 		id: 'tasks',
 		name: 'Aufgaben',
 		description:
-			'Kanban-Boards mit Aufgaben, Unteraufgaben, Zuständigen, Fälligkeiten und Prioritäten – auch für Aktionen',
-		version: '1.0.0',
+			'Kanban-Boards mit Phasen, Zeitleiste, Aufgaben, Unteraufgaben, Zuständigen und Vorlagen – auch für Aktionen',
+		version: '1.1.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen (Zugriff wird vererbt) */
 		optionalDependencies: ['members', 'actions'],
@@ -39,7 +41,10 @@ export default defineModule({
 			}
 		]
 	},
-	migrations: [{ name: '0001_init', sql: m0001 }],
+	migrations: [
+		{ name: '0001_init', sql: m0001 },
+		{ name: '0002_planning', sql: m0002 }
+	],
 	search: tasksSearch,
 	/** Übersicht: eigene fällige Aufgaben („Zu erledigen“, „Diese Woche“) */
 	dashboard: tasksDashboard,
@@ -86,5 +91,5 @@ export default defineModule({
 	onUserDeleted,
 	subjectExport,
 	// Reihenfolge: erster Treffer gewinnt (`/boards/by-action/…` vor `/boards/:id/…`)
-	endpoints: withTaskContext([...taskEndpoints, ...boardEndpoints])
+	endpoints: withTaskContext([...taskEndpoints, ...planningEndpoints, ...boardEndpoints])
 });

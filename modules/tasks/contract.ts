@@ -48,4 +48,27 @@ export interface TaskRefsService {
 	): Promise<TaskRefInfo[]>;
 	/** Nur sichtbare Aufgaben aus `ids` (höchstens 200), Reihenfolge wie `ids` */
 	describeTaskRefs(ctx: RequestContext, ids: readonly string[]): Promise<TaskRefInfo[]>;
+	/**
+	 * Meilensteine für das Kalender-Abo (Modul `events`): nur aus Boards mit „Meilensteine im Kalender-Abo“,
+	 * fällig im Zeitraum, für `ctx` sichtbar und der Person zugewiesen (ohne Zuständige: alle mit
+	 * Bearbeiten-Zugriff aufs Board). Höchstens 500, nach Datum.
+	 */
+	calendarMilestones(
+		ctx: RequestContext,
+		window: { from: string; to: string }
+	): Promise<TaskMilestoneRef[]>;
+}
+
+/** Meilenstein für das Kalender-Abo */
+export interface TaskMilestoneRef {
+	id: string;
+	title: string;
+	boardId: string;
+	boardName: string;
+	/** JJJJ-MM-TT */
+	dueOn: string;
+	done: boolean;
+	updatedAt: string;
+	/** Pfad in der App */
+	href: string;
 }

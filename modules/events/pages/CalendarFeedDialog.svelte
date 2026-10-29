@@ -27,12 +27,15 @@
 		open = $bindable(false),
 		feed = null,
 		actionsAvailable,
+		tasksAvailable = false,
 		onsaved
 	}: {
 		open?: boolean;
 		/** `null` = neues Abo */
 		feed?: CalendarFeed | null;
 		actionsAvailable: boolean;
+		/** Modul Aufgaben aktiv (Meilensteine wählbar) */
+		tasksAvailable?: boolean;
 		onsaved: (feed: CalendarFeed) => void;
 	} = $props();
 
@@ -43,6 +46,7 @@
 	let name = $state('');
 	let includeEvents = $state(true);
 	let includeActions = $state(true);
+	let includeTasks = $state(false);
 	let groupIds = $state<string[]>([]);
 	let tags = $state<string[]>([]);
 	let groups = $state<EventGroupRef[]>([]);
@@ -65,6 +69,7 @@
 				name = feed?.name ?? 'Stammestermine';
 				includeEvents = feed?.includeEvents ?? true;
 				includeActions = actionsAvailable ? (feed?.includeActions ?? true) : false;
+				includeTasks = tasksAvailable ? (feed?.includeTasks ?? false) : false;
 				groupIds = [...(feed?.groupIds ?? [])];
 				tags = [...(feed?.tags ?? [])];
 				errors = {};
@@ -95,7 +100,7 @@
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
 		if (busy) return;
-		const body = { name, includeEvents, includeActions, groupIds, tags };
+		const body = { name, includeEvents, includeActions, includeTasks, groupIds, tags };
 		const parsed = calendarFeedInput.safeParse(body);
 		if (!parsed.success) {
 			mapIssues(parsed.error.issues);
@@ -166,6 +171,17 @@
 							</span>
 						</span>
 						<Switch bind:checked={includeActions} aria-label="Aktionen im Abo" />
+					</label>
+				{/if}
+				{#if tasksAvailable}
+					<label class="flex items-center justify-between gap-3 text-sm">
+						<span>
+							Meilensteine aus Aufgaben
+							<span class="block text-xs text-muted-foreground">
+								Deine Meilensteine aus Boards, bei denen das Kalender-Abo eingeschaltet ist
+							</span>
+						</span>
+						<Switch bind:checked={includeTasks} aria-label="Meilensteine im Abo" />
 					</label>
 				{/if}
 				{#if errors.includeEvents}

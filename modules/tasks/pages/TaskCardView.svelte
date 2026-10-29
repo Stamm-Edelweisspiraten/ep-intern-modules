@@ -1,20 +1,20 @@
 <script lang="ts">
-	import AlignLeft from '@lucide/svelte/icons/align-left';
-	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Diamond from '@lucide/svelte/icons/diamond';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
-	import { Badge } from '$lib/components/ui/badge';
+	import Lock from '@lucide/svelte/icons/lock';
 	import { Avatar, AvatarFallback, AvatarGroup, AvatarImage } from '$lib/components/ui/avatar';
-	import type { TaskCard } from '../schemas';
-	import { dueClass, dueLabel, initials, priorityLabel, priorityVariant } from './helpers';
+	import type { Phase, TaskCard } from '../schemas';
+	import { dueText, dueTone, initials, priorityLabel } from './helpers';
 
 	/**
-	 * Karte einer Aufgabe im Board. Ganze Karte = Knopf zum Öffnen; ziehbar, wenn verschiebbar.
-	 * Tastatur: Alt+←/→ schiebt in die Nachbarspalte (Ziehen geht nur mit der Maus).
+	 * Karte einer Aufgabe im Board: Titel und eine Zeile mit Angaben. Priorität hoch/dringend als farbiger Rand.
+	 * Ganze Karte = Knopf zum Öffnen; ziehbar, wenn verschiebbar. Tastatur: Alt+←/→ in die Nachbarspalte.
 	 */
 	let {
 		task,
 		done = false,
+		phase = null,
+		showPhase = true,
 		canLeft,
 		canRight,
 		onopen,
@@ -24,6 +24,9 @@
 	}: {
 		task: TaskCard;
 		done?: boolean;
+		phase?: Phase | null;
+		/** Phase in der Karte zeigen (nicht in Bahnen nach Phase) */
+		showPhase?: boolean;
 		canLeft: boolean;
 		canRight: boolean;
 		onopen: () => void;
@@ -34,6 +37,15 @@
 
 	const checklistDone = $derived(
 		task.checklist.total > 0 && task.checklist.done === task.checklist.total
+	);
+	const due = $derived(dueText(task.dueOn, done, task.startsOn));
+	const tone = $derived(dueTone(task.dueOn, done));
+	const accent = $derived(
+		task.priority === 'urgent'
+			? 'border-l-destructive'
+			: task.priority === 'high'
+				? 'border-l-warning'
+				: ''
 	);
 
 	function onkeydown(e: KeyboardEvent) {
@@ -54,84 +66,75 @@
 	role="button"
 	tabindex="0"
 	draggable={task.canMove}
-	class="group block w-full cursor-pointer rounded-md border bg-card p-3 text-left text-sm shadow-xs transition-colors hover:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+	class="group block w-full cursor-pointer rounded-md border border-l-3 bg-card px-3 py-2.5 text-left text-sm shadow-xs transition-colors hover:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {accent}"
 	class:cursor-grab={task.canMove}
-	aria-label={`${task.title}${task.canMove ? ' – Alt+Pfeil links/rechts verschiebt' : ''}`}
+	aria-label={`${task.title}${task.priority === 'urgent' || task.priority === 'high' ? ` – Priorität ${priorityLabel(task.priority)}` : ''}${task.canMove ? ' – Alt+Pfeil links/rechts verschiebt' : ''}`}
+	data-task-card
 	onclick={onopen}
 	{onkeydown}
 	{ondragstart}
 	{ondragend}
 >
-	<p class="font-medium break-words" class:line-through={done} class:text-muted-foreground={done}>
-		{task.title}
+	<p
+		class="flex items-start gap-1.5 leading-snug font-medium break-words"
+		class:line-through={done}
+		class:text-muted-foreground={done}
+	>
+		{#if task.isMilestone}
+			<Diamond class="mt-0.5 size-3.5 shrink-0 fill-current" aria-label="Meilenstein" />
+		{/if}
+		<span class="min-w-0">{task.title}</span>
 	</p>
 
-	<div class="mt-2 flex flex-wrap items-center gap-1.5">
-		{#if task.priority !== 'medium'}
-			<Badge variant={priorityVariant(task.priority)} class="px-1.5 py-0 text-xs">
-				{priorityLabel(task.priority)}
-			</Badge>
-		{/if}
-		{#if task.dueOn}
-			<span class={`text-xs ${dueClass(task.dueOn, done)}`}>{dueLabel(task.dueOn, done)}</span>
-		{/if}
-		{#if task.hasDescription}
-			<AlignLeft class="size-3.5 text-muted-foreground" aria-label="Mit Beschreibung" />
-		{/if}
-		{#if task.checklist.total}
-			<span
-				class="inline-flex items-center gap-1 text-xs tabular-nums"
-				class:text-success={checklistDone}
-				class:text-muted-foreground={!checklistDone}
-				aria-label={`${task.checklist.done} von ${task.checklist.total} Unteraufgaben erledigt`}
-			>
-				<ListChecks class="size-3.5" aria-hidden="true" />
-				{task.checklist.done}/{task.checklist.total}
-			</span>
-		{/if}
-		{#if task.assignees.length}
-			<AvatarGroup class="ml-auto">
-				{#each task.assignees.slice(0, 3) as a (a.id)}
-					<Avatar class="size-6 border-2 border-card" title={a.name}>
-						{#if a.image}<AvatarImage src={a.image} alt={a.name} />{/if}
-						<AvatarFallback class="text-xs">{initials(a.name)}</AvatarFallback>
-					</Avatar>
-				{/each}
-				{#if task.assignees.length > 3}
-					<span class="ml-1 text-xs text-muted-foreground">+{task.assignees.length - 3}</span>
-				{/if}
-			</AvatarGroup>
-			<span class="sr-only">Zuständig: {task.assignees.map((a) => a.name).join(', ')}</span>
-		{/if}
-	</div>
-
-	{#if task.canMove && (canLeft || canRight)}
-		<!-- Touch/ohne Maus: in die Nachbarspalte schieben -->
-		<div class="mt-2 flex justify-between sm:hidden">
-			<button
-				type="button"
-				class="focus-ring inline-flex items-center gap-0.5 rounded-sm px-1 text-xs text-muted-foreground disabled:opacity-0"
-				disabled={!canLeft}
-				aria-label="In die linke Spalte"
-				onclick={(e) => {
-					e.stopPropagation();
-					onshift(-1);
-				}}
-			>
-				<ChevronLeft class="size-4" aria-hidden="true" /> Zurück
-			</button>
-			<button
-				type="button"
-				class="focus-ring inline-flex items-center gap-0.5 rounded-sm px-1 text-xs text-muted-foreground disabled:opacity-0"
-				disabled={!canRight}
-				aria-label="In die rechte Spalte"
-				onclick={(e) => {
-					e.stopPropagation();
-					onshift(1);
-				}}
-			>
-				Weiter <ChevronRight class="size-4" aria-hidden="true" />
-			</button>
+	{#if due || task.checklist.total || task.assignees.length || task.openBlockers || (showPhase && phase)}
+		<div class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+			{#if due}
+				<span
+					class="tabular-nums"
+					class:text-destructive={tone === 'overdue'}
+					class:text-warning={tone === 'soon'}
+					class:font-medium={tone !== 'normal'}>{due}</span
+				>
+			{/if}
+			{#if task.checklist.total}
+				<span
+					class="inline-flex items-center gap-1 tabular-nums"
+					class:text-success={checklistDone}
+					aria-label={`${task.checklist.done} von ${task.checklist.total} Unteraufgaben erledigt`}
+				>
+					<ListChecks class="size-3.5" aria-hidden="true" />
+					{task.checklist.done}/{task.checklist.total}
+				</span>
+			{/if}
+			{#if task.openBlockers && !done}
+				<span class="inline-flex items-center gap-1" title="Wartet auf andere Aufgaben">
+					<Lock class="size-3.5" aria-hidden="true" /> blockiert
+				</span>
+			{/if}
+			{#if showPhase && phase}
+				<span class="inline-flex min-w-0 items-center gap-1">
+					<span
+						class="size-2 shrink-0 rounded-full bg-muted-foreground/40"
+						style:background-color={phase.color ?? undefined}
+						aria-hidden="true"
+					></span>
+					<span class="truncate">{phase.name}</span>
+				</span>
+			{/if}
+			{#if task.assignees.length}
+				<AvatarGroup class="ml-auto">
+					{#each task.assignees.slice(0, 3) as a (a.id)}
+						<Avatar class="size-6 border-2 border-card" title={a.name}>
+							{#if a.image}<AvatarImage src={a.image} alt={a.name} />{/if}
+							<AvatarFallback class="text-xs">{initials(a.name)}</AvatarFallback>
+						</Avatar>
+					{/each}
+					{#if task.assignees.length > 3}
+						<span class="ml-1 text-xs">+{task.assignees.length - 3}</span>
+					{/if}
+				</AvatarGroup>
+				<span class="sr-only">Zuständig: {task.assignees.map((a) => a.name).join(', ')}</span>
+			{/if}
 		</div>
 	{/if}
 </div>

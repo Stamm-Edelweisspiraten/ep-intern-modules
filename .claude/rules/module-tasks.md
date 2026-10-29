@@ -7,11 +7,48 @@ paths: ["src/lib/modules/tasks/**", "tests/**/tasks*"]
 Kanban-Boards mit frei benennbaren Spalten, Aufgaben (Titel, Beschreibung, Priorität, Fälligkeit, **mehrere Zuständige**) und
 **Unteraufgaben als Checkliste** (je Titel, abgehakt, optional eine zuständige Person und Fälligkeit). Boards sind freigebbar an
 Principals (Stamm, Gruppe, Rolle, Mitglied, Benutzer*in) und können an **eine Aktion** gehängt werden – dann vererbt sich der Zugriff
-der Aktion. Schema `mod_tasks`, Version 1.0.0 (2026-10-25), keine harten Abhängigkeiten, `optionalDependencies: ['members', 'actions']`.
+der Aktion. Schema `mod_tasks`, Version 1.1.0 (2026-10-29, „Aufgaben 2.0“), keine harten Abhängigkeiten, `optionalDependencies: ['members', 'actions']`.
 Navigation „Aufgaben“ (Icon `kanban`, `order` 75).
 
 Nutzerentscheidungen (2026-10-25): eigenes Modul **plus** Verknüpfung mit Aktionen; Spalten **frei je Board** (Start Offen · In Arbeit ·
 Erledigt, genau eine Erledigt-Spalte); Unteraufgaben als **Checkliste** (keine vollwertigen Unter-Karten).
+Nutzerentscheidungen Aufgaben 2.0 (2026-10-29, Konzept-Artifact „Aufgaben 2.0“): UI im bestehenden Design, nur vorhandene Bausteine;
+**Phasen je Board** (kein stammweiter Plan), Datum **optional**; Zeitleiste am **Desktop ziehbar** (Rückgängig-Toast), Touch nur ansehen;
+Abhängigkeiten nur als Anzeige/Warnung (**keine** automatische Terminverschiebung); Meilensteine **optional im Kalender-Abo** (Schalter je Board,
+Standard aus); verschobene Aktion → **Nachfrage** „Daten mitverschieben?“ (nie automatisch).
+
+## Aufgaben 2.0 (v1.1.0, Migr. 0002_planning)
+- **Daten**: `board_phases` (Name, Farbe, `starts_on`/`ends_on` optional, CHECK Ende ≥ Beginn, Position), `tasks.phase_id` (FK SET NULL),
+  `tasks.starts_on` (CHECK ≤ `due_on`), `tasks.is_milestone` (CHECK ohne Beginn), `boards.default_view` (`board|list|timeline|calendar`),
+  `boards.calendar_milestones`, `boards.anchor_on` (Bezugsdatum = Aktionsbeginn bzw. Datum der Vorlage), `board_templates` (eigene Vorlagen,
+  `data` jsonb), `task_dependencies` (Vorgänger, beide FK CASCADE, CHECK ≠).
+- **Reine Logik**: `phases.ts` (`phaseState`, `currentPhase`, `taskRange`), `timeline.ts` (Zeitraum, Monats-/Wochenköpfe, ISO-KW, `moveRange`,
+  `resizeRange`), `templates.ts` (`templateDataSchema`, `BUILTIN_TEMPLATES` „Fahrt / Lager“ + „Tagesaktion“, `applyTemplate`, `templateFromBoard`:
+  Offsets in Tagen relativ zu Beginn/Ende, Daten nach dem Aktionsende relativ zum Ende), `dependencies.ts` (`createsCycle`, `startsBeforeBlocker`),
+  `schemas.ts` `taskDateIssues` (Beginn ≤ Fällig, Meilenstein nur mit Datum und ohne Beginn; PATCH prüft gegen den gespeicherten Stand, Meilenstein an
+  → Beginn entfällt automatisch).
+- **API** (`planning.endpoints.ts`, alle `tasks.board.view` + Bearbeiten-Zugriff, Antwort `BoardDetail`): POST/PATCH/DELETE `/boards/:id/phases[/:phaseId]`,
+  PUT `…/phases/order` (≤ 20 → 409), POST `/boards/:id/shift { days, apply }` (Phasen, Aufgaben, Unteraufgaben-Fälligkeiten und `anchor_on`; `apply: false`
+  = nur Bezugsdatum, blendet den Hinweis aus), GET `/templates` (`tasks.board.create`; mitgelieferte + eigene, `edit-all` alle), POST `/boards/:id/template`
+  (≤ 50 je Person), DELETE `/templates/:id` (fremd → 404), POST `/boards` mit `templateId` + `anchorOn` (Standard Aktionsbeginn, sonst heute; Ende aus der
+  Aktion), PATCH `/boards/:id` mit `defaultView`/`calendarMilestones` (Aktion verknüpfen setzt `anchor_on` einmalig), PUT `/tasks/:id/dependencies { ids }`
+  (nur dasselbe Board, keine Kreise → 422). `BoardDetail`: `phases`, `anchorOn`, `actionStartsOn`, `actionShift` (Tage, sonst `null`); `Board`:
+  `currentPhase`, `nextMilestone`, `defaultView`, `calendarMilestones`; `TaskCard`: `phaseId`, `startsOn`, `isMilestone`, `blockedBy`, `openBlockers`;
+  `MyTask`: `phase`, `isMilestone`. Audit `tasks.phase.created|updated|deleted|reordered`, `tasks.template.created|deleted`, `tasks.board.shifted`.
+- **Kalender-Abo**: `TaskRefsService.calendarMilestones(ctx, window)` → `events` (Migr. 0005 `include_tasks`, Schalter „Meilensteine aus Aufgaben“):
+  nur Boards mit `calendar_milestones`, für die Person zugewiesene Meilensteine (ohne Zuständige: alle mit Bearbeiten-Zugriff), ganztägig „◆ Titel“.
+- **UI** (`pages/`): `BoardPage` (Hülle: Kopf mit ⋯-Menü Board bearbeiten/Phasen/Spalte/Daten verschieben/Standardansicht/Als Vorlage/Löschen,
+  Hinweis „Aktion verschoben“, `board/PhaseStrip`, Reiter Board · Liste · Zeitleiste · Kalender mit `?view=`, `board/BoardFilters` = ein Knopf „Filter · n“
+  mit Popover + Chips, `filter.ts`), `views/KanbanView` (＋ im Spaltenkopf legt in der Spalte an, Spaltenmenü per ⋯ und Rechtsklick, Bahnen je Phase
+  „Nach Phasen gruppieren“, Ablegen in anderer Bahn ändert die Phase), `views/ListView` (`DataTable mobile="cards"` je Phase, Abhaken), `views/TimelineView`
+  (Bänder/Balken/Rauten, Heute-Linie, Pfeile „wartet auf“ – rot bei Konflikt, Ziehen + Tastatur ←/→ mit Umschalt/Alt), `views/CalendarView`
+  (`MonthCalendar`), `board/MobileBoard` (Handy: `ScrollPills` + `TouchList`/`ListRow`, langes Drücken → `BottomSheet` + `SheetAction`),
+  `board/PhasesDialog`, `task/TaskSheet` + `task/TaskEditor` (ersetzt `TaskDialog`: Seitenblatt rechts bzw. von unten, Autosave mit Statuszeile,
+  ↑/↓ zur nächsten Aufgabe), `TaskCardView` (Titel + eine Zeile, Priorität hoch/dringend als linker Rand). `BoardDialog`: Vorlage + Bezugsdatum beim Anlegen,
+  Schalter Kalender-Abo beim Bearbeiten. `actions/ActionTasksCard`: „Board anlegen“ mit Vorlagen-Auswahl, zeigt Phase und nächsten Meilenstein.
+- **Tests**: `tests/integration/tasks-planning.test.ts`, `tests/unit/tasks-planning.test.ts`, E2E `tests/e2e/tasks.spec.ts`.
+- **Offen**: Zeitleiste ohne Zoom über Monate hinaus und ohne Ziehen auf Touch (bewusst); Vorlagen nur persönlich (nicht teilbar); Abhängigkeiten
+  ohne Pfeil-Bearbeitung in der Zeitleiste; Phasen-Farben im Kalender nur, wenn gesetzt.
 
 ## Dateien (`src/lib/modules/tasks/`)
 | Datei | Inhalt |
@@ -26,8 +63,11 @@ Erledigt, genau eine Erledigt-Spalte); Unteraufgaben als **Checkliste** (keine v
 | `privacy.ts` | `onUserDeleted`, `resetAreas` (`all`, `rebuild`), `resetUsers`, `subjectExport` |
 | `search.ts` | Globale Suche: Boards und Aufgaben (sichtbar wie `GET /boards`), Link `?task=` |
 | `contract.ts`, `refs.service.ts` | Dienst `TaskRefsService` (`provides`, 2026-10-26): `searchBoardRefs`/`describeBoardRefs`/`searchTaskRefs`/`describeTaskRefs` – sichtbar wie `GET /boards`, prüft `tasks.board.view` selbst; Nutzer: Karten im `whiteboard` |
-| `ui.ts`, `pages/` | `''` → `BoardsPage` (Karten mit Fortschritt), `:id` → `BoardPage` (Spalten, Ziehen & Ablegen, Filter, Schnell-Anlegen); `TaskDialog`, `TaskCardView`, `BoardDialog`, `helpers.ts`; Kachel `widgets/MyTasksWidget` („Meine Aufgaben“) |
+| `ui.ts`, `pages/` | `''` → `BoardsPage` (Karten mit Phase, Meilenstein, Fortschritt), `:id` → `BoardPage` (siehe „Aufgaben 2.0“); `task/`, `views/`, `board/`, `TaskCardView`, `BoardDialog`, `filter.ts`, `helpers.ts`; Kachel `widgets/MyTasksWidget` („Meine Aufgaben“) |
+| `planning.endpoints.ts`, `templates.service.ts` | Phasen, Verschieben, Vorlagen (siehe „Aufgaben 2.0“) |
+| `phases.ts`, `timeline.ts`, `templates.ts`, `dependencies.ts` | reine Logik (Server + UI) |
 | `migrations/0001_init.sql` | `boards` (UNIQUE `action_id`), `board_shares`, `board_columns`, `tasks` (`column_id` RESTRICT, `completed_at`, `reminded_on`), `task_assignees`, `task_checklist` |
+| `migrations/0002_planning.sql` | Phasen, Zeitraum/Meilenstein, Standardansicht, Kalender-Abo, Bezugsdatum, Vorlagen, Abhängigkeiten |
 
 ## Rechte
 | Schlüssel | Bedeutung |
@@ -84,6 +124,6 @@ E2E `tests/e2e/tasks.spec.ts` (Board anlegen, Schnell-Anlegen, Unteraufgabe abha
   `onDrop` berechnet die Position selbst, weil `dragleave` das Ziel vorher löschen kann.
 
 ## Offen
-- Ziehen & Ablegen nur mit Maus (Touch: Knöpfe „Zurück/Weiter“, Tastatur Alt+←/→, Spalten-Auswahl im Dialog).
-- Keine Kommentare, Anhänge, Labels, wiederkehrenden Aufgaben, Vorlagen; Unteraufgaben im Dialog nicht per Ziehen sortierbar (API `…/checklist/order` vorhanden).
+- Ziehen & Ablegen nur mit Maus (Handy: Aktionsblatt nach langem Drücken, Tastatur Alt+←/→, „Stand“ im Seitenblatt).
+- Keine Kommentare, Anhänge, Labels, wiederkehrenden Aufgaben; Unteraufgaben im Blatt nicht per Ziehen sortierbar (API `…/checklist/order` vorhanden).
 - Zuständige ohne eigene Board-Freigabe sehen das ganze Board lesend (bewusst: Zuweisen = Einblick).

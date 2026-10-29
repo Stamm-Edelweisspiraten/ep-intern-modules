@@ -63,7 +63,7 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 		const feeds = userId
 			? await rowsOf(
 					tx,
-					sql`SELECT id, name, include_events, include_actions, group_ids, tags, created_at, last_used_at
+					sql`SELECT id, name, include_events, include_actions, include_tasks, group_ids, tags, created_at, last_used_at
 						FROM calendar_feeds WHERE user_id = ${userId} ORDER BY created_at, id`
 				)
 			: [];
@@ -112,6 +112,7 @@ async function run({ userId, memberIds }: DataSubject): Promise<Record<string, u
 			name: String(r.name),
 			includeEvents: r.include_events === true,
 			includeActions: r.include_actions === true,
+			includeTasks: r.include_tasks === true,
 			groupIds: jsonList(r.group_ids),
 			tags: jsonList(r.tags),
 			createdAt: toIsoOrNull(r.created_at),

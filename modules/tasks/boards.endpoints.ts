@@ -36,6 +36,9 @@ import {
 	userRefs
 } from './boards.service';
 import { notifyBoardShared } from './notify';
+import { applyTemplate } from './templates';
+import { insertApplied, loadTemplateData } from './templates.service';
+import { addDays, daysBetween, todayBerlin } from '$lib/sdk/dates';
 import {
 	actionParams,
 	boardInput,
@@ -181,13 +184,28 @@ export const boardEndpoints: AnyApiEndpoint[] = [
 			if (!ctx.userId) throw errors.badRequest('Boards können nur Benutzer*innen anlegen');
 			assertActionEditable(ctx, body.actionId);
 			const id = crypto.randomUUID();
+			// Bezugsdatum: angegeben, sonst Beginn der Aktion, mit Vorlage sonst heute
+			const action = body.actionId ? taskContextOf(ctx).actionDates.get(body.actionId) : undefined;
+			const anchorOn =
+				body.anchorOn ?? action?.startsOn ?? (body.templateId ? todayBerlin() : null);
+			const anchorEnd =
+				anchorOn && action?.startsOn && action.endsOn
+					? addDays(anchorOn, daysBetween(action.startsOn, action.endsOn))
+					: null;
+			let tasks = 0;
 			try {
 				await mdb().transaction(async (tx) => {
 					await tx.execute(
-						sql`INSERT INTO boards (id, name, description, color, owner_id, action_id, created_by)
+						sql`INSERT INTO boards (id, name, description, color, owner_id, action_id, anchor_on, created_by)
 							VALUES (${id}, ${body.name}, ${body.description}, ${body.color}, ${ctx.userId},
-								${body.actionId}, ${ctx.userId})`
+								${body.actionId}, ${anchorOn}, ${ctx.userId})`
 					);
+					if (body.templateId) {
+						const data = await loadTemplateData(tx, ctx, body.templateId);
+						const applied = applyTemplate(data, { startsOn: anchorOn!, endsOn: anchorEnd });
+						tasks = (await insertApplied(tx, id, applied, ctx.userId)).tasks;
+						return;
+					}
 					for (const [i, c] of DEFAULT_COLUMNS.entries()) {
 						await tx.execute(
 							sql`INSERT INTO board_columns (id, board_id, name, position, is_done)
@@ -201,7 +219,7 @@ export const boardEndpoints: AnyApiEndpoint[] = [
 			}
 			await core.audit.logFromContext(ctx, 'tasks.board.created', {
 				target: id,
-				metadata: { withAction: !!body.actionId }
+				metadata: { withAction: !!body.actionId, template: !!body.templateId, tasks }
 			});
 			return detail(ctx, id);
 		}
@@ -247,6 +265,9 @@ export const boardEndpoints: AnyApiEndpoint[] = [
 		body: boardUpdateInput,
 		handler: async ({ ctx, params, body }) => {
 			if (body.actionId !== undefined) assertActionEditable(ctx, body.actionId);
+			const linkedStart = body.actionId
+				? (taskContextOf(ctx).actionDates.get(body.actionId)?.startsOn ?? null)
+				: null;
 			try {
 				await mdb().transaction(async (tx) => {
 					const access = await requireBoardAccess(
@@ -260,7 +281,12 @@ export const boardEndpoints: AnyApiEndpoint[] = [
 						body.name !== undefined ? sql`name = ${body.name}` : null,
 						body.description !== undefined ? sql`description = ${body.description ?? null}` : null,
 						body.color !== undefined ? sql`color = ${body.color ?? null}` : null,
-						body.actionId !== undefined ? sql`action_id = ${body.actionId}` : null
+						body.actionId !== undefined ? sql`action_id = ${body.actionId}` : null,
+						linkedStart ? sql`anchor_on = COALESCE(anchor_on, ${linkedStart}::date)` : null,
+						body.defaultView !== undefined ? sql`default_view = ${body.defaultView}` : null,
+						body.calendarMilestones !== undefined
+							? sql`calendar_milestones = ${body.calendarMilestones}`
+							: null
 					].filter((v) => v !== null);
 					await tx.execute(
 						sql`UPDATE boards SET ${sql.join([...sets, sql`updated_at = now()`], sql`, `)}

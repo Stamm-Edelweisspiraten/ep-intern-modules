@@ -1,11 +1,11 @@
 /** Dienst `TaskRefsService` (siehe `contract.ts`): Verweise auf Boards und Aufgaben für andere Module */
 import { sql } from 'drizzle-orm';
-import { core, inList, type RequestContext, type Row, rowsOf } from '$lib/sdk/server';
-import { loadTaskContext, visibleBoardsFilter } from './access';
+import { core, inList, type RequestContext, type Row, rowsOf, toIso } from '$lib/sdk/server';
+import { boardAccessForMany, loadTaskContext, visibleBoardsFilter } from './access';
 import { mdb } from './boards.service';
 import { boardLink } from './notify';
 import { PERM, PRIORITIES, type Priority } from './schemas';
-import type { TaskBoardRefInfo, TaskRefInfo, TaskRefsService } from './contract';
+import type { TaskBoardRefInfo, TaskMilestoneRef, TaskRefInfo, TaskRefsService } from './contract';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const clampLimit = (n: number | undefined) => Math.min(Math.max(n ?? 20, 1), 50);
@@ -105,5 +105,47 @@ export const taskRefsService: TaskRefsService = {
 			)
 		);
 		return ordered(list, rows.map(toTask));
+	},
+	async calendarMilestones(ctx, window) {
+		if (!ctx.userId || !(await prepare(ctx))) return [];
+		const userId = ctx.userId;
+		const rows = await mdb().transaction(async (tx) => {
+			const list = await rowsOf(
+				tx,
+				sql`SELECT t.id, t.title, t.board_id, b.name AS board_name, b.owner_id, b.action_id,
+						to_char(t.due_on, 'YYYY-MM-DD') AS due_on, t.completed_at, t.updated_at,
+						EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = ${userId}) AS mine,
+						EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id) AS assigned
+					FROM tasks t JOIN boards b ON b.id = t.board_id
+					WHERE b.calendar_milestones AND t.is_milestone
+						AND t.due_on BETWEEN ${window.from}::date AND ${window.to}::date
+						AND ${visibleBoardsFilter(ctx)}
+					ORDER BY t.due_on, t.id LIMIT 500`
+			);
+			const boards = new Map<string, { id: string; ownerId: string; actionId: string | null }>();
+			for (const r of list) {
+				boards.set(String(r.board_id), {
+					id: String(r.board_id),
+					ownerId: String(r.owner_id),
+					actionId: r.action_id == null ? null : String(r.action_id)
+				});
+			}
+			const access = await boardAccessForMany(tx, ctx, [...boards.values()]);
+			const flag = (v: unknown) => v === true || v === 't';
+			return list.filter(
+				(r) =>
+					flag(r.mine) || (!flag(r.assigned) && access.get(String(r.board_id))?.level === 'edit')
+			);
+		});
+		return rows.map((r): TaskMilestoneRef => ({
+			id: String(r.id),
+			title: String(r.title),
+			boardId: String(r.board_id),
+			boardName: String(r.board_name),
+			dueOn: String(r.due_on),
+			done: r.completed_at != null,
+			updatedAt: toIso(r.updated_at),
+			href: boardLink(String(r.board_id), String(r.id))
+		}));
 	}
 };

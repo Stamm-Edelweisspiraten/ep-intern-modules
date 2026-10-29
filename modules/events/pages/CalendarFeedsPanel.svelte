@@ -62,6 +62,7 @@
 			if (f.tags.length) parts.push(`Tags: ${f.tags.join(', ')}`);
 		}
 		if (f.includeActions && data?.actionsAvailable) parts.push('Aktionen');
+		if (f.includeTasks && data?.tasksAvailable) parts.push('Meilensteine');
 		return parts.join(' · ');
 	}
 
@@ -218,6 +219,7 @@
 	bind:open={dialog.open}
 	feed={dialog.feed}
 	actionsAvailable={data?.actionsAvailable ?? false}
+	tasksAvailable={data?.tasksAvailable ?? false}
 	onsaved={() => void load()}
 />
 <ConfirmDialog

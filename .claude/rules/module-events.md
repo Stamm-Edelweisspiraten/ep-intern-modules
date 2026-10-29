@@ -239,6 +239,12 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
   erzeugen bis zu 2000 Vorkommen je Serie im Speicher. Kappung auf 2000 Vorkommen ist für Nutzer*innen nur am `total` erkennbar.
 - `actions` nutzt seit 2026-10-25 dasselbe Muster (`action_shares` mit `principal_type`/`principal_id`, Migr. 0022).
 
+## Meilensteine aus Aufgaben im Abo (2026-10-29, v1.4.0, Migr. 0005)
+`calendar_feeds.include_tasks` (Standard aus, CHECK jetzt Termine **oder** Aktionen **oder** Meilensteine, Constraint `calendar_feeds_content_check`),
+`optionalDependencies` + `tasks`; `renderFeed` holt `TaskRefsService.calendarMilestones(ctx, window)` (nur Boards mit „Meilensteine im Kalender-Abo“,
+siehe `module-tasks.md`), ganztägig „◆ Titel“, UID `milestone-<id>@tasks.<host>`, Kategorie „Meilenstein“. `CalendarFeedList.tasksAvailable`, Schalter im
+`CalendarFeedDialog`, Datenauskunft mit `includeTasks`. Test: `tests/integration/tasks-planning.test.ts`.
+
 ## Kalender-Abo (iCal, 2026-10-24, v1.3.0, Migr. 0004)
 Nutzerentscheidung: Termine **und** Aktionen; **mehrere Abos je Person** mit Filter.
 - **Daten** `calendar_feeds(id, user_id, name ≤ 80, token_hash UNIQUE, token_enc, include_events, include_actions, group_ids jsonb, tags jsonb,

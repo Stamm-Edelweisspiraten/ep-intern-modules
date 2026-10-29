@@ -29,6 +29,14 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
 	await tx.execute(sql`UPDATE tasks SET created_by = NULL WHERE created_by = ${userId}`);
 	await tx.execute(sql`UPDATE boards SET created_by = NULL WHERE created_by = ${userId}`);
 	await tx.execute(sql`UPDATE board_shares SET created_by = NULL WHERE created_by = ${userId}`);
+	// eigene Vorlagen gehen an `transferTo`, sonst werden sie gelöscht
+	if (transferTo) {
+		await tx.execute(
+			sql`UPDATE board_templates SET owner_id = ${transferTo} WHERE owner_id = ${userId}`
+		);
+	} else {
+		await tx.execute(sql`DELETE FROM board_templates WHERE owner_id = ${userId}`);
+	}
 };
 
 export const resetAreas: ResetArea[] = [
@@ -39,14 +47,22 @@ export const resetAreas: ResetArea[] = [
 			'Löscht alle Boards mit Spalten, Aufgaben, Unteraufgaben, Zuständigen und Freigaben – auch die an Aktionen gehängten.',
 		// Kind vor Eltern (tasks.column_id ist RESTRICT → Aufgaben vor Spalten)
 		tables: [
+			'task_dependencies',
 			'task_checklist',
 			'task_assignees',
 			'tasks',
+			'board_phases',
 			'board_columns',
 			'board_shares',
 			'boards'
 		],
 		rebuild: true
+	},
+	{
+		id: 'templates',
+		label: 'Eigene Aufgaben-Vorlagen',
+		description: 'Löscht alle gespeicherten Board-Vorlagen (die mitgelieferten bleiben).',
+		tables: ['board_templates']
 	}
 ];
 
@@ -56,6 +72,9 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 	);
 	await tx.execute(sql`UPDATE boards SET owner_id = ${keepUserId} WHERE owner_id <> ${keepUserId}`);
 	await tx.execute(sql`DELETE FROM task_assignees WHERE user_id <> ${keepUserId}`);
+	await tx.execute(
+		sql`UPDATE board_templates SET owner_id = ${keepUserId} WHERE owner_id <> ${keepUserId}`
+	);
 	await tx.execute(
 		sql`UPDATE task_checklist SET assignee_id = NULL WHERE assignee_id IS NOT NULL AND assignee_id <> ${keepUserId}`
 	);
@@ -92,13 +111,23 @@ export const subjectExport: ModuleSubjectExport = {
 					FROM task_checklist c JOIN tasks t ON t.id = c.task_id
 					WHERE c.assignee_id = ${userId} ORDER BY c.created_at, c.id`
 			),
+			templates: await rowsOf(
+				tx,
+				sql`SELECT id, name, created_at FROM board_templates WHERE owner_id = ${userId} ORDER BY created_at, id`
+			),
 			shares: await rowsOf(
 				tx,
 				sql`SELECT s.board_id, b.name, s.level FROM board_shares s JOIN boards b ON b.id = s.board_id
 					WHERE s.principal_type = 'user' AND s.principal_id = ${userId}`
 			)
 		}));
-		if (!data.boards.length && !data.tasks.length && !data.items.length && !data.shares.length) {
+		if (
+			!data.boards.length &&
+			!data.tasks.length &&
+			!data.items.length &&
+			!data.shares.length &&
+			!data.templates.length
+		) {
 			return null;
 		}
 		return {
@@ -119,6 +148,11 @@ export const subjectExport: ModuleSubjectExport = {
 				title: String(r.title),
 				task: String(r.task),
 				done: r.done === true || r.done === 't'
+			})),
+			templates: data.templates.map((r) => ({
+				id: String(r.id),
+				name: String(r.name),
+				createdAt: toIso(r.created_at)
 			})),
 			shares: data.shares.map((r) => ({
 				boardId: String(r.board_id),

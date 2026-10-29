@@ -458,6 +458,8 @@ export const calendarFeedInput = z
 			.max(MAX_FEED_NAME, `Höchstens ${MAX_FEED_NAME} Zeichen`),
 		includeEvents: z.boolean().default(true),
 		includeActions: z.boolean().default(true),
+		/** Meilensteine aus dem Modul Aufgaben (nur Boards mit eingeschaltetem Kalender-Abo) */
+		includeTasks: z.boolean().default(false),
 		/** Nur Termine dieser Gruppen (`stamm` oder `members`-Gruppe); leer = alle */
 		groupIds: z
 			.array(refId)
@@ -472,8 +474,8 @@ export const calendarFeedInput = z
 			.transform(normalizeTags)
 	})
 	.strict()
-	.refine((v) => v.includeEvents || v.includeActions, {
-		message: 'Bitte Termine, Aktionen oder beides wählen',
+	.refine((v) => v.includeEvents || v.includeActions || v.includeTasks, {
+		message: 'Bitte mindestens Termine, Aktionen oder Meilensteine wählen',
 		path: ['includeEvents']
 	});
 export type CalendarFeedInput = z.infer<typeof calendarFeedInput>;
@@ -491,6 +493,7 @@ export interface CalendarFeed {
 	name: string;
 	includeEvents: boolean;
 	includeActions: boolean;
+	includeTasks: boolean;
 	groupIds: string[];
 	tags: string[];
 	/** Abo-Adresse (https) – geheim halten; `null`, wenn nicht mehr entschlüsselbar (dann erneuern) */
@@ -506,5 +509,7 @@ export interface CalendarFeedList {
 	feeds: CalendarFeed[];
 	/** Modul Aktionen aktiv (Auswahl „Aktionen“ anzeigen) */
 	actionsAvailable: boolean;
+	/** Modul Aufgaben aktiv (Auswahl „Meilensteine“ anzeigen) */
+	tasksAvailable: boolean;
 	max: number;
 }

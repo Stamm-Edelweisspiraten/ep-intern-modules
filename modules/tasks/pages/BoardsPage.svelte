@@ -17,7 +17,7 @@
 	} from '$lib/components/layout';
 	import { PERM, type BoardDetail, type BoardList } from '../schemas';
 	import BoardDialog from './BoardDialog.svelte';
-	import { BASE, errMsg } from './helpers';
+	import { BASE, errMsg, shortDate } from './helpers';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canCreate = $derived(can(permissions, PERM.create));
@@ -104,19 +104,46 @@
 					href={`${BASE}/${board.id}`}
 					class="block h-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 				>
-					<Card.Root class="h-full pt-0 transition-colors hover:bg-muted/40">
-						<div
-							class="h-1.5 w-full bg-muted-foreground/30"
-							style:background-color={board.color ?? undefined}
-							aria-hidden="true"
-						></div>
+					<Card.Root class="h-full transition-colors hover:bg-muted/40">
 						<Card.Header class="space-y-1">
-							<Card.Title level={2} class="truncate">{board.name}</Card.Title>
+							<Card.Title level={2} class="flex items-center gap-2">
+								<span
+									class="size-2.5 shrink-0 rounded-full bg-muted-foreground/40"
+									style:background-color={board.color ?? undefined}
+									aria-hidden="true"
+								></span>
+								<span class="truncate">{board.name}</span>
+							</Card.Title>
 							{#if board.description}
 								<p class="line-clamp-2 text-sm text-muted-foreground">{board.description}</p>
 							{/if}
 						</Card.Header>
 						<Card.Content class="space-y-3">
+							{#if board.currentPhase || board.nextMilestone}
+								<dl class="space-y-1 text-xs">
+									{#if board.currentPhase}
+										<div class="flex items-center gap-1.5">
+											<dt class="text-muted-foreground">Phase</dt>
+											<dd class="flex min-w-0 items-center gap-1.5 font-medium">
+												<span
+													class="size-2 shrink-0 rounded-full bg-muted-foreground/40"
+													style:background-color={board.currentPhase.color ?? undefined}
+													aria-hidden="true"
+												></span>
+												<span class="truncate">{board.currentPhase.name}</span>
+											</dd>
+										</div>
+									{/if}
+									{#if board.nextMilestone}
+										<div class="flex items-center gap-1.5">
+											<dt class="text-muted-foreground">Nächster Meilenstein</dt>
+											<dd class="min-w-0 truncate font-medium">
+												◆ {board.nextMilestone.title} · {shortDate(board.nextMilestone.dueOn)}
+											</dd>
+										</div>
+									{/if}
+								</dl>
+							{/if}
 							<div class="flex flex-wrap gap-1.5">
 								{#if board.action}
 									<Badge variant="outline"><Tent aria-hidden="true" /> {board.action.name}</Badge>

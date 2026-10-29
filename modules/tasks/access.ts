@@ -41,6 +41,8 @@ export interface TaskContext {
 	actions: ReadonlyMap<string, ShareLevel>;
 	/** Namen der sichtbaren Aktionen (Anzeige am Board) */
 	actionNames: ReadonlyMap<string, string>;
+	/** Beginn/Ende der sichtbaren Aktionen (Vorlagen, Mitverschieben) */
+	actionDates: ReadonlyMap<string, { startsOn: string; endsOn: string | null }>;
 	actionsAvailable: boolean;
 }
 
@@ -59,6 +61,7 @@ export async function loadTaskContext(ctx: RequestContext): Promise<TaskContext>
 		keys,
 		actions: new Map(list.map((a) => [a.id, a.level])),
 		actionNames: new Map(list.map((a) => [a.id, a.name])),
+		actionDates: new Map(list.map((a) => [a.id, { startsOn: a.startsOn, endsOn: a.endsOn }])),
 		actionsAvailable: !!service
 	};
 	store.set(ctx, value);

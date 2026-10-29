@@ -58,9 +58,12 @@
 						aria-hidden="true"
 					></span>
 					<span class="min-w-0 flex-1">
-						<span class="block truncate font-medium" title={t.title}>{t.title}</span>
+						<span class="block truncate font-medium" title={t.title}
+							>{t.isMilestone ? '◆ ' : ''}{t.title}</span
+						>
 						<span class="block truncate text-xs text-muted-foreground">
-							{t.board.name} · {t.columnName}{#if t.viaChecklist}&nbsp;· Unteraufgabe{/if}
+							{t.board.name}{#if t.phase}&nbsp;· {t.phase.name}{/if} · {t.columnName}{#if t.viaChecklist}&nbsp;·
+								Unteraufgabe{/if}
 							{#if t.checklist.total}&nbsp;· {t.checklist.done}/{t.checklist.total}{/if}
 						</span>
 					</span>

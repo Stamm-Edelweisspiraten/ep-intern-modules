@@ -66,6 +66,24 @@ export const MAX_ASSIGNEES = 20;
 export const MAX_CHECKLIST = 100;
 export const MAX_CHECKLIST_TITLE = 200;
 export const MAX_SHARES = 200;
+export const MAX_PHASES = 20;
+export const MAX_PHASE_NAME = 60;
+export const MAX_DEPENDENCIES = 20;
+export const MAX_TEMPLATES_PER_USER = 50;
+export const MAX_TEMPLATE_NAME = 100;
+export const MAX_TEMPLATE_DESCRIPTION = 500;
+/** Verschieben aller Daten eines Boards: höchstens so viele Tage */
+export const MAX_SHIFT_DAYS = 3660;
+
+/** Ansichten eines Boards (`?view=`) */
+export const VIEWS = ['board', 'list', 'timeline', 'calendar'] as const;
+export type BoardView = (typeof VIEWS)[number];
+export const VIEW_LABELS: Record<BoardView, string> = {
+	board: 'Board',
+	list: 'Liste',
+	timeline: 'Zeitleiste',
+	calendar: 'Kalender'
+};
 
 // --- Bausteine --------------------------------------------------------------
 
@@ -109,6 +127,34 @@ const assigneeIds = z
 	.max(MAX_ASSIGNEES, `Höchstens ${MAX_ASSIGNEES} Personen`)
 	.transform((ids) => [...new Set(ids)]);
 
+/** Vorlage: mitgeliefert (`builtin:fahrt`) oder eigene (UUID) */
+export const templateRef = z
+	.string()
+	.regex(
+		/^(builtin:[a-z0-9-]{1,40}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
+		'Unbekannte Vorlage'
+	);
+
+/**
+ * Regeln für Zeitraum und Meilenstein einer Aufgabe (Anlegen; beim Ändern mit den gespeicherten Werten
+ * zusammengeführt): Beginn ≤ Fälligkeit, Meilenstein ohne Beginn und mit Datum.
+ */
+export function taskDateIssues(v: {
+	startsOn?: string | null;
+	dueOn?: string | null;
+	isMilestone?: boolean;
+}): { path: string[]; message: string }[] {
+	const issues: { path: string[]; message: string }[] = [];
+	if (v.isMilestone) {
+		if (v.startsOn)
+			issues.push({ path: ['startsOn'], message: 'Ein Meilenstein hat nur ein Datum' });
+		if (!v.dueOn) issues.push({ path: ['dueOn'], message: 'Ein Meilenstein braucht ein Datum' });
+	} else if (v.startsOn && v.dueOn && v.startsOn > v.dueOn) {
+		issues.push({ path: ['startsOn'], message: 'Der Beginn liegt nach der Fälligkeit' });
+	}
+	return issues;
+}
+
 // --- Eingaben ---------------------------------------------------------------
 
 export const idParams = z.object({ id: uuid });
@@ -124,7 +170,11 @@ export const boardInput = z
 		description: optionalText(MAX_BOARD_DESCRIPTION),
 		color: color,
 		/** Aktion aus `actions` (Zugriff auf die Aktion vererbt sich aufs Board) */
-		actionId: uuid.nullish().transform((v) => v ?? null)
+		actionId: uuid.nullish().transform((v) => v ?? null),
+		/** Vorlage (`builtin:<id>` oder eigene Vorlage) */
+		templateId: templateRef.nullish().transform((v) => v ?? null),
+		/** Bezugsdatum der Vorlage (Standard: Beginn der Aktion, sonst heute) */
+		anchorOn: dueDate
 	})
 	.strict();
 export type BoardInput = z.input<typeof boardInput>;
@@ -135,7 +185,9 @@ export const boardUpdateInput = z
 		name: requiredText(MAX_BOARD_NAME).optional(),
 		description: optionalText(MAX_BOARD_DESCRIPTION).optional(),
 		color: color.optional(),
-		actionId: uuid.nullable().optional()
+		actionId: uuid.nullable().optional(),
+		defaultView: z.enum(VIEWS).optional(),
+		calendarMilestones: z.boolean().optional()
 	})
 	.strict();
 export type BoardUpdateInput = z.input<typeof boardUpdateInput>;
@@ -198,13 +250,21 @@ export const taskInput = z
 		description: optionalText(MAX_TASK_DESCRIPTION),
 		priority: z.enum(PRIORITIES).default('medium'),
 		dueOn: dueDate,
+		/** Beginn (Zeitraum bis `dueOn`); bei Meilensteinen leer */
+		startsOn: dueDate,
+		isMilestone: z.boolean().default(false),
+		/** Phase des Boards; fehlt = ohne Phase */
+		phaseId: uuid.nullish().transform((v) => v ?? null),
 		assigneeIds: assigneeIds.default([]),
 		checklist: z
 			.array(checklistNew)
 			.max(MAX_CHECKLIST, `Höchstens ${MAX_CHECKLIST} Unteraufgaben`)
 			.default([])
 	})
-	.strict();
+	.strict()
+	.superRefine((v, ctx) => {
+		for (const issue of taskDateIssues(v)) ctx.addIssue({ code: 'custom', ...issue });
+	});
 export type TaskInput = z.input<typeof taskInput>;
 
 /** PATCH `/tasks/:id` – nur übergebene Felder; `assigneeIds` ersetzt die Liste */
@@ -214,6 +274,9 @@ export const taskUpdateInput = z
 		description: optionalText(MAX_TASK_DESCRIPTION).optional(),
 		priority: z.enum(PRIORITIES).optional(),
 		dueOn: dueDate.optional(),
+		startsOn: dueDate.optional(),
+		isMilestone: z.boolean().optional(),
+		phaseId: uuid.nullable().optional(),
 		assigneeIds: assigneeIds.optional()
 	})
 	.strict();
@@ -233,6 +296,61 @@ export const checklistItemUpdateInput = z
 		done: z.boolean().optional(),
 		assigneeId: userId.nullable().optional(),
 		dueOn: dueDate.optional()
+	})
+	.strict();
+
+export const phaseParams = z.object({ id: uuid, phaseId: uuid });
+
+/** POST `/boards/:id/phases` */
+export const phaseInput = z
+	.object({
+		name: requiredText(MAX_PHASE_NAME),
+		color: color,
+		startsOn: dueDate,
+		endsOn: dueDate
+	})
+	.strict()
+	.superRefine((v, ctx) => {
+		if (v.startsOn && v.endsOn && v.endsOn < v.startsOn) {
+			ctx.addIssue({ code: 'custom', path: ['endsOn'], message: 'Das Ende liegt vor dem Beginn' });
+		}
+	});
+export type PhaseInput = z.input<typeof phaseInput>;
+
+/** PATCH `/boards/:id/phases/:phaseId` – nur übergebene Felder */
+export const phaseUpdateInput = z
+	.object({
+		name: requiredText(MAX_PHASE_NAME).optional(),
+		color: color.optional(),
+		startsOn: dueDate.optional(),
+		endsOn: dueDate.optional()
+	})
+	.strict();
+
+/** POST `/boards/:id/shift` – alle Daten um `days` verschieben (`apply: false` = nur Bezugsdatum übernehmen) */
+export const shiftInput = z
+	.object({
+		days: z.number().int().min(-MAX_SHIFT_DAYS).max(MAX_SHIFT_DAYS),
+		apply: z.boolean().default(true)
+	})
+	.strict();
+
+/** POST `/boards/:id/template` – Board als Vorlage speichern */
+export const templateSaveInput = z
+	.object({
+		name: requiredText(MAX_TEMPLATE_NAME),
+		description: optionalText(MAX_TEMPLATE_DESCRIPTION)
+	})
+	.strict();
+export const templateParams = z.object({ id: uuid });
+
+/** PUT `/tasks/:id/dependencies` – Vorgänger (ersetzt die Liste) */
+export const dependenciesInput = z
+	.object({
+		ids: z
+			.array(uuid)
+			.max(MAX_DEPENDENCIES, `Höchstens ${MAX_DEPENDENCIES} Vorgänger`)
+			.transform((ids) => [...new Set(ids)])
 	})
 	.strict();
 
@@ -281,6 +399,18 @@ export interface BoardCounts {
 	overdue: number;
 }
 
+export interface PhaseRef {
+	id: string;
+	name: string;
+	color: string | null;
+}
+
+export interface Phase extends PhaseRef {
+	startsOn: string | null;
+	endsOn: string | null;
+	position: number;
+}
+
 export interface Board {
 	id: string;
 	name: string;
@@ -290,6 +420,13 @@ export interface Board {
 	action: { id: string; name: string } | null;
 	access: BoardAccess;
 	counts: BoardCounts;
+	defaultView: BoardView;
+	/** Meilensteine erscheinen im Kalender-Abo der Zuständigen */
+	calendarMilestones: boolean;
+	/** laufende Phase, sonst die nächste geplante */
+	currentPhase: PhaseRef | null;
+	/** nächster offener Meilenstein ab heute */
+	nextMilestone: { id: string; title: string; dueOn: string } | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -317,13 +454,27 @@ export interface TaskCard {
 	checklist: { done: number; total: number };
 	hasDescription: boolean;
 	completedAt: string | null;
+	startsOn: string | null;
+	isMilestone: boolean;
+	phaseId: string | null;
+	/** Vorgänger („blockiert durch“), IDs im selben Board */
+	blockedBy: string[];
+	/** davon noch nicht erledigt */
+	openBlockers: number;
 	/** Aufrufer darf verschieben/abhaken (Bearbeiten-Zugriff oder zugewiesen) */
 	canMove: boolean;
 }
 
 export interface BoardDetail extends Board {
 	columns: Column[];
+	phases: Phase[];
 	tasks: TaskCard[];
+	/** Bezugsdatum (Aktionsbeginn bzw. Datum der Vorlage) */
+	anchorOn: string | null;
+	/** Beginn der verknüpften Aktion */
+	actionStartsOn: string | null;
+	/** Aktionsbeginn liegt so viele Tage neben dem Bezugsdatum (sonst `null`) */
+	actionShift: number | null;
 }
 
 export interface ChecklistItem {
@@ -357,6 +508,21 @@ export interface MyTask {
 	checklist: { done: number; total: number };
 	/** nur über eine Unteraufgabe zugewiesen */
 	viaChecklist: boolean;
+	isMilestone: boolean;
+	phase: PhaseRef | null;
+}
+
+/** GET `/templates` */
+export interface TemplateSummary {
+	id: string;
+	name: string;
+	description: string | null;
+	/** mitgeliefert (nicht löschbar) */
+	builtin: boolean;
+	owner: UserRef | null;
+	phases: { name: string; color: string | null }[];
+	taskCount: number;
+	canDelete: boolean;
 }
 
 export interface BoardShareEntry {
