@@ -332,7 +332,8 @@ export const REF_TYPES = [
 	'event',
 	'gallery',
 	'file',
-	'whiteboard'
+	'whiteboard',
+	'note'
 ] as const;
 export type RefType = (typeof REF_TYPES)[number];
 export const REF_LABELS: Record<RefType, string> = {
@@ -342,7 +343,8 @@ export const REF_LABELS: Record<RefType, string> = {
 	event: 'Termin',
 	gallery: 'Galerie',
 	file: 'Datei',
-	whiteboard: 'Whiteboard'
+	whiteboard: 'Whiteboard',
+	note: 'Notiz'
 };
 /** Modul, das den Verweis liefert (nur bei aktivem Modul sichtbar) */
 export const REF_MODULES: Record<RefType, string> = {
@@ -352,7 +354,8 @@ export const REF_MODULES: Record<RefType, string> = {
 	event: 'events',
 	gallery: 'galleries',
 	file: 'files',
-	whiteboard: 'whiteboard'
+	whiteboard: 'whiteboard',
+	note: 'notes'
 };
 
 /** Karte für einen Datensatz aus einem anderen Modul. Titel o. Ä. wird NIE gespeichert (nur je Betrachter*in aufgelöst). */

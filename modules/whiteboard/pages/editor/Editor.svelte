@@ -70,7 +70,11 @@
 	import Toolbar from './Toolbar.svelte';
 	import { refKey, type RenderContext } from './types';
 
-	let { initial }: { initial: BoardDetail } = $props();
+	/**
+	 * `embedded`: im iframe einer anderen Seite (`/embed/whiteboard/<id>`) – Kopf ohne Rücklink, Freigabe,
+	 * Eigenschaften und Löschen; „Vollbild öffnen“ und Links in die App öffnen im obersten Fenster.
+	 */
+	let { initial, embedded = false }: { initial: BoardDetail; embedded?: boolean } = $props();
 
 	const boardId = untrack(() => initial.id);
 	let board = $state<Board>(untrack(() => initial));
@@ -677,7 +681,7 @@
 			observer.observe(ctrl.svg);
 		}
 		sync.connect(initial.seq);
-		void loadShares();
+		if (!embedded) void loadShares();
 		const onFs = () => (fullscreen = !!document.fullscreenElement);
 		document.addEventListener('fullscreenchange', onFs);
 		const onUnload = () => {
@@ -727,15 +731,17 @@
 	<header
 		class="app-glass flex h-12 shrink-0 items-center gap-2 border-b bg-topbar-surface px-2 sm:px-3"
 	>
-		<Button
-			variant="ghost"
-			size="icon"
-			href={BASE}
-			aria-label="Zurück zu allen Whiteboards"
-			title="Alle Whiteboards"
-		>
-			<ArrowLeft />
-		</Button>
+		{#if !embedded}
+			<Button
+				variant="ghost"
+				size="icon"
+				href={BASE}
+				aria-label="Zurück zu allen Whiteboards"
+				title="Alle Whiteboards"
+			>
+				<ArrowLeft />
+			</Button>
+		{/if}
 		<div class="flex min-w-0 flex-1 items-center gap-2">
 			<span
 				class="size-2.5 shrink-0 rounded-full bg-muted-foreground/40"
@@ -747,6 +753,7 @@
 				<Badge variant="outline" class="hidden sm:inline-flex">
 					<a
 						href={`/modules/actions/${board.actionId}`}
+						target={embedded ? '_top' : undefined}
 						class="inline-flex items-center gap-1 hover:underline"
 					>
 						<Backpack aria-hidden="true" class="size-3" />
@@ -799,7 +806,7 @@
 				{/if}
 			</div>
 		{/if}
-		{#if shares}
+		{#if shares && !embedded}
 			<ShareMenu
 				shares={shares.shares}
 				owner={{
@@ -825,6 +832,17 @@
 				emptyResultText="Niemand gefunden"
 			/>
 		{/if}
+		{#if embedded}
+			<Button
+				variant="outline"
+				size="sm"
+				href={`${BASE}/${encodeURIComponent(boardId)}`}
+				target="_top"
+				title="Whiteboard in der App öffnen"
+			>
+				<ExternalLink /> <span class="hidden sm:inline">Vollbild öffnen</span>
+			</Button>
+		{/if}
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
@@ -834,7 +852,7 @@
 				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content align="end">
-				{#if store.canEdit}
+				{#if store.canEdit && !embedded}
 					<DropdownMenu.Item onclick={() => (settingsOpen = true)}
 						><Pencil /> Eigenschaften …</DropdownMenu.Item
 					>
@@ -848,7 +866,7 @@
 				<DropdownMenu.Item onclick={toggleFullscreen}
 					><Maximize /> {fullscreen ? 'Vollbild beenden' : 'Vollbild'}</DropdownMenu.Item
 				>
-				{#if board.access.canShare}
+				{#if board.access.canShare && !embedded}
 					<DropdownMenu.Separator />
 					<DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}
 						><Trash2 /> Löschen …</DropdownMenu.Item
@@ -1096,7 +1114,9 @@
 								? 'Jemand hat dieses Whiteboard gelöscht.'
 								: 'Die Freigabe für dich wurde entfernt.'}
 						</p>
-						<Button href={BASE}><ArrowLeft /> Zu den Whiteboards</Button>
+						{#if !embedded}
+							<Button href={BASE}><ArrowLeft /> Zu den Whiteboards</Button>
+						{/if}
 					</div>
 				</div>
 			{/if}

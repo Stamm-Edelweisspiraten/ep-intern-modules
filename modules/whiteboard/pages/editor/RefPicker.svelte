@@ -25,7 +25,8 @@
 		event: 'events.event.view',
 		gallery: 'galleries.gallery.view',
 		file: 'files.file.view',
-		whiteboard: 'whiteboard.board.view'
+		whiteboard: 'whiteboard.board.view',
+		note: 'notes.note.view'
 	};
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);

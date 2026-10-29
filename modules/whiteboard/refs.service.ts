@@ -1,5 +1,5 @@
 /**
- * Karten für Datensätze anderer Module (Aktion, Aufgabe, Aufgaben-Board, Termin, Galerie, Datei) und andere
+ * Karten für Datensätze anderer Module (Aktion, Aufgabe, Aufgaben-Board, Termin, Galerie, Datei, Notiz) und andere
  * Whiteboards. Aufgelöst wird IMMER je Betrachter*in über die Verträge der Module (die prüfen die Rechte selbst);
  * im Element steht nur Typ + ID. Unsichtbares/Gelöschtes → `available: false` ohne Titel.
  * Alle Aufrufe außerhalb offener Transaktionen (die Dienste öffnen eigene).
@@ -10,6 +10,7 @@ import { formatDateDe } from '$lib/sdk/dates';
 import type { EventRefsService } from '$lib/modules/events/contract';
 import type { FileRefsService } from '$lib/modules/files/contract';
 import type { GalleryRefsService } from '$lib/modules/galleries/contract';
+import type { NoteRefsService } from '$lib/modules/notes/contract';
 import type { TaskRefsService } from '$lib/modules/tasks/contract';
 import { actionsService, visibleBoardsFilter } from './access';
 import { mdb } from './boards.service';
@@ -176,6 +177,21 @@ async function resolve(
 						? `/api/v1/modules/files/nodes/${encodeURIComponent(f.id)}/thumb`
 						: null,
 					badge: f.kind === 'folder' ? null : (f.contentType ?? null)
+				})
+			);
+		}
+		case 'note': {
+			const service = await core.modules.useOptional<NoteRefsService>('notes', MODULE_ID);
+			if (!service) return [];
+			const list = q.ids
+				? await service.describeNoteRefs(ctx, q.ids)
+				: await service.searchNoteRefs(ctx, { search, limit: Math.min(searchLimit, 50) });
+			return list.map((n) =>
+				card('note', n.id, {
+					title: n.title || 'Ohne Titel',
+					subtitle: n.excerpt || n.path || null,
+					href: n.href,
+					color: n.color
 				})
 			);
 		}

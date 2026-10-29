@@ -46,6 +46,7 @@
 	import RegistrationTab from './RegistrationTab.svelte';
 	import ActionTasksCard from './ActionTasksCard.svelte';
 	import ActionWhiteboardsCard from './ActionWhiteboardsCard.svelte';
+	import ActionNotesCard from './ActionNotesCard.svelte';
 	import ActionMaterialCard from './ActionMaterialCard.svelte';
 
 	let { params }: ModulePageProps = $props();
@@ -470,6 +471,9 @@
 			{/if}
 			{#if can(permissions, 'whiteboard.board.view')}
 				<ActionWhiteboardsCard {actionId} actionName={action.name} />
+			{/if}
+			{#if can(permissions, 'notes.note.view')}
+				<ActionNotesCard {actionId} actionName={action.name} />
 			{/if}
 			{#if can(permissions, 'material.inventory.view')}
 				<ActionMaterialCard

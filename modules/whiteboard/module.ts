@@ -3,6 +3,7 @@ import { defineModule } from '$lib/sdk/server';
 import { withBoardContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
 import { boardEndpoints } from './boards.endpoints';
+import { boardEmbed } from './embeds';
 import { liveEndpoints } from './live.endpoints';
 import { prefsEndpoints } from './prefs.endpoints';
 import { onMemberDeleted, onUserDeleted, resetAreas, resetUsers, subjectExport } from './privacy';
@@ -22,8 +23,8 @@ export default defineModule({
 			'Gemeinsame Whiteboards zum Live-Bearbeiten: Kacheln und Formen, Verbinder, Freihand, Bilder, Dateien, Links und Karten aus anderen Modulen – auch für Aktionen',
 		version: '1.1.0',
 		dependencies: [],
-		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen, Karten aus Aufgaben/Terminen/Galerien/Dateien */
-		optionalDependencies: ['members', 'actions', 'tasks', 'events', 'galleries', 'files'],
+		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen, Karten aus Aufgaben/Terminen/Galerien/Dateien/Notizen */
+		optionalDependencies: ['members', 'actions', 'tasks', 'events', 'galleries', 'files', 'notes'],
 		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
 		permissionDescriptions: {
 			[PERM.view]:
@@ -55,6 +56,8 @@ export default defineModule({
 		{ name: '0002_user_prefs', sql: m0002 }
 	],
 	search: whiteboardSearch,
+	/** Einbetten in andere Module (z. B. Notizen), Seite `ui.ts` `embedRoutes` */
+	embeds: [boardEmbed],
 	notifications: {
 		types: [
 			{

@@ -6,6 +6,10 @@ export default {
 		':id': () => import('./pages/BoardPage.svelte')
 	},
 	fullBleedRoutes: [':id'],
+	/** Kompakter Editor im iframe unter `/embed/whiteboard/<id>` (z. B. in Notizen) */
+	embedRoutes: {
+		':id': () => import('./pages/EmbedBoardPage.svelte')
+	},
 	dashboardWidgets: [
 		{
 			id: 'recent-boards',

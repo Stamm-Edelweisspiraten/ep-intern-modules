@@ -14,6 +14,7 @@
 	import Backpack from '@lucide/svelte/icons/backpack';
 	import SquareKanban from '@lucide/svelte/icons/square-kanban';
 	import Mail from '@lucide/svelte/icons/mail';
+	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import { REF_LABELS, type RefType, type WbElement } from '../../schemas';
 	import CardView from './CardView.svelte';
 	import ConnectorView from './ConnectorView.svelte';
@@ -51,7 +52,8 @@
 		event: CalendarDays,
 		gallery: Images,
 		file: File,
-		whiteboard: Presentation
+		whiteboard: Presentation,
+		note: NotebookPen
 	};
 
 	const rot = (d: { x: number; y: number; w: number; h: number; rotation: number }) =>

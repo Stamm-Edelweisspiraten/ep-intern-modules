@@ -8,7 +8,7 @@ Whiteboards mit **Live-Bearbeitung durch mehrere Personen**: Kacheln/Notizzettel
 gebogen, an Elemente gebunden), Freihand (Stift/Marker, Radierer), **Rahmen**, **Bilder und Dateien** (Upload ins Board), **Links**, **Karten** aus
 anderen Modulen (Aktion, Aufgabe, Aufgaben-Board, Termin, Galerie, Datei aus „Dateien“, anderes Whiteboard), **Versionsverlauf**, Teilen an
 Principals, **mehrere Boards je Aktion** (Zugriff vererbt), Export **PNG/SVG/PDF** und Archiv **`.epwhiteboard`** (Import), touch-tauglich.
-Schema `mod_whiteboard`, v1.1.0 (2026-10-26), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions','tasks','events','galleries','files']`.
+Schema `mod_whiteboard`, v1.1.0 (2026-10-26), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions','tasks','events','galleries','files','notes']`.
 Navigation „Whiteboards“ (Icon `presentation`, `order` 76). Editor-Seite vollflächig über `ModuleUi.fullBleedRoutes: [':id']` (Core, 2026-10-26).
 
 Nutzerentscheidungen (2026-10-26): Dateien **direkt hochladen und** aus „Dateien“ verknüpfen (als Karte, ohne Kopie); **mehrere** Whiteboards je
@@ -47,7 +47,8 @@ Aktion; erste Version **mit** Freihand, Live-Cursor/Anwesenheit, Rahmen, Version
 | `live.ts` / `live.endpoints.ts` | Hub (`openStream`, `broadcast`, `updatePresence`, `recheckBoard`, `closeBoard`, ≤ 20 Streams je Konto), Endpunkte `live`, `ops` (1200/60 s), `presence` (1500/60 s) |
 | `assets.service.ts` / `assets.endpoints.ts` | Upload (Bilder → `core.images.process` thumb 640/web 2000 WebP ohne Metadaten; Dateien nach Allowlist + Magic Bytes, PDF-Vorschau über `core.pdf.renderPage`), Speicherplatz je Board, Auslieferung `GET /boards/:id/assets/:assetId/thumb|web|file` (`IMAGE_RATE_LIMIT`) |
 | `storage.ts` | Systemkontext `whiteboard-files`, Pfade `boards/<boardId>/<assetId>-<variant>`, `removeFiles`, `fileResponse` |
-| `refs.service.ts` | Karten **je Betrachter*in** über die Verträge (`ActionsService`, `TaskRefsService`, `EventRefsService`, `GalleryRefsService`, `FileRefsService`); gespeichert wird nur Typ + ID |
+| `refs.service.ts` | Karten **je Betrachter*in** über die Verträge (`ActionsService`, `TaskRefsService`, `EventRefsService`, `GalleryRefsService`, `FileRefsService`, `NoteRefsService` – Karte „Notiz“, Typ `note`, Icon `notebook-pen`, Unterzeile = Textanfang); gespeichert wird nur Typ + ID |
+| `embeds.ts` | Core-Einbetten (`ModuleDefinition.embeds`, Art `board`): Suche/Auflösung sichtbarer Boards je Betrachter*in, Pfad `<id>` → `/embed/whiteboard/<id>`; Seite `pages/EmbedBoardPage.svelte` (`ui.ts` `embedRoutes`) = Editor mit `embedded` (kein Rücklink/Freigabe/Eigenschaften/Löschen, „Vollbild öffnen“ mit `target=_top`, nur Ansicht bei read) |
 | `snapshots.service.ts` / `snapshots.endpoints.ts` | Versionen (auto ≤ 50, benannt ≤ 100), Wiederherstellen (sichert vorher „Vor dem Wiederherstellen“, schreibt per `writeOps`, dann `reset`), Jobs `runAutoSnapshots`, `runCleanup` (Grabsteine > 30 Tage → `purged_seq`; ungenutzte Dateien > 24 h); dazu `/refs`, `/refs/describe` |
 | `archive.ts` | `.epwhiteboard` (ZIP: `board.json` + `assets/<uuid>`), `parseArchive` mit Grenzen, keine ZIP64, Pfad-Allowlist |
 | `prefs.endpoints.ts` | Persönliche Ansicht-Einstellungen `GET/PUT /me/prefs` (je Konto, für alle Whiteboards, z. B. feste Flächenfarbe) |

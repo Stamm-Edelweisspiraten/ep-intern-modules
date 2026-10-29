@@ -162,7 +162,8 @@ export const REF_COLORS: Record<RefType, string> = {
 	event: '#d97706',
 	gallery: '#7c3aed',
 	file: '#475569',
-	whiteboard: '#db2777'
+	whiteboard: '#db2777',
+	note: '#ca8a04'
 };
 
 /** Endung für das Kürzel auf Datei-Karten („PDF“, „DOCX“) */
