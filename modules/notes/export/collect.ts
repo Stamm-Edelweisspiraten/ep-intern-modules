@@ -4,14 +4,14 @@
  *
  * Zugriff: Lesen an der Startseite (Unterseiten erben ihn). Seiten im Papierkorb entfallen samt ihrem Teilbaum.
  * Bilder nur, wenn das Asset zu einer der exportierten Seiten gehört (`note_assets.note_id`), sonst fehlt das Bild.
- * Core-Dienste (Storage, Embeds) und `currentJson` laufen NACH der Transaktion.
+ * Core-Dienste (Storage, Embeds) und `snapshotJson` laufen NACH der Transaktion.
  */
 import { sql } from 'drizzle-orm';
 import { core, errors, inList, num, rowsOf, type RequestContext } from '$lib/sdk/server';
 import type { EmbedInfo, EmbedRef } from '$lib/sdk/types/embeds';
 import { requireNoteAccess, subtreeIds } from '../access';
 import { filesCtx, mdb } from '../db';
-import { currentJson } from '../doc.service';
+import { snapshotJson } from '../doc.service';
 import { assetIdsOf, embedsOf } from '../doc/text';
 import { MODULE_ID } from '../schemas';
 import { embedKey, type ResolvedEmbed } from './embeds';
@@ -150,7 +150,7 @@ export async function collectExport(
 			parentId: depth === 0 ? null : row.parentId,
 			depth,
 			title: row.title,
-			json: await currentJson(row.id)
+			json: await snapshotJson(row.id)
 		});
 	}
 

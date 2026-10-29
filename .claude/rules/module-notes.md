@@ -59,8 +59,12 @@ Außerhalb: `actions/pages/ActionNotesCard.svelte` (REST, in `ActionDetailPage` 
 `notes.note.view` (Grundrecht), `.create` (eigene Wurzeln anlegen/importieren), `.view-all`, `.edit-all`. Bearbeiten: Eigentümer*in (der Seite oder einer
 Oberseite), Freigabe `edit` auf der Seite **oder einer Oberseite**, Aktion der Wurzel mit Bearbeiten-Zugriff, `edit-all`. Lesen: Freigabe `read`, Aktion lesbar,
 `view-all`. **Teilen, Löschen, Aktion wechseln, aus dem Teilbaum verschieben: nur Eigentümer*in/`edit-all`** (Bearbeiten-Freigabe reicht nicht – wie `files`).
+Mit Bearbeiten-Freigabe nur verschieben, wenn sich niemandes Zugriff ändert: gleiche Eigentümer*in, gleiche Aktion der Wurzel, **gleiche vererbte
+Freigaben** der alten und neuen Oberseiten (`sameInheritedShares`), keine Wurzel unter eine Seite (2026-10-29, Review PR #136).
 Unterseiten gehören der Eigentümer*in der Wurzel; Verschieben in einen fremden Teilbaum wechselt die Eigentümer*in des Teilbaums. Fremd/Papierkorb → 404.
-Live-Verbindungen prüfen beim Start, alle 60 s und sofort nach Freigabe-/Aktions-/Ortswechsel (`recheckNotes(subtreeIds)`).
+Live-Verbindungen prüfen beim Start, alle 60 s und sofort nach Freigabe-/Aktions-/Ortswechsel (`recheckNotes(subtreeIds)`). Die Neuprüfung löst
+Sitzung/API-Key, Konto und Rechte **neu** auf (`refreshLiveContext` im SDK-Hub; abgemeldet/deaktiviert → `revoked`). Eine fremde `client`-Kennung
+übernehmen → 409. `/awareness` lädt keinen Zugriffskontext, `/updates` nutzt ihn bis 5 s je Person/Rechte wieder (`loadNoteContextCached`).
 
 ## Grenzen
 Titel 200, Tiefe 10, 500 Unterseiten je Seite, 20 MB Yjs-Zustand je Notiz, Update 5 MB, Bild 25 MB, Import 50 MB, Export 300 Seiten, 200 Freigaben,
@@ -80,6 +84,10 @@ Demo: `node scripts/seed-demo-notes.mjs` (Beispielnotiz mit Unterseiten; `--big`
 - **Kein `content-visibility: auto`** im Editor: Safari (iPad/iPhone) zeichnet übersprungene Blöcke im contenteditable nach Änderungen nicht neu
   (Zeilen verschwanden nach Enter, 2026-10-29) und es schneidet die Namensschilder fremder Cursor ab.
 - `doc.service`-Funktionen und Core-Dienste **nie** in `mdb().transaction` (PGlite hängt).
+- Lesen ohne Live-Bearbeitung (Export, Aufräumen) über `snapshotJson` (lädt nicht in den Speicher), nie `currentJson`.
+- Zurücksetzen/Wiederherstellen → `onDataReplaced` → `discardAllDocs` (Speicher verworfen, Editoren bekommen `reset`); Deaktivieren sichert vorher.
+- Ungenutzte Bilder: Tagesjob `purge-trash` löscht Bilder, die seit 7 Tagen in keinem Notizinhalt und keiner Version ihrer Notiz vorkommen
+  (`purgeUnusedAssets`).
 - Neue Knoten/Marks nur in `doc/extensions.ts` – sonst verwirft der Server sie beim Ableiten und Export.
 - Router: POST antwortet 201; `updates` braucht `content-type: application/octet-stream` (kein JSON).
 

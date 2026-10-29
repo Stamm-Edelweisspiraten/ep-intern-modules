@@ -8,7 +8,14 @@
  * ohne Zugriff → Ereignis `revoked` und die Verbindung schließt.
  */
 import { sql } from 'drizzle-orm';
-import { num, type RequestContext, rowsOf } from '$lib/sdk/server';
+import {
+	authHeadersOf,
+	errors,
+	num,
+	refreshLiveContext,
+	type RequestContext,
+	rowsOf
+} from '$lib/sdk/server';
 import { loadBoardContext, resolveBoardAccess } from './access';
 import { liveElementOf, mdb } from './boards.service';
 import type { LiveEvent, PresenceUser, ShareLevel } from './schemas';
@@ -25,6 +32,8 @@ interface Subscriber {
 	boardId: string;
 	userId: string;
 	ctx: RequestContext;
+	/** Anmeldedaten der Anfrage für die Neuprüfung (`refreshLiveContext`) */
+	auth: Headers;
 	level: ShareLevel;
 	peer: PresenceUser;
 	push(event: LiveEvent): void;
@@ -101,9 +110,14 @@ export function closeBoard(boardId: string, event: LiveEvent): void {
 async function recheck(sub: Subscriber): Promise<void> {
 	let level: ShareLevel | null;
 	try {
-		await loadBoardContext(sub.ctx);
-		const access = await mdb().transaction((tx) => resolveBoardAccess(tx, sub.ctx, sub.boardId));
-		level = access?.level ?? null;
+		// Sitzung, Konto und Rechte neu auflösen – Rollenentzug, Abmelden oder Deaktivieren wirken sofort
+		const fresh = await refreshLiveContext(sub.ctx, sub.auth);
+		if (fresh) {
+			sub.ctx = fresh;
+			await loadBoardContext(fresh);
+			const access = await mdb().transaction((tx) => resolveBoardAccess(tx, fresh, sub.boardId));
+			level = access?.level ?? null;
+		} else level = null;
 	} catch (e) {
 		// Datenbank kurz nicht erreichbar: Verbindung offen lassen, nächster Versuch beim nächsten Takt
 		console.warn('[whiteboard] Zugriffsprüfung fehlgeschlagen', e);
@@ -148,6 +162,12 @@ export function openStream(input: {
 	peer: Omit<PresenceUser, 'cursor' | 'selection' | 'editing' | 'canEdit'>;
 }): Response {
 	const { ctx, boardId, client } = input;
+	// fremde Kennung übernehmen (Kennungen stehen in `hello`) wäre ein Rauswurf anderer Personen
+	const existing = boards.get(boardId)?.get(client);
+	if (existing && existing.userId !== (ctx.userId ?? '')) {
+		throw errors.conflict('Diese Verbindungskennung ist bereits vergeben');
+	}
+	const auth = authHeadersOf(input.request);
 	let sub: Subscriber | null = null;
 	let closed = false;
 	const timers: ReturnType<typeof setInterval>[] = [];
@@ -175,6 +195,7 @@ export function openStream(input: {
 				boardId,
 				userId: ctx.userId ?? '',
 				ctx,
+				auth,
 				level: input.level,
 				peer: {
 					...input.peer,

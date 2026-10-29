@@ -2,7 +2,8 @@ import { defineModule } from '$lib/sdk/server';
 import { notesAssist, PERM_AI } from './assist';
 import { withNoteContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
-import { flushAll } from './doc.service';
+import { purgeUnusedAssets } from './assets.service';
+import { discardAllDocs, flushAll } from './doc.service';
 import { liveEndpoints } from './live.endpoints';
 import { noteEndpoints } from './notes.endpoints';
 import { prefsEndpoints } from './prefs.endpoints';
@@ -81,9 +82,13 @@ export default defineModule({
 		},
 		{
 			id: 'purge-trash',
-			summary: 'Abgelaufene Notizen im Papierkorb endgültig löschen',
+			summary: 'Abgelaufene Notizen im Papierkorb und nicht mehr genutzte Bilder endgültig löschen',
 			schedule: 'daily',
-			run: async () => `${await purgeExpiredTrash()} Notizen endgültig gelöscht`
+			run: async () => {
+				const notes = await purgeExpiredTrash();
+				const images = await purgeUnusedAssets();
+				return `${notes} Notizen und ${images} ungenutzte Bilder endgültig gelöscht`;
+			}
 		}
 	],
 	resetAreas,
@@ -91,6 +96,13 @@ export default defineModule({
 	onUserDeleted,
 	onMemberDeleted,
 	subjectExport,
+	// Zurücksetzen/Wiederherstellen: alte Dokumente im Speicher dürfen die neuen Daten nie überschreiben
+	onDataReplaced: async () => discardAllDocs(),
+	// Deaktivieren: noch Offenes sichern, dann Speicher und Verbindungen freigeben
+	onDisable: async () => {
+		await flushAll();
+		discardAllDocs();
+	},
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade wie `/notes/roots`, `/notes/by-action/…` vor `/notes/:id`)
 	endpoints: withNoteContext([
 		...prefsEndpoints,

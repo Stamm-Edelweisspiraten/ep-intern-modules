@@ -4,9 +4,11 @@
  * schlägt Transaktion 2 fehl, werden die Dateien wieder entfernt.
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, num, type RequestContext, type Row } from '$lib/sdk/server';
+import { core, errors, inList, num, rowsOf, type RequestContext, type Row } from '$lib/sdk/server';
 import { requireNoteAccess } from './access';
 import { mdb } from './db';
+import { bytesOf, flushAll, jsonFromState, usedAssetIds } from './doc.service';
+import { assetIdsOf } from './doc/text';
 import { assetPath, IMAGE_TYPES, IMAGE_VARIANTS, removeFiles, storeFile } from './storage';
 import type { NoteAsset } from './schemas';
 
@@ -74,4 +76,67 @@ export async function uploadImage(
 		await removeFiles(Object.values(paths));
 		throw e;
 	}
+}
+
+/** Ungenutzte Bilder erst nach dieser Frist löschen (Rückgängig im Editor, kurz entfernt und wieder eingefügt) */
+export const UNUSED_ASSET_DAYS = 7;
+const UNUSED_BATCH = 200;
+
+/**
+ * Job: Bilder löschen, die seit `UNUSED_ASSET_DAYS` Tagen in keiner Notiz (aktueller Inhalt, auch im Papierkorb)
+ * und keiner Version ihrer Notiz mehr vorkommen → Anzahl gelöschter Bilder.
+ */
+export async function purgeUnusedAssets(): Promise<number> {
+	// abgeleitetes `content_json` aktuell halten (offene Dokumente)
+	await flushAll();
+	const candidates = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`SELECT a.id, a.note_id FROM note_assets a
+				WHERE a.created_at < now() - make_interval(days => ${UNUSED_ASSET_DAYS})
+					AND NOT EXISTS (
+						SELECT 1 FROM notes n WHERE strpos(COALESCE(n.content_json::text, ''), a.id) > 0
+					)
+				ORDER BY a.created_at, a.id LIMIT ${UNUSED_BATCH}`
+		)
+	);
+	if (!candidates.length) return 0;
+	const byNote = new Map<string, string[]>();
+	for (const r of candidates) {
+		const list = byNote.get(String(r.note_id)) ?? [];
+		list.push(String(r.id));
+		byNote.set(String(r.note_id), list);
+	}
+	const unused: string[] = [];
+	for (const [noteId, ids] of byNote) {
+		// gespeicherter Stand (falls `content_json` noch nicht abgeleitet) und alle Versionen der Notiz
+		const used = await usedAssetIds(noteId).catch(() => new Set(ids));
+		const versions = await mdb().transaction((tx) =>
+			rowsOf(tx, sql`SELECT ydoc FROM note_versions WHERE note_id = ${noteId}`)
+		);
+		for (const v of versions) {
+			const state = bytesOf(v.ydoc);
+			if (!state) continue;
+			try {
+				for (const id of assetIdsOf(jsonFromState(state))) used.add(id);
+			} catch {
+				// kaputte Version: Bilder dieser Notiz sicherheitshalber behalten
+				for (const id of ids) used.add(id);
+			}
+		}
+		for (const id of ids) if (!used.has(id)) unused.push(id);
+	}
+	if (!unused.length) return 0;
+	const removed = await mdb().transaction((tx) =>
+		rowsOf(
+			tx,
+			sql`DELETE FROM note_assets a WHERE a.id IN (${inList(unused)})
+					AND NOT EXISTS (
+						SELECT 1 FROM notes n WHERE strpos(COALESCE(n.content_json::text, ''), a.id) > 0
+					)
+				RETURNING a.paths`
+		)
+	);
+	await removeFiles(removed.flatMap((r) => Object.values(assetPaths(r.paths))));
+	return removed.length;
 }

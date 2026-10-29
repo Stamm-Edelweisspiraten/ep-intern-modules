@@ -31,6 +31,7 @@ import {
 	noteContextOf,
 	notInTrashSql,
 	requireNoteAccess,
+	sameInheritedShares,
 	subtreeHeight,
 	subtreeIds,
 	visibleNotesSql
@@ -666,7 +667,7 @@ export const noteEndpoints: AnyApiEndpoint[] = [
 		path: '/notes/:id/move',
 		summary: 'Notiz verschieben (andere Oberseite, oberste Ebene oder Reihenfolge)',
 		description:
-			'Bearbeiten-Zugriff auf Notiz und Ziel. In den Teilbaum einer anderen Eigentümer*in oder auf die eigene oberste Ebene nur durch Eigentümer*in bzw. `edit-all` – dann wechselt das Eigentum des ganzen Teilbaums.',
+			'Bearbeiten-Zugriff auf Notiz und Ziel. In den Teilbaum einer anderen Eigentümer*in, auf die eigene oberste Ebene, unter eine anders geteilte Seite oder weg von der Aktion nur durch Eigentümer*in bzw. `edit-all` – beim Wechsel der Eigentümer*in wechselt das Eigentum des ganzen Teilbaums.',
 		tags,
 		permission: PERM.view,
 		params: idParams,
@@ -704,6 +705,23 @@ export const noteEndpoints: AnyApiEndpoint[] = [
 					if (newOwner !== oldOwner && !src.canShare) {
 						throw errors.forbidden(
 							'Nur die Eigentümer*in darf diese Notiz in eine fremde Notiz verschieben'
+						);
+					}
+					// Bearbeiten-Freigabe: nur verschieben, wenn sich dadurch niemandes Zugriff ändert
+					// (gleiche vererbte Freigaben, Wurzel bleibt Wurzel – sonst ginge die Aktion verloren)
+					if (
+						!src.canShare &&
+						body.parentId !== oldParent &&
+						(!oldParent ||
+							src.chain[0]?.actionId !== dest.chain[0]?.actionId ||
+							!(await sameInheritedShares(
+								tx,
+								src.chain.slice(0, -1).map((n) => n.id),
+								dest.chain.map((n) => n.id)
+							)))
+					) {
+						throw errors.forbidden(
+							'Nur die Eigentümer*in darf diese Notiz unter eine anders geteilte Seite verschieben'
 						);
 					}
 				} else if (!oldParent) {

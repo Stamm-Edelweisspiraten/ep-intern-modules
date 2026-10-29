@@ -72,14 +72,45 @@ export function noteContextOf(ctx: RequestContext): NoteContext {
 	return value;
 }
 
+/** Kurzzeit-Cache für die häufigen Live-Aufrufe (der Editor schickt etwa alle 100 ms) */
+const HOT_TTL_MS = 5_000;
+const hot = new Map<string, { at: number; value: NoteContext }>();
+
+function hotKey(ctx: RequestContext): string {
+	return `${ctx.actor.type}:${ctx.actor.id ?? ''}:${ctx.userId ?? ''}:${[...ctx.permissions].sort().join(',')}`;
+}
+
+/** Wie `loadNoteContext`, aber je Person und Rechten bis zu 5 s wiederverwendet (nur Live-Updates) */
+export async function loadNoteContextCached(ctx: RequestContext): Promise<NoteContext> {
+	const key = hotKey(ctx);
+	const now = Date.now();
+	const cached = hot.get(key);
+	if (cached && now - cached.at < HOT_TTL_MS) {
+		store.set(ctx, cached.value);
+		return cached.value;
+	}
+	const value = await loadNoteContext(ctx);
+	if (hot.size > 1000) {
+		for (const [k, v] of hot) if (now - v.at >= HOT_TTL_MS) hot.delete(k);
+	}
+	hot.set(key, { at: now, value });
+	return value;
+}
+
+/** Ohne Zugriffskontext (prüft nur die eigene Live-Verbindung) bzw. mit Kurzzeit-Cache */
+const NO_CONTEXT = new Set(['/notes/:id/awareness']);
+const CACHED_CONTEXT = new Set(['/notes/:id/updates']);
+
 /** Endpoints so einhüllen, dass der Zugriffskontext vor dem Handler feststeht */
 export function withNoteContext(endpoints: AnyApiEndpoint[]): AnyApiEndpoint[] {
 	return endpoints.map((endpoint) => {
+		if (NO_CONTEXT.has(endpoint.path)) return endpoint;
+		const load = CACHED_CONTEXT.has(endpoint.path) ? loadNoteContextCached : loadNoteContext;
 		const handler = endpoint.handler;
 		return {
 			...endpoint,
 			handler: async (args: Parameters<typeof handler>[0]) => {
-				await loadNoteContext(args.ctx);
+				await load(args.ctx);
 				return handler(args);
 			}
 		};
@@ -316,6 +347,31 @@ export function notInTrashSql(alias: string): SQL {
 		)
 		SELECT 1 FROM up JOIN notes d ON d.id = up.parent_id WHERE d.deleted_at IS NOT NULL
 	)`;
+}
+
+/** Haben zwei Oberseiten-Ketten dieselben (vererbten) Freigaben? Für Verschieben ohne Teilen-Recht */
+export async function sameInheritedShares(
+	tx: Tx,
+	before: readonly string[],
+	after: readonly string[]
+): Promise<boolean> {
+	const setOf = async (ids: readonly string[]) => {
+		if (!ids.length) return '';
+		const rows = await rowsOf(
+			tx,
+			sql`SELECT s.principal_type, s.principal_id, bool_or(s.level = 'edit') AS edit FROM note_shares s
+				WHERE s.note_id IN (${inList([...ids])})
+				GROUP BY s.principal_type, s.principal_id`
+		);
+		return rows
+			.map(
+				(r) =>
+					`${String(r.principal_type)}:${String(r.principal_id)}:${r.edit === true || r.edit === 't' ? 'edit' : 'read'}`
+			)
+			.sort()
+			.join('|');
+	};
+	return (await setOf(before)) === (await setOf(after));
 }
 
 /** Tiefe einer Seite (Wurzel = 1) aus ihrer Kette */

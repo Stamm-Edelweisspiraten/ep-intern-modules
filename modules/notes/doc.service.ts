@@ -48,6 +48,8 @@ interface Entry {
 
 const entries = new Map<string, Entry>();
 const loading = new Map<string, Promise<Entry>>();
+/** Steigt bei `discardAllDocs`: vorher begonnene Ladevorgänge landen nicht mehr im Speicher */
+let generation = 0;
 const locks = new Map<string, Promise<unknown>>();
 let sweeper: ReturnType<typeof setInterval> | null = null;
 
@@ -104,7 +106,10 @@ async function sweep(): Promise<void> {
 	}
 }
 
-async function loadEntry(noteId: string): Promise<Entry> {
+/** Gespeicherten Stand (verdichtet + Einzel-Updates) als neues `Y.Doc` laden – ohne Zwischenspeicher */
+async function loadStoredDoc(
+	noteId: string
+): Promise<{ doc: Y.Doc; size: number; updates: number }> {
 	const data = await mdb().transaction(async (tx) => {
 		const [n] = await rowsOf(tx, sql`SELECT ydoc FROM notes WHERE id = ${noteId}`);
 		if (!n) return null;
@@ -125,10 +130,15 @@ async function loadEntry(noteId: string): Promise<Entry> {
 		Y.applyUpdate(doc, u);
 		size += u.byteLength;
 	}
+	return { doc, size, updates: data.updates.length };
+}
+
+async function loadEntry(noteId: string): Promise<Entry> {
+	const { doc, size, updates } = await loadStoredDoc(noteId);
 	return {
 		doc,
 		sizeBytes: size,
-		pending: data.updates.length,
+		pending: updates,
 		lastUsed: Date.now(),
 		deriveTimer: null,
 		lastUserId: null,
@@ -144,12 +154,14 @@ export async function docEntry(noteId: string): Promise<Entry> {
 		cached.lastUsed = Date.now();
 		return cached;
 	}
+	const gen = generation;
 	let pending = loading.get(noteId);
 	if (!pending) {
 		pending = loadEntry(noteId).finally(() => loading.delete(noteId));
 		loading.set(noteId, pending);
 	}
 	const entry = await pending;
+	if (gen !== generation) return docEntry(noteId);
 	const existing = entries.get(noteId);
 	if (existing) return existing;
 	entries.set(noteId, entry);
@@ -337,6 +349,21 @@ export async function currentJson(noteId: string): Promise<Record<string, unknow
 	return jsonOfDoc((await docEntry(noteId)).doc);
 }
 
+/**
+ * Aktueller Inhalt zum Lesen (Export, Aufräumen): offenes Dokument aus dem Speicher, sonst der gespeicherte
+ * Stand – ohne ihn in den Live-Speicher zu laden (große Exporte füllen sonst den Arbeitsspeicher).
+ */
+export async function snapshotJson(noteId: string): Promise<Record<string, unknown>> {
+	const cached = entries.get(noteId);
+	if (cached) return jsonOfDoc(cached.doc);
+	const { doc } = await loadStoredDoc(noteId);
+	try {
+		return jsonOfDoc(doc);
+	} finally {
+		doc.destroy();
+	}
+}
+
 /** Yjs-Startzustand aus ProseMirror-JSON (neue Notiz, Import) */
 export function stateFromJson(json: unknown): Uint8Array {
 	const doc = new Y.Doc();
@@ -404,9 +431,20 @@ export function dropDoc(noteId: string): void {
 	entries.delete(noteId);
 }
 
+/**
+ * Daten wurden außerhalb des Moduls ersetzt (Zurücksetzen, Wiederherstellen): alle Dokumente im Speicher
+ * verwerfen, OHNE sie zurückzuschreiben, und offene Editoren neu laden lassen (`reset`).
+ */
+export function discardAllDocs(): void {
+	generation++;
+	for (const id of [...entries.keys()]) dropDoc(id);
+	loading.clear();
+	hub.closeAll({ type: 'reset' } satisfies LiveEvent);
+}
+
 /** Asset-IDs im aktuellen Inhalt (Aufräumen nicht mehr genutzter Bilder) */
 export async function usedAssetIds(noteId: string): Promise<Set<string>> {
-	return new Set(assetIdsOf(await currentJson(noteId)));
+	return new Set(assetIdsOf(await snapshotJson(noteId)));
 }
 
 /** Für Tests: alles verdichten/ableiten und den Speicher leeren */
