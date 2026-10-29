@@ -187,16 +187,30 @@
 	const allOnPage = $derived(items.length > 0 && items.every((m) => selected.includes(m.id)));
 	const someOnPage = $derived(!allOnPage && items.some((m) => selected.includes(m.id)));
 
-	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeändert wird
+	// Filterwechsel: Auswahl verwerfen, damit nichts Unsichtbares mitgeändert wird.
+	// Eine neue Suche behält die Auswahl (Mitglieder nacheinander per Suche einsammeln),
+	// nur „alle Treffer“ gilt dann nicht mehr.
+	const selectionResetKey = $derived.by(() => {
+		const q = new URLSearchParams(filterQuery);
+		q.delete('search');
+		return q.toString();
+	});
 	let lastFilter = '';
+	let lastSearch = '';
 	$effect(() => {
-		const key = filterQuery;
+		const key = selectionResetKey;
+		const term = search;
 		if (lastFilter && key !== lastFilter) {
 			selected = [];
 			allMatched = false;
+		} else if (term !== lastSearch) {
+			allMatched = false;
 		}
 		lastFilter = key;
+		lastSearch = term;
 	});
+	/** Ausgewählte Mitglieder, die in der aktuellen Liste nicht zu sehen sind */
+	const hiddenSelected = $derived(selected.filter((id) => !items.some((m) => m.id === id)).length);
 
 	/** Wählt wirklich alle Treffer des Filters aus (Server liefert IDs, höchstens `SELECT_ALL_MAX`) */
 	async function selectAllMatches() {
@@ -526,7 +540,14 @@
 				label="Sammelaktionen"
 				class="sm:w-full sm:rounded-md sm:border sm:bg-muted/40 sm:px-3 sm:py-2"
 			>
-				<span class="text-sm font-medium" aria-live="polite">{selected.length} ausgewählt</span>
+				<span class="text-sm font-medium" aria-live="polite">
+					{selected.length} ausgewählt
+					{#if hiddenSelected > 0 && !allMatched}
+						<span class="font-normal text-muted-foreground">
+							(davon {hiddenSelected} nicht in der aktuellen Liste)
+						</span>
+					{/if}
+				</span>
 				{#if canBulkEdit}
 					<Button size="sm" variant="outline" onclick={() => openBulk('add-groups')}>
 						Zu Gruppen hinzufügen
