@@ -77,6 +77,8 @@ Bilder, Papierkorb, Suche, Audit), `notes-transfer.test.ts` (alle Exportformate,
 Demo: `node scripts/seed-demo-notes.mjs` (Beispielnotiz mit Unterseiten; `--big` = große Notiz für den Lasttest).
 
 ## Fallen
+- **Kein `content-visibility: auto`** im Editor: Safari (iPad/iPhone) zeichnet übersprungene Blöcke im contenteditable nach Änderungen nicht neu
+  (Zeilen verschwanden nach Enter, 2026-10-29) und es schneidet die Namensschilder fremder Cursor ab.
 - `doc.service`-Funktionen und Core-Dienste **nie** in `mdb().transaction` (PGlite hängt).
 - Neue Knoten/Marks nur in `doc/extensions.ts` – sonst verwirft der Server sie beim Ableiten und Export.
 - Router: POST antwortet 201; `updates` braucht `content-type: application/octet-stream` (kein JSON).

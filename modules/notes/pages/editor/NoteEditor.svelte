@@ -445,15 +445,11 @@
 		color: var(--foreground);
 		overflow-wrap: anywhere;
 	}
-	/* große Notizen: Blöcke außerhalb des Bildschirms nicht layouten */
-	.note-root :global(.note-content > *) {
-		content-visibility: auto;
-		contain-intrinsic-size: auto 2.5rem;
-	}
-	/* `content-visibility` schneidet Überstehendes ab – Blöcke mit fremdem Cursor (Namensschild darüber) nicht */
-	.note-root :global(.note-content > *:has(.collaboration-carets__caret)) {
-		content-visibility: visible;
-	}
+	/*
+	 * Bewusst KEIN `content-visibility: auto` für die Blöcke: Safari (iPad/iPhone) zeichnet übersprungene Blöcke in
+	 * einem contenteditable nach Änderungen (z. B. Enter → neue Zeile) nicht neu – Zeilen verschwanden; außerdem
+	 * schneidet es das Namensschild fremder Cursor ab.
+	 */
 	.note-root :global(.note-content > * + *) {
 		margin-top: 0.6em;
 	}
