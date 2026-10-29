@@ -12,7 +12,15 @@
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable } from '$lib/components/layout';
+	import {
+		DataTable,
+		EmptyState,
+		ErrorState,
+		ListRow,
+		LoadingState,
+		ScrollPills,
+		deviceLayout
+	} from '$lib/components/layout';
 	import {
 		PERMISSIONS,
 		PURPOSE_LABELS,
@@ -48,6 +56,7 @@
 	const canReserve = $derived(can(permissions, PERMISSIONS.reserve));
 
 	const LIMIT = 50;
+	const phone = $derived(deviceLayout() === 'phone');
 	let stateFilter = $state<string | null>('open');
 	let purpose = $state<string | null>(null);
 	let search = $state('');
@@ -130,47 +139,44 @@
 	const filtered = $derived(stateFilter !== 'open' || !!purpose || !!search.trim());
 </script>
 
-<DataTable
-	mobile="cards"
-	caption={scope === 'mine' ? 'Meine Reservierungen' : 'Alle Reservierungen'}
-	{loading}
-	{error}
-	onretry={() => load()}
-	empty={!!data && !data.items.length}
-	emptyTitle="Keine Reservierungen"
-	emptyDescription={filtered
-		? 'Keine Reservierung passt zum Filter.'
-		: scope === 'mine'
-			? 'Du hast noch kein Material reserviert.'
-			: 'Es gibt noch keine Reservierungen.'}
->
-	{#snippet toolbar()}
-		<div class="relative w-full sm:w-56">
-			<Search
-				class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-				aria-hidden="true"
-			/>
-			<Input
-				type="search"
-				class="h-8 pl-8"
-				placeholder="Titel suchen …"
-				aria-label="Reservierungen suchen"
-				bind:value={search}
-				oninput={() => (offset = 0)}
-			/>
+{#if phone}
+	<div class="space-y-3">
+		<div class="flex items-center gap-2">
+			<div class="relative min-w-0 flex-1">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<Input
+					type="search"
+					class="pl-8"
+					placeholder="Titel suchen …"
+					aria-label="Reservierungen suchen"
+					bind:value={search}
+					oninput={() => (offset = 0)}
+				/>
+			</div>
+			<Button
+				variant="outline"
+				size="icon"
+				class="size-10 shrink-0"
+				aria-label="Export"
+				onclick={() => (exportOpen = true)}
+			>
+				<FileDown />
+			</Button>
 		</div>
-		<SelectField
-			class="w-full sm:w-40"
-			size="sm"
+		<ScrollPills
 			label="Status"
-			options={stateOptions}
-			bind:value={stateFilter}
-			onchange={() => (offset = 0)}
+			options={stateOptions.map((o) => ({ value: o.value, label: o.label }))}
+			value={stateFilter ?? 'open'}
+			onchange={(v) => {
+				stateFilter = v;
+				offset = 0;
+			}}
 		/>
 		{#if scope === 'all'}
 			<SelectField
-				class="w-full sm:w-40"
-				size="sm"
 				label="Zweck"
 				options={purposeOptions}
 				bind:value={purpose}
@@ -179,88 +185,212 @@
 				onchange={() => (offset = 0)}
 			/>
 		{/if}
-		<div class="flex gap-2 sm:ml-auto">
-			<Button variant="outline" size="sm" onclick={() => (exportOpen = true)}>
-				<FileDown /> Export
-			</Button>
-			{#if canReserve}
-				<Button size="sm" onclick={onreserve}><Plus /> Reservieren</Button>
-			{/if}
-		</div>
-	{/snippet}
-	{#snippet emptyAction()}
-		{#if canReserve && !filtered}
-			<Button onclick={onreserve}><Plus /> Material reservieren</Button>
-		{/if}
-	{/snippet}
-	{#snippet head()}
-		<Table.Row>
-			<Table.Head>Zeitraum</Table.Head>
-			<Table.Head>Titel</Table.Head>
-			<Table.Head>Zweck</Table.Head>
-			<Table.Head>Material</Table.Head>
-			{#if scope === 'all'}<Table.Head>Reserviert von</Table.Head>{/if}
-			<Table.Head>Status</Table.Head>
-		</Table.Row>
-	{/snippet}
-	{#each data?.items ?? [] as r (r.id)}
-		<Table.Row class="cursor-pointer" onclick={() => openDetail(r.id)}>
-			<Table.Cell class="whitespace-nowrap tabular-nums">
-				{formatPeriod(r.startsOn, r.endsOn)}
-			</Table.Cell>
-			<Table.Cell class="font-medium">
-				<button
-					type="button"
-					class="text-left hover:underline"
-					onclick={(e) => {
-						e.stopPropagation();
-						openDetail(r.id);
-					}}
-				>
-					{r.title}
-				</button>
-			</Table.Cell>
-			<Table.Cell>
-				<span class="text-xs text-muted-foreground">{PURPOSE_LABELS[r.purpose]}</span>
-				{#if r.purpose !== 'other'}<div class="truncate">{purposeText(r)}</div>{/if}
-			</Table.Cell>
-			<Table.Cell class="max-w-80">
-				<div class="line-clamp-2" title={r.itemSummary}>{r.itemSummary}</div>
-			</Table.Cell>
-			{#if scope === 'all'}<Table.Cell>{r.createdByName}</Table.Cell>{/if}
-			<Table.Cell>
-				<span class="flex flex-wrap gap-1">
-					<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
-					{#if r.handedOut && r.state !== 'cancelled'}<Badge variant="success">Ausgegeben</Badge
-						>{/if}
-				</span>
-			</Table.Cell>
-		</Table.Row>
-	{/each}
-	{#snippet footer()}
-		{#if data && data.total > LIMIT}
-			<div class="flex items-center justify-between gap-2 text-sm">
-				<span class="text-muted-foreground tabular-nums">
-					Seite {current} von {pages} · {data.total} Reservierungen
-				</span>
-				<div class="flex gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={offset === 0}
-						onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
-					>
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={current >= pages}
-						onclick={() => (offset += LIMIT)}>Weiter</Button
-					>
-				</div>
+		{#if loading}
+			<LoadingState rows={4} />
+		{:else if error}
+			<ErrorState
+				title="Reservierungen konnten nicht geladen werden"
+				message={error}
+				onretry={() => load()}
+			/>
+		{:else if !data?.items.length}
+			<EmptyState
+				title="Keine Reservierungen"
+				description={filtered
+					? 'Keine Reservierung passt zum Filter.'
+					: scope === 'mine'
+						? 'Du hast noch kein Material reserviert.'
+						: 'Es gibt noch keine Reservierungen.'}
+			>
+				{#if canReserve && !filtered}
+					<Button onclick={onreserve}><Plus /> Material reservieren</Button>
+				{/if}
+			</EmptyState>
+		{:else}
+			<div
+				class="overflow-hidden rounded-xl border bg-card"
+				role="list"
+				aria-label="Reservierungen"
+			>
+				{#each data.items as r (r.id)}
+					<div role="listitem">
+						<ListRow
+							title={r.title}
+							subtitle={[
+								formatPeriod(r.startsOn, r.endsOn),
+								r.purpose === 'other' ? '' : purposeText(r),
+								scope === 'all' ? r.createdByName : '',
+								r.itemSummary
+							]
+								.filter(Boolean)
+								.join(' · ')}
+							wrap
+							onclick={() => openDetail(r.id)}
+						>
+							{#snippet trailing()}
+								<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
+								{#if r.handedOut && r.state !== 'cancelled'}
+									<Badge variant="success">Ausgegeben</Badge>
+								{/if}
+							{/snippet}
+						</ListRow>
+					</div>
+				{/each}
 			</div>
+			{#if data.total > LIMIT}
+				<div class="flex items-center justify-between gap-2 text-sm">
+					<span class="text-muted-foreground tabular-nums">Seite {current} von {pages}</span>
+					<div class="flex gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={offset === 0}
+							onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+						>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={current >= pages}
+							onclick={() => (offset += LIMIT)}>Weiter</Button
+						>
+					</div>
+				</div>
+			{/if}
 		{/if}
-	{/snippet}
-</DataTable>
+	</div>
+{:else}
+	<DataTable
+		mobile="cards"
+		caption={scope === 'mine' ? 'Meine Reservierungen' : 'Alle Reservierungen'}
+		{loading}
+		{error}
+		onretry={() => load()}
+		empty={!!data && !data.items.length}
+		emptyTitle="Keine Reservierungen"
+		emptyDescription={filtered
+			? 'Keine Reservierung passt zum Filter.'
+			: scope === 'mine'
+				? 'Du hast noch kein Material reserviert.'
+				: 'Es gibt noch keine Reservierungen.'}
+	>
+		{#snippet toolbar()}
+			<div class="relative w-full sm:w-56">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<Input
+					type="search"
+					class="h-8 pl-8"
+					placeholder="Titel suchen …"
+					aria-label="Reservierungen suchen"
+					bind:value={search}
+					oninput={() => (offset = 0)}
+				/>
+			</div>
+			<SelectField
+				class="w-full sm:w-40"
+				size="sm"
+				label="Status"
+				options={stateOptions}
+				bind:value={stateFilter}
+				onchange={() => (offset = 0)}
+			/>
+			{#if scope === 'all'}
+				<SelectField
+					class="w-full sm:w-40"
+					size="sm"
+					label="Zweck"
+					options={purposeOptions}
+					bind:value={purpose}
+					emptyLabel="Alle Zwecke"
+					placeholder="Alle Zwecke"
+					onchange={() => (offset = 0)}
+				/>
+			{/if}
+			<div class="flex gap-2 sm:ml-auto">
+				<Button variant="outline" size="sm" onclick={() => (exportOpen = true)}>
+					<FileDown /> Export
+				</Button>
+				{#if canReserve}
+					<Button size="sm" onclick={onreserve}><Plus /> Reservieren</Button>
+				{/if}
+			</div>
+		{/snippet}
+		{#snippet emptyAction()}
+			{#if canReserve && !filtered}
+				<Button onclick={onreserve}><Plus /> Material reservieren</Button>
+			{/if}
+		{/snippet}
+		{#snippet head()}
+			<Table.Row>
+				<Table.Head>Zeitraum</Table.Head>
+				<Table.Head>Titel</Table.Head>
+				<Table.Head>Zweck</Table.Head>
+				<Table.Head>Material</Table.Head>
+				{#if scope === 'all'}<Table.Head>Reserviert von</Table.Head>{/if}
+				<Table.Head>Status</Table.Head>
+			</Table.Row>
+		{/snippet}
+		{#each data?.items ?? [] as r (r.id)}
+			<Table.Row class="cursor-pointer" onclick={() => openDetail(r.id)}>
+				<Table.Cell class="whitespace-nowrap tabular-nums">
+					{formatPeriod(r.startsOn, r.endsOn)}
+				</Table.Cell>
+				<Table.Cell class="font-medium">
+					<button
+						type="button"
+						class="text-left hover:underline"
+						onclick={(e) => {
+							e.stopPropagation();
+							openDetail(r.id);
+						}}
+					>
+						{r.title}
+					</button>
+				</Table.Cell>
+				<Table.Cell>
+					<span class="text-xs text-muted-foreground">{PURPOSE_LABELS[r.purpose]}</span>
+					{#if r.purpose !== 'other'}<div class="truncate">{purposeText(r)}</div>{/if}
+				</Table.Cell>
+				<Table.Cell class="max-w-80">
+					<div class="line-clamp-2" title={r.itemSummary}>{r.itemSummary}</div>
+				</Table.Cell>
+				{#if scope === 'all'}<Table.Cell>{r.createdByName}</Table.Cell>{/if}
+				<Table.Cell>
+					<span class="flex flex-wrap gap-1">
+						<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
+						{#if r.handedOut && r.state !== 'cancelled'}<Badge variant="success">Ausgegeben</Badge
+							>{/if}
+					</span>
+				</Table.Cell>
+			</Table.Row>
+		{/each}
+		{#snippet footer()}
+			{#if data && data.total > LIMIT}
+				<div class="flex items-center justify-between gap-2 text-sm">
+					<span class="text-muted-foreground tabular-nums">
+						Seite {current} von {pages} · {data.total} Reservierungen
+					</span>
+					<div class="flex gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={offset === 0}
+							onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+						>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={current >= pages}
+							onclick={() => (offset += LIMIT)}>Weiter</Button
+						>
+					</div>
+				</div>
+			{/if}
+		{/snippet}
+	</DataTable>
+{/if}
 
 {#if detailId}
 	{#key detailKey}

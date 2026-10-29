@@ -347,7 +347,7 @@
 			</div>
 
 			<Dialog.Footer class="sm:justify-between">
-				<div class="flex flex-col gap-2 sm:flex-row">
+				<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
 					{#if perm.manage}
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
@@ -386,7 +386,7 @@
 						</Button>
 					{/if}
 				</div>
-				<div class="flex flex-col gap-2 sm:flex-row">
+				<div class="grid grid-cols-2 gap-2 max-sm:order-first sm:flex sm:flex-row">
 					{#if perm.report && !reporting}
 						<Button variant="outline" onclick={startReport}><ShieldAlert /> Zustand melden</Button>
 					{/if}
@@ -396,7 +396,9 @@
 						</Button>
 					{/if}
 					{#if perm.manage}
-						<Button onclick={() => onedit(item!)}><Pencil /> Bearbeiten</Button>
+						<Button class="max-sm:col-span-2" onclick={() => onedit(item!)}>
+							<Pencil /> Bearbeiten
+						</Button>
 					{/if}
 				</div>
 			</Dialog.Footer>

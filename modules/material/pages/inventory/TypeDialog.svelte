@@ -213,7 +213,7 @@
 			</div>
 
 			<Dialog.Footer class="sm:justify-between">
-				<div class="flex flex-col gap-2 sm:flex-row">
+				<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
 					{#if perm.manage}
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
@@ -257,14 +257,19 @@
 						</Button>
 					{/if}
 				</div>
-				<div class="flex flex-col gap-2 sm:flex-row">
+				<div class="grid grid-cols-2 gap-2 max-sm:order-first sm:flex sm:flex-row">
 					{#if perm.labels && activeItems.length}
 						<Button variant="outline" onclick={() => onprint(activeItems.map((i) => i.id))}>
 							<Printer /> Etiketten drucken
 						</Button>
 					{/if}
 					{#if perm.manage}
-						<Button onclick={() => onedit(type!)}><Pencil /> Bearbeiten</Button>
+						<Button
+							class={perm.labels && activeItems.length ? '' : 'max-sm:col-span-2'}
+							onclick={() => onedit(type!)}
+						>
+							<Pencil /> Bearbeiten
+						</Button>
 					{/if}
 				</div>
 			</Dialog.Footer>

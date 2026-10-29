@@ -46,6 +46,14 @@
 	} = $props();
 
 	let imageIndex = $state(0);
+	let contentRef = $state<HTMLElement | null>(null);
+	/** Touch: kein Fokus aufs Zahlenfeld beim Öffnen (sonst springt die Bildschirmtastatur auf) */
+	function onOpenAutoFocus(e: Event) {
+		if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+		e.preventDefault();
+		contentRef?.focus();
+	}
+
 	const image = $derived(entry.images[imageIndex] ?? entry.images[0] ?? null);
 
 	function step(dir: 1 | -1) {
@@ -166,7 +174,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-3xl">
+	<Dialog.Content class="sm:max-w-3xl" bind:ref={contentRef} {onOpenAutoFocus}>
 		<Dialog.Header>
 			<Dialog.Title>{entry.name}</Dialog.Title>
 			<Dialog.Description class="tabular-nums">
@@ -177,7 +185,12 @@
 
 		<div class="grid gap-6 md:grid-cols-2">
 			<div class="space-y-2">
-				<div class="relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
+				<div
+					class={cn(
+						'relative aspect-[4/3] overflow-hidden rounded-lg bg-muted max-sm:aspect-video',
+						!image && 'max-sm:hidden'
+					)}
+				>
 					{#if image}
 						<img
 							src={image.webUrl}

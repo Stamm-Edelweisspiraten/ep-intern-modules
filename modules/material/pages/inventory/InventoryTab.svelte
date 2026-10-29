@@ -6,6 +6,8 @@
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import ListFilter from '@lucide/svelte/icons/list-filter';
 	import Download from '@lucide/svelte/icons/download';
 	import FolderTree from '@lucide/svelte/icons/folder-tree';
 	import MapPin from '@lucide/svelte/icons/map-pin';
@@ -26,7 +28,18 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { DataTable, MobileActionBar } from '$lib/components/layout';
+	import {
+		BottomSheet,
+		ChoiceChips,
+		DataTable,
+		EmptyState,
+		ErrorState,
+		ListRow,
+		LoadingState,
+		MobileActionBar,
+		SheetAction,
+		deviceLayout
+	} from '$lib/components/layout';
 	import type {
 		Category,
 		Condition,
@@ -333,6 +346,26 @@
 		!!inventory && inventory.types.length === 0 && inventory.items.length === 0
 	);
 	const colCount = $derived(canSelect ? 7 : 6);
+
+	// --- Handy: Liste statt Tabelle, Filter und Verwaltung in Blättern ----------------
+	const phone = $derived(deviceLayout() === 'phone');
+	let filterOpen = $state(false);
+	let moreOpen = $state(false);
+	const activeFilters = $derived(
+		[categoryId, locationId, condition, setId].filter(Boolean).length + (archived ? 1 : 0)
+	);
+	/** Gefiltert: alle passenden Artikel flach; sonst Typen (antippen = Details) + Artikel ohne Typ */
+	const phoneItems = $derived(filtered ? allItems(inventory) : (inventory?.items ?? []));
+
+	function tapItem(id: string) {
+		if (selected.length) setSelected([id], !selected.includes(id));
+		else openItem(id);
+	}
+	/** Erst das Blatt schließen, dann den Dialog öffnen */
+	function fromSheet(fn: () => void) {
+		moreOpen = false;
+		setTimeout(fn, 250);
+	}
 </script>
 
 <div class={['space-y-4', selected.length ? 'pb-20 sm:pb-0' : ''].join(' ')}>
@@ -352,7 +385,35 @@
 				</Tabs.Trigger>
 			</Tabs.List>
 		</Tabs.Root>
-		{#if perm.manage}
+		{#if phone}
+			{#if perm.manage}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button {...props} size="icon" class="size-10" aria-label="Erstellen"><Plus /></Button
+							>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end">
+						<DropdownMenu.Item onclick={newType}><Shapes /> Typ</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={() => newItem()}>
+							<PackagePlus /> Lagerartikel
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={newSet}><Layers /> Set</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={newTent}><TentIcon /> Zelt</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			{/if}
+			<Button
+				variant="outline"
+				size="icon"
+				class="size-10"
+				aria-label="Weitere Aktionen"
+				onclick={() => (moreOpen = true)}
+			>
+				<Ellipsis />
+			</Button>
+		{:else if perm.manage}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
@@ -372,10 +433,12 @@
 				<FolderTree /> Kategorien
 			</Button>
 		{/if}
-		<Button variant="outline" onclick={() => (locationsOpen = true)}>
-			<MapPin /> Lagerorte
-		</Button>
-		<Button variant="outline" onclick={() => (exportOpen = true)}><Download /> Export</Button>
+		{#if !phone}
+			<Button variant="outline" onclick={() => (locationsOpen = true)}>
+				<MapPin /> Lagerorte
+			</Button>
+			<Button variant="outline" onclick={() => (exportOpen = true)}><Download /> Export</Button>
+		{/if}
 	</div>
 
 	{#if view === 'sets'}
@@ -405,6 +468,115 @@
 			onchanged={reloadAll}
 			{onreserve}
 		/>
+	{:else if phone}
+		<div class="space-y-3">
+			<div class="flex items-center gap-2">
+				<Input
+					type="search"
+					class="min-w-0 flex-1"
+					placeholder="Name oder Code suchen …"
+					aria-label="Lager durchsuchen"
+					bind:value={searchInput}
+					oninput={onSearchInput}
+				/>
+				<Button
+					variant={activeFilters ? 'default' : 'outline'}
+					class={activeFilters ? 'h-10 shrink-0' : 'size-10 shrink-0'}
+					size={activeFilters ? 'default' : 'icon'}
+					aria-label={activeFilters ? `Filter (${activeFilters} aktiv)` : 'Filter'}
+					onclick={() => (filterOpen = true)}
+				>
+					<ListFilter />
+					{#if activeFilters}<span class="tabular-nums">{activeFilters}</span>{/if}
+				</Button>
+				<ScanButton {onscan} busy={scanBusy} compact />
+			</div>
+			{#if loading && !inventory}
+				<LoadingState rows={6} />
+			{:else if error}
+				<ErrorState
+					title="Lager konnte nicht geladen werden"
+					message={error}
+					onretry={() => loadInventory()}
+				/>
+			{:else if isEmpty}
+				<EmptyState
+					title={filtered ? 'Keine Treffer' : 'Das Lager ist noch leer'}
+					description={filtered
+						? 'Kein Typ und kein Artikel passt zu Suche oder Filter.'
+						: perm.manage
+							? 'Lege einen Typ (z. B. „Kohtenbahn“) oder direkt einen Lagerartikel an.'
+							: 'Hier erscheinen Zelte, Kisten und alles andere, sobald die Materialwart*innen es erfasst haben.'}
+				>
+					{#if filtered}
+						<Button variant="outline" onclick={resetFilters}><X /> Filter zurücksetzen</Button>
+					{/if}
+				</EmptyState>
+			{:else if inventory}
+				<div class="overflow-hidden rounded-xl border bg-card" role="list" aria-label="Lager">
+					{#if !filtered}
+						{#each inventory.types as t (t.id)}
+							{@const problems = problemCount(t.items)}
+							<div role="listitem">
+								<ListRow
+									title={t.name}
+									subtitle={[
+										t.itemCount === 1 ? 'Typ · 1 Artikel' : `Typ · ${t.itemCount} Artikel`,
+										locationSummary(t.items)
+									]
+										.filter(Boolean)
+										.join(' · ')}
+									amount={`${t.totalQuantity}×`}
+									onclick={() => openType(t.id)}
+								>
+									{#snippet leading()}
+										{@render thumb(t.images[0]?.thumbUrl ?? null, t.category)}
+									{/snippet}
+									{#snippet trailing()}
+										{#if problems}<Badge variant="warning">{problems} mit Mängeln</Badge>{/if}
+										{#if t.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+									{/snippet}
+								</ListRow>
+							</div>
+						{/each}
+					{/if}
+					{#each phoneItems as item (item.id)}
+						<div role="listitem">
+							<ListRow
+								title={item.name}
+								subtitle={[
+									item.setName ? `Set ${item.setName}` : '',
+									item.locationName ?? 'Ohne Lagerort',
+									item.code
+								]
+									.filter(Boolean)
+									.join(' · ')}
+								amount={item.quantity > 1 ? `${item.quantity}×` : undefined}
+								selecting={selected.length > 0}
+								selected={selected.includes(item.id)}
+								onclick={() => tapItem(item.id)}
+								onlongpress={canSelect ? () => setSelected([item.id], true) : undefined}
+							>
+								{#snippet leading()}
+									{@render thumb(item.thumbUrl, item.category)}
+								{/snippet}
+								{#snippet trailing()}
+									{#if item.condition !== 'ok'}
+										<ConditionBadge condition={item.condition as Condition} />
+									{/if}
+									{#if item.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+								{/snippet}
+							</ListRow>
+						</div>
+					{/each}
+				</div>
+				{#if canSelect && !selected.length && phoneItems.length}
+					<p class="text-center text-xs text-muted-foreground">
+						Lange auf einen Artikel drücken, um mehrere auszuwählen.
+					</p>
+				{/if}
+			{/if}
+		</div>
 	{:else}
 		<DataTable
 			mobile="cards"
@@ -603,26 +775,68 @@
 	{/if}
 
 	<MobileActionBar show={canSelect && selected.length > 0} label="Aktionen für die Auswahl">
-		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-sm font-medium tabular-nums">
+		<div class="flex flex-wrap items-center gap-2 max-sm:w-full max-sm:flex-nowrap">
+			<span class="text-sm font-medium tabular-nums max-sm:mr-auto">
 				{selected.length === 1 ? '1 Artikel gewählt' : `${selected.length} Artikel gewählt`}
 			</span>
-			{#if perm.labels}
-				<Button size="sm" variant="outline" onclick={() => printLabels('item', selected)}>
-					<Printer /> Etiketten drucken
+			{#if phone}
+				{#if perm.labels}
+					<Button
+						size="icon"
+						variant="outline"
+						class="size-10"
+						aria-label="Etiketten drucken"
+						onclick={() => printLabels('item', selected)}
+					>
+						<Printer />
+					</Button>
+				{/if}
+				{#if perm.manage}
+					<Button
+						size="icon"
+						variant="outline"
+						class="size-10"
+						aria-label="Umlagern"
+						onclick={() => (moveOpen = true)}
+					>
+						<Truck />
+					</Button>
+				{/if}
+				<Button
+					size="icon"
+					variant="ghost"
+					class="size-10"
+					aria-label="Auswahl aufheben"
+					onclick={() => (selected = [])}
+				>
+					<X />
+				</Button>
+			{:else}
+				{#if perm.labels}
+					<Button size="sm" variant="outline" onclick={() => printLabels('item', selected)}>
+						<Printer /> Etiketten drucken
+					</Button>
+				{/if}
+				{#if perm.manage}
+					<Button size="sm" variant="outline" onclick={() => (moveOpen = true)}>
+						<Truck /> Umlagern
+					</Button>
+				{/if}
+				<Button size="sm" variant="ghost" onclick={() => (selected = [])}>
+					<X /> Auswahl aufheben
 				</Button>
 			{/if}
-			{#if perm.manage}
-				<Button size="sm" variant="outline" onclick={() => (moveOpen = true)}>
-					<Truck /> Umlagern
-				</Button>
-			{/if}
-			<Button size="sm" variant="ghost" onclick={() => (selected = [])}>
-				<X /> Auswahl aufheben
-			</Button>
 		</div>
 	</MobileActionBar>
 </div>
+
+{#snippet thumb(url: string | null, category: Item['category'])}
+	{#if url}
+		<img src={url} alt="" class="size-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+	{:else}
+		<CategoryGlyph {category} class="size-10" />
+	{/if}
+{/snippet}
 
 {#snippet itemRow(item: Item, nested: boolean)}
 	<Table.Row
@@ -683,6 +897,90 @@
 		<Table.Cell class="font-mono text-xs">{item.code}</Table.Cell>
 	</Table.Row>
 {/snippet}
+
+{#if phone}
+	<BottomSheet bind:open={filterOpen} title="Filter" size="tall">
+		{#snippet headerActions()}
+			{#if activeFilters}
+				<Button
+					variant="ghost"
+					size="sm"
+					onclick={() => {
+						resetFilters();
+						archived = false;
+					}}>Zurücksetzen</Button
+				>
+			{/if}
+		{/snippet}
+		<ChoiceChips
+			legend="Kategorie"
+			options={[{ value: '', label: 'Alle' }, ...categoryOptions(categories)]}
+			value={categoryId ?? ''}
+			onchange={(v) => (categoryId = v || null)}
+		/>
+		<ChoiceChips
+			legend="Lagerort"
+			options={[{ value: '', label: 'Alle' }, ...locFilterOptions]}
+			value={locationId ?? ''}
+			onchange={(v) => (locationId = v || null)}
+		/>
+		<ChoiceChips
+			legend="Zustand"
+			options={[{ value: '', label: 'Alle' }, ...conditionOptions]}
+			value={condition ?? ''}
+			onchange={(v) => (condition = v || null)}
+		/>
+		{#if sets.length || setId}
+			<ChoiceChips
+				legend="Set"
+				options={[
+					{ value: '', label: 'Alle' },
+					{ value: 'none', label: 'Ohne Set' },
+					...setOptions(sets)
+				]}
+				value={setId ?? ''}
+				onchange={(v) => (setId = v || null)}
+			/>
+		{/if}
+		<ChoiceChips
+			legend="Archivierte"
+			options={[
+				{ value: 'no', label: 'Ausblenden' },
+				{ value: 'yes', label: 'Zeigen' }
+			]}
+			value={archived ? 'yes' : 'no'}
+			onchange={(v) => (archived = v === 'yes')}
+		/>
+		{#snippet footer()}
+			<Button class="w-full" onclick={() => (filterOpen = false)}>
+				{loading ? 'Lädt …' : `${allItems(inventory).length} Artikel zeigen`}
+			</Button>
+		{/snippet}
+	</BottomSheet>
+
+	<BottomSheet bind:open={moreOpen} title="Lager">
+		{#if perm.manage}
+			<SheetAction
+				icon={FolderTree}
+				title="Kategorien"
+				description="Anlegen, Icon und Farbe"
+				onclick={() => fromSheet(() => (categoriesOpen = true))}
+			/>
+		{/if}
+		<SheetAction
+			icon={MapPin}
+			title="Lagerorte"
+			description="Orte ansehen, filtern, Etiketten"
+			onclick={() => fromSheet(() => (locationsOpen = true))}
+		/>
+		<SheetAction
+			icon={Download}
+			title="Export"
+			description="Materialliste als PDF oder CSV"
+			onclick={() => fromSheet(() => (exportOpen = true))}
+		/>
+	</BottomSheet>
+{/if}
 
 <ItemDialog
 	bind:open={itemOpen}

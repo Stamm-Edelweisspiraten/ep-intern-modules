@@ -16,7 +16,13 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { ConfirmDialog, EmptyState, ErrorState, MobileActionBar } from '$lib/components/layout';
+	import {
+		ConfirmDialog,
+		EmptyState,
+		ErrorState,
+		MobileActionBar,
+		deviceLayout
+	} from '$lib/components/layout';
 	import { localToday } from '$lib/components/layout/month-calendar';
 	import { cn } from '$lib/utils';
 	import {
@@ -43,6 +49,7 @@
 	import { resolveScan } from '../shared/scan';
 	import CartPanel from './CartPanel.svelte';
 	import EntryCard from './EntryCard.svelte';
+	import EntryRow from './EntryRow.svelte';
 	import EntryDetailDialog from './EntryDetailDialog.svelte';
 	import {
 		CART_KEY,
@@ -57,7 +64,9 @@
 		tentQuantityInCart,
 		loadDraft,
 		reconcileCart,
+		removeLine,
 		saveDraft,
+		setQuantity,
 		toLines,
 		typeQuantityInCart,
 		type CartDraft,
@@ -81,6 +90,8 @@
 	const myId = $derived((page.data.user as { id?: string } | null | undefined)?.id ?? null);
 
 	const desktop = new MediaQuery('(min-width: 1024px)', false);
+	/** Handy: kompakte Zeilen mit −/+ statt Kacheln */
+	const phone = $derived(deviceLayout() === 'phone');
 	const today = localToday();
 
 	// Der Aufrufer rendert die Komponente je `editId` neu (`{#key}`), daher fest beim Start.
@@ -322,6 +333,41 @@
 			typeQuantityInCart(draft.lines, e.id) +
 			e.items.reduce((s, i) => s + itemQuantityInCart(draft.lines, i.id), 0)
 		);
+	}
+
+	/** Zeile, die −/+ auf dem Handy steuert: Typ (beliebige Artikel), Artikel ohne Typ oder Zelt */
+	function quickLine(e: CatalogEntry): CartLine {
+		if (e.kind === 'tent')
+			return { kind: 'tent', tentId: e.id, name: e.name, thumbUrl: e.thumbUrl, quantity: 1 };
+		if (e.kind === 'type')
+			return { kind: 'type', typeId: e.id, name: e.name, thumbUrl: e.thumbUrl, quantity: 1 };
+		return {
+			kind: 'item',
+			itemId: e.id,
+			name: e.name,
+			code: e.code,
+			thumbUrl: e.thumbUrl,
+			quantity: 1,
+			max: Math.max(1, e.total)
+		};
+	}
+
+	function quickQty(e: CatalogEntry): number {
+		if (e.kind === 'tent') return tentQuantityInCart(draft.lines, e.id);
+		if (e.kind === 'type') return typeQuantityInCart(draft.lines, e.id);
+		return itemQuantityInCart(draft.lines, e.id);
+	}
+
+	function quickChange(e: CatalogEntry, delta: 1 | -1) {
+		const line = quickLine(e);
+		if (delta > 0) {
+			if (inCartOf(e) >= e.free) return;
+			draft.lines = addLine(draft.lines, line);
+			return;
+		}
+		const key = lineKey(line);
+		const next = quickQty(e) - 1;
+		draft.lines = next > 0 ? setQuantity(draft.lines, key, next) : removeLine(draft.lines, key);
 	}
 
 	// --- Ansehen und hinzufügen ------------------------------------------------------
@@ -596,29 +642,34 @@
 						/>
 					</div>
 				</div>
-				<div class="relative w-full sm:w-64">
-					<Search
-						class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-						aria-hidden="true"
-					/>
-					<Input
-						type="search"
-						class="pl-8"
-						placeholder="Material suchen …"
-						aria-label="Material suchen"
-						bind:value={search}
-					/>
-				</div>
-				<div class="flex flex-wrap items-center gap-2 sm:ml-auto">
-					{#if canReserve}
-						<ScanButton
-							{onscan}
-							busy={scanning}
-							label="Scannen"
-							title="Artikel scannen"
-							description="Halte den QR-Code oder Strichcode eines Artikels vor die Kamera – auch auf einem Bildschirm. Ein USB-Handscanner funktioniert überall auf der Seite. Der Artikel kommt in den Warenkorb."
+				<div class="flex w-full items-center gap-2 sm:contents">
+					<div class="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+						<Search
+							class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+							aria-hidden="true"
 						/>
-					{/if}
+						<Input
+							type="search"
+							class="pl-8"
+							placeholder="Material suchen …"
+							aria-label="Material suchen"
+							bind:value={search}
+						/>
+					</div>
+					<div class="flex flex-wrap items-center gap-2 sm:ml-auto">
+						{#if canReserve}
+							<ScanButton
+								{onscan}
+								busy={scanning}
+								compact={phone}
+								label="Scannen"
+								title="Artikel scannen"
+								description="Halte den QR-Code oder Strichcode eines Artikels vor die Kamera – auch auf einem Bildschirm. Ein USB-Handscanner funktioniert überall auf der Seite. Der Artikel kommt in den Warenkorb."
+							/>
+						{/if}
+					</div>
+				</div>
+				<div class="contents">
 					{#if !desktop.current}
 						<MobileActionBar label="Warenkorb">
 							<Button
@@ -629,6 +680,9 @@
 								<ShoppingCart />
 								{editId ? 'Reservierung' : 'Warenkorb'}
 								{#if count}<span class="tabular-nums">({count})</span>{/if}
+								{#if phone && count}
+									<span class="ml-auto text-xs font-normal opacity-80">Weiter →</span>
+								{/if}
 							</Button>
 						</MobileActionBar>
 					{/if}
@@ -645,13 +699,17 @@
 			{/if}
 
 			{#if categories.length > 1 || (categories.length && hasUncategorized)}
-				<div class="flex flex-wrap gap-2" role="group" aria-label="Kategorien">
+				<div
+					class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+					role="group"
+					aria-label="Kategorien"
+				>
 					{#each [{ id: null, name: 'Alle', icon: null, color: null }, ...categories] as c (c.id ?? 'all')}
 						{@const active = categoryId === c.id}
 						<button
 							type="button"
 							class={cn(
-								'flex h-9 items-center gap-2 rounded-full border px-3 text-sm transition-colors',
+								'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm whitespace-nowrap transition-colors',
 								active
 									? 'border-link bg-link/10 font-semibold text-link'
 									: 'bg-background hover:bg-muted'
@@ -667,7 +725,7 @@
 						<button
 							type="button"
 							class={cn(
-								'flex h-9 items-center rounded-full border px-3 text-sm transition-colors',
+								'flex h-9 shrink-0 items-center rounded-full border px-3 text-sm whitespace-nowrap transition-colors',
 								categoryId === 'none'
 									? 'border-link bg-link/10 font-semibold text-link'
 									: 'bg-background hover:bg-muted'
@@ -715,6 +773,21 @@
 					title="Nichts gefunden"
 					description="Kein Material passt zu Suche oder Kategorie. Versuche einen anderen Begriff."
 				/>
+			{:else if phone}
+				<div class="overflow-hidden rounded-xl border bg-card" role="list" aria-label="Material">
+					{#each visible as e (e.kind + e.id)}
+						<div role="listitem">
+							<EntryRow
+								entry={e}
+								inCart={inCartOf(e)}
+								quickQty={quickQty(e)}
+								{canReserve}
+								onselect={select}
+								onchange={quickChange}
+							/>
+						</div>
+					{/each}
+				</div>
 			{:else}
 				<ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Material">
 					{#each visible as e (e.kind + e.id)}

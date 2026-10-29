@@ -88,6 +88,14 @@ Migration 0005: `sets`, `items.set_id` (SET NULL), `tents`, `tent_parts` (`type_
 | `material.reservation.manage` | Alle Reservierungen sehen, ändern, stornieren, löschen |
 | `material.labels.manage` | Etikettgrößen und Etiketten gestalten, drucken |
 
+## Handy (< 640 px, `deviceLayout() === 'phone'`; Tablet/Desktop unverändert, 2026-10-29)
+- Reiter als einzeilige `ScrollPills` mit Kurznamen (Reservieren · Meine · Alle · Lager · Etiketten), Seitenbeschreibung ausgeblendet.
+- Reservieren: kompakte Zeilen `reserve/EntryRow.svelte` mit −/+ direkt in den Warenkorb (Typ = beliebige, Artikel, Zelt; gezielt gewählte
+  Artikel zählen mit, aber nur über die Details), Suche + Scan-Symbol in einer Zeile, Kategorien seitlich scrollbar, Warenkorb-Leiste unten.
+- Lager: `ListRow`-Liste (Typen → Typ-Dialog, gefiltert alle Artikel flach), Filter im `BottomSheet` (`ChoiceChips`), Kategorien/Lagerorte/Export
+  im „…“-Blatt, Auswahl per langem Drücken, einzeilige Auswahlleiste mit Symbolknöpfen.
+- Reservierungen: `ListRow`-Liste, Status als Pillen. Dialog-Füße zweispaltig; Detail-Dialog fokussiert auf Touch kein Zahlenfeld.
+
 ## Tests und Demo
 Unit `tests/unit/material-availability.test.ts`, `material-allocation.test.ts` (Zuteilung, Planer, Zelte), `material-cart.test.ts`,
 `material-label-designer.test.ts`, `labels.test.ts`; Integration `tests/integration/material.test.ts`, `material-sets.test.ts` (Sets, Zelte, Umplanen,

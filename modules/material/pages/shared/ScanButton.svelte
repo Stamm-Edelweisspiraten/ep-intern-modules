@@ -16,7 +16,8 @@
 		usb = true,
 		closeOnScan = true,
 		busy = false,
-		variant = 'outline'
+		variant = 'outline',
+		compact = false
 	}: {
 		/** Gelesener Inhalt (Code oder volle Scan-URL) */
 		onscan: (raw: string) => void | Promise<void>;
@@ -30,6 +31,8 @@
 		/** Während einer Verarbeitung keine neuen Kamera-Scans annehmen */
 		busy?: boolean;
 		variant?: 'outline' | 'secondary' | 'default' | 'ghost';
+		/** Nur das Symbol zeigen (Handy); `label` bleibt der zugängliche Name */
+		compact?: boolean;
 	} = $props();
 
 	let open = $state(false);
@@ -56,10 +59,22 @@
 	});
 </script>
 
-<Button {variant} onclick={() => (open = true)}>
-	<ScanLine />
-	{label}
-</Button>
+{#if compact}
+	<Button
+		{variant}
+		size="icon"
+		class="size-10 shrink-0"
+		aria-label={label}
+		onclick={() => (open = true)}
+	>
+		<ScanLine />
+	</Button>
+{:else}
+	<Button {variant} onclick={() => (open = true)}>
+		<ScanLine />
+		{label}
+	</Button>
+{/if}
 
 <Dialog.Root bind:open>
 	<Dialog.Content class="sm:max-w-lg">

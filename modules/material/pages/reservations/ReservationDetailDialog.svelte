@@ -368,7 +368,7 @@
 			</div>
 
 			<Dialog.Footer class="flex-wrap gap-2 sm:justify-between">
-				<div class="flex flex-wrap gap-2">
+				<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap [&>*]:max-sm:h-10">
 					{#if canHandOut}
 						{#if r.handedOutAt}
 							<Button variant="outline" size="sm" disabled={!!busy} onclick={() => handOut(false)}>
@@ -395,7 +395,9 @@
 						{busy === 'csv' ? 'Erstellt …' : 'CSV'}
 					</Button>
 				</div>
-				<div class="flex flex-wrap gap-2">
+				<div
+					class="grid grid-cols-2 gap-2 max-sm:order-first sm:flex sm:flex-wrap [&>*]:max-sm:h-10"
+				>
 					{#if canDelete}
 						<Button
 							variant="destructive"

@@ -4,7 +4,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { can } from '$lib/sdk/client';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { PageHeader } from '$lib/components/layout';
+	import { PageHeader, ScrollPills, deviceLayout } from '$lib/components/layout';
 	import { PERMISSIONS } from '../schemas';
 	import { safeReplaceState, type MaterialTab } from './helpers';
 	import ReserveTab from './reserve/ReserveTab.svelte';
@@ -28,6 +28,16 @@
 		lager: 'Lager',
 		etiketten: 'Etiketten'
 	};
+
+	/** Kurze Namen für die Pillenleiste auf dem Handy */
+	const SHORT_LABELS: Record<MaterialTab, string> = {
+		reservieren: 'Reservieren',
+		meine: 'Meine',
+		alle: 'Alle',
+		lager: 'Lager',
+		etiketten: 'Etiketten'
+	};
+	const phone = $derived(deviceLayout() === 'phone');
 
 	const visibleTabs = $derived(
 		(
@@ -78,10 +88,22 @@
 
 <PageHeader
 	title="Material"
-	description="Zelte, Kochkisten und alles andere aus dem Lager reservieren und verwalten."
+	description={phone
+		? undefined
+		: 'Zelte, Kochkisten und alles andere aus dem Lager reservieren und verwalten.'}
 />
 
-{#if activeTab}
+{#if activeTab && phone}
+	{#if visibleTabs.length > 1}
+		<ScrollPills
+			class="mb-4"
+			label="Bereiche"
+			options={visibleTabs.map((t) => ({ value: t, label: SHORT_LABELS[t] }))}
+			value={activeTab}
+			onchange={(v) => setTab(v)}
+		/>
+	{/if}
+{:else if activeTab}
 	<Tabs.Root value={activeTab} onValueChange={(v) => setTab(v)}>
 		{#if visibleTabs.length > 1}
 			<Tabs.List variant="line" class="mb-4" aria-label="Bereiche">
@@ -91,7 +113,9 @@
 			</Tabs.List>
 		{/if}
 	</Tabs.Root>
+{/if}
 
+{#if activeTab}
 	{#key navKey}
 		{#if activeTab === 'reservieren'}
 			{#key editId}
