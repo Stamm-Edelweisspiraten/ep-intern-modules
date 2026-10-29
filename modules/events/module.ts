@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { NOTIFY_EVENT_CANCELLED, NOTIFY_EVENT_CHANGED, NOTIFY_EVENT_NEW } from './schemas';
 import { defineModule } from '$lib/sdk/server';
 import { eventsSearch } from './search';
+import { eventsDashboard } from './dashboard';
 import { eventEndpoints } from './events.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { websiteEndpoints } from './website.endpoints';
@@ -74,6 +75,8 @@ export default defineModule({
 		{ name: '0004_calendar_feeds', sql: m0004 }
 	],
 	search: eventsSearch,
+	/** Übersicht: Termine der Woche (Serien je Vorkommen) */
+	dashboard: eventsDashboard,
 	notifications: {
 		// Standard aus: wer will, schaltet es im Profil ein (sonst Mail an alle Eltern bei jedem Termin)
 		types: [

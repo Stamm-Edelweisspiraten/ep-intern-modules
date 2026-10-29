@@ -10,6 +10,8 @@ export default {
 	dashboardWidgets: [
 		{
 			id: 'mine',
+			/** Inhalt steht in „Zu erledigen“/„Diese Woche“; bleibt auswählbar */
+			defaultHidden: true,
 			title: 'Meine Materialreservierungen',
 			description: 'Deine laufenden und kommenden Reservierungen',
 			order: 45,
@@ -19,6 +21,8 @@ export default {
 		},
 		{
 			id: 'manage',
+			/** Inhalt steht in „Zu erledigen“/„Diese Woche“; bleibt auswählbar */
+			defaultHidden: true,
 			title: 'Material',
 			description: 'Anstehende Reservierungen und gemeldete Schäden',
 			order: 46,

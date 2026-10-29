@@ -11,6 +11,7 @@ import { resetAreas, resetUsers } from './reset';
 import { onUserDeleted } from './user-deleted';
 import { subjectExport } from './subject-export';
 import { ordersSearch } from './search';
+import { ordersDashboard } from './dashboard';
 import {
 	MANAGER_ROLE_NAME,
 	NOTIFY_ORDER_CREATED,
@@ -116,6 +117,7 @@ export default defineModule({
 		}
 	],
 	search: ordersSearch,
+	dashboard: ordersDashboard,
 	notifications: {
 		types: [
 			{

@@ -12,6 +12,8 @@ export default {
 			order: 10,
 			size: 'sm',
 			permission: 'events.event.view',
+			// Die Woche steht schon im Wochenstreifen der Übersicht
+			defaultHidden: true,
 			component: () => import('./pages/widgets/UpcomingEventsWidget.svelte')
 		}
 	],

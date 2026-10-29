@@ -11,6 +11,7 @@ import { reservationsEndpoints } from './reservations.endpoints';
 import { resetAreas, resetUsers } from './reset';
 import { setsEndpoints } from './sets.endpoints';
 import { materialSearch } from './search';
+import { materialDashboard } from './dashboard';
 import { subjectExport } from './subject-export';
 import { onUserDeleted } from './user-deleted';
 import {
@@ -106,6 +107,8 @@ export default defineModule({
 	onUserDeleted,
 	subjectExport,
 	search: materialSearch,
+	/** Übersicht: Schäden/anstehende Reservierungen (Verwaltung), Reservierungen der Woche */
+	dashboard: materialDashboard,
 	jobs: [
 		{
 			id: 'legacy-cleanup',

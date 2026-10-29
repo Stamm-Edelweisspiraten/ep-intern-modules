@@ -14,6 +14,7 @@ export default {
 			description: 'Offene Rechnungen deiner verknüpften Mitglieder mit Zahlungsdaten',
 			order: 12,
 			size: 'sm',
+			defaultHidden: true,
 			permission: 'treasury.own.view',
 			component: () => import('./pages/widgets/MyInvoicesWidget.svelte')
 		},
@@ -23,8 +24,18 @@ export default {
 			description: 'Was in der Kasse gerade zu tun ist',
 			order: 15,
 			size: 'sm',
+			defaultHidden: true,
 			permission: 'treasury.cash.view',
 			component: () => import('./pages/widgets/CashTasksWidget.svelte')
+		},
+		{
+			id: 'accounts',
+			title: 'Kasse',
+			description: 'Kontostände und offene Forderungen',
+			order: 22,
+			size: 'sm',
+			permission: 'treasury.cash.view',
+			component: () => import('./pages/widgets/AccountsWidget.svelte')
 		}
 	]
 } satisfies ModuleUi;

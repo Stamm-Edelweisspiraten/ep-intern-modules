@@ -18,6 +18,7 @@ import {
 import { placesForPostalCode, suggestAddresses } from './address.service';
 import { deleteDocument, downloadDocument, uploadDocument } from './documents.endpoints';
 import { listFieldDefs } from './fields.service';
+import { ledGroupOverview } from './dashboard';
 import { inScopeSql, ledGroupIds } from './leader.service';
 import { getMember, listMemberIds, listMembers, updateMember } from './members.service';
 import { buildGroupSheets, buildMemberSheets, getMemberCatalog } from './sheets.service';
@@ -93,6 +94,16 @@ export const ledEndpoints: AnyApiEndpoint[] = [
 		tags,
 		permission: LED_VIEW,
 		handler: async ({ ctx }) => ledGroups(await ledGroupIds(ctx))
+	}),
+	defineEndpoint({
+		method: 'GET',
+		path: '/led/overview',
+		summary:
+			'Übersicht der geleiteten Gruppen (Mitgliederzahl, Gruppenstunde, Geburtstage der nächsten 14 Tage)',
+		tags,
+		permission: LED_VIEW,
+		rateLimit: { limit: 60, windowSec: 60 },
+		handler: ({ ctx }) => ledGroupOverview(ctx)
 	}),
 	defineEndpoint({
 		method: 'GET',

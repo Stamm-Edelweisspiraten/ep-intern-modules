@@ -9,6 +9,7 @@ import {
 	NOTIFY_REGISTRATION_OWN
 } from './schemas';
 import { actionsSearch } from './search';
+import { actionsDashboard } from './dashboard';
 import { actionEndpoints } from './actions.endpoints';
 import { shareEndpoints } from './shares.endpoints';
 import { withActionKeys } from './access';
@@ -170,6 +171,8 @@ export default defineModule({
 		healthRetentionSetting
 	],
 	search: actionsSearch,
+	/** Übersicht: offene Abrechnungen, Rückzahlungs-Wahl, Aktionen der Woche */
+	dashboard: actionsDashboard,
 	notifications: {
 		types: [
 			{

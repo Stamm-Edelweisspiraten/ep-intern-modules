@@ -12,6 +12,7 @@ export default {
 			title: 'Whiteboards',
 			description: 'Zuletzt bearbeitete Whiteboards',
 			order: 40,
+			defaultHidden: true,
 			size: 'md',
 			permission: 'whiteboard.board.view',
 			component: () => import('./pages/widgets/RecentBoardsWidget.svelte')

@@ -23,6 +23,8 @@ export default {
 		},
 		{
 			id: 'open-accounting',
+			/** Inhalt steht in „Zu erledigen“/„Diese Woche“; bleibt auswählbar */
+			defaultHidden: true,
 			title: 'Offene Abrechnungen',
 			description: 'Vergangene Aktionen, deren Abrechnung noch nicht abgeschlossen ist',
 			order: 16,

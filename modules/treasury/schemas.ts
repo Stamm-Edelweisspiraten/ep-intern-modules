@@ -1141,6 +1141,8 @@ export interface MyInvoice {
 	overdue: boolean;
 	/** Verwendungszweck wie in der Rechnungs-Mail */
 	purpose: string;
+	/** Anlass (Aktion, „Jahresbeitrag 2026“, „Bestellung“); `null` bei manuellen Rechnungen */
+	occasion: string | null;
 }
 
 export interface MyInvoices {

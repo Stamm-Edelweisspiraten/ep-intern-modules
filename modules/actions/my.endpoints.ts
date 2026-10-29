@@ -86,8 +86,11 @@ export async function loadMyRegistrations(ctx: RequestContext): Promise<MyRegist
 	}));
 }
 
-export async function loadOpenAccountings(ctx: RequestContext): Promise<OpenAccounting[]> {
-	const day = today();
+/** `editableActionsFilter` braucht die Principal-Schlüssel (`loadActionKeys`) vorab; `day` = heute */
+export async function loadOpenAccountings(
+	ctx: RequestContext,
+	day: string = today()
+): Promise<OpenAccounting[]> {
 	const found = await moduleDb(MODULE_ID).transaction((tx) =>
 		rowsOf(
 			tx,

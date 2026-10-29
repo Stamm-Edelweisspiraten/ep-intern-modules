@@ -95,7 +95,8 @@ async function annualTask(ctx: RequestContext): Promise<OverviewTask | null> {
 
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const;
 
-async function overview(ctx: RequestContext): Promise<Overview> {
+/** Kassen-Übersicht (`GET /overview`, Übersicht „Zu erledigen“ und Kachel „Kasse“); Rechte prüft der Aufrufer */
+export async function loadOverview(ctx: RequestContext): Promise<Overview> {
 	const data = await mdb().transaction(async (tx) => {
 		const accounts = await loadAccounts(tx);
 		const [u] = await rows(
@@ -365,7 +366,7 @@ export const reportEndpoints = [
 		summary: 'Übersicht: Kontostände, offene Beträge, letzte Buchungen',
 		tags: TAGS,
 		permission: 'treasury.cash.view',
-		handler: ({ ctx }) => overview(ctx)
+		handler: ({ ctx }) => loadOverview(ctx)
 	},
 	{
 		method: 'GET',

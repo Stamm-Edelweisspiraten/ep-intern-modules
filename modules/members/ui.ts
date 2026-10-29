@@ -35,6 +35,15 @@ export default {
 			size: 'sm',
 			permission: 'members.own.view',
 			component: () => import('./pages/widgets/MyMembersWidget.svelte')
+		},
+		{
+			id: 'my-group',
+			title: 'Meine Gruppe',
+			description: 'Geleitete Gruppen mit Mitgliederzahl, nächster Gruppenstunde und Geburtstagen',
+			order: 21,
+			size: 'sm',
+			permission: 'members.led-member.view',
+			component: () => import('./pages/widgets/MyGroupWidget.svelte')
 		}
 	]
 } satisfies ModuleUi;

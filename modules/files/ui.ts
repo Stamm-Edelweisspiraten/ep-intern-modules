@@ -21,6 +21,7 @@ export default {
 			title: 'Zuletzt geändert',
 			description: 'Zuletzt geänderte eigene und für dich freigegebene Dateien',
 			order: 70,
+			defaultHidden: true,
 			size: 'sm',
 			permission: 'files.file.view',
 			component: () => import('./pages/widgets/RecentFilesWidget.svelte')

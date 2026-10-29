@@ -4,7 +4,14 @@
  */
 import { notifyCustomer } from './customer-notify';
 import { sql, type SQL } from 'drizzle-orm';
-import { core, defineEndpoint, errors, logBestEffort, type ApiEndpoint } from '$lib/sdk/server';
+import {
+	core,
+	defineEndpoint,
+	errors,
+	logBestEffort,
+	type ApiEndpoint,
+	type RequestContext
+} from '$lib/sdk/server';
 import {
 	idParams,
 	memberSearchQuery,
@@ -52,6 +59,58 @@ async function buildOne(
 	return order;
 }
 
+/**
+ * Kopfzahlen für die Verwaltung (`GET /overview`, Übersicht „Zu erledigen“). Ohne Rechteprüfung –
+ * Aufrufer prüfen `orders.order.manage` bzw. `orders.stock.manage` selbst.
+ */
+export async function loadOrdersOverview(ctx: RequestContext): Promise<OrdersOverview> {
+	const data = await mdb().transaction(async (tx) => {
+		const [o] = await rows(
+			tx,
+			sql`SELECT count(*) FILTER (WHERE s.status IN ('open', 'partial')) AS open_orders,
+					coalesce(sum(s.open_qty) FILTER (WHERE s.status IN ('open', 'partial')), 0) AS open_items
+				FROM (SELECT ${ORDER_STATUS_SQL} AS status,
+					(SELECT coalesce(sum(i.quantity - i.delivered_qty - i.cancelled_qty), 0)
+						FROM order_items i WHERE i.order_id = o.id) AS open_qty
+					FROM orders o) s`
+		);
+		const [so] = await rows(
+			tx,
+			sql`SELECT count(*) AS n FROM supplier_orders WHERE closed_at IS NULL`
+		);
+		const refs = await rows(tx, sql`SELECT id FROM supplier_orders WHERE payable_ref IS NOT NULL`);
+		const stock = await loadStock(tx);
+		return {
+			openOrders: num(o?.open_orders),
+			openItems: num(o?.open_items),
+			openSupplierOrders: num(so?.n),
+			deficitVariants: stock.filter((r) => r.deficit > 0).length,
+			refs: refs.map((r) => payableRef(String(r.id)))
+		};
+	});
+	const treasury = await treasuryService();
+	let unpaid = 0;
+	if (treasury && data.refs.length) {
+		try {
+			const status = await treasury.payableStatus(data.refs);
+			unpaid = Object.values(status).filter(
+				(s) => s.status === 'open' || s.status === 'partial'
+			).length;
+		} catch (e) {
+			// nie das rohe Fehlerobjekt loggen (SQL-Parameter, #56)
+			logBestEffort('orders.overview.payable-status', e, { ctx });
+		}
+	}
+	return {
+		openOrders: data.openOrders,
+		openItems: data.openItems,
+		deficitVariants: data.deficitVariants,
+		openSupplierOrders: data.openSupplierOrders,
+		unpaidSupplierInvoices: unpaid,
+		treasuryActive: !!treasury
+	};
+}
+
 export const ordersEndpoints = [
 	defineEndpoint({
 		method: 'GET',
@@ -85,54 +144,7 @@ export const ordersEndpoints = [
 			if (!canManage(ctx) && !ctx.permissions.has(PERMISSIONS.stock)) {
 				throw errors.forbidden('Keine Berechtigung');
 			}
-			const data = await mdb().transaction(async (tx) => {
-				const [o] = await rows(
-					tx,
-					sql`SELECT count(*) FILTER (WHERE s.status IN ('open', 'partial')) AS open_orders,
-							coalesce(sum(s.open_qty) FILTER (WHERE s.status IN ('open', 'partial')), 0) AS open_items
-						FROM (SELECT ${ORDER_STATUS_SQL} AS status,
-							(SELECT coalesce(sum(i.quantity - i.delivered_qty - i.cancelled_qty), 0)
-								FROM order_items i WHERE i.order_id = o.id) AS open_qty
-							FROM orders o) s`
-				);
-				const [so] = await rows(
-					tx,
-					sql`SELECT count(*) AS n FROM supplier_orders WHERE closed_at IS NULL`
-				);
-				const refs = await rows(
-					tx,
-					sql`SELECT id FROM supplier_orders WHERE payable_ref IS NOT NULL`
-				);
-				const stock = await loadStock(tx);
-				return {
-					openOrders: num(o?.open_orders),
-					openItems: num(o?.open_items),
-					openSupplierOrders: num(so?.n),
-					deficitVariants: stock.filter((r) => r.deficit > 0).length,
-					refs: refs.map((r) => payableRef(String(r.id)))
-				};
-			});
-			const treasury = await treasuryService();
-			let unpaid = 0;
-			if (treasury && data.refs.length) {
-				try {
-					const status = await treasury.payableStatus(data.refs);
-					unpaid = Object.values(status).filter(
-						(s) => s.status === 'open' || s.status === 'partial'
-					).length;
-				} catch (e) {
-					// nie das rohe Fehlerobjekt loggen (SQL-Parameter, #56)
-					logBestEffort('orders.overview.payable-status', e, { ctx });
-				}
-			}
-			return {
-				openOrders: data.openOrders,
-				openItems: data.openItems,
-				deficitVariants: data.deficitVariants,
-				openSupplierOrders: data.openSupplierOrders,
-				unpaidSupplierInvoices: unpaid,
-				treasuryActive: !!treasury
-			};
+			return loadOrdersOverview(ctx);
 		}
 	}),
 	defineEndpoint({

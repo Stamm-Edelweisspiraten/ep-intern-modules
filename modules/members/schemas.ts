@@ -730,6 +730,41 @@ export const LED_VIEW = 'members.led-member.view';
 export const LED_EDIT = 'members.led-member.edit';
 export const LED_EXPORT = 'members.led-member.export';
 
+/** Geburtstag in der Kachel „Meine Gruppe“ (ohne weitere Personendaten) */
+export interface LedGroupBirthday {
+	memberId: string;
+	firstName: string;
+	lastName: string;
+	scoutName: string | null;
+	/** Datum des Geburtstags `YYYY-MM-DD` */
+	date: string;
+	/** Tage bis dahin (0 = heute) */
+	days: number;
+	/** Alter an diesem Tag */
+	age: number;
+}
+
+/** Eine geleitete Gruppe in `GET /led/overview` */
+export interface LedGroupSummary {
+	id: string;
+	name: string;
+	/** Aktive (nicht ausgetretene) Mitglieder */
+	memberCount: number;
+	meetingWeekday: number | null;
+	meetingTime: string | null;
+	meetingEndTime: string | null;
+	meetingPlace: string | null;
+	/** Nächste Gruppenstunde ab heute (`YYYY-MM-DD`) oder `null` ohne Wochentag */
+	nextMeeting: string | null;
+	birthdays: LedGroupBirthday[];
+}
+
+/** Antwort von `GET /led/overview` */
+export interface LedGroupOverview {
+	today: string;
+	groups: LedGroupSummary[];
+}
+
 const linkCode = z
 	.string()
 	.trim()

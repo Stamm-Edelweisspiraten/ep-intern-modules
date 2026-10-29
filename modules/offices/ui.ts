@@ -19,6 +19,7 @@ export default {
 			title: 'Meine Ämter',
 			description: 'Deine Ämter im Stamm',
 			order: 30,
+			defaultHidden: true,
 			size: 'sm',
 			permission: 'offices.office.view',
 			component: () => import('./pages/widgets/MyOfficesWidget.svelte')

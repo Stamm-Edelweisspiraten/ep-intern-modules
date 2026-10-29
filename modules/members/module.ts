@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { defineModule, type PrincipalProvider } from '$lib/sdk/server';
 import type { MembersService } from './contract';
 import { membersSearch } from './search';
+import { membersDashboard } from './dashboard';
 import { resetAreas, resetUsers } from './reset';
 import { onUserDeleted } from './user-deleted';
 import { addressEndpoints } from './address.endpoints';
@@ -214,6 +215,8 @@ export default defineModule({
 		{ name: '0017_group_age', sql: m0017 }
 	],
 	search: membersSearch,
+	/** Übersicht: Gruppenstunden im Wochenstreifen (eigene Mitglieder, Gruppenleitung) */
+	dashboard: membersDashboard,
 	notifications: {
 		types: [
 			{

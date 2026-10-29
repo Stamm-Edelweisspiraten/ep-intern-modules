@@ -8,6 +8,8 @@ export default {
 	dashboardWidgets: [
 		{
 			id: 'my-tasks',
+			/** Inhalt steht in „Zu erledigen“/„Diese Woche“; bleibt auswählbar */
+			defaultHidden: true,
 			title: 'Meine Aufgaben',
 			description: 'Offene Aufgaben und Unteraufgaben, die dir zugewiesen sind',
 			order: 15,

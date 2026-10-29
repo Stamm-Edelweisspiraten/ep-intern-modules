@@ -4,6 +4,7 @@ import { defineModule } from '$lib/sdk/server';
 import { resetAreas, resetUsers } from './reset';
 import { subjectExport } from './subject-export';
 import { treasurySearch } from './search';
+import { treasuryDashboard } from './dashboard';
 import { treasuryBackup } from './backup';
 import { accountEndpoints } from './accounts.endpoints';
 import { annualFeeEndpoints } from './annual-fee.endpoints';
@@ -309,6 +310,7 @@ export default defineModule({
 	backup: treasuryBackup,
 	resetUsers,
 	search: treasurySearch,
+	dashboard: treasuryDashboard,
 	notifications: {
 		// Nur Push an die verknüpften Konten; die Mails an die Kontaktadressen der Mitglieder bleiben unverändert
 		types: [

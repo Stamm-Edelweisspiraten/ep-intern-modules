@@ -8,7 +8,7 @@ import { idList, mdb, membersService, rows } from './db';
 import { invoicePurpose } from './documents';
 import { loadSummaries } from './invoices.endpoints';
 import { loadBankData } from './notify';
-import type { MyInvoice, MyInvoices } from './schemas';
+import type { InvoiceSummary, MyInvoice, MyInvoices } from './schemas';
 
 const TAGS = ['Modul: treasury'];
 
@@ -16,6 +16,14 @@ const TAGS = ['Modul: treasury'];
 const membersInvoicesWhere = (memberIds: string[]) =>
 	sql`(EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = i.id AND l.member_id IN (${idList(memberIds)}))
 		OR EXISTS (SELECT 1 FROM annual_fee_items x WHERE x.invoice_id = i.id AND x.member_id IN (${idList(memberIds)})))`;
+
+/** Anlass einer Rechnung für Titel wie „Rechnung Herbstfahrt 2026 bezahlen“ */
+export function invoiceOccasion(s: InvoiceSummary): string | null {
+	if (s.source === 'action') return s.action?.name ?? 'Aktion';
+	if (s.source === 'annual') return `Jahresbeitrag ${s.issuedOn.slice(0, 4)}`;
+	if (s.source === 'order') return 'Bestellung';
+	return null;
+}
 
 /** Nach Fälligkeit (älteste zuerst), dann Nummer */
 const byDue = (a: MyInvoice, b: MyInvoice) =>
@@ -68,7 +76,8 @@ export async function loadMyInvoices(ctx: RequestContext): Promise<MyInvoices> {
 			openCents: s.openCents,
 			dueDate: s.dueOn,
 			overdue: s.overdue,
-			purpose: invoicePurpose({ number: s.number, recipientName: s.recipientName })
+			purpose: invoicePurpose({ number: s.number, recipientName: s.recipientName }),
+			occasion: invoiceOccasion(s)
 		}))
 		.sort(byDue);
 
