@@ -27,8 +27,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { ConfirmDialog, NumberStepper } from '$lib/components/layout';
+	import { AssistTextarea, ConfirmDialog, NumberStepper } from '$lib/components/layout';
 	import type { FormConfig, FormStatus } from '../schemas';
 
 	let {
@@ -245,13 +244,18 @@
 
 	<div class="flex flex-col gap-1.5">
 		<Label for="reg-intro">Einleitungstext</Label>
-		<Textarea
+		<AssistTextarea
 			id="reg-intro"
 			rows={3}
 			maxlength={2000}
 			placeholder="Hinweise für Eltern, die über dem Formular stehen"
 			bind:value={draft.intro}
 			{disabled}
+			assist={{
+				module: 'actions',
+				purpose: 'registration-intro',
+				context: { module: 'actions', kind: 'action', id: actionId }
+			}}
 		/>
 	</div>
 

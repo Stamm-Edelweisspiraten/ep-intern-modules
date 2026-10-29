@@ -19,8 +19,8 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { TagInput } from '$lib/components/ui/tag-input';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import {
+		AssistTextarea,
 		ColorBadge,
 		ConfirmDialog,
 		FormField,
@@ -1013,11 +1013,25 @@
 									id={ids.description}
 									error={fieldErrors.description}
 								>
-									<Textarea
+									<AssistTextarea
 										id={ids.description}
 										bind:value={description}
 										rows={4}
 										maxlength={10000}
+										assist={{
+											module: 'events',
+											purpose: 'event-description',
+											context: loaded
+												? { module: 'events', kind: 'event', id: loaded.id }
+												: undefined,
+											extra: () => ({
+												title,
+												location,
+												startsOn,
+												startsAt: startsTime,
+												tags: tags.join(', ')
+											})
+										}}
 										aria-invalid={!!fieldErrors.description}
 										aria-describedby={describe('description')}
 									/>

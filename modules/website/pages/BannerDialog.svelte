@@ -8,8 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, AssistTextarea } from '$lib/components/layout';
 	import { BUSY_SAVE } from '$lib/components/layout/busy';
 	import { MAX_BANNER_TEXT, bannerInput, type Banner } from '../schemas';
 	import {
@@ -142,7 +141,13 @@
 				error={errors.text}
 				hint={`${text.length} / ${MAX_BANNER_TEXT} Zeichen`}
 			>
-				<Textarea id="banner-text" bind:value={text} rows={3} maxlength={MAX_BANNER_TEXT} />
+				<AssistTextarea
+					id="banner-text"
+					bind:value={text}
+					rows={3}
+					maxlength={MAX_BANNER_TEXT}
+					assist={{ module: 'website', purpose: 'banner', extra: () => ({ title }) }}
+				/>
 			</FormField>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<FormField

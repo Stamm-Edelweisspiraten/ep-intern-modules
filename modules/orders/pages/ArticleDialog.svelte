@@ -9,7 +9,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, AssistTextarea } from '$lib/components/layout';
 	import {
 		MAX_DESCRIPTION,
 		MAX_NOTES,
@@ -217,9 +217,14 @@
 					error={fieldError('description')}
 					hint="Für alle sichtbar. Zeilenumbrüche bleiben erhalten."
 				>
-					<Textarea
+					<AssistTextarea
 						id="article-description"
 						bind:value={description}
+						assist={{
+							module: 'orders',
+							purpose: 'article-description',
+							extra: () => ({ name: title })
+						}}
 						rows={4}
 						maxlength={MAX_DESCRIPTION}
 						aria-invalid={fieldError('description') ? 'true' : undefined}

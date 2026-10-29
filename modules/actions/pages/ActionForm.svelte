@@ -8,8 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, BUSY_SAVE } from '$lib/components/layout';
+	import { AssistTextarea, FormField, BUSY_SAVE } from '$lib/components/layout';
 	import { actionInput, type ActionSummary } from '../schemas';
 
 	let {
@@ -173,11 +172,17 @@
 				/>
 			</FormField>
 			<FormField label="Beschreibung" id="a-description" error={fieldErrors.description}>
-				<Textarea
+				<AssistTextarea
 					id="a-description"
 					bind:value={description}
 					rows={4}
 					maxlength={5000}
+					assist={{
+						module: 'actions',
+						purpose: 'action-description',
+						context: action ? { module: 'actions', kind: 'action', id: action.id } : undefined,
+						extra: () => ({ name, location, startsOn, endsOn })
+					}}
 					aria-invalid={!!fieldErrors.description}
 					aria-describedby={fieldErrors.description ? 'a-description-error' : undefined}
 				/>

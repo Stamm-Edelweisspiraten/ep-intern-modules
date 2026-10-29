@@ -6,7 +6,7 @@ paths: ["src/lib/modules/messages/**", "tests/**/messages*", "scripts/seed-demo-
 
 E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bereich: Rich-Text-Editor, mehrere Anhänge, wählbarer Absender
 (persönlich `vorname.nachname@domain`, Funktions-Adressen der eigenen Ämter, Gruppen-Adresse, Stamm-Adresse),
-Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.6.0,
+Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.7.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70) und „Postfächer“ (`admin: true`, Verwaltung, siehe unten).
 
 ## Dateien (`src/lib/modules/messages/`)
@@ -292,3 +292,9 @@ Verwaltung unter Administration → Module → „Postfächer“ (`/modules/mess
 
 ## Offen
 Opt-out/Abbestellen, Vorlagen, zeitgesteuerter Versand, Platzhalter („Hallo {{vorname}}“), Test-Mail an sich selbst, Anhang-Download im Verlauf.
+
+## KI-Schreibhilfe (2026-10-29, v1.7.0)
+`assist.ts`: Recht `messages.ai.use`; Textstellen `mail` (Editor in `ComposePage`, Kontext `actions:action` über `?action=<id>` bzw. Preset
+`actionId`), `mail-subject` (Betreff-Varianten aus dem Text), `inbox-reply` (bei `?reply=` und `core.ai.assist.allowInbox`): Kontext
+`messages:inbox-message` = Text der Mail ohne Absender und ohne Zitatverlauf (`withoutQuotedHistory`), Zugriff wie `loadInboxRow` (fremd 404).
+`ComposePreset` kennt zusätzlich `addresses` und `actionId` (Info-Mail aus Aktionen).

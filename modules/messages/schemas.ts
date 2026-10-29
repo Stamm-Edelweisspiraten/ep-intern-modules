@@ -19,6 +19,8 @@ export const PERM_INBOX_MANAGE = 'messages.inbox.manage';
 export const PERM_WEBSITE_CONTACT = 'messages.website.contact';
 /** Zusätzliche Postfächer und Weiterleitungen verwalten (Verwaltungsseite „Postfächer“) */
 export const PERM_MAILBOX_MANAGE = 'messages.mailbox.manage';
+/** KI-Schreibhilfe beim Verfassen */
+export const PERM_AI = 'messages.ai.use';
 
 /** Kontaktformular der Website (`POST /website/contact`): Grenzen wie auf der Website */
 export const CONTACT_LIMITS = { name: 100, email: 254, phone: 40, message: 5000 } as const;

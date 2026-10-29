@@ -33,7 +33,9 @@
 	import { BrowserEmbed, browserImage } from './node-views.svelte';
 	import SlashMenu, { type SlashItem } from './SlashMenu.svelte';
 	import type { NoteSync } from './sync.svelte';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Toolbar from './Toolbar.svelte';
+	import NoteAssist from './NoteAssist.svelte';
 
 	let {
 		sync,
@@ -56,6 +58,9 @@
 	} = $props();
 
 	let element = $state<HTMLDivElement | null>(null);
+	let assist = $state<NoteAssist | null>(null);
+	/** Schreibhilfe freigegeben (Recht `notes.ai.use`, KI eingerichtet) und Notiz bearbeitbar */
+	const assistOn = $derived(assist?.available() ?? false);
 	let tick = $state(0);
 	let frame = 0;
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -271,6 +276,22 @@
 			run: () => void createSubpage()
 		}
 	];
+	/** Slash-Menü mit Schreibhilfe, wenn sie freigegeben ist */
+	const slashWithAssist = $derived<SlashItem[]>(
+		assistOn
+			? [
+					...slashItems,
+					{
+						id: 'assist',
+						label: 'Schreibhilfe',
+						description: 'Entwurf, Zusammenfassung, Fortsetzung oder Aufgaben mit KI',
+						icon: Sparkles,
+						keywords: 'ki ai schreiben zusammenfassen assistent',
+						run: () => assist?.start()
+					}
+				]
+			: slashItems
+	);
 
 	onMount(() => {
 		if (!element) return;
@@ -402,6 +423,7 @@
 		onlink={openLink}
 		onimage={() => pickImage()}
 		onembed={() => (embedOpen = true)}
+		onassist={assistOn ? () => assist?.start() : undefined}
 	/>
 	<div class="mx-auto w-full max-w-[52rem] flex-1 px-4 pt-8 pb-32 sm:px-10">
 		{@render header?.()}
@@ -409,8 +431,14 @@
 	</div>
 </div>
 
-<SlashMenu bind:this={slash} {editor} {tick} items={slashItems} />
-<BubbleMenu {editor} {tick} onlink={openLink} />
+<SlashMenu bind:this={slash} {editor} {tick} items={slashWithAssist} />
+<BubbleMenu
+	{editor}
+	{tick}
+	onlink={openLink}
+	onassist={assistOn ? () => assist?.start() : undefined}
+/>
+<NoteAssist bind:this={assist} {editor} {noteId} {canEdit} />
 <LinkDialog bind:open={linkOpen} initial={linkInitial} onapply={applyLink} />
 <EmbedPicker
 	bind:open={embedOpen}

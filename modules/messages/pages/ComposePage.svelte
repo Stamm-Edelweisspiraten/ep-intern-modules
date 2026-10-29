@@ -8,16 +8,19 @@
 	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
 	import { apiFetch, can } from '$lib/sdk/client';
+	import { assistStatus } from '$lib/sdk/client/assist';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { contrastTextColor } from '$lib/components/ui/color-picker/color';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
-	import { RichTextEditor } from '$lib/components/ui/rich-text-editor';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import {
+		AssistInput,
+		AssistRichTextEditor,
+		type AssistConfig,
 		BUSY_SEND,
 		ConfirmDialog,
 		FormField,
@@ -83,6 +86,29 @@
 	/** Anhänge der weitergeleiteten Mail, die mitgehen */
 	let forwarded = $state<InboxAttachmentInfo[]>([]);
 	const inboxRef = $derived(replyOf ?? forwardOf);
+	/** Aktion, aus der die Schreibhilfe Eckdaten holt (`?action=<id>`, z. B. Info-Mail an Teilnehmende) */
+	let actionId = $state<string | null>(null);
+	/** Eingegangene Mail darf als Kontext an die KI (Einstellung der Verwaltung) */
+	let assistInbox = $state(false);
+	void assistStatus().then((st) => (assistInbox = st.allowInbox));
+	const bodyAssist = $derived<AssistConfig>(
+		replyOf && assistInbox
+			? {
+					module: 'messages',
+					purpose: 'inbox-reply',
+					context: { module: 'messages', kind: 'inbox-message', id: replyOf }
+				}
+			: {
+					module: 'messages',
+					purpose: 'mail',
+					context: actionId ? { module: 'actions', kind: 'action', id: actionId } : undefined
+				}
+	);
+	const subjectAssist = $derived<AssistConfig>({
+		module: 'messages',
+		purpose: 'mail-subject',
+		context: actionId ? { module: 'actions', kind: 'action', id: actionId } : undefined
+	});
 	const pageTitle = $derived(
 		composeMode === 'forward' ? 'Weiterleiten' : composeMode ? 'Antworten' : 'Neue Nachricht'
 	);
@@ -124,10 +150,16 @@
 				const preset = JSON.parse(raw) as ComposePreset;
 				groupIds = [...new Set(preset.groupIds ?? [])];
 				members = (preset.members ?? []).map((m) => ({ id: m.id, name: m.name }));
+				addresses = [...new Set((preset.addresses ?? []).map((a) => a.trim().toLowerCase()))]
+					.filter(Boolean)
+					.slice(0, 100);
+				if (preset.actionId) actionId = preset.actionId;
 			}
 		} catch {
 			// Auswahl nicht lesbar – leer starten
 		}
+		const action = new URLSearchParams(location.search).get('action');
+		if (action && /^[0-9a-f-]{36}$/i.test(action)) actionId = action;
 		const fromUrl = new URLSearchParams(location.search).get('group');
 		if (fromUrl && !groupIds.includes(fromUrl)) groupIds = [...groupIds, fromUrl];
 	}
@@ -875,14 +907,22 @@
 						hint={subjectHint || undefined}
 						required
 					>
-						<Input id="m-subject" bind:value={subject} maxlength={200} autocomplete="off" />
+						<AssistInput
+							id="m-subject"
+							bind:value={subject}
+							maxlength={200}
+							autocomplete="off"
+							assist={subjectAssist}
+							source={() => bodyHtml}
+						/>
 					</FormField>
 					<div class="space-y-1.5">
 						<span class="text-sm font-medium" id="m-body-label">Text</span>
-						<RichTextEditor
+						<AssistRichTextEditor
 							id="m-body"
 							label="Nachrichtentext"
 							bind:value={bodyHtml}
+							assist={bodyAssist}
 							invalid={!!errors.bodyHtml}
 							describedby={errors.bodyHtml ? 'm-body-error' : undefined}
 							placeholder="Liebe Eltern, liebe Pfadfinder*innen …"

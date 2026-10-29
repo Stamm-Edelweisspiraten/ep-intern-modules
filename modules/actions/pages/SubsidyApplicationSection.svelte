@@ -11,7 +11,13 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Alert } from '$lib/components/ui/alert';
 	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
-	import { EmptyState, ErrorState, FormField, LoadingState } from '$lib/components/layout';
+	import {
+		EmptyState,
+		ErrorState,
+		FormField,
+		LoadingState,
+		AssistInput
+	} from '$lib/components/layout';
 	import { BUSY_SAVE } from '$lib/components/layout/busy';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
@@ -203,7 +209,17 @@
 						<Input id="sa-art" bind:value={freizeitArt} maxlength={80} disabled={!canEdit} />
 					</FormField>
 					<FormField label="Thema der Freizeit" id="sa-topic" error={errors.topic}>
-						<Input id="sa-topic" bind:value={topic} maxlength={150} disabled={!canEdit} />
+						<AssistInput
+							id="sa-topic"
+							bind:value={topic}
+							maxlength={150}
+							disabled={!canEdit}
+							assist={{
+								module: 'actions',
+								purpose: 'subsidy-topic',
+								context: { module: 'actions', kind: 'action', id: actionId }
+							}}
+						/>
 					</FormField>
 					<div class="flex items-start gap-2">
 						<Checkbox

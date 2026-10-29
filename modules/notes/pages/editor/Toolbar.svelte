@@ -16,6 +16,7 @@
 	import Italic from '@lucide/svelte/icons/italic';
 	import LayoutTemplate from '@lucide/svelte/icons/layout-template';
 	import Link from '@lucide/svelte/icons/link';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import List from '@lucide/svelte/icons/list';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
@@ -41,7 +42,8 @@
 		canEdit,
 		onlink,
 		onimage,
-		onembed
+		onembed,
+		onassist
 	}: {
 		editor: Editor | null;
 		tick: number;
@@ -49,6 +51,8 @@
 		onlink: () => void;
 		onimage: () => void;
 		onembed: () => void;
+		/** KI-Schreibhilfe (Auswahl überarbeiten bzw. an der Cursorposition schreiben); ohne Angabe kein Knopf */
+		onassist?: () => void;
 	} = $props();
 
 	const off = $derived(!canEdit || !editor);
@@ -420,6 +424,21 @@
 				disabled={off}
 				onclick={() => run((c) => c.unsetAllMarks().clearNodes())}
 			/>
+			{#if onassist}
+				<span class="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true"></span>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					class="h-8 shrink-0 gap-1.5 px-2 text-link"
+					disabled={off}
+					onmousedown={(e) => e.preventDefault()}
+					onclick={onassist}
+				>
+					<Sparkles class="size-4" aria-hidden="true" />
+					<span>Schreibhilfe</span>
+				</Button>
+			{/if}
 		</div>
 	</div>
 </Tooltip.Provider>

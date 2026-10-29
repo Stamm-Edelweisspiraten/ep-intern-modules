@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { AssistTextarea } from '$lib/components/layout';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { apiFetch } from '$lib/sdk/client';
@@ -12,7 +13,6 @@
 	} from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import { MAX_BIO, bioInput, type MyOffices } from '../schemas';
 	import { BASE, errorText, issuesToErrors } from './helpers';
 
@@ -134,9 +134,10 @@
 		<form class="space-y-3" onsubmit={save} novalidate>
 			<div class="grid gap-1.5">
 				<Label for={fieldId} class="sr-only">Meine Beschreibung</Label>
-				<Textarea
+				<AssistTextarea
 					id={fieldId}
 					bind:value={draft}
+					assist={{ module: 'offices', purpose: 'office-bio' }}
 					rows={5}
 					maxlength={MAX_BIO}
 					placeholder="Z. B. was du in deinem Amt machst und wie man dich erreicht."

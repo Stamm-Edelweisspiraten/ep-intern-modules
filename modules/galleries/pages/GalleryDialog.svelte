@@ -9,8 +9,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { ConfirmDialog, FormField, SharePanel } from '$lib/components/layout';
+	import { ConfirmDialog, FormField, SharePanel, AssistTextarea } from '$lib/components/layout';
 	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
@@ -286,9 +285,14 @@
 						/>
 					</FormField>
 					<FormField label="Beschreibung" id={ids.description} error={fieldErrors.description}>
-						<Textarea
+						<AssistTextarea
 							id={ids.description}
 							bind:value={description}
+							assist={{
+								module: 'galleries',
+								purpose: 'gallery-description',
+								extra: () => ({ title })
+							}}
 							rows={4}
 							maxlength={MAX_DESCRIPTION}
 							aria-invalid={!!fieldErrors.description}

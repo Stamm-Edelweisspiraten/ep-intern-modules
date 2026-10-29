@@ -7,6 +7,7 @@
 	import Highlighter from '@lucide/svelte/icons/highlighter';
 	import Italic from '@lucide/svelte/icons/italic';
 	import Link from '@lucide/svelte/icons/link';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Strikethrough from '@lucide/svelte/icons/strikethrough';
 	import Underline from '@lucide/svelte/icons/underline';
 	import { Button } from '$lib/components/ui/button';
@@ -16,11 +17,14 @@
 	let {
 		editor,
 		tick,
-		onlink
+		onlink,
+		onassist
 	}: {
 		editor: Editor | null;
 		tick: number;
 		onlink: () => void;
+		/** Schreibhilfe für die Auswahl (nur, wenn verfügbar) */
+		onassist?: () => void;
 	} = $props();
 
 	let menuOpen = $state(false);
@@ -115,6 +119,19 @@
 		>
 			<Link class="size-3.5" />
 		</Button>
+		{#if onassist}
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon-xs"
+				class="text-link"
+				aria-label="Schreibhilfe für die Auswahl"
+				title="Schreibhilfe für die Auswahl"
+				onclick={onassist}
+			>
+				<Sparkles class="size-3.5" />
+			</Button>
+		{/if}
 		<span class="mx-0.5 h-4 w-px bg-border" aria-hidden="true"></span>
 		<ColorMenu
 			label="Textfarbe"

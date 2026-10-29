@@ -13,12 +13,12 @@
 	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import {
 		ContactListField,
 		EntityAvatar,
 		FormField,
-		type ContactRow
+		type ContactRow,
+		AssistTextarea
 	} from '$lib/components/layout';
 	import {
 		MAX_DESCRIPTION,
@@ -419,9 +419,14 @@
 							error={fieldErrors.description}
 							hint="Zeilenumbrüche bleiben in der Anzeige erhalten."
 						>
-							<Textarea
+							<AssistTextarea
 								id="office-description"
 								bind:value={description}
+								assist={{
+									module: 'offices',
+									purpose: 'office-description',
+									extra: () => ({ name })
+								}}
 								rows={6}
 								maxlength={MAX_DESCRIPTION}
 								placeholder="Aufgaben und Zuständigkeiten des Amts"

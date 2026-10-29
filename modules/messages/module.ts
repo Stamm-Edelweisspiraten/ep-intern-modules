@@ -10,11 +10,13 @@ import { messageEndpoints } from './messages.endpoints';
 import { mailboxAdminEndpoints } from './mailboxes-admin.endpoints';
 import { onMemberDeleted, onUserDeleted, subjectExport } from './privacy';
 import { isValidDomain } from './sender';
+import { messagesAssist } from './assist';
 import {
 	INBOX_RETENTION_DEFAULT,
 	INBOX_SETTING_KEYS,
 	MAX_RECIPIENTS_DEFAULT,
 	MAX_RECIPIENTS_LIMIT,
+	PERM_AI,
 	PERM_INBOX_MANAGE,
 	PERM_INBOX_STAMM,
 	PERM_MAILBOX_MANAGE,
@@ -48,7 +50,7 @@ export default defineModule({
 		name: 'Nachrichten',
 		description:
 			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.6.0',
+		version: '1.7.0',
 		dependencies: ['members'],
 		optionalDependencies: ['offices'],
 		permissions: [
@@ -58,7 +60,8 @@ export default defineModule({
 			PERM_INBOX_STAMM,
 			PERM_INBOX_MANAGE,
 			PERM_WEBSITE_CONTACT,
-			PERM_MAILBOX_MANAGE
+			PERM_MAILBOX_MANAGE,
+			PERM_AI
 		],
 		permissionDescriptions: {
 			[PERM_SEND]:
@@ -73,7 +76,9 @@ export default defineModule({
 			[PERM_WEBSITE_CONTACT]:
 				'Nur Website-Endpunkte: Anfragen aus dem Kontakt- und dem Probestunden-Formular der Stammeswebsite in den Posteingang legen (Scope für den API-Key der Website)',
 			[PERM_MAILBOX_MANAGE]:
-				'Zusätzliche Postfächer (z. B. für ein Lager) anlegen, ändern, löschen und an Benutzer*innen, Mitglieder oder Gruppen freigeben sowie Weiterleitungen weiterer Adressen in bestehende Postfächer verwalten'
+				'Zusätzliche Postfächer (z. B. für ein Lager) anlegen, ändern, löschen und an Benutzer*innen, Mitglieder oder Gruppen freigeben sowie Weiterleitungen weiterer Adressen in bestehende Postfächer verwalten',
+			[PERM_AI]:
+				'KI-Schreibhilfe beim Verfassen von Nachrichten nutzen (Entwürfe, Umformulieren, Betreff, Antwortentwürfe)'
 		},
 		// Gruppenleitungen lesen das Postfach ihrer Gruppe – dafür brauchen sie das Senden-Recht
 		defaultRoleGrants: { Gruppenleitung: [PERM_SEND] },
@@ -263,6 +268,7 @@ export default defineModule({
 	],
 	/** Ungelesene Mails der eigenen Postfächer am Eintrag „Nachrichten“ der Seitenleiste */
 	navBadge: { count: unreadTotal },
+	assist: messagesAssist,
 	onUserDeleted,
 	onMemberDeleted,
 	subjectExport,

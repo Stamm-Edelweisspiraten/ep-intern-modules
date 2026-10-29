@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { notesAssist, PERM_AI } from './assist';
 import { withNoteContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
 import { flushAll } from './doc.service';
@@ -23,18 +24,20 @@ export default defineModule({
 		name: 'Notizen',
 		description:
 			'Gemeinsame Notizen mit Unterseiten: live zusammen schreiben, Markdown, Tabellen, Bilder, eingebettete Whiteboards, Teilen und Export (Markdown, PDF, Word, HTML)',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Notizen an Aktionen */
 		optionalDependencies: ['members', 'actions'],
-		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
+		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll, PERM_AI],
 		permissionDescriptions: {
 			[PERM.view]:
 				'Notizen nutzen: eigene, freigegebene und über Aktionen sichtbare Notizen ansehen und – je nach Freigabe – live mitbearbeiten',
 			[PERM.create]:
 				'Eigene Notizen anlegen und importieren (auch für Aktionen mit Bearbeiten-Recht)',
 			[PERM.viewAll]: 'Alle Notizen ansehen, auch ohne Freigabe',
-			[PERM.editAll]: 'Alle Notizen bearbeiten, teilen, verschieben und löschen'
+			[PERM.editAll]: 'Alle Notizen bearbeiten, teilen, verschieben und löschen',
+			[PERM_AI]:
+				'KI-Schreibhilfe in Notizen nutzen (markierten Text überarbeiten, zusammenfassen, weiterschreiben, Aufgaben ableiten)'
 		},
 		navigation: [
 			{
@@ -50,6 +53,7 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_user_prefs', sql: m0002 }
 	],
+	assist: notesAssist,
 	search: notesSearch,
 	provides: noteRefsService satisfies NoteRefsService,
 	notifications: {

@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { websiteAssist, PERM_AI } from './assist';
 import { NOTIFY_POST_INVITED, NOTIFY_POST_STATUS } from './schemas';
 import { contentEndpoints } from './content.endpoints';
 import { postsEndpoints } from './posts.endpoints';
@@ -13,17 +14,18 @@ export default defineModule({
 		id: 'website',
 		name: 'Website',
 		description: 'Inhalte der Stammeswebsite: Banner/Hinweise, häufige Fragen und Blog',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: [],
 		/** Gruppen (Verknüpfung, Mitschreiben an Gruppen/Mitglieder), Termine und öffentliche Galerien */
 		optionalDependencies: ['members', 'events', 'galleries'],
-		permissions: [
+		permissions: [PERM_AI, 
 			'website.content.manage',
 			'website.post.write',
 			'website.post.publish',
 			'website.content.read'
 		],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Blog, häufige Fragen und Banner nutzen',
 			'website.content.manage': 'Banner/Hinweise und häufige Fragen der Stammeswebsite pflegen',
 			'website.post.write':
 				'Blog-Beiträge schreiben (Entwürfe) und freigegebene Beiträge mitbearbeiten; Grundrecht für den Blog',
@@ -43,6 +45,7 @@ export default defineModule({
 		]
 	},
 	migrations: [{ name: '0001_init', sql: m0001 }],
+	assist: websiteAssist,
 	search: websiteSearch,
 	notifications: {
 		types: [

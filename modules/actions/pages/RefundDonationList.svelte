@@ -11,7 +11,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
-	import { MoneyInput } from '$lib/components/layout';
+	import { MoneyInput, AssistTextarea } from '$lib/components/layout';
+	import { Label } from '$lib/components/ui/label';
 	import { downloadPdf } from '$lib/components/layout/download';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
@@ -123,12 +124,21 @@
 		}
 	}
 
+	/** Persönlicher Begleittext für die Briefe (nur für das nächste PDF, nicht gespeichert) */
+	let letterNote = $state('');
+
 	async function letters(ids?: string[]) {
 		lettersBusy = true;
 		try {
 			await downloadPdf(
 				`/api/v1${base}/letters.pdf`,
-				{ method: 'POST', body: JSON.stringify(ids ? { itemIds: ids } : {}) },
+				{
+					method: 'POST',
+					body: JSON.stringify({
+						...(ids ? { itemIds: ids } : {}),
+						...(letterNote.trim() ? { note: letterNote.trim() } : {})
+					})
+				},
 				'Rueckzahlung-Briefe.pdf'
 			);
 			await onchanged();
@@ -241,6 +251,28 @@
 			</Button>
 		{/if}
 	</div>
+
+	{#if editable}
+		<div class="space-y-1.5">
+			<Label for="refund-letter-note">Persönlicher Text im Brief (optional)</Label>
+			<AssistTextarea
+				id="refund-letter-note"
+				bind:value={letterNote}
+				rows={3}
+				maxlength={1500}
+				placeholder="z. B. ein Dank für die tolle Fahrt"
+				aria-describedby="refund-letter-note-hint"
+				assist={{
+					module: 'actions',
+					purpose: 'refund-letter',
+					context: { module: 'actions', kind: 'action', id: actionId }
+				}}
+			/>
+			<p id="refund-letter-note-hint" class="text-xs text-muted-foreground">
+				Steht in allen Briefen nach der Einleitung. Wird nicht gespeichert.
+			</p>
+		</div>
+	{/if}
 
 	<ul class="max-h-[50dvh] divide-y overflow-auto rounded-lg border">
 		{#each items as it (it.id ?? it.participantId)}

@@ -6,7 +6,7 @@ paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*
 
 Freizeiten/Veranstaltungen: Stammdaten, Freigabe, Teilnehmende, Kalkulation (+ Zuschuss), öffentlicher Anmeldelink,
 Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Überschusses. Schema `mod_actions`,
-Version 1.8.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
+Version 1.9.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
 Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
 ## Dateien (`src/lib/modules/actions/`)
@@ -483,3 +483,12 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
 ## Whiteboards an der Aktion (2026-10-26)
 Karte `pages/ActionWhiteboardsCard.svelte` in der Übersicht (mit `whiteboard.board.view`, nur REST `GET /modules/whiteboard/boards/by-action/:id`):
 Liste der Whiteboards der Aktion + „Whiteboard“ anlegen (mehrere je Aktion). Zugriff der Aktion vererbt sich (`accessibleActions`). Details `module-whiteboard.md`.
+
+## KI-Schreibhilfe (2026-10-29, v1.9.0, keine Migration)
+`assist.ts`: Recht `actions.ai.use`, Kontext `actions:action` (nur Eckdaten: Name, Zeitraum, Ort, Beiträge, Anmeldefrist/Plätze, Beschreibung –
+keine Teilnehmenden), Textstellen `action-description` (`ActionForm`), `registration-intro` (`FormSettings`), `registration-disclaimer`
+(`DisclaimerEditor`, Platzhalter `{{…}}`), `form-info`/`form-label` (Formular-Builder über `FormBuilder assist`), `subsidy-topic`, `packing-list`
+(`ActionAssistTools`: Liste kopieren), `action-recap` (nach Ende, mit `website.post.write`: Blog-Entwurf anlegen), `refund-letter` (Begleittext im
+Brief, `POST …/refund/letters.pdf { note? }`, nicht gespeichert). **Info-Mail an Teilnehmende** (`ParticipantsTab`, mit `messages.message.send`):
+Auswahl bzw. gefilterte Liste → `sessionStorage['messages:compose']` (`members` mit `memberId`, sonst `addresses` aus `contactEmail`, `actionId`) →
+`/modules/messages/new?action=<id>`. DTO `Participant.memberId` neu.

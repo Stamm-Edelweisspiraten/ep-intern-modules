@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { galleriesAssist, PERM_AI } from './assist';
 import { NOTIFY_GALLERY_SHARED } from './schemas';
 import { galleriesSearch } from './search';
 import { galleriesEndpoints } from './galleries.endpoints';
@@ -19,13 +20,14 @@ export default defineModule({
 		id: 'galleries',
 		name: 'Galerien',
 		description: 'Bildergalerien mit Freigaben, Termin-Zuordnung und Stammeswebsite',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Termine für die Zuordnung von Galerien */
 		optionalDependencies: ['members', 'events'],
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen öffentliche und für sie freigegebene Galerien */
 		defaultRoleGrants: { Mitglied: ['galleries.gallery.view'] },
 		permissions: [
+			PERM_AI,
 			'galleries.gallery.view',
 			'galleries.gallery.create',
 			'galleries.gallery.view-all',
@@ -34,6 +36,8 @@ export default defineModule({
 			'galleries.website.read'
 		],
 		permissionDescriptions: {
+			[PERM_AI]:
+				'KI-Schreibhilfe für Galerie- und Bildbeschreibungen nutzen (Bilder nur, wenn die Verwaltung es erlaubt)',
 			'galleries.gallery.view':
 				'Galerien ansehen (eigene, freigegebene und öffentliche); Grundrecht für das Modul',
 			'galleries.gallery.create': 'Galerien anlegen und Bilder hochladen',
@@ -61,6 +65,7 @@ export default defineModule({
 	],
 	/** Verweise auf öffentliche Galerien (z. B. Blog-Beiträge im Modul `website`) */
 	provides: galleryRefsService satisfies GalleryRefsService,
+	assist: galleriesAssist,
 	search: galleriesSearch,
 	notifications: {
 		types: [

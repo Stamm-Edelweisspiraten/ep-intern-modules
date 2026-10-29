@@ -2,13 +2,16 @@
 	import { toast } from 'svelte-sonner';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
+	import Mail from '@lucide/svelte/icons/mail';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Search from '@lucide/svelte/icons/search';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -66,6 +69,36 @@
 		onsheets: () => void;
 		onchanged: () => Promise<void> | void;
 	} = $props();
+
+	// --- Info-Mail an Teilnehmende (Modul Nachrichten) ---------------------------
+
+	/** Nur mit aktivem Modul „Nachrichten“ und Senderecht (Modulrechte fehlen bei deaktiviertem Modul) */
+	const canMail = $derived(can((page.data.permissions ?? []) as string[], 'messages.message.send'));
+	const actionId = $derived(decodeURIComponent(base.split('/').pop() ?? ''));
+
+	/**
+	 * Übergibt die Empfänger an „Neue Nachricht“ (gleicher Weg wie die Mitgliederliste):
+	 * Mitglieder über ihre ID, alle anderen über die Kontaktadresse aus der Anmeldung.
+	 * Ausgewählte Personen, sonst alle gefilterten.
+	 */
+	function mailParticipants() {
+		const chosen = selected.length ? participants.filter((p) => selected.includes(p.id)) : filtered;
+		const members = chosen
+			.filter((p) => p.memberId)
+			.map((p) => ({ id: p.memberId as string, name: p.name }));
+		const addresses = chosen
+			.filter((p) => !p.memberId && p.contactEmail)
+			.map((p) => (p.contactEmail as string).toLowerCase());
+		try {
+			sessionStorage.setItem(
+				'messages:compose',
+				JSON.stringify({ members, addresses: [...new Set(addresses)], actionId })
+			);
+		} catch {
+			// ohne sessionStorage: Nachricht ohne Vorbelegung öffnen
+		}
+		void goto(`/modules/messages/new?action=${encodeURIComponent(actionId)}`);
+	}
 
 	// --- Schnellfilter ---------------------------------------------------------
 
@@ -254,6 +287,12 @@
 				<Button variant="outline" href={`/api/v1${base}/participants.csv`} download>
 					<Download /> CSV exportieren
 				</Button>
+				{#if canMail && participants.length}
+					<Button variant="outline" onclick={mailParticipants}>
+						<Mail />
+						{selected.length ? `Info-Mail an Auswahl (${selected.length})` : 'Info-Mail'}
+					</Button>
+				{/if}
 				{#if canExportSheets}
 					<Button variant="outline" disabled={sheetsBusy} onclick={onsheets}>
 						<FileDown />

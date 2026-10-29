@@ -11,9 +11,8 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import { Label } from '$lib/components/ui/label';
-	import { ConfirmDialog } from '$lib/components/layout';
+	import { ConfirmDialog, AssistTextarea } from '$lib/components/layout';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { imageUpdateInput, imageUrl, MAX_IMAGE_DESCRIPTION, type GalleryImage } from '../schemas';
 
@@ -365,8 +364,19 @@
 					>
 						<div class="space-y-1.5">
 							<Label for="image-description">Beschreibung</Label>
-							<Textarea
+							<AssistTextarea
 								id="image-description"
+								assist={current
+									? {
+											module: 'galleries',
+											purpose: 'image-alt',
+											context: {
+												module: 'galleries',
+												kind: 'image',
+												id: `${galleryId}:${current.id}`
+											}
+										}
+									: undefined}
 								rows={4}
 								maxlength={MAX_IMAGE_DESCRIPTION}
 								bind:value={draftDescription}

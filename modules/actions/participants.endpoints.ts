@@ -27,7 +27,7 @@ import {
 
 const TAGS = ['Modul: actions'];
 
-const COLUMNS = sql`id, action_id, contact_email, name, group_label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
+const COLUMNS = sql`id, action_id, contact_email, member_id, name, group_label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
 	bremen_resident, role, juleica, subsidy_eligible, diet, allergies, notes, source, created_at, updated_at`;
 
 /** Zahlstand aus der Kasse; `null`, wenn die Kasse nicht aktiv bzw. nicht erreichbar ist. */
@@ -57,6 +57,7 @@ function toParticipant(
 		id: String(r.id),
 		actionId: String(r.action_id),
 		contactEmail: str(r.contact_email),
+		memberId: str(r.member_id),
 		name: String(r.name),
 		groupLabel: str(r.group_label),
 		birthDate: str(r.birth_date),

@@ -11,6 +11,10 @@ export const COMPOSE_KEY = 'messages:compose';
 export interface ComposePreset {
 	groupIds?: string[];
 	members?: { id: string; name: string }[];
+	/** Freie Adressen (z. B. Kontaktadressen von Teilnehmenden ohne Mitglied) */
+	addresses?: string[];
+	/** Aktion als Kontext für die Schreibhilfe (Info-Mail an Teilnehmende) */
+	actionId?: string;
 }
 
 /**

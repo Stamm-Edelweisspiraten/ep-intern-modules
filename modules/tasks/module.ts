@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { tasksAssist, PERM_AI } from './assist';
 import { withTaskContext } from './access';
 import { boardEndpoints } from './boards.endpoints';
 import { taskEndpoints } from './tasks.endpoints';
@@ -19,12 +20,13 @@ export default defineModule({
 		name: 'Aufgaben',
 		description:
 			'Kanban-Boards mit Phasen, Zeitleiste, Aufgaben, Unteraufgaben, Zuständigen und Vorlagen – auch für Aktionen',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen (Zugriff wird vererbt) */
 		optionalDependencies: ['members', 'actions'],
-		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
+		permissions: [PERM_AI, PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Aufgabenbeschreibungen und Unteraufgaben nutzen',
 			[PERM.view]:
 				'Aufgaben-Boards nutzen: eigene, freigegebene, über Aktionen sichtbare und solche mit eigenen Aufgaben',
 			[PERM.create]: 'Boards anlegen (auch für Aktionen mit Bearbeiten-Recht)',
@@ -45,6 +47,7 @@ export default defineModule({
 		{ name: '0001_init', sql: m0001 },
 		{ name: '0002_planning', sql: m0002 }
 	],
+	assist: tasksAssist,
 	search: tasksSearch,
 	/** Übersicht: eigene fällige Aufgaben („Zu erledigen“, „Diese Woche“) */
 	dashboard: tasksDashboard,

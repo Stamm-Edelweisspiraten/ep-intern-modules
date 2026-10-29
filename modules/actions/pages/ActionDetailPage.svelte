@@ -44,6 +44,7 @@
 	import AccountingTab from './AccountingTab.svelte';
 	import CalculationTab from './CalculationTab.svelte';
 	import RegistrationTab from './RegistrationTab.svelte';
+	import ActionAssistTools from './ActionAssistTools.svelte';
 	import ActionTasksCard from './ActionTasksCard.svelte';
 	import ActionWhiteboardsCard from './ActionWhiteboardsCard.svelte';
 	import ActionNotesCard from './ActionNotesCard.svelte';
@@ -455,8 +456,9 @@
 				</div>
 			</div>
 			<Card.Root>
-				<Card.Header>
+				<Card.Header class="flex flex-wrap items-center justify-between gap-2">
 					<Card.Title>Beschreibung</Card.Title>
+					<ActionAssistTools {action} canWebsite={can(permissions, 'website.post.write')} />
 				</Card.Header>
 				<Card.Content>
 					{#if action.description}

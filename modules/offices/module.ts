@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { officesAssist, PERM_AI } from './assist';
 import { syncGrants } from './grants.service';
 import { holderEndpoints } from './holders.endpoints';
 import {
@@ -29,12 +30,13 @@ export default defineModule({
 		id: 'offices',
 		name: 'Ämter',
 		description: 'Ämter mit Reihenfolge, E-Mail-Adressen, Inhaber*innen und verknüpften Rollen',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: [],
 		/** Jede*r Inhaber*in erhält diese Rolle automatisch (Ämter ansehen, eigene Beschreibung) */
 		defaultRoleGrants: { [HOLDER_ROLE_NAME]: ['offices.office.view'] },
-		permissions: ['offices.office.view', 'offices.office.manage', 'offices.website.read'],
+		permissions: [PERM_AI, 'offices.office.view', 'offices.office.manage', 'offices.website.read'],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Amtsbeschreibungen und die eigene Beschreibung nutzen',
 			'offices.office.view':
 				'Ämter mit Beschreibung, E-Mail-Adressen und Inhaber*innen ansehen; Grundrecht für das Modul',
 			'offices.office.manage':
@@ -102,6 +104,7 @@ export default defineModule({
 			}
 		}
 	],
+	assist: officesAssist,
 	search: officesSearch,
 	// Feste Pfade (`/offices/order`, `/me`, `/website/…`) vor den Parameter-Pfaden
 	endpoints: [...websiteEndpoints, ...profileEndpoints, ...holderEndpoints, ...officeEndpoints]

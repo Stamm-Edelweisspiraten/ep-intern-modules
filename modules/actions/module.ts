@@ -62,13 +62,14 @@ import {
 import { encryptStoredHealthData } from './health';
 import { actionsBackup, hashStoredLinkTokens } from './link-tokens';
 import { withTreasurySync } from './treasury-sync';
+import { actionsAssist, PERM_AI } from './assist';
 import { healthRetentionSetting, onMemberDeleted, purgeHealthJob, subjectExport } from './privacy';
 
 export default defineModule({
 	manifest: {
 		id: 'actions',
 		name: 'Aktionen',
-		version: '1.8.0',
+		version: '1.9.0',
 		dependencies: ['members'],
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
 		optionalDependencies: ['treasury'],
@@ -84,7 +85,8 @@ export default defineModule({
 			'actions.payout.view',
 			'actions.storage.read',
 			'actions.storage.write',
-			'actions.storage.delete'
+			'actions.storage.delete',
+			PERM_AI
 		],
 		permissionDescriptions: {
 			'actions.action.view': 'Aktionen ansehen (eigene und freigegebene); Grundrecht für das Modul',
@@ -100,7 +102,9 @@ export default defineModule({
 				'Bankdaten in Abrechnungen: IBAN im Klartext, Empfänger pflegen, Auszahlungen markieren, Auszahlungsliste',
 			'actions.storage.read': 'Belege und Dateien von Aktionen ansehen und herunterladen',
 			'actions.storage.write': 'Belege und Dateien zu Aktionen hochladen',
-			'actions.storage.delete': 'Belege und Dateien von Aktionen löschen'
+			'actions.storage.delete': 'Belege und Dateien von Aktionen löschen',
+			[PERM_AI]:
+				'KI-Schreibhilfe in Aktionen nutzen (Beschreibung, Anmeldetexte, Formular-Infotexte, Packliste, Rückblick, Zuschussantrag)'
 		},
 		navigation: [
 			{
@@ -114,6 +118,7 @@ export default defineModule({
 	},
 	/** Dienste für abhängige Module (Vertrag: `contract.ts`) */
 	provides: actionsService satisfies ActionsService,
+	assist: actionsAssist,
 	settings: [
 		{
 			key: 'actions.bank.holder',

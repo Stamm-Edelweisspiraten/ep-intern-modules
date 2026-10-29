@@ -86,3 +86,12 @@ Demo: `node scripts/seed-demo-notes.mjs` (Beispielnotiz mit Unterseiten; `--big`
 ## Offen
 - Mehrere App-Instanzen nicht unterstützt; SSE hinter Traefik, echte Tablets/Safari, echtes S3 und echtes Chromium-PDF nach Deploy prüfen.
 - Einbettungen bleiben in Export/Import nur als Link erhalten.
+
+## KI-Schreibhilfe (2026-10-29, v1.2.0)
+`assist.ts`: Recht `notes.ai.use` (keine Standard-Vergabe), Kontext `notes:note` (Titel, Oberseiten, Aktion; Zugriff über `resolveNoteAccess`, fremd 404).
+Textstellen `note-selection` (markierter Abschnitt: umformulieren, kürzen, einfache Sprache, Rechtschreibung, Englisch, zusammenfassen, Aufgaben ableiten)
+und `note-write` (ohne Auswahl, ganze Notiz als Klartext ≤ 18 000 Zeichen: Entwurf, Zusammenfassen, Weiterschreiben, Aufgaben ableiten), beide
+`richTables` (Tabellen bleiben im HTML). UI `pages/editor/NoteAssist.svelte`: Knopf „Schreibhilfe“ in der `Toolbar`, ✦ in der `BubbleMenu`, Eintrag im
+Slash-Menü – nur mit Recht und eingerichteter KI. Auswahl → **Ersetzen** (ein Undo-Schritt, Yjs führt die Auswahl bei Fremdänderungen mit), sonst
+**Einfügen** an der Cursorposition; Aufgaben als Aufgabenliste (`taskList`). Nie die ganze Notiz ersetzen (Live-Bearbeitung). Bilder/Einbettungen/Code
+in der Auswahl gehen beim Ersetzen verloren → Hinweis im Blatt. Tests in `tests/integration/ai-assist.test.ts` („Notizen“).

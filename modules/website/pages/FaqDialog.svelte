@@ -6,9 +6,8 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { RichTextEditor } from '$lib/components/ui/rich-text-editor';
 	import { Switch } from '$lib/components/ui/switch';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, AssistRichTextEditor } from '$lib/components/layout';
 	import { BUSY_SAVE } from '$lib/components/layout/busy';
 	import { MAX_FAQ_QUESTION, faqInput, type Faq } from '../schemas';
 	import { BASE, detailsToErrors, errorText, issuesToErrors } from './helpers';
@@ -82,10 +81,11 @@
 			</FormField>
 			<div class="space-y-1.5">
 				<Label for="faq-answer">Antwort *</Label>
-				<RichTextEditor
+				<AssistRichTextEditor
 					id="faq-answer"
 					label="Antwort"
 					bind:value={answerHtml}
+					assist={{ module: 'website', purpose: 'faq-answer', extra: () => ({ question }) }}
 					minHeight="8rem"
 					invalid={!!errors.answerHtml}
 					describedby={errors.answerHtml ? 'faq-answer-error' : undefined}

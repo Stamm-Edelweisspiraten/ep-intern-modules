@@ -188,7 +188,8 @@ async function letterInput(
 	action: { name: string; startsOn: string; endsOn: string | null; deadline: string | null },
 	row: LetterRow,
 	token: string,
-	contact: MemberContact | undefined
+	contact: MemberContact | undefined,
+	note: string | null = null
 ): Promise<PdfGenerateInput> {
 	const url = refundUrl(token);
 	const amount = formatEuro(row.amountCents);
@@ -202,6 +203,7 @@ async function letterInput(
 				type: 'paragraph',
 				text: `die Aktion „${action.name}“ (${dateRange(action.startsOn, action.endsOn)}) ist abgerechnet und hat einen Überschuss ergeben. Für ${row.name} stehen ${amount} zur Rückzahlung bereit.`
 			},
+			...(note ? [{ type: 'paragraph' as const, text: note }] : []),
 			{
 				type: 'paragraph',
 				text: action.deadline
@@ -350,6 +352,7 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 		handler: async ({ ctx, params, body }) => {
 			const id = (params as { id: string }).id;
 			const wanted = (body as { itemIds?: string[] } | undefined)?.itemIds;
+			const note = (body as { note?: string } | undefined)?.note?.trim() || null;
 			const data = await moduleDb(MODULE_ID).transaction(async (tx) => {
 				await requireAccess(tx, ctx, id, 'edit');
 				await assertOpen(tx, id);
@@ -413,7 +416,8 @@ export const refundDonationEndpoints: ApiEndpoint[] = [
 						data.action,
 						row,
 						data.tokens.get(row.itemId)!,
-						row.memberId ? contacts.get(row.memberId) : undefined
+						row.memberId ? contacts.get(row.memberId) : undefined,
+						note
 					)
 				);
 			}

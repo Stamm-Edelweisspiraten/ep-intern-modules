@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { eventsAssist, PERM_AI } from './assist';
 import { NOTIFY_EVENT_CANCELLED, NOTIFY_EVENT_CHANGED, NOTIFY_EVENT_NEW } from './schemas';
 import { defineModule } from '$lib/sdk/server';
 import { eventsSearch } from './search';
@@ -32,6 +33,7 @@ export default defineModule({
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen die für sie sichtbaren Termine */
 		defaultRoleGrants: { Mitglied: ['events.event.view'] },
 		permissions: [
+			PERM_AI,
 			'events.event.view',
 			'events.event.create',
 			'events.event.view-all',
@@ -40,6 +42,7 @@ export default defineModule({
 			'events.website.read'
 		],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Terminbeschreibungen nutzen',
 			'events.event.view': 'Termine ansehen (eigene und freigegebene); Grundrecht für das Modul',
 			'events.event.create': 'Termine und Serien anlegen',
 			'events.event.view-all': 'Alle Termine ansehen, auch ohne Freigabe',
@@ -76,6 +79,7 @@ export default defineModule({
 		{ name: '0004_calendar_feeds', sql: m0004 },
 		{ name: '0005_feed_tasks', sql: m0005 }
 	],
+	assist: eventsAssist,
 	search: eventsSearch,
 	/** Übersicht: Termine der Woche (Serien je Vorkommen) */
 	dashboard: eventsDashboard,

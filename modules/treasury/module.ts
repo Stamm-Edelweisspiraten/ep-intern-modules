@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { treasuryAssist, PERM_AI } from './assist';
 import { PUSH_INVOICE, PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER } from './push-notify';
 import { defineModule } from '$lib/sdk/server';
 import { resetAreas, resetUsers } from './reset';
@@ -54,7 +55,7 @@ export default defineModule({
 		name: 'Kasse',
 		description:
 			'Konten und Buchungen, offene Beiträge aus Aktionen, Rechnungen, Zahlungserinnerungen und Kassenberichte.',
-		version: '1.1.0',
+		version: '1.2.0',
 		dependencies: ['members', 'actions'],
 		/** Benachrichtigungen an das Amt „Kasse“ (`office-notify.ts`), nur wenn `offices` aktiv ist */
 		optionalDependencies: ['offices'],
@@ -81,6 +82,7 @@ export default defineModule({
 			}
 		],
 		permissions: [
+			PERM_AI,
 			'treasury.cash.view',
 			'treasury.own.view',
 			'treasury.transaction.edit',
@@ -100,6 +102,8 @@ export default defineModule({
 			'treasury.storage.delete'
 		],
 		permissionDescriptions: {
+			[PERM_AI]:
+				'KI-Schreibhilfe für die Mailvorlagen der Kasse und den Jahresbeitrag nutzen (nur Vorlagen, keine Rechnungsdaten)',
 			'treasury.cash.view':
 				'Kasse ansehen: Konten, Buchungen, Rechnungen und Belege; Grundrecht für das Modul',
 			'treasury.own.view':
@@ -309,6 +313,7 @@ export default defineModule({
 	resetAreas,
 	backup: treasuryBackup,
 	resetUsers,
+	assist: treasuryAssist,
 	search: treasurySearch,
 	dashboard: treasuryDashboard,
 	notifications: {

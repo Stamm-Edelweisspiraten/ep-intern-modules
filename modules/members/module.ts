@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { membersAssist, PERM_AI } from './assist';
 import { defineModule, type PrincipalProvider } from '$lib/sdk/server';
 import type { MembersService } from './contract';
 import { membersSearch } from './search';
@@ -56,7 +57,7 @@ export default defineModule({
 	manifest: {
 		id: 'members',
 		name: 'Mitglieder & Gruppen',
-		version: '1.13.0',
+		version: '1.14.0',
 		dependencies: [],
 		defaultRoleGrants: {
 			/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
@@ -75,6 +76,7 @@ export default defineModule({
 			]
 		},
 		permissions: [
+			PERM_AI,
 			'members.own.view',
 			'members.own.edit',
 			LED_VIEW,
@@ -96,6 +98,7 @@ export default defineModule({
 			'members.storage.delete'
 		],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Gruppentexte (intern und Website) nutzen',
 			'members.own.view': 'Eigene verknüpfte Mitglieder im Profil ansehen',
 			'members.own.edit':
 				'Eigene verknüpfte Mitglieder bearbeiten: Kontakte, Zusatzfelder, Benachrichtigungen',
@@ -214,6 +217,7 @@ export default defineModule({
 		{ name: '0016_leader_users', sql: m0016 },
 		{ name: '0017_group_age', sql: m0017 }
 	],
+	assist: membersAssist,
 	search: membersSearch,
 	/** Übersicht: Gruppenstunden im Wochenstreifen (eigene Mitglieder, Gruppenleitung) */
 	dashboard: membersDashboard,

@@ -18,7 +18,13 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { ConfirmDialog, ErrorState, FormField, LoadingState } from '$lib/components/layout';
+	import {
+		AssistTextarea,
+		ConfirmDialog,
+		ErrorState,
+		FormField,
+		LoadingState
+	} from '$lib/components/layout';
 	import { startsBeforeBlocker } from '../../dependencies';
 	import {
 		MAX_CHECKLIST_TITLE,
@@ -306,6 +312,20 @@
 			{ method: 'POST', body: JSON.stringify({ title: value }) },
 			'Hinzufügen fehlgeschlagen'
 		);
+	}
+
+	/** Unteraufgaben aus der Schreibhilfe nacheinander anlegen */
+	async function addSuggestedItems(items: string[]) {
+		if (!detail) return;
+		for (const raw of items) {
+			const value = raw.trim().slice(0, MAX_CHECKLIST_TITLE);
+			if (!value) continue;
+			await run(
+				`/tasks/${detail.id}/checklist`,
+				{ method: 'POST', body: JSON.stringify({ title: value }) },
+				'Hinzufügen fehlgeschlagen'
+			);
+		}
 	}
 
 	const patchItem = (item: ChecklistItem, body: Record<string, unknown>) =>
@@ -599,9 +619,14 @@
 				{/if}
 
 				<FormField label="Beschreibung" id={id('description')} error={errors.description}>
-					<Textarea
+					<AssistTextarea
 						id={id('description')}
 						bind:value={description}
+						assist={canEdit
+							? { module: 'tasks', purpose: 'task-description', extra: () => ({ title }) }
+							: undefined}
+						onassist={() => saveDescription()}
+						onitems={addSuggestedItems}
 						rows={4}
 						maxlength={MAX_TASK_DESCRIPTION}
 						placeholder={canEdit ? 'Details, Links, Absprachen …' : ''}

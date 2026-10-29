@@ -1,8 +1,7 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField } from '$lib/components/layout';
+	import { FormField, AssistTextarea } from '$lib/components/layout';
 	import { ANNUAL_PLACEHOLDERS } from '../schemas';
 
 	let {
@@ -69,8 +68,9 @@
 		</FormField>
 		<div class="grid gap-4 lg:grid-cols-2">
 			<FormField label="Mail-Text *" id="annual-body" error={errors.mailBody}>
-				<Textarea
+				<AssistTextarea
 					id="annual-body"
+					assist={{ module: 'treasury', purpose: 'annual-fee-text' }}
 					bind:ref={bodyEl}
 					bind:value={body}
 					rows={10}
@@ -86,8 +86,9 @@
 				error={errors.pdfText}
 				hint="Steht im PDF über der Aufschlüsselung."
 			>
-				<Textarea
+				<AssistTextarea
 					id="annual-pdf"
+					assist={{ module: 'treasury', purpose: 'annual-fee-text' }}
 					bind:ref={pdfEl}
 					bind:value={pdfText}
 					rows={10}

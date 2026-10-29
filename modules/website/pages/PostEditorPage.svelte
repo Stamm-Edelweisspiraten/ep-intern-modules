@@ -19,22 +19,9 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
-	import { RichTextEditor } from '$lib/components/ui/rich-text-editor';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { TagInput } from '$lib/components/ui/tag-input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import {
-		ConfirmDialog,
-		EmptyState,
-		ErrorState,
-		FormField,
-		LoadingState,
-		PageHeader,
-		PageTitle,
-		ShareMenu,
-		type ShareCandidate,
-		type ShareEntry
-	} from '$lib/components/layout';
+	import { ConfirmDialog, EmptyState, ErrorState, FormField, LoadingState, PageHeader, PageTitle, ShareMenu, type ShareCandidate, type ShareEntry, AssistInput, AssistRichTextEditor, AssistTextarea } from '$lib/components/layout';
 	import { BUSY_SAVE, BUSY_UPLOAD } from '$lib/components/layout/busy';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
@@ -450,7 +437,13 @@
 			<legend class="sr-only">Beitrag bearbeiten</legend>
 			<div class="min-w-0 space-y-4">
 				<FormField label="Titel" id="post-title" required error={errors.title}>
-					<Input id="post-title" bind:value={title} maxlength={MAX_POST_TITLE} />
+					<AssistInput
+						id="post-title"
+						bind:value={title}
+						maxlength={MAX_POST_TITLE}
+						assist={{ module: 'website', purpose: 'blog-title' }}
+						source={() => bodyHtml || title}
+					/>
 				</FormField>
 				<FormField
 					label="Kurzbeschreibung"
@@ -458,14 +451,22 @@
 					error={errors.teaser}
 					hint={`Erscheint in der Übersicht und als Vorschau beim Teilen · ${teaserCount}`}
 				>
-					<Textarea id="post-teaser" bind:value={teaser} rows={2} maxlength={MAX_POST_TEASER} />
+					<AssistTextarea
+						id="post-teaser"
+						bind:value={teaser}
+						rows={2}
+						maxlength={MAX_POST_TEASER}
+						assist={{ module: 'website', purpose: 'blog-teaser' }}
+						source={() => bodyHtml}
+					/>
 				</FormField>
 				<div class="space-y-1.5">
 					<Label for="post-body">Text</Label>
-					<RichTextEditor
+					<AssistRichTextEditor
 						id="post-body"
 						label="Text des Beitrags"
 						bind:value={bodyHtml}
+						assist={{ module: 'website', purpose: 'blog-body', extra: () => ({ title }) }}
 						minHeight="22rem"
 						disabled={!canEdit}
 						uploadImage={uploadForEditor}

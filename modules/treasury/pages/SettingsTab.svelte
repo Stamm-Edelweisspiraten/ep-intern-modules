@@ -11,7 +11,6 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Table from '$lib/components/ui/table';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import {
@@ -19,7 +18,8 @@
 		ErrorState,
 		FormField,
 		NumberStepper,
-		BUSY_SAVE
+		BUSY_SAVE,
+		AssistTextarea
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import {
@@ -390,13 +390,25 @@
 						<Input id="st-ps" bind:value={settings.paidSubject} maxlength={150} />
 					</FormField>
 					<FormField label="Text Bestätigung" id="st-pb" error={errors.paidBody}>
-						<Textarea id="st-pb" bind:value={settings.paidBody} rows={8} maxlength={5000} />
+						<AssistTextarea
+							id="st-pb"
+							bind:value={settings.paidBody}
+							rows={8}
+							maxlength={5000}
+							assist={{ module: 'treasury', purpose: 'treasury-mail-template' }}
+						/>
 					</FormField>
 					<FormField label="Betreff Erinnerung" id="st-rs" error={errors.reminderSubject}>
 						<Input id="st-rs" bind:value={settings.reminderSubject} maxlength={150} />
 					</FormField>
 					<FormField label="Text Erinnerung" id="st-rb" error={errors.reminderBody}>
-						<Textarea id="st-rb" bind:value={settings.reminderBody} rows={10} maxlength={5000} />
+						<AssistTextarea
+							id="st-rb"
+							bind:value={settings.reminderBody}
+							rows={10}
+							maxlength={5000}
+							assist={{ module: 'treasury', purpose: 'treasury-mail-template' }}
+						/>
 					</FormField>
 					<FormField
 						label="Betreff Rechnungs-Mail"
@@ -407,7 +419,13 @@
 						<Input id="st-is" bind:value={settings.invoiceSubject} maxlength={150} />
 					</FormField>
 					<FormField label="Text Rechnungs-Mail" id="st-ib" error={errors.invoiceBody}>
-						<Textarea id="st-ib" bind:value={settings.invoiceBody} rows={10} maxlength={5000} />
+						<AssistTextarea
+							id="st-ib"
+							bind:value={settings.invoiceBody}
+							rows={10}
+							maxlength={5000}
+							assist={{ module: 'treasury', purpose: 'treasury-mail-template' }}
+						/>
 					</FormField>
 				</Card.Content>
 			</Card.Root>

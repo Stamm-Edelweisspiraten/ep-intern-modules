@@ -318,7 +318,15 @@
 							werden im Mitgliedsprofil gespeichert.
 						</p>
 					{/if}
-					<FormBuilder bind:definition={draft.definition} disabled={!canEdit} />
+					<FormBuilder
+						bind:definition={draft.definition}
+						disabled={!canEdit}
+						assist={{
+							module: 'actions',
+							purpose: 'form-info',
+							context: { module: 'actions', kind: 'action', id: actionId }
+						}}
+					/>
 				</Card.Content>
 			</Card.Root>
 
@@ -350,6 +358,7 @@
 						<DisclaimerEditor
 							bind:value={draft.disclaimerTemplate}
 							preview={server.disclaimerPreview}
+							{actionId}
 							disabled={!canEdit}
 						/>
 					</Card.Content>

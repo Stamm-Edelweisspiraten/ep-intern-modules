@@ -1,4 +1,5 @@
 import { defineModule } from '$lib/sdk/server';
+import { ordersAssist, PERM_AI } from './assist';
 import { NOTIFY_MY_ORDER } from './schemas';
 import { articlesEndpoints } from './articles.endpoints';
 import { imagesEndpoints } from './images.endpoints';
@@ -29,11 +30,12 @@ export default defineModule({
 		name: 'Bestellungen',
 		description:
 			'Stammesartikel bestellen (Halstuch, Liederbuch …) mit Rechnung über die Kasse, Lager und Einkauf für die*den Kämmerer*in',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: ['members'],
 		/** Kasse: Rechnungen/Auszahlungen (Push); Ämter: Vorlage „Kämmerer*in“ mit Benachrichtigungen */
 		optionalDependencies: ['treasury', 'offices'],
 		permissions: [
+			PERM_AI,
 			PERMISSIONS.view,
 			PERMISSIONS.create,
 			PERMISSIONS.manage,
@@ -41,6 +43,7 @@ export default defineModule({
 			PERMISSIONS.stock
 		],
 		permissionDescriptions: {
+			[PERM_AI]: 'KI-Schreibhilfe für Artikelbeschreibungen nutzen',
 			[PERMISSIONS.view]:
 				'Artikelkatalog und eigene Bestellungen ansehen; Grundrecht für das Modul',
 			[PERMISSIONS.create]:
@@ -116,6 +119,7 @@ export default defineModule({
 			run: runDeficitDigest
 		}
 	],
+	assist: ordersAssist,
 	search: ordersSearch,
 	dashboard: ordersDashboard,
 	notifications: {

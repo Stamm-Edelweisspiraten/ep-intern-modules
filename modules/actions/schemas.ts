@@ -299,6 +299,8 @@ export interface Participant {
 	actionId: string;
 	/** E-Mail für die Bestätigung (aus dem Anmeldeformular) */
 	contactEmail: string | null;
+	/** Verknüpftes Mitglied (Anmeldung mit Mitglied), sonst `null` */
+	memberId?: string | null;
 	name: string;
 	groupLabel: string | null;
 	birthDate: string | null;
@@ -910,7 +912,11 @@ export type RefundDeadlineInput = z.infer<typeof refundDeadlineInput>;
 
 /** Body von POST …/refund/letters.pdf: ohne `itemIds` alle Personen der Rückzahlung. */
 export const refundLettersInput = z
-	.object({ itemIds: z.array(z.uuid()).min(1).max(300).optional() })
+	.object({
+		itemIds: z.array(z.uuid()).min(1).max(300).optional(),
+		/** Persönlicher Begleittext (nur für dieses PDF, wird nicht gespeichert) */
+		note: z.string().trim().max(1500, 'Höchstens 1500 Zeichen').optional()
+	})
 	.strict()
 	.optional();
 

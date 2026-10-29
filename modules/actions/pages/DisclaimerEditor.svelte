@@ -1,14 +1,18 @@
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { AssistButton } from '$lib/components/layout';
 	import { DISCLAIMER_PLACEHOLDERS } from '../schemas';
 
 	let {
 		value = $bindable(''),
 		preview,
+		actionId,
 		disabled = false
 	}: {
 		value: string;
+		/** Aktion für die Schreibhilfe (Eckdaten) */
+		actionId?: string;
 		/** Gerenderter Text des letzten Serverstands */
 		preview: string;
 		disabled?: boolean;
@@ -32,7 +36,19 @@
 
 <div class="flex flex-col gap-4">
 	<div class="flex flex-col gap-1.5">
-		<Label for="disclaimer-text">Text</Label>
+		<div class="flex items-center justify-between gap-2">
+			<Label for="disclaimer-text">Text</Label>
+			<AssistButton
+				config={{
+					module: 'actions',
+					purpose: 'registration-disclaimer',
+					context: actionId ? { module: 'actions', kind: 'action', id: actionId } : undefined
+				}}
+				{disabled}
+				text={() => value}
+				onapply={(v) => (value = v)}
+			/>
+		</div>
 		<Textarea
 			id="disclaimer-text"
 			bind:ref={el}

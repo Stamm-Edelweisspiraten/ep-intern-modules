@@ -18,7 +18,6 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import {
 		ConfirmDialog,
 		DataTable,
@@ -28,7 +27,8 @@
 		MobileActionBar,
 		PageHeader,
 		PdfExportDialog,
-		BUSY_SAVE
+		BUSY_SAVE,
+		AssistTextarea
 	} from '$lib/components/layout';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
 	import { downloadPdf } from './download';
@@ -193,6 +193,25 @@
 		value: String(d),
 		label: WEEKDAY_LABELS[d] ?? String(d)
 	}));
+
+	/** Formularwerte für die Schreibhilfe (Gruppentexte) */
+	function groupAssistExtra(): Record<string, string> {
+		const day = weekdayOptions.find((o) => o.value === meetingWeekday)?.label ?? '';
+		const time = meetingTime
+			? `${meetingTime}${meetingEndTime ? `–${meetingEndTime}` : ''} Uhr`
+			: '';
+		const min = ageNumber(ageMin);
+		const max = ageNumber(ageMax);
+		const ages =
+			min != null && max != null
+				? `${min} bis ${max} Jahre`
+				: min != null
+					? `ab ${min} Jahren`
+					: max != null
+						? `bis ${max} Jahre`
+						: '';
+		return { name, ages, meeting: [day, time, meetingPlace].filter(Boolean).join(', ') };
+	}
 
 	let deleteOpen = $state(false);
 	let toDelete = $state<Group | null>(null);
@@ -742,8 +761,9 @@
 					</fieldset>
 
 					<FormField label="Beschreibung" id="g-desc" error={fieldErrors.description}>
-						<Textarea
+						<AssistTextarea
 							id="g-desc"
+							assist={{ module: 'members', purpose: 'group-description', extra: groupAssistExtra }}
 							rows={3}
 							maxlength={2000}
 							bind:value={description}
@@ -893,8 +913,13 @@
 						error={fieldErrors['website.description']}
 						hint="Leer = die interne Beschreibung wird gezeigt."
 					>
-						<Textarea
+						<AssistTextarea
 							id="g-web-text"
+							assist={{
+								module: 'members',
+								purpose: 'group-website-text',
+								extra: groupAssistExtra
+							}}
 							rows={5}
 							maxlength={5000}
 							bind:value={websiteText}
