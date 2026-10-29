@@ -35,6 +35,7 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
 	await tx.execute(
 		sql`DELETE FROM note_shares WHERE principal_type = 'user' AND principal_id = ${userId}`
 	);
+	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id = ${userId}`);
 	// private Wurzeln: weder Aktion noch irgendeine Freigabe im Teilbaum
 	const privateRoots = await rowsOf(
 		tx,
@@ -81,7 +82,7 @@ export const resetAreas: ResetArea[] = [
 		label: 'Alle Notizen',
 		description:
 			'Löscht alle Notizen mit Unterseiten, Versionen, Bildern und Freigaben – auch die an Aktionen gehängten und den Papierkorb.',
-		tables: ['note_versions', 'note_assets', 'note_updates', 'note_shares', 'notes'],
+		tables: ['note_versions', 'note_assets', 'note_updates', 'note_shares', 'notes', 'user_prefs'],
 		rebuild: true
 	}
 ];
@@ -90,6 +91,7 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 	await tx.execute(
 		sql`DELETE FROM note_shares WHERE principal_type = 'user' AND principal_id <> ${keepUserId}`
 	);
+	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id <> ${keepUserId}`);
 	await tx.execute(
 		sql`UPDATE notes SET owner_id = ${keepUserId} WHERE owner_id IS DISTINCT FROM ${keepUserId}`
 	);
@@ -120,9 +122,11 @@ export const subjectExport: ModuleSubjectExport = {
 				tx,
 				sql`SELECT a.id, a.note_id, a.size_bytes, a.created_at FROM note_assets a
 					WHERE a.created_by = ${userId} ORDER BY a.created_at, a.id`
-			)
+			),
+			prefs: await rowsOf(tx, sql`SELECT prefs FROM user_prefs WHERE user_id = ${userId}`)
 		}));
-		if (!data.notes.length && !data.shares.length && !data.uploads.length) return null;
+		if (!data.notes.length && !data.shares.length && !data.uploads.length && !data.prefs.length)
+			return null;
 		return {
 			ownedNotes: data.notes.map((r) => ({
 				id: String(r.id),
@@ -143,7 +147,8 @@ export const subjectExport: ModuleSubjectExport = {
 				noteId: String(r.note_id),
 				sizeBytes: num(r.size_bytes),
 				createdAt: toIso(r.created_at)
-			}))
+			})),
+			viewPrefs: data.prefs[0]?.prefs ?? null
 		};
 	}
 };

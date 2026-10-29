@@ -9,7 +9,7 @@ formatiertem Editor (Tiptap 3) mit **Markdown-Kürzeln**, eingefügtem Markdown 
 unterstrichen, durchgestrichen, Schriftgröße, Farbe/Markierung, Ausrichtung, Listen/Aufgaben, Zitat, Code, **Tabellen**, Link, Bild, Trennlinie),
 Slash-Menü (`/`), **Bilder** (Upload/Einfügen/Ziehen, Größe per Griff), **eingebettete Whiteboards** (live bearbeitbar, Core-Mechanismus „Einbetten“),
 Teilen an Principals (vererbt auf Unterseiten), Notizen je **Aktion**, Versionen, Papierkorb, **Export** `.md`/`.zip`/`.html`/`.docx`/`.pdf` und Import
-`.md`/`.zip`. Schema `mod_notes`, v1.0.0 (2026-10-29), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
+`.md`/`.zip`. Schema `mod_notes`, v1.1.0 (2026-10-29), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
 Navigation „Notizen“ (Icon `notebook-pen`, `order` 72), Editor vollflächig (`fullBleedRoutes: [':id']`).
 
 Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); formatierter Editor mit Markdown-Kürzeln **plus** Quelltext-Umschalter;
@@ -46,6 +46,7 @@ Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); forma
 | `assets.service.ts` / `assets.endpoints.ts` / `storage.ts` | Bild-Upload (`core.images.process` thumb 640 / web 2000 WebP ohne Metadaten), Auslieferung `GET /assets/:assetId/:variant` (Zugriff über die Notiz des Assets, `IMAGE_RATE_LIMIT`), Pfade `notes/<noteId>/<assetId>-<variant>.<ext>` |
 | `versions.service.ts` / `versions.endpoints.ts` | Versionen (auto ≤ 50, benannt ≤ 100), Vorschau (`content` = PM-JSON), Wiederherstellen (sichert vorher „Vor dem Wiederherstellen“), `runAutoVersions` |
 | `transfer.endpoints.ts` + `export/*` | Export `GET /notes/:id/export?format=md|zip|html|docx|pdf&subpages&letterhead` (`collect.ts` ≤ 300 Seiten/200 MB Bilder, `markdown.ts`, `zip.ts`, `html.ts` eigener Serialisierer mit Allowlist, `docx.ts`, `pdf.ts` über Core-Block `richText`, `embeds.ts`), Import `POST /notes/import` (`import.ts`: .md/.txt/.zip, Ordner → Unterseiten, Bilder neu verarbeitet, ZIP-Grenzen 500 Einträge/200 MB, kein `..`) |
+| `prefs.endpoints.ts` | Persönliche Ansicht `GET/PUT /me/prefs` (Migr. 0002 `user_prefs`): Hintergrund `surface.mode` `theme` (Standard) oder `fixed` + `surface.color`; UI `pages/SurfaceMenu.svelte` (Farbeimer im Kopf, Weiß/Papier/Schwarz/eigene Farbe), Palette `pages/surface.ts` (`surfaceVars` überschreibt die Tokens nur im Bereich Leiste+Titel+Text, dunkle Fläche → helle Schrift) |
 | `privacy.ts`, `search.ts`, `notify.ts`, `refs.service.ts`, `contract.ts` | Löschen/Reset/Auskunft, globale Suche, `note-shared`, `NoteRefsService` (Karte „Notiz“ im Whiteboard) |
 | `doc/extensions.ts`, `doc/text.ts` | Schema (`noteExtensions`, `noteSchema`, `noteImage`, `Embed`, `assetUrl`), Klartext/Assets/Einbettungen aus PM-JSON |
 | `ui.ts`, `pages/**` | Übersicht, Editor-Seite mit Seitenbaum, Editor (`pages/editor/`: `sync.svelte.ts` Yjs-Provider über SSE, `NoteEditor`, `Toolbar`, `SlashMenu`, `BubbleMenu`, `SourcePanel` + `source-diff.ts`, `EmbedView`/`EmbedPicker`, Node-Views), Dialoge, Dashboard-Kachel |

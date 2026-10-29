@@ -4,6 +4,7 @@ import { assetEndpoints } from './assets.endpoints';
 import { flushAll } from './doc.service';
 import { liveEndpoints } from './live.endpoints';
 import { noteEndpoints } from './notes.endpoints';
+import { prefsEndpoints } from './prefs.endpoints';
 import { onMemberDeleted, onUserDeleted, resetAreas, resetUsers, subjectExport } from './privacy';
 import { noteRefsService } from './refs.service';
 import { notesSearch } from './search';
@@ -14,6 +15,7 @@ import { versionEndpoints } from './versions.endpoints';
 import { NOTIFY_NOTE_SHARED, PERM } from './schemas';
 import type { NoteRefsService } from './contract';
 import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_user_prefs.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -21,7 +23,7 @@ export default defineModule({
 		name: 'Notizen',
 		description:
 			'Gemeinsame Notizen mit Unterseiten: live zusammen schreiben, Markdown, Tabellen, Bilder, eingebettete Whiteboards, Teilen und Export (Markdown, PDF, Word, HTML)',
-		version: '1.0.0',
+		version: '1.1.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Notizen an Aktionen */
 		optionalDependencies: ['members', 'actions'],
@@ -44,7 +46,10 @@ export default defineModule({
 			}
 		]
 	},
-	migrations: [{ name: '0001_init', sql: m0001 }],
+	migrations: [
+		{ name: '0001_init', sql: m0001 },
+		{ name: '0002_user_prefs', sql: m0002 }
+	],
 	search: notesSearch,
 	provides: noteRefsService satisfies NoteRefsService,
 	notifications: {
@@ -84,6 +89,7 @@ export default defineModule({
 	subjectExport,
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade wie `/notes/roots`, `/notes/by-action/…` vor `/notes/:id`)
 	endpoints: withNoteContext([
+		...prefsEndpoints,
 		...transferEndpoints,
 		...noteEndpoints,
 		...liveEndpoints,

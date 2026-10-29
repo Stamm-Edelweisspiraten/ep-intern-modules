@@ -24,7 +24,14 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { MAX_TITLE, presenceColor, type NoteDetail, type NoteShares } from '../schemas';
+	import {
+		DEFAULT_USER_PREFS,
+		MAX_TITLE,
+		presenceColor,
+		type NoteDetail,
+		type NoteShares,
+		type UserPrefs
+	} from '../schemas';
 	import NoteEditor from './editor/NoteEditor.svelte';
 	import SourcePanel from './editor/SourcePanel.svelte';
 	import { NoteSync } from './editor/sync.svelte';
@@ -48,6 +55,8 @@
 	import NoteIcon from './NoteIcon.svelte';
 	import PeerAvatars from './PeerAvatars.svelte';
 	import StyleDialog from './StyleDialog.svelte';
+	import SurfaceMenu from './SurfaceMenu.svelte';
+	import { surfaceStyle } from './surface';
 	import type { NoteTreeState } from './tree/tree-state.svelte';
 	import VersionsDialog from './VersionsDialog.svelte';
 
@@ -79,6 +88,31 @@
 	let styleOpen = $state(false);
 	let moveOpen = $state(false);
 	let deleteOpen = $state(false);
+	/** Persönlicher Hintergrund (gilt für alle Notizen) */
+	let prefs = $state<UserPrefs>(DEFAULT_USER_PREFS);
+	const surface = $derived(surfaceStyle(prefs));
+
+	async function loadPrefs() {
+		try {
+			prefs = await apiFetch<UserPrefs>('/modules/notes/me/prefs');
+		} catch {
+			// Standard behalten (Hintergrund wie Modus/Theme)
+		}
+	}
+
+	async function changeSurface(next: UserPrefs['surface']) {
+		const before = prefs;
+		prefs = { ...prefs, surface: next };
+		try {
+			prefs = await apiFetch<UserPrefs>('/modules/notes/me/prefs', {
+				method: 'PUT',
+				body: JSON.stringify(prefs)
+			});
+		} catch {
+			prefs = before;
+			toast.error('Hintergrund konnte nicht gespeichert werden');
+		}
+	}
 
 	const me = $derived(
 		(page.data.user as { id?: string; name?: string } | null | undefined) ?? null
@@ -200,6 +234,7 @@
 	onMount(() => {
 		sync.connect();
 		void reloadShares();
+		void loadPrefs();
 		const beforeUnload = (e: BeforeUnloadEvent) => {
 			if (sync.hasUnsaved()) {
 				e.preventDefault();
@@ -314,6 +349,7 @@
 				emptyResultText="Niemand gefunden"
 			/>
 		{/if}
+		<SurfaceMenu {prefs} onchange={changeSurface} />
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
@@ -372,7 +408,7 @@
 		</div>
 	{/if}
 
-	<div class={['grid min-h-0 flex-1', sourceOpen && 'lg:grid-cols-2']}>
+	<div class={['grid min-h-0 flex-1', sourceOpen && 'lg:grid-cols-2']} style={surface}>
 		<div class={['min-h-0 overflow-y-auto', sourceOpen && 'hidden lg:block']}>
 			<NoteEditor
 				{sync}

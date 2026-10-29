@@ -275,6 +275,38 @@ export const exportQuery = z.object({
 	letterhead: z.enum(['0', '1']).default('0')
 });
 
+// --- Persönliche Ansicht (Hintergrund) ----------------------------------------
+
+export const SURFACE_MODES = ['fixed', 'theme'] as const;
+export type SurfaceMode = (typeof SURFACE_MODES)[number];
+export const DEFAULT_SURFACE_COLOR = '#ffffff';
+export const SURFACE_PRESETS = [
+	{ value: '#ffffff', label: 'Weiß' },
+	{ value: '#fbf6ea', label: 'Papier' },
+	{ value: '#111827', label: 'Schwarz' }
+] as const;
+
+/** Hintergrund: fest (gleiche Farbe in Hell/Dunkel und mit jedem Theme) oder wie Modus/Theme */
+export const surfacePrefs = z
+	.object({
+		mode: z.enum(SURFACE_MODES).default('theme'),
+		color: z
+			.string()
+			.regex(/^#[0-9a-fA-F]{6}$/, 'Farbe als #rrggbb')
+			.transform((v) => v.toLowerCase())
+			.default(DEFAULT_SURFACE_COLOR)
+	})
+	.strict();
+
+/** PUT `/me/prefs` (gespeicherte Werte werden beim Lesen ebenso geprüft, Unbekanntes fällt weg) */
+export const userPrefsInput = z
+	.object({ surface: surfacePrefs.default({ mode: 'theme', color: DEFAULT_SURFACE_COLOR }) })
+	.strict();
+export type UserPrefs = z.output<typeof userPrefsInput>;
+export const DEFAULT_USER_PREFS: UserPrefs = {
+	surface: { mode: 'theme', color: DEFAULT_SURFACE_COLOR }
+};
+
 // --- DTOs -------------------------------------------------------------------
 
 export interface UserRef {

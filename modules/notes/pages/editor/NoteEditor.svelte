@@ -450,6 +450,10 @@
 		content-visibility: auto;
 		contain-intrinsic-size: auto 2.5rem;
 	}
+	/* `content-visibility` schneidet Überstehendes ab – Blöcke mit fremdem Cursor (Namensschild darüber) nicht */
+	.note-root :global(.note-content > *:has(.collaboration-carets__caret)) {
+		content-visibility: visible;
+	}
 	.note-root :global(.note-content > * + *) {
 		margin-top: 0.6em;
 	}
@@ -682,16 +686,26 @@
 		position: relative;
 		word-break: normal;
 	}
+	/* Namensschild direkt über dem Cursor – unabhängig von Schriftgröße/Formatierung der Zeile */
 	.note-root :global(.collaboration-carets__label) {
 		position: absolute;
-		top: -1.4em;
+		bottom: 100%;
 		left: -1px;
+		z-index: 20;
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		border-radius: 0.25rem 0.25rem 0.25rem 0;
+		font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
 		font-size: 0.75rem;
 		font-style: normal;
 		font-weight: 600;
-		line-height: normal;
-		padding: 0.1rem 0.35rem;
+		letter-spacing: normal;
+		line-height: 1.25;
+		text-decoration: none;
+		text-transform: none;
+		padding: 0.125rem 0.375rem;
+		box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
 		user-select: none;
 		white-space: nowrap;
 	}
