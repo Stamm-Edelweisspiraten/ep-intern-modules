@@ -6,7 +6,6 @@ import {
 	moduleDb,
 	type PdfGenerateInput,
 	type RequestContext,
-	type Row,
 	rowsOf,
 	type Tx
 } from '$lib/sdk/server';
@@ -27,8 +26,6 @@ import {
 	LINK_DEFAULT_ROLE,
 	LINK_LOCK_MINUTES,
 	LINK_MAX_FAILED_ATTEMPTS,
-	LINK_MAX_USES_DEFAULT,
-	LINK_MAX_USES_SETTING,
 	MODULE_ID,
 	NOTIFY_ACCOUNT_LINKED,
 	SENSITIVE_FIELD_KEYS,
@@ -49,16 +46,6 @@ const toDate = (v: unknown): Date => (v instanceof Date ? v : new Date(String(v)
 export const LINK_NOT_AVAILABLE = 'Dieser Link ist nicht mehr gültig.';
 export const LINK_CODE_REJECTED = 'Der Code ist ungültig oder vorübergehend gesperrt.';
 
-/** Einstellung „Konten je Code“ (1–10, Standard 2); ungültige Werte → Standard. Vor Transaktionen lesen. */
-export async function linkMaxUses(): Promise<number> {
-	const v = Number(await core.settings.get(LINK_MAX_USES_SETTING));
-	return Number.isInteger(v) && v >= 1 && v <= 10 ? v : LINK_MAX_USES_DEFAULT;
-}
-
-/** Höchstzahl eines Codes: beim Erzeugen gespeichert, ältere Codes → aktuelle Einstellung. */
-const maxUsesOf = (row: Row, fallback: number): number =>
-	row.max_uses == null ? fallback : Number(row.max_uses);
-
 // --- Code und Brief (angemeldet) ---------------------------------------------
 
 export interface LinkCode {
@@ -66,44 +53,35 @@ export interface LinkCode {
 	code: string;
 	expiresAt: Date;
 	created: boolean;
-	/** Wie viele Konten sich mit dem Code verknüpfen lassen */
-	maxUses: number;
 }
 
 /**
  * Liefert den gültigen Code eines Mitglieds. Fehlt er, ist er abgelaufen oder wird `regenerate`
  * verlangt, entsteht ein neuer (neues Token, alter Link/QR wird ungültig, Zähler zurückgesetzt).
+ * Bis zum Ablauf lässt sich ein Code beliebig oft nutzen (jede Verknüpfung informiert die bisherigen Konten).
  */
 export async function ensureLinkCode(
 	ctx: RequestContext,
 	memberId: string,
 	opts: { regenerate?: boolean } = {}
 ): Promise<LinkCode> {
-	const maxUses = await linkMaxUses();
 	const result = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const m = await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId} FOR UPDATE`);
 		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
 		const cur = (
 			await rowsOf(
 				tx,
-				sql`SELECT token, token_enc, code_enc, expires_at, use_count, max_uses FROM member_link_codes WHERE member_id = ${memberId}`
+				sql`SELECT token, token_enc, code_enc, expires_at FROM member_link_codes WHERE member_id = ${memberId}`
 			)
 		)[0];
 		const curToken = cur ? storedToken(cur) : null;
-		// Verbrauchte Codes (Höchstzahl erreicht) werden wie abgelaufene ersetzt; nicht entschlüsselbare ebenso
-		if (
-			cur &&
-			curToken &&
-			!opts.regenerate &&
-			toDate(cur.expires_at).getTime() > Date.now() &&
-			Number(cur.use_count) < maxUsesOf(cur, maxUses)
-		) {
+		// Abgelaufene und nicht entschlüsselbare Codes werden ersetzt
+		if (cur && curToken && !opts.regenerate && toDate(cur.expires_at).getTime() > Date.now()) {
 			return {
 				token: curToken,
 				code: crypt().decrypt(cur.code_enc as string),
 				expiresAt: toDate(cur.expires_at),
-				created: false,
-				maxUses: maxUsesOf(cur, maxUses)
+				created: false
 			};
 		}
 		const token = generateLinkToken();
@@ -111,20 +89,20 @@ export async function ensureLinkCode(
 		const code = generateLinkCode();
 		const expiresAt = linkExpiry();
 		await tx.execute(
-			sql`INSERT INTO member_link_codes (member_id, token_hash, token_enc, code_enc, expires_at, created_by, use_count, max_uses)
-				VALUES (${memberId}, ${stored.hash}, ${stored.enc}, ${crypt().encrypt(code)}, ${expiresAt.toISOString()}, ${ctx.userId}, 0, ${maxUses})
+			sql`INSERT INTO member_link_codes (member_id, token_hash, token_enc, code_enc, expires_at, created_by, use_count)
+				VALUES (${memberId}, ${stored.hash}, ${stored.enc}, ${crypt().encrypt(code)}, ${expiresAt.toISOString()}, ${ctx.userId}, 0)
 				ON CONFLICT (member_id) DO UPDATE SET token = NULL, token_hash = EXCLUDED.token_hash,
 					token_enc = EXCLUDED.token_enc, code_enc = EXCLUDED.code_enc,
 					expires_at = EXCLUDED.expires_at, failed_attempts = 0, locked_until = NULL,
-					use_count = 0, max_uses = EXCLUDED.max_uses,
+					use_count = 0, max_uses = NULL,
 					created_at = now(), created_by = EXCLUDED.created_by`
 		);
-		return { token, code, expiresAt, created: true, maxUses };
+		return { token, code, expiresAt, created: true };
 	});
 	if (result.created) {
 		await core.audit.logFromContext(ctx, 'members.link.code_created', {
 			target: memberId,
-			metadata: { memberId, regenerate: Boolean(opts.regenerate), maxUses: result.maxUses }
+			metadata: { memberId, regenerate: Boolean(opts.regenerate) }
 		});
 	}
 	return result;
@@ -215,9 +193,7 @@ export async function buildLinkLetters(
 						...(adult
 							? []
 							: [
-									link.maxUses > 1
-										? `Bis zu ${link.maxUses} Personen (z. B. beide Elternteile) können den Code nutzen, jede mit einem eigenen Konto. Bereits verknüpfte Konten werden bei jeder weiteren Verknüpfung per E-Mail informiert.`
-										: 'Der Code kann für ein Konto genutzt werden.'
+									'Mehrere Personen (z. B. beide Elternteile) können den Code bis zum Ablauf nutzen, jede mit einem eigenen Konto. Bereits verknüpfte Konten werden bei jeder weiteren Verknüpfung per E-Mail informiert.'
 								]),
 						'Bitte geben Sie den Code nicht an Dritte weiter.'
 					]
@@ -240,7 +216,6 @@ export async function buildLinkLetters(
 // --- Verknüpfungen verwalten -------------------------------------------------
 
 export async function listMemberLinks(ctx: RequestContext, memberId: string): Promise<MemberLinks> {
-	const fallbackMax = await linkMaxUses();
 	const { links, code } = await moduleDb(MODULE_ID).transaction(async (tx) => {
 		const m = await rowsOf(tx, sql`SELECT id FROM members WHERE id = ${memberId}`);
 		if (!m.length) throw errors.notFound('Mitglied nicht gefunden');
@@ -253,7 +228,7 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 			code: (
 				await rowsOf(
 					tx,
-					sql`SELECT expires_at, locked_until, use_count, max_uses FROM member_link_codes WHERE member_id = ${memberId}`
+					sql`SELECT expires_at, locked_until, use_count FROM member_link_codes WHERE member_id = ${memberId}`
 				)
 			)[0]
 		};
@@ -285,9 +260,7 @@ export async function listMemberLinks(ctx: RequestContext, memberId: string): Pr
 					expiresAt: toDate(code.expires_at).toISOString(),
 					expired: toDate(code.expires_at).getTime() <= now,
 					locked: code.locked_until != null && toDate(code.locked_until).getTime() > now,
-					uses: Number(code.use_count),
-					maxUses: maxUsesOf(code, fallbackMax),
-					exhausted: Number(code.use_count) >= maxUsesOf(code, fallbackMax)
+					uses: Number(code.use_count)
 				}
 			: null
 	};
@@ -587,28 +560,26 @@ export async function setMailPref(
 
 // --- Öffentlicher Ablauf (Link + Code) --------------------------------------
 
-/** Code zum Token; abgelaufen oder verbraucht (Höchstzahl erreicht) → `null` („nicht mehr gültig“). */
-async function loadByToken(tx: Tx, token: string, maxUses: number, lock = false) {
+/** Code zum Token; abgelaufen → `null` („nicht mehr gültig“). Bis zum Ablauf beliebig oft nutzbar. */
+async function loadByToken(tx: Tx, token: string, lock = false) {
 	const found = await rowsOf(
 		tx,
 		lock
 			? sql`SELECT c.member_id, c.code_enc, c.expires_at, c.failed_attempts, c.locked_until,
-					c.use_count, c.max_uses, m.first_name, m.last_name
+					m.first_name, m.last_name
 				FROM member_link_codes c JOIN members m ON m.id = c.member_id
 				WHERE ${tokenMatchSql(token)} FOR UPDATE OF c`
-			: sql`SELECT c.member_id, c.expires_at, c.use_count, c.max_uses, m.first_name, m.last_name
+			: sql`SELECT c.member_id, c.expires_at, m.first_name, m.last_name
 				FROM member_link_codes c JOIN members m ON m.id = c.member_id WHERE ${tokenMatchSql(token)}`
 	);
 	const r = found[0];
 	if (!r || toDate(r.expires_at).getTime() <= Date.now()) return null;
-	if (Number(r.use_count) >= maxUsesOf(r, maxUses)) return null;
 	return r;
 }
 
 /** Öffentliche Basisinfo zum Link (nur Vorname, nichts weiter). */
 export async function publicLinkInfo(ctx: RequestContext, token: string): Promise<PublicLinkInfo> {
-	const maxUses = await linkMaxUses();
-	const r = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token, maxUses));
+	const r = await moduleDb(MODULE_ID).transaction((tx) => loadByToken(tx, token));
 	if (!r) throw errors.notFound(LINK_NOT_AVAILABLE);
 	return {
 		memberFirstName: r.first_name as string,
@@ -621,18 +592,16 @@ export async function publicLinkInfo(ctx: RequestContext, token: string): Promis
  * `LINK_MAX_FAILED_ATTEMPTS` ist der Code `LINK_LOCK_MINUTES` Minuten gesperrt. Der Zähler wird
  * VOR dem Werfen committet (Fehler außerhalb der Transaktion).
  *
- * Bei Erfolg wird eine Nutzung verbraucht (`use_count + 1`, unter Zeilensperre) – außer das Konto
- * `userId` ist schon verknüpft (wiederholtes Einlösen bleibt idempotent). Ist die Höchstzahl
- * erreicht, gilt der Link als nicht mehr gültig (neuer Brief nötig).
+ * Bei Erfolg wird die Nutzung gezählt (`use_count + 1`, nur zur Anzeige) – außer das Konto `userId`
+ * ist schon verknüpft (wiederholtes Einlösen bleibt idempotent). Der Link bleibt bis zum Ablauf gültig.
  */
 async function verifyCode(
 	token: string,
 	code: string,
 	userId: string | null
 ): Promise<{ memberId: string; firstName: string; consumed: boolean }> {
-	const maxUses = await linkMaxUses();
 	const outcome = await moduleDb(MODULE_ID).transaction(async (tx) => {
-		const r = await loadByToken(tx, token, maxUses, true);
+		const r = await loadByToken(tx, token, true);
 		if (!r) return { status: 'unavailable' as const };
 		if (r.locked_until != null && toDate(r.locked_until).getTime() > Date.now()) {
 			return { status: 'rejected' as const };
@@ -676,7 +645,7 @@ async function verifyCode(
 	return { memberId: outcome.memberId, firstName: outcome.firstName, consumed: outcome.consumed };
 }
 
-/** Verbrauchte Nutzung zurückgeben (Registrierung scheiterte nach erfolgreicher Code-Prüfung). */
+/** Gezählte Nutzung zurücknehmen (Registrierung scheiterte nach erfolgreicher Code-Prüfung). */
 async function releaseUse(memberId: string): Promise<void> {
 	await moduleDb(MODULE_ID).transaction((tx) =>
 		tx.execute(

@@ -351,16 +351,12 @@
 					<p class="text-muted-foreground">
 						Abgelaufen am {fmt(links.code.expiresAt)}. Der nächste Brief erzeugt einen neuen Code.
 					</p>
-				{:else if links.code.exhausted}
-					<p class="text-muted-foreground">
-						Verbraucht: {links.code.uses} von {links.code.maxUses} Konten verknüpft. Der nächste Brief
-						erzeugt einen neuen Code.
-					</p>
 				{:else}
 					<p class="text-muted-foreground">
 						Gültig bis {fmt(links.code.expiresAt)}{links.code.locked
 							? ' · wegen Fehlversuchen vorübergehend gesperrt'
-							: ''}. Bisher {links.code.uses} von {links.code.maxUses} Konten über diesen Code verknüpft.
+							: ''}. Bisher {links.code.uses}
+						{links.code.uses === 1 ? 'Konto' : 'Konten'} über diesen Code verknüpft.
 					</p>
 				{/if}
 			</div>

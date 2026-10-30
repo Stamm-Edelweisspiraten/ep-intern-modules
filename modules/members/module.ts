@@ -31,8 +31,6 @@ import {
 	LED_EXPORT,
 	LED_VIEW,
 	LINK_DEFAULT_ROLE,
-	LINK_MAX_USES_DEFAULT,
-	LINK_MAX_USES_SETTING,
 	NOTIFY_ACCOUNT_LINKED
 } from './schemas';
 import m0001 from './migrations/0001_init.sql?raw';
@@ -181,14 +179,6 @@ export default defineModule({
 				'Basis-URL eines Photon-Dienstes (OpenStreetMap, öffentlich: Komoot). Wird nur gefragt, wenn das Straßenverzeichnis nichts findet oder das Land nicht Deutschland ist (öffentlicher Dienst ist langsam). Datenschutz: Die eingegebene Anschrift (ohne Personennamen) geht an diesen externen Dienst. Leer = aus (keine Übermittlung).',
 			schema: z.union([z.literal(''), z.string().url().max(300)]),
 			default: 'https://photon.komoot.io'
-		},
-		{
-			key: LINK_MAX_USES_SETTING,
-			label: 'Verknüpfungsbrief: Konten je Code',
-			description:
-				'Wie viele Konten sich mit einem Brief (Code) verknüpfen lassen, z. B. 2 = beide Elternteile. Danach ist ein neuer Brief nötig. Gilt für neu erzeugte Codes.',
-			schema: z.number().int().min(1).max(10),
-			default: LINK_MAX_USES_DEFAULT
 		},
 		{
 			key: RETENTION_SETTING,

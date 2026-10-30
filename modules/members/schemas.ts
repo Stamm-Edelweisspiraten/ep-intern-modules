@@ -714,9 +714,6 @@ export interface Group {
 export const LINK_CODE_TTL_DAYS = 90;
 export const LINK_MAX_FAILED_ATTEMPTS = 10;
 export const LINK_LOCK_MINUTES = 60;
-/** Einstellung: wie viele Konten sich mit einem Code verknüpfen lassen (Standard 2 = beide Elternteile) */
-export const LINK_MAX_USES_SETTING = 'members.link.maxUses';
-export const LINK_MAX_USES_DEFAULT = 2;
 export const LINK_LETTERS_MAX_IDS = 100;
 /** Rolle, die per Verknüpfungscode angelegte Konten erhalten (wird ohne Rechte angelegt) */
 export const LINK_DEFAULT_ROLE = 'Mitglied';
@@ -858,10 +855,8 @@ export interface MemberLinks {
 		expiresAt: string;
 		expired: boolean;
 		locked: boolean;
-		/** Verknüpfungen über diesen Code / erlaubte Höchstzahl; `exhausted` = verbraucht */
+		/** Verknüpfungen über diesen Code (bis zum Ablauf unbegrenzt) */
 		uses: number;
-		maxUses: number;
-		exhausted: boolean;
 	} | null;
 }
 export interface PublicLinkInfo {

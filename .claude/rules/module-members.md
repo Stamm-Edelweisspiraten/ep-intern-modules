@@ -56,8 +56,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
   Index `group_leaders(member_id)`, CHECKs `groups.meeting_time`/`meeting_end_time` HH:MM und `members.exit_date >= entry_date` (Altbestand: ungültige
   Uhrzeiten bzw. Eintritt → NULL), Altspalte `address` geleert. Dokumente und Gruppenbilder über `secureFileResponse` (CSP-Sandbox); Dokument-Upload
   prüft Magic Bytes (`assertContentMatches`, falscher Inhalt **422**).
-- **0012** (#18): `member_link_codes.use_count` (Verknüpfungen über den Code) und `max_uses` (beim Erzeugen gespeicherte Höchstzahl, `NULL` =
-  aktuelle Einstellung). Bestand: `use_count` = Verknüpfungen seit `created_at` des Codes (inkl. manueller, vorsichtig gezählt).
+- **0012** (#18): `member_link_codes.use_count` (Verknüpfungen über den Code) und `max_uses` (Höchstzahl, **seit 2026-10-29 unbenutzt**, neue Codes `NULL`). Bestand: `use_count` = Verknüpfungen seit `created_at` des Codes (inkl. manueller, vorsichtig gezählt).
 - **0004**: `members.street`, `postal_code`, `city`, `country` (ISO-Alpha-2, Standard `DE`); alte Freitext-`address` wurde nach `street`
   kopiert und ist **nicht mehr in Gebrauch** (Spalte bleibt, `NOT NULL` aufgehoben, wird beim Speichern auf `NULL` gesetzt). API/DTO kennen kein `address` mehr.
 - **0006**: `members.entry_date`/`exit_date` (`date NULL`), `secondary_member boolean` (Standard `false`), `fee_levels text[]`
@@ -193,16 +192,16 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
 
 ### Konto-Verknüpfung (`link.ts` rein, `link.service.ts`, `link.endpoints.ts`, UI `LinksDialog`, `LinkAccount`)
 Mitglied ↔ Konten n:m (Mutter+Vater ↔ Kind; Elternteil ↔ mehrere Kinder). Verknüpft wird per **Brief** (Vorlage `stamm-brief`,
-Adressfeld „Eltern von …“ + Anschrift; Block `box` (ohne Rahmen) mit QR-Code, großem Code `123 456`, Gültigkeit und anklickbarem Link ohne `https://`; darunter „So geht’s“ und „Gut zu wissen“, passt auf eine Seite). Code ist **begrenzt** nutzbar (Einstellung `members.link.maxUses`, 1–10, Standard **2** = beide Elternteile), 90 Tage gültig; der Brief
-verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem/**verbrauchtem** Code einen neuen (`POST …/link-code` erzwingt neu → neues Token, Zähler 0).
-**Entscheidung (#18, 2026-10-20) – Vorschlag, Nutzer bestätigt:** höchstens 2 Konten je Brief; jede weitere Verknüpfung über den Code informiert alle bereits
+Adressfeld „Eltern von …“ + Anschrift; Block `box` (ohne Rahmen) mit QR-Code, großem Code `123 456`, Gültigkeit und anklickbarem Link ohne `https://`; darunter „So geht’s“ und „Gut zu wissen“, passt auf eine Seite). Code ist bis zum Ablauf (90 Tage) **beliebig oft** nutzbar (2026-10-29, Nutzerwunsch; Einstellung `members.link.maxUses` entfällt); der Brief
+verwendet den bestehenden Code, erzeugt nur bei fehlendem/abgelaufenem Code einen neuen (`POST …/link-code` erzwingt neu → neues Token, Zähler 0).
+**Entscheidung (#18, 2026-10-20, Höchstzahl am 2026-10-29 aufgehoben):** jede weitere Verknüpfung über den Code informiert alle bereits
 verknüpften Konten per Mail („Weiteres Konto mit <Vorname> verknüpft“, ohne Daten des neuen Kontos); über den Brief neu angelegte Konten müssen ihre Adresse
-bestätigen, bevor sie sich anmelden können. Erneutes Einlösen durch ein schon verknüpftes Konto verbraucht nichts; manuelles Verknüpfen (Verwaltung) zählt nicht.
-Verbraucht/abgelaufen → `GET /public/link/:token`, `claim`, `register` antworten 404 („Dieser Link ist nicht mehr gültig.“). Scheitert die Registrierung nach
-erfolgreicher Code-Prüfung (z. B. 409), wird die Nutzung zurückgegeben.
+bestätigen, bevor sie sich anmelden können. `use_count` zählt nur zur Anzeige (erneutes Einlösen durch ein schon verknüpftes Konto zählt nicht; manuelles Verknüpfen auch nicht).
+Abgelaufen → `GET /public/link/:token`, `claim`, `register` antworten 404 („Dieser Link ist nicht mehr gültig.“). Scheitert die Registrierung nach
+erfolgreicher Code-Prüfung (z. B. 409), wird der Zähler zurückgenommen. Unbestätigte Konten lassen sich unter `/admin/users` von Hand bestätigen.
 | Methode + Pfad | Recht | Besonderheiten |
 |---|---|---|
-| GET `/members/:id/links` | link.view | Konten (Name/E-Mail via `core.users.directory`), Codestatus (nie der Code): `expiresAt`, `expired`, `locked`, `uses`, `maxUses`, `exhausted` |
+| GET `/members/:id/links` | link.view | Konten (Name/E-Mail via `core.users.directory`), Codestatus (nie der Code): `expiresAt`, `expired`, `locked`, `uses` |
 | POST `/members/:id/link-code` | link.manage | neuer Code + Token, Zähler/Sperre zurück |
 | POST `/members/:id/links` | link.manage | **Konto per Hand verknüpfen** (ohne Brief/Code, 2026-10-19): `{ userId, relation? }` strikt → `MemberLinks`; nur aktive Konten (sonst 422 `userId`), schon verknüpft 409, Mitglied unbekannt 404; Rollen bleiben unverändert; Audit `members.link.created` mit `manual: true` |
 | GET `/link-users?search=` | link.manage | aktive Konten zum Verknüpfen (`core.users.directory`, ab 2 Zeichen, ≤ 30) → `LinkUserRef[]` |
