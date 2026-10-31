@@ -6,6 +6,10 @@ export default {
 		':id': () => import('./pages/NotePage.svelte')
 	},
 	fullBleedRoutes: [':id'],
+	publicRoutes: {
+		'link/:token': () => import('./pages/PublicNotePage.svelte')
+	},
+	publicWideRoutes: ['link/:token'],
 	dashboardWidgets: [
 		{
 			id: 'recent',

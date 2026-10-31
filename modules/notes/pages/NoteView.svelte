@@ -12,12 +12,13 @@
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
+	import Globe from '@lucide/svelte/icons/globe';
 	import History from '@lucide/svelte/icons/history';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Palette from '@lucide/svelte/icons/palette';
 	import PanelLeft from '@lucide/svelte/icons/panel-left';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import { ConfirmDialog, PageTitle, ShareMenu, type ShareCandidate } from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
@@ -27,6 +28,7 @@
 	import {
 		DEFAULT_USER_PREFS,
 		MAX_TITLE,
+		PERM,
 		presenceColor,
 		type NoteDetail,
 		type NoteShares,
@@ -52,6 +54,7 @@
 		shareEntries
 	} from './helpers';
 	import MoveDialog from './MoveDialog.svelte';
+	import NoteLinkDialog from './NoteLinkDialog.svelte';
 	import NoteIcon from './NoteIcon.svelte';
 	import PeerAvatars from './PeerAvatars.svelte';
 	import StyleDialog from './StyleDialog.svelte';
@@ -88,6 +91,10 @@
 	let styleOpen = $state(false);
 	let moveOpen = $state(false);
 	let deleteOpen = $state(false);
+	let linkOpen = $state(false);
+	const canLink = $derived(
+		can((page.data.permissions as string[] | undefined) ?? [], PERM.linkCreate)
+	);
 	/** Persönlicher Hintergrund (gilt für alle Notizen) */
 	let prefs = $state<UserPrefs>(DEFAULT_USER_PREFS);
 	const surface = $derived(surfaceStyle(prefs));
@@ -383,6 +390,12 @@
 						<FolderInput /> Verschieben …
 					</DropdownMenu.Item>
 				{/if}
+				{#if note.canShare && canLink && !gone}
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item onclick={() => (linkOpen = true)}>
+						<Globe /> Öffentlicher Link …
+					</DropdownMenu.Item>
+				{/if}
 				{#if note.canShare && !gone}
 					<DropdownMenu.Separator />
 					<DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
@@ -467,6 +480,7 @@
 </div>
 
 <VersionsDialog bind:open={versionsOpen} noteId={note.id} {canEdit} onrestored={() => undefined} />
+<NoteLinkDialog bind:open={linkOpen} {note} />
 <ExportDialog bind:open={exportOpen} noteId={note.id} hasChildren={note.hasChildren} />
 <StyleDialog
 	bind:open={styleOpen}

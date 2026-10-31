@@ -49,8 +49,9 @@
 		tick: number;
 		canEdit: boolean;
 		onlink: () => void;
-		onimage: () => void;
-		onembed: () => void;
+		/** ohne Angabe kein Knopf (Gäste) */
+		onimage?: () => void;
+		onembed?: () => void;
 		/** KI-Schreibhilfe (Auswahl überarbeiten bzw. an der Cursorposition schreiben); ohne Angabe kein Knopf */
 		onassist?: () => void;
 	} = $props();
@@ -404,19 +405,23 @@
 					{/if}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<ToolButton label="Bild einfügen" icon={ImagePlus} disabled={off} onclick={onimage} />
+			{#if onimage}
+				<ToolButton label="Bild einfügen" icon={ImagePlus} disabled={off} onclick={onimage} />
+			{/if}
 			<ToolButton
 				label="Trennlinie"
 				icon={Minus}
 				disabled={off}
 				onclick={() => run((c) => c.setHorizontalRule())}
 			/>
-			<ToolButton
-				label="Whiteboard o. Ä. einbetten"
-				icon={LayoutTemplate}
-				disabled={off}
-				onclick={onembed}
-			/>
+			{#if onembed}
+				<ToolButton
+					label="Whiteboard o. Ä. einbetten"
+					icon={LayoutTemplate}
+					disabled={off}
+					onclick={onembed}
+				/>
+			{/if}
 			<span class="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true"></span>
 			<ToolButton
 				label="Formatierung entfernen"

@@ -9,7 +9,7 @@ formatiertem Editor (Tiptap 3) mit **Markdown-Kürzeln**, eingefügtem Markdown 
 unterstrichen, durchgestrichen, Schriftgröße, Farbe/Markierung, Ausrichtung, Listen/Aufgaben, Zitat, Code, **Tabellen**, Link, Bild, Trennlinie),
 Slash-Menü (`/`), **Bilder** (Upload/Einfügen/Ziehen, Größe per Griff), **eingebettete Whiteboards** (live bearbeitbar, Core-Mechanismus „Einbetten“),
 Teilen an Principals (vererbt auf Unterseiten), Notizen je **Aktion**, Versionen, Papierkorb, **Export** `.md`/`.zip`/`.html`/`.docx`/`.pdf` und Import
-`.md`/`.zip`. Schema `mod_notes`, v1.1.0 (2026-10-29), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
+`.md`/`.zip`. Schema `mod_notes`, v1.3.0 (2026-11-01, Links), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
 Navigation „Notizen“ (Icon `notebook-pen`, `order` 72), Editor vollflächig (`fullBleedRoutes: [':id']`).
 
 Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); formatierter Editor mit Markdown-Kürzeln **plus** Quelltext-Umschalter;
@@ -35,7 +35,7 @@ Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); forma
 ## Dateien (`src/lib/modules/notes/`)
 | Datei | Inhalt |
 |---|---|
-| `module.ts` | Manifest (4 Rechte, **keine** `defaultRoleGrants`), Jobs `versions` (stündlich: verdichten + automatische Versionen) und `purge-trash` (täglich), Hooks, `provides` `NoteRefsService`, Endpoints in `withNoteContext` (transfer → notes → live → assets → versions) |
+| `module.ts` | Manifest (6 Rechte inkl. `notes.link.create`, **keine** `defaultRoleGrants`), Jobs `versions` (stündlich: verdichten + automatische Versionen) und `purge-trash` (täglich), Hooks, `provides` `NoteRefsService`, Endpoints in `withNoteContext` (transfer → notes → live → assets → versions) |
 | `schemas.ts` | Vertrag: Konstanten/Grenzen, Zod (`noteCreateInput` mit `markdown`, `noteUpdateInput`, `moveInput`, `stateQuery`, `liveQuery`, `updatesQuery`, `awarenessInput`, `sharesInput`, `exportQuery` …), DTOs (`NoteNode`, `NoteDetail`, `NoteRoots`, `NoteShares` mit `inherited`, `NoteVersion`, `TrashItem`, `NoteAsset`, `Peer`), `LiveEvent`, `presenceColor` |
 | `access.ts` | Zugriff mit **Vererbung über die Oberseiten-Kette** (`chainOf`, `resolveNoteAccess`, `requireNoteAccess(…, 'read'|'edit'|'share', { includeDeleted })`), Liste `accessForMany` (ein CTE), `visibleNotesSql`, `notInTrashSql`, Teilbaum-Hilfen, Sperren `lockNote`/`lockRoots`, `loadNoteContext`/`withNoteContext` (Schlüssel + `accessibleActions` **vor** der Tx) |
 | `db.ts` | `mdb`, `filesCtx` (Systemkontext `notes-files`), `userRefs`/`refOf` |
@@ -103,3 +103,30 @@ und `note-write` (ohne Auswahl, ganze Notiz als Klartext ≤ 18 000 Zeichen: Ent
 Slash-Menü – nur mit Recht und eingerichteter KI. Auswahl → **Ersetzen** (ein Undo-Schritt, Yjs führt die Auswahl bei Fremdänderungen mit), sonst
 **Einfügen** an der Cursorposition; Aufgaben als Aufgabenliste (`taskList`). Nie die ganze Notiz ersetzen (Live-Bearbeitung). Bilder/Einbettungen/Code
 in der Auswahl gehen beim Ersetzen verloren → Hinweis im Blatt. Tests in `tests/integration/ai-assist.test.ts` („Notizen“).
+
+## Öffentliche Links (2026-11-01, v1.3.0, Migr. 0003)
+Nutzerentscheidungen: Link gilt für die Seite **mit allen Unterseiten**; Schutz **wie bei Dateien** (optionales Ablaufdatum + Passwort,
+widerrufbar, URL jederzeit kopierbar, Fehlversuchssperre); Gäste werden **nach ihrem Namen gefragt** (optional, im Browser gemerkt,
+Cursor „<Name> (Gast)“, sonst „Gast“); Gäste mit Bearbeiten-Link schreiben **nur Text** – keine Bild-Uploads, Einbettungen (nur Hinweis),
+Unterseiten, Titel, Versionen, Export, KI.
+- Tabelle `note_links` (Token nur als HMAC-Hash `token_hash` + verschlüsselt `token_enc`, `level read|edit`, `expires_on`, scrypt-`password_hash`,
+  Fehlversuchszähler, Zugriffe). Backup-Hook `backup.ts` (Hash neu aus `token_enc`). Recht **`notes.link.create`** (keine Standard-Vergabe);
+  verwalten nur Eigentümer*in/`edit-all` (Bearbeiten-Freigabe reicht nicht → 403), fremd 404, ≤ 20 aktive je Notiz.
+- Dienst `links.service.ts`, Endpunkte `links.endpoints.ts`: intern `GET/POST /notes/:id/links`, `DELETE /links/:linkId` (in `withNoteContext`);
+  öffentlich (`public: true`, **außerhalb** von `withNoteContext`) unter `/public/links/:token`: Info (Titel/Seitenbaum erst nach dem Freischalten),
+  `unlock` (10/600 s; 10 Fehlversuche je Link und Stunde → 429), `notes/:noteId/state|live|updates|awareness`, `assets/:assetId/:variant`.
+  Ungültig/abgelaufen/widerrufen/Papierkorb/Seite außerhalb/Eigentümer*in der Wurzel fehlt oder deaktiviert → dieselbe 404. Zugriffstoken nach dem
+  Passwort 12 h (`LINK_ACCESS_TTL_SEC`), Live-Verbindungen prüfen es laufend.
+- **Gäste live**: Updates als **JSON (base64)** `POST …/updates` (öffentliche Endpunkte nehmen nur JSON; ≤ 600 KB roh, `MAX_PUBLIC_UPDATE_BYTES`),
+  Zugriff 5 s gecacht (`clearGuestCache` nach Widerruf). SSE über denselben Hub: `createLiveHub` kennt jetzt `subject` (Identität statt Konto,
+  `guest:<hash des Tab-Geheimnisses key>`), `recheck` (eigene Neuprüfung statt Sitzung) und `countWhere` (≤ 30 Gast-Streams je IP). Anwesenheit nur mit
+  passendem `key`; fremde `client`-Kennung → 409. Widerruf/Verschieben/Papierkorb → `recheckNotes` → `revoked`.
+- Client: `NoteSync(…, level, guest)` (Basis `/public/links/<token>/notes/<id>`, `t`/`key`/`name` in der Query), `NoteEditor guest={{ assetSrc, openHref }}`
+  (Gastmodus, `GuestEmbed`, `browserImage(src)`), Seiten `pages/PublicNotePage.svelte` (`/p/notes/link/<token>`, `?seite=<id>`, Passwort, Name,
+  Seitenbaum/BottomSheet) + `PublicNoteView.svelte`; Verwaltung `pages/NoteLinkDialog.svelte` (Menü „Öffentlicher Link …“, nur mit Recht + Teilen-Recht).
+  Core: `ModuleUi.publicWideRoutes` → `/p/…` ohne schmale Spalte.
+- Audit `notes.link.created|revoked|accessed` (accessed ≤ 1×/h je Link, Akteur `system` „Öffentlicher Link“), ohne Passwort/Inhalt/Gastnamen.
+  Gast-Änderungen speichern `created_by/updated_by = NULL`. Konto gelöscht → eigene Links widerrufen; `resetUsers` widerruft fremde Links.
+- Tests `tests/integration/notes-links.test.ts`. Offen: echte Browser-Prüfung mit mehreren Gästen gleichzeitig, Safari/iOS; Gast-Updates zählen gegen
+  das IP-Rate-Limit (1200/60 s je IP – mehrere Gäste hinter einem NAT teilen es).
+

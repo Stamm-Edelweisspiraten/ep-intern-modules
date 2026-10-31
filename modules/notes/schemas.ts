@@ -6,6 +6,7 @@
  * Abgeleitete Felder (`content_json`, `content_text`) erzeugt der Server verzögert für Suche, Vorschau und Export.
  */
 import { z } from 'zod';
+import { isRealDate } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
 
 export const MODULE_ID = 'notes';
@@ -21,8 +22,12 @@ export const PERM = {
 	view: 'notes.note.view',
 	create: 'notes.note.create',
 	viewAll: 'notes.note.view-all',
-	editAll: 'notes.note.edit-all'
+	editAll: 'notes.note.edit-all',
+	linkCreate: 'notes.link.create'
 } as const;
+
+/** Öffentliche Seite eines Links: `/p/notes/link/<token>` */
+export const PUBLIC_LINK_PATH = '/p/notes/link';
 
 // --- Grenzen ----------------------------------------------------------------
 
@@ -52,6 +57,18 @@ export const DERIVE_DELAY_MS = 5_000;
 export const MIN_EMBED_HEIGHT = 160;
 export const MAX_EMBED_HEIGHT = 1600;
 export const DEFAULT_EMBED_HEIGHT = 480;
+/** Öffentliche Links: aktive je Notiz, Passwort, Fehlversuche je Link und Stunde */
+export const MAX_LINKS_PER_NOTE = 20;
+export const MIN_LINK_PASSWORD = 8;
+export const MAX_LINK_PASSWORD = 200;
+export const MAX_UNLOCK_FAILURES = 10;
+/** Freischaltung nach dem Passwort (lang genug für eine Schreibsitzung; Live-Verbindungen prüfen sie laufend) */
+export const LINK_ACCESS_TTL_SEC = 12 * 60 * 60;
+/** Gäste schicken Updates als JSON (base64): Router-Grenze 1 MB → Rohdaten deutlich darunter */
+export const MAX_PUBLIC_UPDATE_BYTES = 600_000;
+export const MAX_GUEST_NAME = 40;
+/** Live-Verbindungen je IP über öffentliche Links */
+export const MAX_GUEST_STREAMS_PER_IP = 30;
 
 export const SHARE_LEVELS = ['read', 'edit'] as const;
 export type ShareLevel = (typeof SHARE_LEVELS)[number];
@@ -275,6 +292,81 @@ export const exportQuery = z.object({
 	letterhead: z.enum(['0', '1']).default('0')
 });
 
+// --- Öffentliche Links ----------------------------------------------------------
+
+export const LINK_LEVEL_LABELS: Record<ShareLevel, string> = {
+	read: 'Ansehen',
+	edit: 'Bearbeiten'
+};
+
+/** POST `/notes/:id/links` */
+export const linkCreateInput = z
+	.object({
+		level: z.enum(SHARE_LEVELS).default('read'),
+		/** gültig bis einschließlich `YYYY-MM-DD`, `null` = unbegrenzt */
+		expiresOn: z
+			.string()
+			.regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT')
+			.refine(isRealDate, 'Ungültiges Datum')
+			.nullish()
+			.transform((v) => v ?? null),
+		password: z
+			.string()
+			.min(MIN_LINK_PASSWORD, `Mindestens ${MIN_LINK_PASSWORD} Zeichen`)
+			.max(MAX_LINK_PASSWORD, `Höchstens ${MAX_LINK_PASSWORD} Zeichen`)
+			.nullish()
+			.transform((v) => v ?? null)
+	})
+	.strict();
+export type LinkCreateInput = z.input<typeof linkCreateInput>;
+
+export const linkParams = z.object({ linkId: uuid });
+
+/** Öffentliche Pfade: Token (base64url, 32 Byte) */
+export const publicTokenParams = z.object({
+	token: z.string().regex(/^[A-Za-z0-9_-]{20,100}$/, 'Ungültiger Link')
+});
+export const publicNoteParams = publicTokenParams.extend({ noteId: uuid });
+export const publicAssetParams = publicTokenParams.extend({
+	assetId: uuid,
+	variant: z.enum(['thumb', 'web', 'file'])
+});
+
+/** `t` = Zugriffstoken nach dem Passwort */
+const accessToken = z.string().max(500).optional();
+export const publicQuery = z.object({ t: accessToken });
+export const publicStateQuery = stateQuery.extend({ t: accessToken });
+
+/** Name eines Gasts (Cursor-Schild), leer = „Gast“ */
+export const guestName = z
+	.string()
+	.trim()
+	.max(MAX_GUEST_NAME, `Höchstens ${MAX_GUEST_NAME} Zeichen`)
+	.optional();
+/** Geheimnis je Browser-Tab: nur wer es kennt, darf für seine Verbindung Anwesenheit/Änderungen schicken */
+export const guestKey = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/, 'Ungültige Kennung');
+
+export const publicLiveQuery = liveQuery.extend({ t: accessToken, name: guestName, key: guestKey });
+
+export const linkUnlockInput = z
+	.object({ password: z.string().min(1).max(MAX_LINK_PASSWORD) })
+	.strict();
+
+/** POST `/public/links/:token/notes/:noteId/updates` – Yjs-Update base64 im JSON (öffentlich nur JSON) */
+export const publicUpdateInput = z
+	.object({
+		client: clientId,
+		t: accessToken,
+		update: z
+			.string()
+			.min(1)
+			.max(Math.ceil((MAX_PUBLIC_UPDATE_BYTES * 4) / 3) + 4)
+			.regex(/^[A-Za-z0-9+/=]*$/, 'Ungültige Daten')
+	})
+	.strict();
+
+export const publicAwarenessInput = awarenessInput.extend({ key: guestKey, t: accessToken });
+
 // --- Persönliche Ansicht (Hintergrund) ----------------------------------------
 
 export const SURFACE_MODES = ['fixed', 'theme'] as const;
@@ -457,6 +549,42 @@ export type LiveEvent =
 	| { type: 'reset' }
 	| { type: 'revoked' }
 	| { type: 'deleted' };
+
+/** Öffentlicher Link einer Notiz (Verwaltung) */
+export interface NoteLink {
+	id: string;
+	noteId: string;
+	level: ShareLevel;
+	/** `null` = Adresse nicht mehr abrufbar (z. B. geänderter Schlüssel) */
+	url: string | null;
+	expiresOn: string | null;
+	hasPassword: boolean;
+	active: boolean;
+	revokedAt: string | null;
+	accessCount: number;
+	lastAccessAt: string | null;
+	createdBy: UserRef | null;
+	createdAt: string;
+}
+
+/** Seite im Baum eines öffentlichen Links */
+export interface PublicNoteNode {
+	id: string;
+	parentId: string | null;
+	title: string;
+	icon: string | null;
+	color: string | null;
+}
+
+/** GET `/public/links/:token` */
+export interface PublicLinkInfo {
+	title: string;
+	level: ShareLevel;
+	needsPassword: boolean;
+	expiresOn: string | null;
+	/** Seitenbaum ab der geteilten Seite (erst nach dem Freischalten), Reihenfolge wie intern */
+	pages: PublicNoteNode[];
+}
 
 /** Antwort von `POST /notes/:id/updates` */
 export interface UpdateResult {

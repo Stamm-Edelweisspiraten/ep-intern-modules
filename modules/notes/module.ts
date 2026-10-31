@@ -4,6 +4,8 @@ import { withNoteContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
 import { purgeUnusedAssets } from './assets.service';
 import { discardAllDocs, flushAll } from './doc.service';
+import { linkEndpoints, publicLinkEndpoints } from './links.endpoints';
+import { notesBackup } from './backup';
 import { liveEndpoints } from './live.endpoints';
 import { noteEndpoints } from './notes.endpoints';
 import { prefsEndpoints } from './prefs.endpoints';
@@ -18,6 +20,7 @@ import { NOTIFY_NOTE_SHARED, PERM } from './schemas';
 import type { NoteRefsService } from './contract';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_user_prefs.sql?raw';
+import m0003 from './migrations/0003_public_links.sql?raw';
 
 export default defineModule({
 	manifest: {
@@ -25,11 +28,11 @@ export default defineModule({
 		name: 'Notizen',
 		description:
 			'Gemeinsame Notizen mit Unterseiten: live zusammen schreiben, Markdown, Tabellen, Bilder, eingebettete Whiteboards, Teilen und Export (Markdown, PDF, Word, HTML)',
-		version: '1.2.0',
+		version: '1.3.0',
 		dependencies: [],
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Notizen an Aktionen */
 		optionalDependencies: ['members', 'actions'],
-		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll, PERM_AI],
+		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll, PERM.linkCreate, PERM_AI],
 		permissionDescriptions: {
 			[PERM.view]:
 				'Notizen nutzen: eigene, freigegebene und über Aktionen sichtbare Notizen ansehen und – je nach Freigabe – live mitbearbeiten',
@@ -37,6 +40,8 @@ export default defineModule({
 				'Eigene Notizen anlegen und importieren (auch für Aktionen mit Bearbeiten-Recht)',
 			[PERM.viewAll]: 'Alle Notizen ansehen, auch ohne Freigabe',
 			[PERM.editAll]: 'Alle Notizen bearbeiten, teilen, verschieben und löschen',
+			[PERM.linkCreate]:
+				'Öffentliche Links auf eigene Notizen anlegen – Personen ohne Konto können sie damit ansehen oder live mitbearbeiten',
 			[PERM_AI]:
 				'KI-Schreibhilfe in Notizen nutzen (markierten Text überarbeiten, zusammenfassen, weiterschreiben, Aufgaben ableiten)'
 		},
@@ -52,7 +57,8 @@ export default defineModule({
 	},
 	migrations: [
 		{ name: '0001_init', sql: m0001 },
-		{ name: '0002_user_prefs', sql: m0002 }
+		{ name: '0002_user_prefs', sql: m0002 },
+		{ name: '0003_public_links', sql: m0003 }
 	],
 	assist: notesAssist,
 	search: notesSearch,
@@ -96,6 +102,7 @@ export default defineModule({
 	onUserDeleted,
 	onMemberDeleted,
 	subjectExport,
+	backup: notesBackup,
 	// Zurücksetzen/Wiederherstellen: alte Dokumente im Speicher dürfen die neuen Daten nie überschreiben
 	onDataReplaced: async () => discardAllDocs(),
 	// Deaktivieren: noch Offenes sichern, dann Speicher und Verbindungen freigeben
@@ -103,13 +110,18 @@ export default defineModule({
 		await flushAll();
 		discardAllDocs();
 	},
-	// Reihenfolge: erster Treffer gewinnt (feste Pfade wie `/notes/roots`, `/notes/by-action/…` vor `/notes/:id`)
-	endpoints: withNoteContext([
-		...prefsEndpoints,
-		...transferEndpoints,
-		...noteEndpoints,
-		...liveEndpoints,
-		...assetEndpoints,
-		...versionEndpoints
-	])
+	// Reihenfolge: erster Treffer gewinnt (feste Pfade wie `/notes/roots`, `/notes/by-action/…` vor `/notes/:id`).
+	// Öffentliche Link-Endpunkte (`/public/links/…`) ohne Notiz-Kontext (keine Person).
+	endpoints: [
+		...publicLinkEndpoints,
+		...withNoteContext([
+			...prefsEndpoints,
+			...linkEndpoints,
+			...transferEndpoints,
+			...noteEndpoints,
+			...liveEndpoints,
+			...assetEndpoints,
+			...versionEndpoints
+		])
+	]
 });

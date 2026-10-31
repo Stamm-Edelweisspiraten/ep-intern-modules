@@ -25,7 +25,8 @@ const USER_COLUMNS = [
 	['note_shares', 'created_by'],
 	['note_updates', 'created_by'],
 	['note_versions', 'created_by'],
-	['note_assets', 'created_by']
+	['note_assets', 'created_by'],
+	['note_links', 'created_by']
 ] as const;
 
 export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
@@ -36,6 +37,10 @@ export const onUserDeleted: ModuleDefinition['onUserDeleted'] = async (
 		sql`DELETE FROM note_shares WHERE principal_type = 'user' AND principal_id = ${userId}`
 	);
 	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id = ${userId}`);
+	// öffentliche Links der Person widerrufen (Links auf Notizen ohne aktive Eigentümer*in sind ohnehin gesperrt)
+	await tx.execute(
+		sql`UPDATE note_links SET revoked_at = now() WHERE created_by = ${userId} AND revoked_at IS NULL`
+	);
 	// private Wurzeln: weder Aktion noch irgendeine Freigabe im Teilbaum
 	const privateRoots = await rowsOf(
 		tx,
@@ -82,7 +87,15 @@ export const resetAreas: ResetArea[] = [
 		label: 'Alle Notizen',
 		description:
 			'Löscht alle Notizen mit Unterseiten, Versionen, Bildern und Freigaben – auch die an Aktionen gehängten und den Papierkorb.',
-		tables: ['note_versions', 'note_assets', 'note_updates', 'note_shares', 'notes', 'user_prefs'],
+		tables: [
+			'note_links',
+			'note_versions',
+			'note_assets',
+			'note_updates',
+			'note_shares',
+			'notes',
+			'user_prefs'
+		],
 		rebuild: true
 	}
 ];
@@ -92,6 +105,11 @@ export const resetUsers: ModuleDefinition['resetUsers'] = async (tx, keepUserId)
 		sql`DELETE FROM note_shares WHERE principal_type = 'user' AND principal_id <> ${keepUserId}`
 	);
 	await tx.execute(sql`DELETE FROM user_prefs WHERE user_id <> ${keepUserId}`);
+	// Links fremder Personen widerrufen (wie `files`): Inhalte wechseln die Eigentümer*in
+	await tx.execute(
+		sql`UPDATE note_links SET revoked_at = now()
+			WHERE revoked_at IS NULL AND created_by IS DISTINCT FROM ${keepUserId}`
+	);
 	await tx.execute(
 		sql`UPDATE notes SET owner_id = ${keepUserId} WHERE owner_id IS DISTINCT FROM ${keepUserId}`
 	);

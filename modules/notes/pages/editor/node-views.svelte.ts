@@ -15,8 +15,26 @@ export const BrowserEmbed = Embed.extend({
 	}
 });
 
+/**
+ * Gäste (öffentlicher Link): Einbettungen nur als Hinweis – die Einbett-Seiten der anderen Module brauchen ein Konto.
+ */
+export const GuestEmbed = Embed.extend({
+	addNodeView() {
+		return () => {
+			const dom = document.createElement('div');
+			dom.className =
+				'note-embed my-2 rounded-md border border-dashed px-4 py-6 text-center text-sm text-muted-foreground';
+			dom.contentEditable = 'false';
+			dom.textContent = 'Eingebetteter Inhalt – nur für angemeldete Personen sichtbar';
+			return { dom, ignoreMutation: () => true };
+		};
+	}
+});
+
 /** Bild: `src` für die Darstellung aus der Asset-ID (das Dokument speichert nur die ID) */
-export function browserImage() {
+export function browserImage(
+	src: (assetId: string, variant: 'thumb' | 'web' | 'file') => string = assetUrl
+) {
 	return noteImage({ resizableImages: true }).extend({
 		addAttributes() {
 			const parent = (this.parent?.() ?? {}) as Record<string, Record<string, unknown>>;
@@ -26,7 +44,7 @@ export function browserImage() {
 					...parent.assetId,
 					renderHTML: (attrs: Record<string, unknown>) =>
 						isUuid(attrs.assetId)
-							? { 'data-asset-id': attrs.assetId, src: assetUrl(attrs.assetId, 'web') }
+							? { 'data-asset-id': attrs.assetId, src: src(attrs.assetId, 'web') }
 							: {}
 				}
 			};

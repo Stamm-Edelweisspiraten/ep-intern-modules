@@ -30,7 +30,7 @@
 	import BubbleMenu from './BubbleMenu.svelte';
 	import EmbedPicker from './EmbedPicker.svelte';
 	import LinkDialog from './LinkDialog.svelte';
-	import { BrowserEmbed, browserImage } from './node-views.svelte';
+	import { BrowserEmbed, browserImage, GuestEmbed } from './node-views.svelte';
 	import SlashMenu, { type SlashItem } from './SlashMenu.svelte';
 	import type { NoteSync } from './sync.svelte';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -44,7 +44,8 @@
 		user,
 		editor = $bindable(null),
 		header,
-		oncreatesubpage
+		oncreatesubpage,
+		guest
 	}: {
 		sync: NoteSync;
 		noteId: string;
@@ -55,6 +56,14 @@
 		header?: Snippet;
 		/** Unterseite anlegen → Titel und ID für den Link im Text */
 		oncreatesubpage?: () => Promise<{ id: string; title: string } | null>;
+		/**
+		 * Gast über einen öffentlichen Link: nur Text – keine Bild-Uploads, Einbettungen, Unterseiten oder KI.
+		 * `assetSrc` = Bildadresse über den Link, `openHref` öffnet interne Links (z. B. Unterseiten) auf der Link-Seite.
+		 */
+		guest?: {
+			assetSrc: (assetId: string, variant: 'thumb' | 'web' | 'file') => string;
+			openHref?: (href: string) => boolean;
+		};
 	} = $props();
 
 	let element = $state<HTMLDivElement | null>(null);
@@ -81,7 +90,13 @@
 	/** Schema-Erweiterungen; Bild und Einbettung bekommen Browser-Verhalten (gleiche Knoten) */
 	function extensions() {
 		return noteExtensions({ resizableImages: true }).map((ext) =>
-			ext.name === 'embed' ? BrowserEmbed : ext.name === 'image' ? browserImage() : ext
+			ext.name === 'embed'
+				? guest
+					? GuestEmbed
+					: BrowserEmbed
+				: ext.name === 'image'
+					? browserImage(guest?.assetSrc)
+					: ext
 		);
 	}
 
@@ -90,6 +105,10 @@
 
 	async function insertImages(files: File[], at?: number) {
 		if (!editor || !canEdit) return;
+		if (guest) {
+			toast.info('Über diesen Link kannst du keine Bilder hochladen.');
+			return;
+		}
 		for (const file of files) {
 			if (file.size > MAX_ASSET_BYTES) {
 				toast.error(`„${file.name}“ ist zu groß (höchstens ${MAX_ASSET_BYTES / 1024 / 1024} MB).`);
@@ -276,21 +295,24 @@
 			run: () => void createSubpage()
 		}
 	];
-	/** Slash-Menü mit Schreibhilfe, wenn sie freigegeben ist */
+	/** Slash-Menü mit Schreibhilfe, wenn sie freigegeben ist (Gäste: ohne Bild, Einbettung, Unterseite) */
+	const GUEST_HIDDEN = new Set(['image', 'embed', 'subpage']);
 	const slashWithAssist = $derived<SlashItem[]>(
-		assistOn
-			? [
-					...slashItems,
-					{
-						id: 'assist',
-						label: 'Schreibhilfe',
-						description: 'Entwurf, Zusammenfassung, Fortsetzung oder Aufgaben mit KI',
-						icon: Sparkles,
-						keywords: 'ki ai schreiben zusammenfassen assistent',
-						run: () => assist?.start()
-					}
-				]
-			: slashItems
+		guest
+			? slashItems.filter((i) => !GUEST_HIDDEN.has(i.id))
+			: assistOn
+				? [
+						...slashItems,
+						{
+							id: 'assist',
+							label: 'Schreibhilfe',
+							description: 'Entwurf, Zusammenfassung, Fortsetzung oder Aufgaben mit KI',
+							icon: Sparkles,
+							keywords: 'ki ai schreiben zusammenfassen assistent',
+							run: () => assist?.start()
+						}
+					]
+				: slashItems
 	);
 
 	onMount(() => {
@@ -383,6 +405,7 @@
 						const href = a.getAttribute('href') ?? '';
 						if (!(event.ctrlKey || event.metaKey || !instance.isEditable)) return false;
 						event.preventDefault();
+						if (guest?.openHref?.(href)) return true;
 						if (href.startsWith('/') && !href.startsWith('//')) void goto(href);
 						else if (/^(https?:|mailto:)/i.test(href)) window.open(href, '_blank', 'noopener');
 						return true;
@@ -421,8 +444,8 @@
 		{tick}
 		{canEdit}
 		onlink={openLink}
-		onimage={() => pickImage()}
-		onembed={() => (embedOpen = true)}
+		onimage={guest ? undefined : () => pickImage()}
+		onembed={guest ? undefined : () => (embedOpen = true)}
 		onassist={assistOn ? () => assist?.start() : undefined}
 	/>
 	<div class="mx-auto w-full max-w-[52rem] flex-1 px-4 pt-8 pb-32 sm:px-10">
@@ -438,17 +461,21 @@
 	onlink={openLink}
 	onassist={assistOn ? () => assist?.start() : undefined}
 />
-<NoteAssist bind:this={assist} {editor} {noteId} {canEdit} />
+{#if !guest}
+	<NoteAssist bind:this={assist} {editor} {noteId} {canEdit} />
+{/if}
 <LinkDialog bind:open={linkOpen} initial={linkInitial} onapply={applyLink} />
-<EmbedPicker
-	bind:open={embedOpen}
-	onpick={(ref) =>
-		editor
-			?.chain()
-			.focus()
-			.insertContent({ type: 'embed', attrs: { ...ref } })
-			.run()}
-/>
+{#if !guest}
+	<EmbedPicker
+		bind:open={embedOpen}
+		onpick={(ref) =>
+			editor
+				?.chain()
+				.focus()
+				.insertContent({ type: 'embed', attrs: { ...ref } })
+				.run()}
+	/>
+{/if}
 <input
 	bind:this={fileInput}
 	type="file"

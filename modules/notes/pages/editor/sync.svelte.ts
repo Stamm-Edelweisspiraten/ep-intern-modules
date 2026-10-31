@@ -3,6 +3,9 @@
  * `hello` Abgleich per State-Vector (fehlende Änderungen holen, eigene Offline-Änderungen nachschicken), gebündeltes
  * Senden eigener Updates (~100 ms, `Y.mergeUpdates`, eine Anfrage gleichzeitig, Wiederholung bei Netzfehlern) und
  * gedrosselte Anwesenheit (y-protocols Awareness: Cursor, Auswahl, Name/Farbe).
+ *
+ * Gäste (öffentlicher Link, `guest`) nutzen dieselben Abläufe über `/public/links/<token>/notes/<id>/…`; Updates gehen dort
+ * als JSON (base64) mit kleinerem Byte-Budget, weil öffentliche Endpunkte nur JSON annehmen.
  */
 import { SvelteMap } from 'svelte/reactivity';
 import * as Y from 'yjs';
@@ -15,6 +18,7 @@ import {
 import { apiFetch } from '$lib/sdk/client';
 import {
 	API_BASE,
+	MAX_PUBLIC_UPDATE_BYTES,
 	MAX_UPDATE_BYTES,
 	type LiveEvent,
 	type NoteNode,
@@ -36,6 +40,17 @@ export interface NoteSyncHandlers {
 	onRejected?(message: string): void;
 }
 
+/** Zugang ohne Konto über einen öffentlichen Link */
+export interface GuestAccess {
+	token: string;
+	/** Geheimnis dieses Tabs (Identität für Anwesenheit) */
+	key: string;
+	/** angezeigter Name, leer = „Gast“ */
+	name: string;
+	/** Zugriffstoken nach dem Passwort */
+	accessToken: () => string | null;
+}
+
 /** Herkunft entfernter Änderungen (werden nicht zurückgeschickt) */
 export const REMOTE = 'remote';
 
@@ -43,10 +58,11 @@ const FLUSH_MS = 100;
 const AWARENESS_MS = 100;
 /** Byte-Budget je Anfrage (Server-Grenze MAX_UPDATE_BYTES) */
 const MAX_BATCH_BYTES = Math.floor(MAX_UPDATE_BYTES * 0.8);
+const MAX_GUEST_BATCH_BYTES = Math.floor(MAX_PUBLIC_UPDATE_BYTES * 0.8);
 /** `keepalive`-Anfragen dürfen höchstens 64 KB haben */
 const KEEPALIVE_BYTES = 60_000;
 
-function randomClient(): string {
+export function randomClient(): string {
 	const bytes = new Uint8Array(12);
 	crypto.getRandomValues(bytes);
 	return `c${[...bytes].map((b) => b.toString(36).padStart(2, '0')).join('')}`.slice(0, 32);
@@ -84,7 +100,8 @@ export class NoteSync {
 	constructor(
 		private readonly noteId: string,
 		private readonly handlers: NoteSyncHandlers = {},
-		level: ShareLevel = 'edit'
+		level: ShareLevel = 'edit',
+		private readonly guest: GuestAccess | null = null
 	) {
 		this.readonly = level === 'read';
 		this.doc.on('update', this.onDocUpdate);
@@ -92,7 +109,24 @@ export class NoteSync {
 	}
 
 	private get base(): string {
-		return `${API_BASE}/notes/${encodeURIComponent(this.noteId)}`;
+		const id = encodeURIComponent(this.noteId);
+		return this.guest
+			? `${API_BASE}/public/links/${encodeURIComponent(this.guest.token)}/notes/${id}`
+			: `${API_BASE}/notes/${id}`;
+	}
+
+	/** Zusätzliche Query-Parameter (Gäste: Zugriffstoken, für `live` auch Name und Geheimnis) */
+	private extra(live = false): string {
+		if (!this.guest) return '';
+		const params = new URLSearchParams();
+		const t = this.guest.accessToken();
+		if (t) params.set('t', t);
+		if (live) {
+			params.set('key', this.guest.key);
+			if (this.guest.name) params.set('name', this.guest.name);
+		}
+		const q = params.toString();
+		return q ? `&${q}` : '';
 	}
 
 	private onDocUpdate = (update: Uint8Array, origin: unknown) => {
@@ -120,7 +154,7 @@ export class NoteSync {
 		if (this.closed) return;
 		this.es?.close();
 		if (this.status !== 'live') this.status = 'connecting';
-		const url = `${this.base}/live?client=${this.client}&awarenessId=${this.doc.clientID}`;
+		const url = `${this.base}/live?client=${this.client}&awarenessId=${this.doc.clientID}${this.extra(true)}`;
 		const es = new EventSource(url, { withCredentials: true });
 		this.es = es;
 		es.onmessage = (msg) => {
@@ -236,7 +270,7 @@ export class NoteSync {
 		}
 		try {
 			const sv = toBase64(Y.encodeStateVector(this.doc));
-			const res = await fetch(`${this.base}/state?sv=${encodeURIComponent(sv)}`, {
+			const res = await fetch(`${this.base}/state?sv=${encodeURIComponent(sv)}${this.extra()}`, {
 				credentials: 'same-origin',
 				headers: { accept: 'application/octet-stream' }
 			});
@@ -300,16 +334,30 @@ export class NoteSync {
 			this.updateSaving();
 			return;
 		}
-		const update = this.takeBatch(keepalive ? KEEPALIVE_BYTES : MAX_BATCH_BYTES);
+		const budget = this.guest ? MAX_GUEST_BATCH_BYTES : MAX_BATCH_BYTES;
+		// base64 im JSON ist um ein Drittel größer
+		const update = this.takeBatch(keepalive ? (this.guest ? 44_000 : KEEPALIVE_BYTES) : budget);
 		this.inflight = update;
 		try {
-			const res = await fetch(`${this.base}/updates?client=${this.client}`, {
-				method: 'POST',
-				body: update as BodyInit,
-				headers: { 'content-type': 'application/octet-stream' },
-				credentials: 'same-origin',
-				keepalive: keepalive && update.length <= KEEPALIVE_BYTES
-			});
+			const res = this.guest
+				? await fetch(`${this.base}/updates`, {
+						method: 'POST',
+						body: JSON.stringify({
+							client: this.client,
+							update: toBase64(update),
+							...(this.guest.accessToken() ? { t: this.guest.accessToken() } : {})
+						}),
+						headers: { 'content-type': 'application/json' },
+						credentials: 'omit',
+						keepalive
+					})
+				: await fetch(`${this.base}/updates?client=${this.client}`, {
+						method: 'POST',
+						body: update as BodyInit,
+						headers: { 'content-type': 'application/octet-stream' },
+						credentials: 'same-origin',
+						keepalive: keepalive && update.length <= KEEPALIVE_BYTES
+					});
 			if (!res.ok) {
 				const body = (await res.json().catch(() => null)) as {
 					error?: { message?: string };
@@ -361,9 +409,15 @@ export class NoteSync {
 			this.awarenessDirty = false;
 			this.lastAwarenessAt = Date.now();
 			const update = toBase64(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]));
-			void apiFetch(`/modules/notes/notes/${encodeURIComponent(this.noteId)}/awareness`, {
+			const guest = this.guest;
+			const t = guest?.accessToken();
+			void apiFetch(`${this.base.replace(/^\/api\/v1/, '')}/awareness`, {
 				method: 'POST',
-				body: JSON.stringify({ client: this.client, update })
+				body: JSON.stringify(
+					guest
+						? { client: this.client, update, key: guest.key, ...(t ? { t } : {}) }
+						: { client: this.client, update }
+				)
 			}).catch(() => undefined);
 		}, wait);
 	}
