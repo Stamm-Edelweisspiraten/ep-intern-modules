@@ -16,7 +16,8 @@ export default defineModule({
 		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen (Verknüpfung, Mitschreiben an Gruppen/Mitglieder), Termine und öffentliche Galerien */
 		...manifestFromPackage(pkg),
-		permissions: [PERM_AI, 
+		permissions: [
+			PERM_AI,
 			'website.content.manage',
 			'website.post.write',
 			'website.post.publish',
@@ -55,7 +56,8 @@ export default defineModule({
 			{
 				key: NOTIFY_POST_STATUS,
 				label: 'Mein Beitrag veröffentlicht oder zurückgezogen',
-				description: 'Wenn eine andere Person deinen Beitrag veröffentlicht, einplant oder zurückzieht.',
+				description:
+					'Wenn eine andere Person deinen Beitrag veröffentlicht, einplant oder zurückzieht.',
 				permission: 'website.post.write'
 			}
 		]

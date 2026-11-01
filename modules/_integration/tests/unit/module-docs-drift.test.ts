@@ -7,11 +7,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { moduleIds as installed, modulesDir as dirOf } from '$testing';
 
-const root = process.cwd();
-const read = (...p: string[]) => readFileSync(join(root, ...p), 'utf8');
-
 describe('Doku-Abgleich der Module', () => {
 	const modulesDir = dirOf();
+	// Regeldateien liegen im Repo der Module (eine Ebene über `modules/`), nicht im Core
+	const root = join(modulesDir, '..');
+	const read = (...p: string[]) => readFileSync(join(root, ...p), 'utf8');
 	const moduleIds = installed(modulesDir);
 
 	it.each(moduleIds)('.claude/rules/module-%s.md nennt jede Top-Level-.ts des Moduls', (id) => {

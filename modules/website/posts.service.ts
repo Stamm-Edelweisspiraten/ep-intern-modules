@@ -89,7 +89,11 @@ export async function replaceTags(tx: Tx, id: string, tags: readonly string[]): 
 	}
 }
 
-export async function replaceGroups(tx: Tx, id: string, groupIds: readonly string[]): Promise<void> {
+export async function replaceGroups(
+	tx: Tx,
+	id: string,
+	groupIds: readonly string[]
+): Promise<void> {
 	await tx.execute(sql`DELETE FROM post_groups WHERE post_id = ${id}`);
 	for (const g of new Set(groupIds)) {
 		await tx.execute(sql`INSERT INTO post_groups (post_id, group_id) VALUES (${id}, ${g})`);
@@ -200,8 +204,7 @@ export async function loadPostData(
 	};
 }
 
-export const eventsService = () =>
-	core.modules.useOptional<EventRefsService>('events', MODULE_ID);
+export const eventsService = () => core.modules.useOptional<EventRefsService>('events', MODULE_ID);
 export const galleriesService = () =>
 	core.modules.useOptional<GalleryRefsService>('galleries', MODULE_ID);
 

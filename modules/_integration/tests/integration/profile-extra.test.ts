@@ -36,7 +36,7 @@ import { loadUserPrefs, resolveStartPage } from '$testing';
 import { core } from '$lib/sdk/server';
 import { blankTheme } from '$lib/appearance';
 import membersModule from '$modules/members/module';
-import { actions as profileActions } from '../../../../src/routes/(internal)/profile/+page.server';
+import { profileActions } from '$testing';
 import type { RequestContext } from '$lib/sdk/types';
 
 /** Echtes kleines Bild (Profilbilder laufen durch `core.images`, #19) */

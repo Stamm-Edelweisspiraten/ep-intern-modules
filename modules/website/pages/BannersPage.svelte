@@ -75,7 +75,8 @@
 	}
 
 	function windowText(b: Banner) {
-		if (b.startsAt && b.endsAt) return `${formatDateTime(b.startsAt)} – ${formatDateTime(b.endsAt)}`;
+		if (b.startsAt && b.endsAt)
+			return `${formatDateTime(b.startsAt)} – ${formatDateTime(b.endsAt)}`;
 		if (b.startsAt) return `ab ${formatDateTime(b.startsAt)}`;
 		if (b.endsAt) return `bis ${formatDateTime(b.endsAt)}`;
 		return 'ohne Zeitraum';

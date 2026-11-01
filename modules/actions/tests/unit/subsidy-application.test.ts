@@ -244,7 +244,7 @@ describe('planSubsidyApplications', () => {
 });
 
 describe('fillSubsidyApplicationPdf', () => {
-	const template = readFileSync('modules/actions/assets/zuschussantrag-bek.pdf');
+	const template = readFileSync(new URL('../../assets/zuschussantrag-bek.pdf', import.meta.url));
 
 	it('erzeugt je Antrag zwei Seiten und setzt die Texte ein', async () => {
 		const t = team(4);

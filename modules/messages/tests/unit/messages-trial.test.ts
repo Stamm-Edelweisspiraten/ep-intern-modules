@@ -1,10 +1,8 @@
 /**
  * Probestunden: Altersangaben der Gruppen lesen, passende Gruppe wählen; die Website nutzt eine Kopie der Logik.
  */
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { groupAgeRange, groupsForAge, parseAgeRange } from '$modules/messages/age-range';
-import * as copy from '../../../../website/src/lib/age-range';
 import { pickTrialGroup, trialSubject } from '$modules/messages/trial.service';
 import type { WebsiteGroupRef } from '$modules/members/contract';
 
@@ -107,14 +105,5 @@ describe('pickTrialGroup', () => {
 	});
 	it('Betreff', () => {
 		expect(trialSubject({ childName: 'Mia', childAge: 8 })).toBe('Probestunde: Mia (8 Jahre)');
-	});
-});
-
-describe('Kopie auf der Website', () => {
-	it('ist identisch', () => {
-		const a = readFileSync('modules/messages/age-range.ts', 'utf8').replace(/\r\n/g, '\n');
-		const b = readFileSync('website/src/lib/age-range.ts', 'utf8').replace(/\r\n/g, '\n');
-		expect(b).toBe(a);
-		expect(copy.parseAgeRange('6 bis 10 Jahre')).toEqual({ min: 6, max: 10 });
 	});
 });

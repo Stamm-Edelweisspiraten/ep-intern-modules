@@ -116,7 +116,11 @@ export const orderInput = z.object({ ids: z.array(uuid).max(200) });
 export const bannerInput = z
 	.object({
 		title: optionalText(MAX_BANNER_TITLE),
-		text: z.string().trim().min(1, 'Pflichtfeld').max(MAX_BANNER_TEXT, `Höchstens ${MAX_BANNER_TEXT} Zeichen`),
+		text: z
+			.string()
+			.trim()
+			.min(1, 'Pflichtfeld')
+			.max(MAX_BANNER_TEXT, `Höchstens ${MAX_BANNER_TEXT} Zeichen`),
 		level: z.enum(BANNER_LEVELS).default('info'),
 		placement: z.enum(BANNER_PLACEMENTS).default('bar'),
 		linkUrl,
@@ -128,7 +132,11 @@ export const bannerInput = z
 	})
 	.superRefine((v, ctx) => {
 		if (v.startsAt && v.endsAt && Date.parse(v.endsAt) <= Date.parse(v.startsAt)) {
-			ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'Ende muss nach dem Beginn liegen' });
+			ctx.addIssue({
+				code: 'custom',
+				path: ['endsAt'],
+				message: 'Ende muss nach dem Beginn liegen'
+			});
 		}
 		if (v.linkLabel && !v.linkUrl) {
 			ctx.addIssue({ code: 'custom', path: ['linkUrl'], message: 'Link fehlt' });
@@ -188,12 +196,20 @@ export interface Faq {
 // ---------------------------------------------------------------------------
 
 export const postCreateInput = z.object({
-	title: z.string().trim().min(1, 'Pflichtfeld').max(MAX_POST_TITLE, `Höchstens ${MAX_POST_TITLE} Zeichen`)
+	title: z
+		.string()
+		.trim()
+		.min(1, 'Pflichtfeld')
+		.max(MAX_POST_TITLE, `Höchstens ${MAX_POST_TITLE} Zeichen`)
 });
 
 export const postUpdateInput = z
 	.object({
-		title: z.string().trim().min(1, 'Pflichtfeld').max(MAX_POST_TITLE, `Höchstens ${MAX_POST_TITLE} Zeichen`),
+		title: z
+			.string()
+			.trim()
+			.min(1, 'Pflichtfeld')
+			.max(MAX_POST_TITLE, `Höchstens ${MAX_POST_TITLE} Zeichen`),
 		slug: slugInput,
 		teaser: optionalText(MAX_POST_TEASER),
 		bodyHtml: z.string().max(MAX_POST_BODY, 'Text zu lang'),

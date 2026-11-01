@@ -95,7 +95,8 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 	defineEndpoint({
 		method: 'GET',
 		path: '/website/banners',
-		summary: 'Laufende Banner/Hinweise für die Stammeswebsite (API-Key mit Scope website.content.read)',
+		summary:
+			'Laufende Banner/Hinweise für die Stammeswebsite (API-Key mit Scope website.content.read)',
 		description:
 			'Aktive Banner im Zeitfenster (`startsAt`/`endsAt`) in der festgelegten Reihenfolge; `placement` ' +
 			'`bar` = Leiste auf allen Seiten, `home` = Kasten auf der Startseite. ' +
@@ -132,7 +133,8 @@ export const websiteEndpoints: AnyApiEndpoint[] = [
 		method: 'GET',
 		path: '/website/faqs',
 		summary: 'Häufige Fragen für die Stammeswebsite (aktive, in Reihenfolge)',
-		description: '`featured` = auch auf der Startseite zeigen. Antworten als bereinigtes HTML. ' + KEY_HINT,
+		description:
+			'`featured` = auch auf der Startseite zeigen. Antworten als bereinigtes HTML. ' + KEY_HINT,
 		tags,
 		permission: PERM.contentRead,
 		rateLimit: { limit: 600, windowSec: 60 },

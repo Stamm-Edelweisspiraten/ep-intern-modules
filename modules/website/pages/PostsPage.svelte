@@ -40,7 +40,8 @@
 
 	// Nur Banner/FAQ-Recht → direkt zu den Bannern
 	$effect(() => {
-		if (!canWrite && can(permissions, PERM.contentManage)) void goto(`${BASE}/banners`, { replaceState: true });
+		if (!canWrite && can(permissions, PERM.contentManage))
+			void goto(`${BASE}/banners`, { replaceState: true });
 	});
 
 	$effect(() => {
@@ -96,7 +97,10 @@
 </script>
 
 <div class="space-y-6">
-	<PageHeader title="Website" description="Blog-Beiträge für die Stammeswebsite schreiben und veröffentlichen.">
+	<PageHeader
+		title="Website"
+		description="Blog-Beiträge für die Stammeswebsite schreiben und veröffentlichen."
+	>
 		{#snippet actions()}
 			{#if canWrite}
 				<Button onclick={() => (createOpen = true)}><Plus /> Beitrag schreiben</Button>
@@ -120,7 +124,11 @@
 		>
 			{#snippet toolbar()}
 				<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-					<SearchInput placeholder="Beitrag suchen …" label="Beiträge suchen" resetParams={['offset']} />
+					<SearchInput
+						placeholder="Beitrag suchen …"
+						label="Beiträge suchen"
+						resetParams={['offset']}
+					/>
 					<SelectField
 						label="Status"
 						class="sm:w-48"
@@ -177,14 +185,18 @@
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
 			<Dialog.Title>Beitrag schreiben</Dialog.Title>
-			<Dialog.Description>Der Beitrag startet als Entwurf und ist erst nach dem Veröffentlichen sichtbar.</Dialog.Description>
+			<Dialog.Description
+				>Der Beitrag startet als Entwurf und ist erst nach dem Veröffentlichen sichtbar.</Dialog.Description
+			>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={create}>
 			<FormField label="Titel" id="post-new-title" required>
 				<Input id="post-new-title" bind:value={newTitle} maxlength={MAX_POST_TITLE} />
 			</FormField>
 			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (createOpen = false)}>Abbrechen</Button>
+				<Button type="button" variant="outline" onclick={() => (createOpen = false)}
+					>Abbrechen</Button
+				>
 				<Button type="submit" disabled={creating || !newTitle.trim()}>
 					{creating ? BUSY_SAVE : 'Anlegen'}
 				</Button>

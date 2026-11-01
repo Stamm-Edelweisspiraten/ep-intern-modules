@@ -103,9 +103,7 @@ async function reorder(tx: Tx, table: 'banners' | 'faqs', ids: string[]) {
 		throw errors.validation([{ path: ['ids'], message: 'Alle Einträge genau einmal angeben' }]);
 	}
 	for (const [i, id] of ids.entries()) {
-		await tx.execute(
-			sql`UPDATE ${sql.identifier(table)} SET position = ${i + 1} WHERE id = ${id}`
-		);
+		await tx.execute(sql`UPDATE ${sql.identifier(table)} SET position = ${i + 1} WHERE id = ${id}`);
 	}
 }
 

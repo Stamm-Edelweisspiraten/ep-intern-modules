@@ -131,7 +131,12 @@
 					/>
 				</FormField>
 			</div>
-			<FormField label="Überschrift" id="banner-title" error={errors.title} hint="Optional, fett vor dem Text">
+			<FormField
+				label="Überschrift"
+				id="banner-title"
+				error={errors.title}
+				hint="Optional, fett vor dem Text"
+			>
 				<Input id="banner-title" bind:value={title} maxlength={100} />
 			</FormField>
 			<FormField
@@ -158,15 +163,30 @@
 				>
 					<Input id="banner-linkUrl" bind:value={linkUrl} autocomplete="off" />
 				</FormField>
-				<FormField label="Linktext" id="banner-linkLabel" error={errors.linkLabel} hint="z. B. „Zu den Terminen“">
+				<FormField
+					label="Linktext"
+					id="banner-linkLabel"
+					error={errors.linkLabel}
+					hint="z. B. „Zu den Terminen“"
+				>
 					<Input id="banner-linkLabel" bind:value={linkLabel} maxlength={60} />
 				</FormField>
 			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
-				<FormField label="Sichtbar ab" id="banner-startsAt" error={errors.startsAt} hint="Leer = sofort">
+				<FormField
+					label="Sichtbar ab"
+					id="banner-startsAt"
+					error={errors.startsAt}
+					hint="Leer = sofort"
+				>
 					<Input id="banner-startsAt" type="datetime-local" bind:value={startsAt} />
 				</FormField>
-				<FormField label="Sichtbar bis" id="banner-endsAt" error={errors.endsAt} hint="Leer = ohne Ende">
+				<FormField
+					label="Sichtbar bis"
+					id="banner-endsAt"
+					error={errors.endsAt}
+					hint="Leer = ohne Ende"
+				>
 					<Input id="banner-endsAt" type="datetime-local" bind:value={endsAt} />
 				</FormField>
 			</div>

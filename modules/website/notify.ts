@@ -90,7 +90,10 @@ export async function notifyPostStatus(
 			if (!info) return;
 			const userIds = await principalUserIds(
 				MODULE_ID,
-				[...info.editors, ...(info.authorId ? [{ type: 'user', id: info.authorId } as Principal] : [])],
+				[
+					...info.editors,
+					...(info.authorId ? [{ type: 'user', id: info.authorId } as Principal] : [])
+				],
 				{ permission: PERM.postWrite, exclude: [ctx.userId] }
 			);
 			if (!userIds.length) return;

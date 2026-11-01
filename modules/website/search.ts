@@ -28,15 +28,13 @@ export const websiteSearch: ModuleSearchProvider = {
 					ORDER BY (p.title ILIKE ${p}) DESC, p.updated_at DESC, p.id LIMIT ${limit}`
 			)
 		);
-		return rows.map(
-			(r): SearchHit => ({
-				id: String(r.id),
-				title: String(r.title),
-				subtitle: r.status === 'published' ? 'veröffentlicht' : 'Entwurf',
-				href: `/modules/website/posts/${encodeURIComponent(String(r.id))}`,
-				icon: 'globe',
-				type: 'Blog-Beitrag'
-			})
-		);
+		return rows.map((r): SearchHit => ({
+			id: String(r.id),
+			title: String(r.title),
+			subtitle: r.status === 'published' ? 'veröffentlicht' : 'Entwurf',
+			href: `/modules/website/posts/${encodeURIComponent(String(r.id))}`,
+			icon: 'globe',
+			type: 'Blog-Beitrag'
+		}));
 	}
 };

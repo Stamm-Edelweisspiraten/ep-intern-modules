@@ -1,7 +1,13 @@
 /** KI-Schreibhilfe im Modul Website: Blog, häufige Fragen, Banner. */
 import type { ModuleAssist } from '$lib/sdk/server';
 import { ASSIST_TEXT_TASKS } from '$lib/sdk/types/assist';
-import { MAX_BANNER_TEXT, MAX_FAQ_ANSWER, MAX_POST_BODY, MAX_POST_TEASER, MAX_POST_TITLE } from './schemas';
+import {
+	MAX_BANNER_TEXT,
+	MAX_FAQ_ANSWER,
+	MAX_POST_BODY,
+	MAX_POST_TEASER,
+	MAX_POST_TITLE
+} from './schemas';
 
 export const PERM_AI = 'website.ai.use';
 

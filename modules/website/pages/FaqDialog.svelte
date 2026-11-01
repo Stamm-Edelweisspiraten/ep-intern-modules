@@ -73,7 +73,9 @@
 	<Dialog.Content class="sm:max-w-2xl">
 		<Dialog.Header>
 			<Dialog.Title>{faq ? 'Frage bearbeiten' : 'Frage anlegen'}</Dialog.Title>
-			<Dialog.Description>Erscheint unter „Häufige Fragen“ auf der Stammeswebsite.</Dialog.Description>
+			<Dialog.Description
+				>Erscheint unter „Häufige Fragen“ auf der Stammeswebsite.</Dialog.Description
+			>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
 			<FormField label="Frage" id="faq-question" required error={errors.question}>

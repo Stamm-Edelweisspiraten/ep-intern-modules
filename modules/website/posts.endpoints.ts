@@ -86,7 +86,9 @@ async function detailOf(ctx: RequestContext, tx: Tx, id: string, keys: readonly 
 
 function requirePublisher(ctx: RequestContext) {
 	if (!canPublish(ctx)) {
-		throw errors.forbidden('Veröffentlichen, Zurückziehen und Löschen braucht das Recht „Beiträge veröffentlichen“');
+		throw errors.forbidden(
+			'Veröffentlichen, Zurückziehen und Löschen braucht das Recht „Beiträge veröffentlichen“'
+		);
 	}
 }
 
@@ -243,7 +245,8 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 		body: postCreateInput,
 		handler: async ({ ctx, body }): Promise<PostDetail> => {
 			const authorId = ctx.userId;
-			if (!authorId) throw errors.badRequest('Beiträge können nur von Benutzer*innen angelegt werden');
+			if (!authorId)
+				throw errors.badRequest('Beiträge können nur von Benutzer*innen angelegt werden');
 			const keys = await principalKeysFor(ctx, MODULE_ID);
 			const id = crypto.randomUUID();
 			const data = await db().transaction(async (tx) => {
@@ -417,7 +420,9 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 				const access = await requireAccess(tx, ctx, params.id, keys, 'edit');
 				const row = (await loadPostRow(tx, params.id))!;
 				if (!canPublish(ctx) && !(access.isOwner && String(row.status) === 'draft')) {
-					throw errors.forbidden('Veröffentlichte Beiträge löschen nur Personen mit „Beiträge veröffentlichen“');
+					throw errors.forbidden(
+						'Veröffentlichte Beiträge löschen nur Personen mit „Beiträge veröffentlichen“'
+					);
 				}
 				const images = await imagesFor(tx, params.id);
 				await tx.execute(sql`DELETE FROM posts WHERE id = ${params.id}`);
@@ -444,7 +449,9 @@ export const postsEndpoints: AnyApiEndpoint[] = [
 			const stored = await db().transaction(async (tx) => {
 				const access = await requireAccess(tx, ctx, params.id, keys, 'edit');
 				if (!access.isOwner && !canPublish(ctx)) {
-					throw errors.forbidden('Freigaben ändern nur die Autor*in oder Personen mit „veröffentlichen“');
+					throw errors.forbidden(
+						'Freigaben ändern nur die Autor*in oder Personen mit „veröffentlichen“'
+					);
 				}
 				return loadShares(tx, params.id);
 			});

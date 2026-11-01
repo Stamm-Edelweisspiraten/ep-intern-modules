@@ -21,7 +21,21 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { TagInput } from '$lib/components/ui/tag-input';
-	import { ConfirmDialog, EmptyState, ErrorState, FormField, LoadingState, PageHeader, PageTitle, ShareMenu, type ShareCandidate, type ShareEntry, AssistInput, AssistRichTextEditor, AssistTextarea } from '$lib/components/layout';
+	import {
+		ConfirmDialog,
+		EmptyState,
+		ErrorState,
+		FormField,
+		LoadingState,
+		PageHeader,
+		PageTitle,
+		ShareMenu,
+		type ShareCandidate,
+		type ShareEntry,
+		AssistInput,
+		AssistRichTextEditor,
+		AssistTextarea
+	} from '$lib/components/layout';
 	import { BUSY_SAVE, BUSY_UPLOAD } from '$lib/components/layout/busy';
 	import { shareKey } from '$lib/components/layout/share-types';
 	import {
@@ -310,7 +324,9 @@
 	}
 
 	async function searchPrincipals(q: string): Promise<ShareCandidate[]> {
-		const found = await apiFetch<PrincipalInfo[]>(`${BASE}/principals?search=${encodeURIComponent(q)}`);
+		const found = await apiFetch<PrincipalInfo[]>(
+			`${BASE}/principals?search=${encodeURIComponent(q)}`
+		);
 		return found
 			.filter((p) => !(p.type === 'user' && p.id === post?.authorId))
 			.map((p) => ({
@@ -474,14 +490,17 @@
 						invalid={!!errors.bodyHtml}
 					/>
 					<p class="text-xs text-muted-foreground">
-						Bilder per Knopf, Einfügen oder Ziehen. Klick auf ein Bild, um die Bildbeschreibung zu ändern.
+						Bilder per Knopf, Einfügen oder Ziehen. Klick auf ein Bild, um die Bildbeschreibung zu
+						ändern.
 					</p>
 				</div>
 			</div>
 
 			<div class="space-y-4">
 				<Card.Root>
-					<Card.Header><Card.Title level={2} class="text-section">Titelbild</Card.Title></Card.Header>
+					<Card.Header
+						><Card.Title level={2} class="text-section">Titelbild</Card.Title></Card.Header
+					>
 					<Card.Content class="space-y-3">
 						{#if cover}
 							<img
@@ -505,7 +524,9 @@
 								{coverUploading ? BUSY_UPLOAD : cover ? 'Ersetzen' : 'Hochladen'}
 							</Button>
 							{#if cover}
-								<Button size="sm" variant="ghost" onclick={() => (coverImageId = null)}>Entfernen</Button>
+								<Button size="sm" variant="ghost" onclick={() => (coverImageId = null)}
+									>Entfernen</Button
+								>
 							{/if}
 						</div>
 						<input
@@ -539,7 +560,12 @@
 								>
 							</div>
 						</FormField>
-						<FormField label="Themen" id="post-tags" error={errors.tags} hint={`Höchstens ${MAX_TAGS}`}>
+						<FormField
+							label="Themen"
+							id="post-tags"
+							error={errors.tags}
+							hint={`Höchstens ${MAX_TAGS}`}
+						>
 							<TagInput
 								id="post-tags"
 								label="Themen"
@@ -549,7 +575,9 @@
 								loadSuggestions={async (q) => {
 									const all = await apiFetch<{ tag: string }[]>(`${BASE}/tags`).catch(() => []);
 									const needle = q.toLocaleLowerCase('de');
-									return all.map((t) => t.tag).filter((t) => t.toLocaleLowerCase('de').includes(needle));
+									return all
+										.map((t) => t.tag)
+										.filter((t) => t.toLocaleLowerCase('de').includes(needle));
 								}}
 							/>
 						</FormField>
@@ -609,7 +637,9 @@
 				<p class="text-sm text-muted-foreground" aria-live="polite">
 					{dirty ? 'Ungespeicherte Änderungen' : 'Alles gespeichert'}
 				</p>
-				<Button onclick={save} disabled={saving || !dirty}>{saving ? BUSY_SAVE : 'Speichern'}</Button>
+				<Button onclick={save} disabled={saving || !dirty}
+					>{saving ? BUSY_SAVE : 'Speichern'}</Button
+				>
 			</div>
 		</div>
 	{/if}
@@ -620,7 +650,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Beitrag veröffentlichen</Dialog.Title>
 			<Dialog.Description>
-				Ohne Zeitpunkt erscheint der Beitrag sofort auf der Stammeswebsite (nach höchstens einer Minute).
+				Ohne Zeitpunkt erscheint der Beitrag sofort auf der Stammeswebsite (nach höchstens einer
+				Minute).
 			</Dialog.Description>
 		</Dialog.Header>
 		<FormField label="Erst ab" id="post-publish-at" hint="Leer = sofort">
