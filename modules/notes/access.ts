@@ -28,7 +28,7 @@ import {
 	type ShareTable,
 	type Tx
 } from '$lib/sdk/server';
-import type { ActionsService } from '$lib/modules/actions/contract';
+import type { ActionsService } from '$modules/actions/contract';
 import { MODULE_ID, PERM, type ShareLevel } from './schemas';
 
 /** Freigabe-Tabelle für die SDK-Bausteine (`loadObjectShares`, `replaceObjectShares`) */

@@ -14,7 +14,7 @@ import {
 	type RequestContext,
 	rowsOf
 } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
+import type { MembersService } from '$modules/members/contract';
 import { editableActionsFilter } from './access';
 import {
 	DASHBOARD_LIST_LIMIT,

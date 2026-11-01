@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/members/**", "tests/**/members*"]
+paths: ["modules/members/**", "tests/**/members*"]
 ---
 
 # Modul `members` (Mitglieder & Gruppen)
@@ -9,7 +9,7 @@ Stammdaten des Stammes: Mitglieder (Kontakte, Stand, Gruppen, Einwilligungen, Do
 Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte Mitglieder, Zusatzfelder) und `treasury`
 (`listMemberContacts`: Zahler, Mails, Mitgliedschaft/Beitragsebenen).
 
-## Dateien (`src/lib/modules/members/`)
+## Dateien (`modules/members/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte, Navigation Mitglieder/Gruppen im Hauptmenü, Zusatzfelder/Löschfristen mit `admin: true` in der Administration, Einstellungen `members.address.*`), Migrationen, `provides` (`membersService` + `listMemberSheets` + `principalsService`), `search`, `backup` (`membersBackup`), `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`; Endpoints (Reihenfolge website → sheets → members → address → fields → link → groups → group-image → documents → retention) |
@@ -30,7 +30,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `leader.service.ts` / `led.endpoints.ts` | Gruppenleitung: `ledGroupIds` (Bereich je Aufruf), `inScopeSql`/`assertMemberInScope`, `syncLeaderGrants` (Rolle „Gruppenleitung“), `assertCanGrantLeader`; Endpunkte `/led/…` – siehe „Gruppenleitung“ |
 | `members.endpoints.ts` | CRUD `/members` |
 | `groups.endpoints.ts` | CRUD `/groups` inkl. Leiter, Namens-Eindeutigkeit |
-| `$lib/pdf-lists` (`compose.ts`, `member-columns.ts`, rein, gemeinsam mit `actions`) / `sheets.service.ts` / `sheets.endpoints.ts` | Mitgliedsdaten-PDF: Spalten-Katalog + Zeilen, `composeListBlocks`, Formatierer (`formatDateDe`, `ageOn`, `formatFieldValue`), Erzeugung für Mitglieder bzw. je Gruppe, Katalog-Endpoint, Dienst `listMemberSheets` |
+| `sheet-columns.ts` (rein; Katalog/Zeilen, für `actions` über `MembersService.sheetCatalog`/`sheetRow`) + `$lib/pdf-lists` (`compose.ts`, `presets.ts`) / `sheets.service.ts` / `sheets.endpoints.ts` | Mitgliedsdaten-PDF: Spalten-Katalog + Zeilen, `composeListBlocks`, Formatierer (`formatDateDe`, `ageOn`, `formatFieldValue`), Erzeugung für Mitglieder bzw. je Gruppe, Katalog-Endpoint, Dienst `listMemberSheets` |
 | `documents.endpoints.ts` | Datenschutz-/Anmeldedokument je Mitglied (multipart) |
 | `group-image.endpoints.ts` | Gruppenbild (multipart) |
 | `group-image.service.ts` | `processGroupImage` (`core.images.process`, WebP ≤ 1600 px, Metadaten weg, Inhalt muss zum Typ passen), `processedGroupImagePath`/`isProcessedGroupImagePath`, Job `reprocessGroupImages` |
@@ -147,7 +147,7 @@ Kein Objekt-Besitz: Zugriff gilt global je Recht (keine Freigaben/Matrix) – Au
 - Layout: Vorlage `stamm-briefkopf-quer` (Fallback `compact` quer, `listTemplateInput` in `$lib/pdf-lists/compose.ts`), **eine Zeile je Person** in einer Gitter-Tabelle; Abschnitt = Überschrift +
   Info (Anzahl, Stand, bei sensiblen Spalten „Vertraulich …“); je Gruppe neue Seite. Datenblatt-Layout (Karte je Person) entfällt. Layout/Auswahl-Logik in `$lib/pdf-lists`
   (`normalizeSelection`, `visibleColumns`, `buildSectionedListBlocks`), gebündelt als `composeListBlocks` (`$lib/pdf-lists/compose.ts`, rein).
-- Katalog (`$lib/pdf-lists/member-columns.ts`, rein; dort auch `MEMBER_HEALTH_FIELD_KEYS` = `SENSITIVE_FIELD_KEYS`): `buildMemberCatalog(defs)` = Basisspalten (`name`, `scoutName`, `stage`, `groups`, `age`, `birthDate`, `entryDate`, `address`, `phone`,
+- Katalog (`sheet-columns.ts`, rein; dort auch `MEMBER_HEALTH_FIELD_KEYS` = `SENSITIVE_FIELD_KEYS`, Kopie in `actions/health.ts`): `buildMemberCatalog(defs)` = Basisspalten (`name`, `scoutName`, `stage`, `groups`, `age`, `birthDate`, `entryDate`, `address`, `phone`,
   `emergencyPhone`, `email`, `consents`) + je Zusatzfeld `field.<schlüssel>` (Gruppe `health`, `sensitive`; `field.juleica` Gruppe `person`, nicht sensibel). `emergencyPhone` = Nummer mit
   „Notfall“ in der Bezeichnung, sonst die erste. Voreinstellungen `fahrt` (Voreinstellung: Name, Gruppe, Alter, Notfall-Telefon, Ernährung, Allergien, Medikamente), `kontakt`, `gesundheit`, `minimal`
   (`LIST_PRESET_KEYS`, auf vorhandene Spalten gekürzt). `rowFromMember(m, defs, today)` liefert alle Spalten als fertigen Text. Leere Spalten entfallen bei `hideEmpty` (Standard).
@@ -352,3 +352,7 @@ Upload-Erfolgspfad ist nicht getestet (kein S3; `tests/helpers/fake-storage.ts` 
 - Stände sind eine feste Liste im Code (CHECK in der DB + `STAGES`); neuer Stand = neue Migration **und** Schema/Labels.
 - Core-Aufrufe (`storage`, `audit`) liegen bewusst **außerhalb** der Modul-Transaktion (PGlite).
 - Offen: Anbindung an `actions` (Teilnehmende aus Mitgliedern übernehmen) existiert nicht; Mitglieder-Import/Export fehlt.
+
+## Personenquelle (seit 2026-11-01)
+`principals: { memberViewPermission: 'members.member.view' }` in `module.ts`: `members` ist die Personenquelle für Freigaben an Principals
+(`$lib/sdk/server/sharing.ts` findet sie über `core.modules.principalSource()`) und das einzige Modul, das `core.modules.memberDeleted` auslösen darf.

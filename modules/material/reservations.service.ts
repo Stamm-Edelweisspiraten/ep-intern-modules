@@ -28,10 +28,10 @@ import {
 	type Row
 } from './db';
 import { imagesFor, loadBookings, loadItems, loadStock, loadTents, loadTypes } from './inventory';
+import type { reservationListQuery } from './schemas';
 import {
 	PERMISSIONS,
 	isUsableCondition,
-	reservationListQuery,
 	reservationState,
 	type Catalog,
 	type CatalogEntry,

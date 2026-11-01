@@ -18,8 +18,8 @@ import {
 	type UploadRules
 } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
-import type { ActionsService } from '$lib/modules/actions/contract';
-import type { MemberContact, MembersService } from '$lib/modules/members/contract';
+import type { ActionsService } from '$modules/actions/contract';
+import type { MemberContact, MembersService } from '$modules/members/contract';
 import { groupBy, invoiceTotals, lineOpen, overdueDays } from './logic';
 import {
 	CONTRIBUTIONS_CATEGORY_ID,

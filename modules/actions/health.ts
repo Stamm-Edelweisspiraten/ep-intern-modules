@@ -17,7 +17,6 @@
 import { sql } from 'drizzle-orm';
 import { core, moduleDb, type RequestContext, type Tx } from '$lib/sdk/server';
 import type { FieldDefinition } from '$lib/forms/types';
-import { MEMBER_HEALTH_FIELD_KEYS } from '$lib/pdf-lists/member-columns';
 import { DIETS, MODULE_ID, STANDARD_FORM_KEYS, type Diet } from './schemas';
 
 /** Sonderrecht für Gesundheitsdaten (kein eigenes Recht, damit Rollen nicht angepasst werden müssen) */
@@ -31,7 +30,21 @@ const crypt = () => core.crypto.forModule(MODULE_ID);
 
 // --- Erkennung gesundheitsbezogener Antworten ---------------------------------------------------
 
-/** Mitgliedsfelder ohne Gesundheitsbezug (wie `$lib/pdf-lists/member-columns.ts`) */
+/**
+ * Zusatzfelder der Mitglieder mit Gesundheitsbezug – Kopie von `MEMBER_HEALTH_FIELD_KEYS` aus `members/sheet-columns.ts`
+ * (synchron gebraucht, Module importieren einander nicht); Gleichheit prüft `tests/unit/member-list.test.ts`.
+ */
+export const MEMBER_HEALTH_FIELD_KEYS: readonly string[] = [
+	'ernaehrung',
+	'allergien',
+	'medikamente',
+	'gesundheit',
+	'zecken',
+	'tetanus',
+	'krankenkasse'
+];
+
+/** Mitgliedsfelder ohne Gesundheitsbezug (wie `members/sheet-columns.ts`) */
 const NOT_SENSITIVE_MEMBER_FIELDS = new Set(['juleica']);
 const HEALTH_WORDS =
 	/allerg|medikament|arznei|medizin|gesundheit|krank|unverträglich|intoleranz|impf|tetanus|zecke|ernährung|diät|vegetar|vegan|diagnose|behinder|beeinträchtig|asthma|diabet|epilep|therapie|schwimm|notfall/i;

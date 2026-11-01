@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/material/**", "src/lib/sdk/labels/**", "src/lib/sdk/style-presets.ts", "src/lib/server/core/pdf/labels.ts", "src/lib/components/layout/BarcodeScanner.svelte", "src/lib/components/layout/scan-input.ts", "tests/**/material*", "tests/unit/labels.test.ts", "scripts/seed-demo-material.mjs"]
+paths: ["modules/material/**", "src/lib/sdk/labels/**", "src/lib/sdk/style-presets.ts", "src/lib/server/core/pdf/labels.ts", "src/lib/components/layout/BarcodeScanner.svelte", "src/lib/components/layout/scan-input.ts", "tests/**/material*", "tests/unit/labels.test.ts", "scripts/seed-demo-material.mjs"]
 ---
 
 # Modul `material` (Materialverwaltung / Materialwart*in) – v2.1
@@ -26,7 +26,7 @@ Zuteilung konkreter Artikel und „Ausgegeben“. Schema `mod_material`, Version
 - Scannen: Kamera (QR **oder** Strichcode, auch vom Bildschirm) oder USB-Scanner; im Reservieren → Artikel in den Warenkorb, im Lager → Artikel-Dialog
   **zentriert** (kein Seitenblatt).
 
-## Dateien (`src/lib/modules/material/`)
+## Dateien (`modules/material/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (5 Rechte, `defaultRoleGrants` „Materialwart*in“ = alle, „Gruppenleitung“ = view + reservieren), Amts-Vorlage `materialwart` (Ereignisse `reservation-created`, `damage-reported`), Job `legacy-cleanup` (stündlich, einmalig wirksam), Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`; Endpoint-Reihenfolge images → exports → catalog → codes → reservations → labels |

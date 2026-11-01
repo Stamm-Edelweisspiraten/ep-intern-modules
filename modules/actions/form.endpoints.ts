@@ -17,8 +17,8 @@ import {
 } from '$lib/sdk/server';
 import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
 import type { FormDefinition, FormValues } from '$lib/forms/types';
-import type { LinkedMemberData, MembersService } from '$lib/modules/members/contract';
-import type { TreasuryService } from '$lib/modules/treasury/contract';
+import type { LinkedMemberData, MembersService } from '$modules/members/contract';
+import type { TreasuryService } from '$modules/treasury/contract';
 import { requireAccess } from './access';
 import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import { notifyTreasury } from './treasury-sync';

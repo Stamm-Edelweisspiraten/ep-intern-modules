@@ -23,7 +23,7 @@ import {
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';
-import type { ActionsService } from '$lib/modules/actions/contract';
+import type { ActionsService } from '$modules/actions/contract';
 import { MODULE_ID, PERM, type BoardAccess, type ShareLevel } from './schemas';
 
 export const boardShareAccess = createShareAccess({

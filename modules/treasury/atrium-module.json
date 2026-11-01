@@ -1,0 +1,42 @@
+{
+	"schema": 1,
+	"id": "treasury",
+	"name": "Kasse",
+	"description": "Konten und Buchungen, offene Beiträge aus Aktionen, Rechnungen, Zahlungserinnerungen und Kassenberichte.",
+	"version": "1.2.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {
+		"members": {
+			"version": "^1.14.0"
+		},
+		"actions": {
+			"version": "^1.9.0"
+		}
+	},
+	"optionalDependencies": {
+		"offices": {
+			"version": "^1.2.0"
+		}
+	},
+	"permissions": [
+		"treasury.account.manage",
+		"treasury.ai.use",
+		"treasury.annual-fee.manage",
+		"treasury.annual-fee.view",
+		"treasury.bank.view",
+		"treasury.cash.view",
+		"treasury.invoice.delete",
+		"treasury.invoice.edit",
+		"treasury.invoice.send",
+		"treasury.own.view",
+		"treasury.payable.edit",
+		"treasury.report.view",
+		"treasury.settings.manage",
+		"treasury.storage.delete",
+		"treasury.storage.read",
+		"treasury.storage.write",
+		"treasury.transaction.delete",
+		"treasury.transaction.edit"
+	],
+	"npm": {}
+}

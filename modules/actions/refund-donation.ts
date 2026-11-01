@@ -7,7 +7,7 @@
 import { sql } from 'drizzle-orm';
 import { todayBerlin } from '$lib/sdk/dates';
 import { core, errors, rowsOf, type Tx } from '$lib/sdk/server';
-import type { TreasuryService } from '$lib/modules/treasury/contract';
+import type { TreasuryService } from '$modules/treasury/contract';
 import { loadRefundSnapshot } from './accounting-core';
 import { donationTotals, validateDonation } from './refund';
 import { MODULE_ID } from './schemas';

@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/galleries/**", "tests/**/galleries*", "src/lib/server/core/images/**", "tests/unit/images*"]
+paths: ["modules/galleries/**", "tests/**/galleries*", "src/lib/server/core/images/**", "tests/unit/images*"]
 ---
 
 # Modul `galleries` (Galerien)
@@ -10,7 +10,7 @@ Freigabe-Ziele, Termine für die Zuordnung **ganzer Galerien** (nicht einzelner 
 Freigabe nach dem Muster `events` (**Freigabe an Principals**, siehe `architecture.md`), dazu je Galerie **öffentlich/privat**.
 Bildverarbeitung serverseitig über den Core-Dienst `core.images` (sharp). Navigation „Galerien“ (Icon `images`).
 
-## Dateien (`src/lib/modules/galleries/`)
+## Dateien (`modules/galleries/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte, `defaultRoleGrants` Mitglied → `galleries.gallery.view`, Navigation), Migrationen, `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport` (kein `onMemberDeleted`, kein `backup`-Hook), Endpoints (Reihenfolge `website` → `meta` → `images` → `galleries`, erster Treffer gewinnt) |

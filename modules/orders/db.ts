@@ -17,9 +17,9 @@ import {
 	type Tx
 } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
-import type { MembersService } from '$lib/modules/members/contract';
-import type { OfficesService } from '$lib/modules/offices/contract';
-import type { TreasuryService } from '$lib/modules/treasury/contract';
+import type { MembersService } from '$modules/members/contract';
+import type { OfficesService } from '$modules/offices/contract';
+import type { TreasuryService } from '$modules/treasury/contract';
 import { MODULE_ID } from './schemas';
 import { formatNumber } from './stock';
 

@@ -8,7 +8,7 @@ import type { MemberSheetData } from './contract';
 import { listFieldDefinitions } from './fields.service';
 import type { ListCatalog, ListSection, ListSelection } from '$lib/pdf-lists';
 import { composeListBlocks, listTemplateInput, todayIso } from '$lib/pdf-lists';
-import { buildMemberCatalog, rowFromMember } from '$lib/pdf-lists/member-columns';
+import { buildMemberCatalog, rowFromMember } from './sheet-columns';
 import { loadMembersByIds } from './members.service';
 import { MODULE_ID, STAGE_LABELS, type Member } from './schemas';
 

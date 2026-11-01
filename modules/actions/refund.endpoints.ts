@@ -3,7 +3,7 @@ import { todayBerlin } from '$lib/sdk/dates';
 import { type ApiEndpoint, core, errors, moduleDb, rowsOf, type Tx } from '$lib/sdk/server';
 import { requireAccess } from './access';
 import { appliedAutoIncome } from './auto-income';
-import type { ActionContributions } from '$lib/modules/treasury/contract';
+import type { ActionContributions } from '$modules/treasury/contract';
 import {
 	assertOpen,
 	closedInfo,

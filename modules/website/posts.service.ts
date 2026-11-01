@@ -19,8 +19,8 @@ import {
 } from '$lib/sdk/server';
 import { slugify } from '$lib/sdk/slug';
 import type { PrincipalGroupRef } from '$lib/sdk/types/sharing';
-import type { EventRefsService } from '$lib/modules/events/contract';
-import type { GalleryRefsService } from '$lib/modules/galleries/contract';
+import type { EventRefsService } from '$modules/events/contract';
+import type { GalleryRefsService } from '$modules/galleries/contract';
 import { canPublish } from './access';
 import {
 	MAX_SLUG,

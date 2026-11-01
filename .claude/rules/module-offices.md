@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/offices/**", "tests/**/offices*", "scripts/seed-demo-offices.mjs"]
+paths: ["modules/offices/**", "tests/**/offices*", "scripts/seed-demo-offices.mjs"]
 ---
 
 # Modul `offices` (Ämter)
@@ -13,7 +13,7 @@ Seit 2026-10-19: **Vorlagen-Ämter** aus anderen Modulen (`manifest.offices`, z.
 **Benachrichtigungen** per Mail an die Konto-Adresse der Inhaber*innen (Modus je Person und Ereignis im Profil), Dienst
 `OfficesService.notify` über `provides` (siehe unten).
 
-## Dateien (`src/lib/modules/offices/`)
+## Dateien (`modules/offices/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte + Beschreibungen, `defaultRoleGrants` für „Amtsinhaber*in“, Navigation), Migrationen, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `provides` (`OfficesService`), Jobs `sync-grants` (stündlich) + `notify-digest` (täglich), Endpoints (Reihenfolge `website` → `notifications` → `profile` → `holders` → `offices`, feste Pfade vor `:id`) |
@@ -165,3 +165,7 @@ await offices?.notify(ctx, [{ module: MODULE_ID, office: 'kasse', event: 'payabl
 - Offen (Benachrichtigungen): echter SMTP-Versand und Tagesjob im Echtbetrieb ungeprüft; keine Anzeige, wann die nächste Zusammenfassung kommt.
 - Offen: Admin-Reset nur indirekt getestet (Core löscht `user_role_grant` des Moduls bei `rebuild`; Core-Bereiche `users`/`roles` räumen die Tabelle mit ab);
   Profilbild-Auslieferung mit echtem S3 nicht automatisiert getestet.
+
+## Datensicherung (seit 2026-11-01)
+`backup: { adminOnlyRestore: 'Ämter verleihen Rollen und damit Rechte', afterRestoreJobs: ['sync-grants'] }` in `module.ts` – ersetzt die
+früher im Core fest eingetragenen `'offices'` (`ADMIN_ONLY_RESTORE_SCOPES`) und `POST_RESTORE_JOBS`.

@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/actions/**", "tests/**/actions*", "tests/**/accounting*", "tests/**/refund*"]
+paths: ["modules/actions/**", "tests/**/actions*", "tests/**/accounting*", "tests/**/refund*"]
 ---
 
 # Modul `actions` (Aktionen)
@@ -9,7 +9,7 @@ Abrechnung (Buchungen, Belege, Auslagen, Abschluss, PDF) und Rückzahlung des Ü
 Version 1.9.0, **hängt von `members` ab**. Alle Pfade unten relativ zu `/api/v1/modules/actions` (UI: `apiFetch('/modules/actions/…')`).
 Teilnehmende sind eigene Datensätze (Name, `group_label` als Freitext); bei Anmeldung mit Mitglied zusätzlich `member_id`/`user_id` (siehe „Anmeldung mit Mitglied“).
 
-## Dateien (`src/lib/modules/actions/`)
+## Dateien (`modules/actions/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `actions.bank.*`, `actions.payment.purposeTemplate`, `actions.health.retentionDays`; Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `onMemberDeleted`, `subjectExport`, `backup` (`actionsBackup`), `provides`; Endpoints in `withTreasurySync([...])`; Routen `''`, `:id`, öffentlich `anmeldung/:token`, `anmeldung-bestaetigen/:token`, `auslagen/:token` |
@@ -404,7 +404,7 @@ Unit: `action-archive`, `calculation`, `subsidy`, `accounting`, `accounting-repo
   (`subjectExport`): Teilnahmen über `user_id`/`member_id` im Klartext, eigene Aktionen, Freigaben. Test `tests/integration/privacy-retention.test.ts`.
 
 ## Teilnehmendenliste als PDF (`participants-sheet.endpoints.ts`)
-- Katalog = Mitglieder-Katalog (`$lib/pdf-lists/member-columns.ts`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
+- Katalog = Mitglieder-Katalog (`MembersService.sheetCatalog`, Zeilen `sheetRow`; seit 2026-11-01 nicht mehr aus `$lib/pdf-lists`) + Aktionsspalten `role` (direkt hinter `name`), `fee`, `juleica`, `notes` (sensibel); Voreinstellungen `fahrt`/`gesundheit` zeigen zusätzlich `notes`.
   Felddefinitionen über `core.modules.use('members')` (`listFieldDefinitions`), **nie** in der Modul-Transaktion.
 - Zeile: ohne Mitglied aus `action_participants` (Gruppe = `group_label`, Alter, E-Mail, `diet` → Ernährung, `allergies` → Allergien); mit `member_id` aus `listMemberSheets` (Notfall-Telefon, Zusatzfelder), Ernährung/Allergien/E-Mail aus beiden zusammengeführt.
   `fee` = `fee_cents` bzw. `team_fee_cents` (Team), `notes` = Hinweise + Antworten des Anmeldeformulars (ohne `mf_*` bei Mitglied). Abschnitte „Teilnehmende“ und „Team“ (neue Seite).

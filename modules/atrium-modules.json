@@ -1,0 +1,63 @@
+{
+	"schema": 1,
+	"name": "EP Intern – Fachmodule",
+	"description": "Fachmodule für die Stammesverwaltung der Edelweißpiraten (Kalypzo Atrium).",
+	"modules": [
+		{
+			"id": "actions",
+			"path": "actions"
+		},
+		{
+			"id": "events",
+			"path": "events"
+		},
+		{
+			"id": "files",
+			"path": "files"
+		},
+		{
+			"id": "galleries",
+			"path": "galleries"
+		},
+		{
+			"id": "material",
+			"path": "material"
+		},
+		{
+			"id": "members",
+			"path": "members"
+		},
+		{
+			"id": "messages",
+			"path": "messages"
+		},
+		{
+			"id": "notes",
+			"path": "notes"
+		},
+		{
+			"id": "offices",
+			"path": "offices"
+		},
+		{
+			"id": "orders",
+			"path": "orders"
+		},
+		{
+			"id": "tasks",
+			"path": "tasks"
+		},
+		{
+			"id": "treasury",
+			"path": "treasury"
+		},
+		{
+			"id": "website",
+			"path": "website"
+		},
+		{
+			"id": "whiteboard",
+			"path": "whiteboard"
+		}
+	]
+}

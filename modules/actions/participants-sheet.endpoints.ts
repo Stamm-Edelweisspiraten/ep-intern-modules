@@ -26,15 +26,11 @@ import {
 	type ListColumn,
 	type ListRow,
 	type ListSection,
-	type ListSelection
-} from '$lib/pdf-lists';
-import {
-	buildMemberCatalog,
+	type ListSelection,
 	buildPresets,
-	fieldColumnKey,
-	rowFromMember
-} from '$lib/pdf-lists/member-columns';
-import type { MemberSheetData, MembersService } from '$lib/modules/members/contract';
+	fieldColumnKey
+} from '$lib/pdf-lists';
+import type { MemberSheetData, MembersService } from '$modules/members/contract';
 import { requireAccess } from './access';
 import { canSeeHealth, readHealth } from './health';
 import { formatEuro } from '$lib/components/layout/money';
@@ -163,7 +159,7 @@ async function loadCatalog(): Promise<{
 }> {
 	const svc = await loadMembersService();
 	const defs = await svc.listFieldDefinitions();
-	return { catalog: buildActionCatalog(buildMemberCatalog(defs)), defs, svc };
+	return { catalog: buildActionCatalog(svc.sheetCatalog(defs)), defs, svc };
 }
 
 function rowOf(
@@ -171,14 +167,15 @@ function rowOf(
 	a: Loaded,
 	member: MemberSheetData | undefined,
 	defs: Awaited<ReturnType<MembersService['listFieldDefinitions']>>,
-	today: string
+	today: string,
+	svc: MembersService
 ): ListRow {
 	const role = String(p.role) as ParticipantRole;
 	const diet = p.diet ? (DIET_LABELS[String(p.diet) as Diet] ?? String(p.diet)) : '';
 	const birth = text(p.birth_date);
 	const age = ageOn(birth, today);
 	const base: ListRow = member
-		? rowFromMember(member, defs, today)
+		? svc.sheetRow(member, defs, today)
 		: {
 				name: '',
 				groups: text(p.group_label),
@@ -220,7 +217,7 @@ async function buildParticipantsPdf(
 	const today = todayIso();
 	const rows = a.participants.map((p) => ({
 		team: String(p.role) === 'team',
-		row: rowOf(p, a, sheets.get(text(p.member_id)), defs, today)
+		row: rowOf(p, a, sheets.get(text(p.member_id)), defs, today, svc)
 	}));
 	const sections: ListSection[] = [
 		{ title: `Teilnehmende – ${a.name}`, rows: rows.filter((r) => !r.team).map((r) => r.row) },

@@ -6,7 +6,7 @@
  * Lesende Endpunkte und Vorgänge ohne Einfluss auf Rechnungen/Auszahlungen lösen nichts aus.
  */
 import { core, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
-import type { TreasuryService } from '$lib/modules/treasury/contract';
+import type { TreasuryService } from '$modules/treasury/contract';
 
 /** Schreibende Pfade ohne Einfluss auf die Kasse (Freigaben, Formular, Belegdateien, Kostenlink, Rückzahlungsbriefe/-links) */
 const IRRELEVANT =

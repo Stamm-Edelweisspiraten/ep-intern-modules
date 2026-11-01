@@ -10,8 +10,8 @@
  * Core-Aufrufe nie innerhalb einer Modul-Transaktion.
  */
 import { core, errors, type RequestContext } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
-import type { OfficesService } from '$lib/modules/offices/contract';
+import type { MembersService } from '$modules/members/contract';
+import type { OfficesService } from '$modules/offices/contract';
 import {
 	UNASSIGNED,
 	isSharedMailbox,

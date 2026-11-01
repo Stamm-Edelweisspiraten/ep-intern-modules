@@ -11,7 +11,7 @@ import {
 	secureFileResponse,
 	type Tx
 } from '$lib/sdk/server';
-import type { ActionContributions } from '$lib/modules/treasury/contract';
+import type { ActionContributions } from '$modules/treasury/contract';
 import { requireAccess } from './access';
 import {
 	ENTRY_COLUMNS,

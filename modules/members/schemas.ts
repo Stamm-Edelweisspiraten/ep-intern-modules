@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { ageFromBirthDate as ageOnDate, isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { listSelectionInput } from '$lib/pdf-lists/schema';
-import { MEMBER_HEALTH_FIELD_KEYS } from '$lib/pdf-lists/member-columns';
+import { MEMBER_HEALTH_FIELD_KEYS } from './sheet-columns';
 
 export const MODULE_ID = 'members';
 /** Benachrichtigung (core.notifications): weiteres Konto mit einem Mitglied verknüpft (Sicherheitshinweis) */
@@ -887,7 +887,7 @@ export interface MyFieldDefinition {
 	field: import('$lib/forms').FieldDefinition;
 	sensitive: boolean;
 }
-/** Zusatzfelder mit Gesundheitsbezug (Vorlagen); Quelle: `$lib/pdf-lists/member-columns` (auch von `actions` genutzt) */
+/** Zusatzfelder mit Gesundheitsbezug (Vorlagen); Quelle: `sheet-columns.ts` (`actions` hält eine geprüfte Kopie) */
 export const SENSITIVE_FIELD_KEYS: readonly string[] = MEMBER_HEALTH_FIELD_KEYS;
 
 // --- Mail-Einstellungen je Mitglied ---------------------------------------------

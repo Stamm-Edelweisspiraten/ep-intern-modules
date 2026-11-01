@@ -1,0 +1,28 @@
+{
+	"schema": 1,
+	"id": "material",
+	"name": "Material",
+	"description": "Materialverwaltung: Lager mit Typen, Artikeln, Sets, Kategorien und Lagerorten, Zelte als Bauplan, Reservierungen für Aktionen und Gruppen mit automatischer Zuteilung, Scannen per Kamera oder USB-Scanner, Etiketten und Listen",
+	"version": "2.1.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {},
+	"optionalDependencies": {
+		"actions": {
+			"version": "^1.9.0"
+		},
+		"members": {
+			"version": "^1.14.0"
+		},
+		"offices": {
+			"version": "^1.2.0"
+		}
+	},
+	"permissions": [
+		"material.inventory.manage",
+		"material.inventory.view",
+		"material.labels.manage",
+		"material.reservation.create",
+		"material.reservation.manage"
+	],
+	"npm": {}
+}

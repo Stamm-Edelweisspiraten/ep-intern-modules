@@ -3,7 +3,7 @@
  * zusammenfassen, weiterschreiben, Aufgaben ableiten (`note-write`). Kontext `notes:note` = Titel und Seitenpfad
  * (Zugriff wie die Notiz selbst, sonst 404). Der Text der Notiz kommt nur als Feldinhalt, den die Person auslöst.
  */
-import { type ModuleAssist, type RequestContext } from '$lib/sdk/server';
+import type { ModuleAssist, RequestContext } from '$lib/sdk/server';
 import { chainOf, loadNoteContext, resolveNoteAccess } from './access';
 import { mdb } from './db';
 import { PERM } from './schemas';

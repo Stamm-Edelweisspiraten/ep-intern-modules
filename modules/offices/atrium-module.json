@@ -1,0 +1,17 @@
+{
+	"schema": 1,
+	"id": "offices",
+	"name": "Ämter",
+	"description": "Ämter mit Reihenfolge, E-Mail-Adressen, Inhaber*innen und verknüpften Rollen",
+	"version": "1.2.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {},
+	"optionalDependencies": {},
+	"permissions": [
+		"offices.ai.use",
+		"offices.office.manage",
+		"offices.office.view",
+		"offices.website.read"
+	],
+	"npm": {}
+}

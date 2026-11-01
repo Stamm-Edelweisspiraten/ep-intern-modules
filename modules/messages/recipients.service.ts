@@ -7,7 +7,7 @@
  * eingegebene Adressen (`addresses`, ohne Mitgliedsbezug).
  */
 import { core, errors, type RequestContext } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
+import type { MembersService } from '$modules/members/contract';
 import { dedupeAddresses, normalizeAddress } from './sender';
 import { loadSettings } from './sender.service';
 import {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { isValidIban } from '$lib/sdk/iban';
 import {
 	NOTIFY_ACCOUNTING,
@@ -66,13 +67,11 @@ import { actionsAssist, PERM_AI } from './assist';
 import { healthRetentionSetting, onMemberDeleted, purgeHealthJob, subjectExport } from './privacy';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'actions',
-		name: 'Aktionen',
-		version: '1.9.0',
-		dependencies: ['members'],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Kasse: tatsächlich eingegangene Beiträge für die Abrechnung (`TreasuryService`) */
-		optionalDependencies: ['treasury'],
+		...manifestFromPackage(pkg),
 		/** Mitglieder sehen ihre Anmeldungen (und die ihrer verknüpften Mitglieder) */
 		defaultRoleGrants: { Mitglied: ['actions.own.view'] },
 		permissions: [

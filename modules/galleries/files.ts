@@ -12,7 +12,7 @@ import {
 	type ImageVariantSpec,
 	type Tx
 } from '$lib/sdk/server';
-import type { EventRefsService } from '$lib/modules/events/contract';
+import type { EventRefsService } from '$modules/events/contract';
 import { MODULE_ID, type ImageVariant } from './schemas';
 
 export const db = () => moduleDb(MODULE_ID);

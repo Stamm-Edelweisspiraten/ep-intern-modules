@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/whiteboard/**", "tests/**/whiteboard*", "scripts/seed-demo-whiteboard.mjs", "src/lib/modules/actions/pages/ActionWhiteboardsCard.svelte"]
+paths: ["modules/whiteboard/**", "tests/**/whiteboard*", "scripts/seed-demo-whiteboard.mjs", "modules/actions/pages/ActionWhiteboardsCard.svelte"]
 ---
 
 # Modul `whiteboard` (Whiteboards, live gemeinsam bearbeiten)
@@ -35,7 +35,7 @@ Aktion; erste Version **mit** Freihand, Live-Cursor/Anwesenheit, Rahmen, Version
   Feste Farbe → `fixedPalette(color)` (dunkle Fläche: helle Tinte, dunkle Karten), Fläche deckend (`Canvas` `surface`). Löschen/Reset/Auskunft berücksichtigen
   `user_prefs`.
 
-## Dateien (`src/lib/modules/whiteboard/`)
+## Dateien (`modules/whiteboard/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (4 Rechte, **keine** `defaultRoleGrants`), Einstellung `whiteboard.storage.boardMb` (200), Jobs `snapshots` (stündlich) + `cleanup` (täglich), Hooks, Endpoints in `withBoardContext` (Reihenfolge boards → transfer → live → assets → snapshots/refs) |

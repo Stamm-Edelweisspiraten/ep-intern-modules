@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { withBoardContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
 import { boardEndpoints } from './boards.endpoints';
@@ -16,15 +17,11 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_user_prefs.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'whiteboard',
-		name: 'Whiteboards',
-		description:
-			'Gemeinsame Whiteboards zum Live-Bearbeiten: Kacheln und Formen, Verbinder, Freihand, Bilder, Dateien, Links und Karten aus anderen Modulen – auch für Aktionen',
-		version: '1.1.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen, Karten aus Aufgaben/Terminen/Galerien/Dateien/Notizen */
-		optionalDependencies: ['members', 'actions', 'tasks', 'events', 'galleries', 'files', 'notes'],
+		...manifestFromPackage(pkg),
 		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
 		permissionDescriptions: {
 			[PERM.view]:

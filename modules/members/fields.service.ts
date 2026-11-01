@@ -323,12 +323,14 @@ async function memberContacts(
 }
 
 /**
- * `listMemberSheets` (`sheets.service.ts`, Importzyklus vermeiden) und die Freigabe-Dienste
+ * `listMemberSheets`, `sheetCatalog`/`sheetRow` (`sheet-columns.ts`, Importzyklus vermeiden) und die Freigabe-Dienste
  * (`principals.service.ts`) ergänzt `module.ts`.
  */
 export const membersService: Omit<
 	MembersService,
 	| 'listMemberSheets'
+	| 'sheetCatalog'
+	| 'sheetRow'
 	| 'listGroups'
 	| 'principalIdsForUser'
 	| 'searchMembers'

@@ -438,7 +438,7 @@
 					title="Inhalt der Nachricht"
 					srcdoc={mail.document}
 					sandbox="allow-popups allow-popups-to-escape-sandbox"
-					class="h-[60vh] min-h-80 w-full resize-y rounded-md border bg-white"
+					class="h-[60dvh] min-h-80 w-full resize-y rounded-md border bg-white"
 				></iframe>
 
 				{#if mail.attachments.length || mail.skippedAttachments.length}

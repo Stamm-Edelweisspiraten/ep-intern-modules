@@ -1,0 +1,30 @@
+{
+	"schema": 1,
+	"id": "orders",
+	"name": "Bestellungen",
+	"description": "Stammesartikel bestellen (Halstuch, Liederbuch …) mit Rechnung über die Kasse, Lager und Einkauf für die*den Kämmerer*in",
+	"version": "1.1.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {
+		"members": {
+			"version": "^1.14.0"
+		}
+	},
+	"optionalDependencies": {
+		"treasury": {
+			"version": "^1.2.0"
+		},
+		"offices": {
+			"version": "^1.2.0"
+		}
+	},
+	"permissions": [
+		"orders.ai.use",
+		"orders.article.manage",
+		"orders.order.create",
+		"orders.order.manage",
+		"orders.order.view",
+		"orders.stock.manage"
+	],
+	"npm": {}
+}

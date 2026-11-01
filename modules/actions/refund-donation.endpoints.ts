@@ -17,7 +17,7 @@ import {
 	str,
 	type Tx
 } from '$lib/sdk/server';
-import type { MemberContact, MembersService } from '$lib/modules/members/contract';
+import type { MemberContact, MembersService } from '$modules/members/contract';
 import { requireAccess } from './access';
 import { assertOpen, closedInfo } from './accounting-core';
 import { hashLinkToken, linkTokenValues, storedToken } from './link-tokens';

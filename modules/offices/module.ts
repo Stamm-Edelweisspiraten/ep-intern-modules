@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { officesAssist, PERM_AI } from './assist';
 import { syncGrants } from './grants.service';
 import { holderEndpoints } from './holders.endpoints';
@@ -26,12 +27,10 @@ import m0004 from './migrations/0004_website_optin.sql?raw';
 import m0005 from './migrations/0005_bio_check.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'offices',
-		name: 'Ämter',
-		description: 'Ämter mit Reihenfolge, E-Mail-Adressen, Inhaber*innen und verknüpften Rollen',
-		version: '1.2.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
+		...manifestFromPackage(pkg),
 		/** Jede*r Inhaber*in erhält diese Rolle automatisch (Ämter ansehen, eigene Beschreibung) */
 		defaultRoleGrants: { [HOLDER_ROLE_NAME]: ['offices.office.view'] },
 		permissions: [PERM_AI, 'offices.office.view', 'offices.office.manage', 'offices.website.read'],
@@ -104,6 +103,14 @@ export default defineModule({
 			}
 		}
 	],
+	/**
+	 * Ämter verleihen Rollen (`user_role_grant`): Wiederherstellen nur für Administrator*innen (#16); danach die
+	 * Verleihungen aus den wiederhergestellten Ämtern neu bilden (das Modul-Rebuild löscht sie).
+	 */
+	backup: {
+		adminOnlyRestore: 'Ämter verleihen Rollen und damit Rechte',
+		afterRestoreJobs: ['sync-grants']
+	},
 	assist: officesAssist,
 	search: officesSearch,
 	// Feste Pfade (`/offices/order`, `/me`, `/website/…`) vor den Parameter-Pfaden

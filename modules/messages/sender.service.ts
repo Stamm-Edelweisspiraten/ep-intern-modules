@@ -10,8 +10,8 @@
  * Core-Aufrufe immer außerhalb einer Modul-Transaktion.
  */
 import { core, errors, type RequestContext } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
-import type { OfficesService } from '$lib/modules/offices/contract';
+import type { MembersService } from '$modules/members/contract';
+import type { OfficesService } from '$modules/offices/contract';
 import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
 import { myExtraMailboxes, type MyExtraMailbox } from './extra-mailbox.service';
 import {

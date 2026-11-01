@@ -23,8 +23,8 @@ import {
 	toIso,
 	toIsoOrNull
 } from '$lib/sdk/server';
-import type { ActionsService } from '$lib/modules/actions/contract';
-import type { TaskRefsService } from '$lib/modules/tasks/contract';
+import type { ActionsService } from '$modules/actions/contract';
+import type { TaskRefsService } from '$modules/tasks/contract';
 import { visibleEventsFilter } from './access';
 import {
 	EVENT_COLUMNS,

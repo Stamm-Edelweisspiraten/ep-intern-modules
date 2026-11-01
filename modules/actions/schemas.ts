@@ -324,7 +324,7 @@ export interface Participant {
 	 * Zahlstand des Beitrags laut Kasse. Fehlt das Feld, ist die Kasse nicht aktiv; `null` = keine
 	 * Rechnung (z. B. kein Beitrag übernommen).
 	 */
-	payment?: import('$lib/modules/treasury/contract').ParticipantPayment | null;
+	payment?: import('$modules/treasury/contract').ParticipantPayment | null;
 }
 
 // === Phase 2: Kalkulation ===================================================
@@ -532,7 +532,7 @@ export const DEFAULT_CALCULATION: Omit<CalculationInput, 'items'> = {
 
 // --- Ergebnisse der Berechnung ----------------------------------------------
 
-/** Eingabe für `computeSubsidy` (src/lib/modules/actions/subsidy.ts). */
+/** Eingabe für `computeSubsidy` (modules/actions/subsidy.ts). */
 export interface SubsidyInput {
 	nights: number;
 	lodgingType: LodgingType;
@@ -589,7 +589,7 @@ export interface CalcLine {
 	totalCents: number;
 }
 
-/** Eingabe für `calculate` (src/lib/modules/actions/calculation.ts). */
+/** Eingabe für `calculate` (modules/actions/calculation.ts). */
 export interface CalculateInput {
 	participants: number;
 	team: number;

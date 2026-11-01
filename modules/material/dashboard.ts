@@ -136,6 +136,7 @@ async function agendaItems(
 }
 
 export const materialDashboard: ModuleDashboardSources = {
+	agendaKinds: [{ key: 'material', label: 'Material', style: 'marked' }],
 	todos: {
 		permission: PERMISSIONS.manage,
 		run: (ctx, { today, limit }) => managerTodos(ctx, today, limit)

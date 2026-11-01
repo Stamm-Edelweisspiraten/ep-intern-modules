@@ -7,11 +7,11 @@
 import { sql } from 'drizzle-orm';
 import { core, inList, type RequestContext, rowsOf } from '$lib/sdk/server';
 import { formatDateDe } from '$lib/sdk/dates';
-import type { EventRefsService } from '$lib/modules/events/contract';
-import type { FileRefsService } from '$lib/modules/files/contract';
-import type { GalleryRefsService } from '$lib/modules/galleries/contract';
-import type { NoteRefsService } from '$lib/modules/notes/contract';
-import type { TaskRefsService } from '$lib/modules/tasks/contract';
+import type { EventRefsService } from '$modules/events/contract';
+import type { FileRefsService } from '$modules/files/contract';
+import type { GalleryRefsService } from '$modules/galleries/contract';
+import type { NoteRefsService } from '$modules/notes/contract';
+import type { TaskRefsService } from '$modules/tasks/contract';
 import { actionsService, visibleBoardsFilter } from './access';
 import { mdb } from './boards.service';
 import { boardLink } from './notify';

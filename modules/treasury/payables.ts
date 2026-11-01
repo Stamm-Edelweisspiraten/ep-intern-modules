@@ -18,7 +18,7 @@ import {
 	type CsvValue,
 	type Tx
 } from '$lib/sdk/server';
-import type { MemberContact } from '$lib/modules/members/contract';
+import type { MemberContact } from '$modules/members/contract';
 import { decryptIban, storeIban } from './bank';
 import {
 	actionsService,

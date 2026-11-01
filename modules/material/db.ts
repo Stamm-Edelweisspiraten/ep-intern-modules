@@ -19,8 +19,8 @@ import {
 	type Tx
 } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
-import type { ActionsService } from '$lib/modules/actions/contract';
-import type { OfficesService } from '$lib/modules/offices/contract';
+import type { ActionsService } from '$modules/actions/contract';
+import type { OfficesService } from '$modules/offices/contract';
 import type { PrincipalProvider } from '$lib/sdk/types/sharing';
 import { CODE_PREFIX, MODULE_ID, PERMISSIONS, type CodeKind } from './schemas';
 

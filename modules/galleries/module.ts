@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { galleriesAssist, PERM_AI } from './assist';
 import { NOTIFY_GALLERY_SHARED } from './schemas';
 import { galleriesSearch } from './search';
@@ -16,14 +17,11 @@ import { galleryRefsService } from './refs.service';
 import type { GalleryRefsService } from './contract';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'galleries',
-		name: 'Galerien',
-		description: 'Bildergalerien mit Freigaben, Termin-Zuordnung und Stammeswebsite',
-		version: '1.3.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Termine für die Zuordnung von Galerien */
-		optionalDependencies: ['members', 'events'],
+		...manifestFromPackage(pkg),
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen öffentliche und für sie freigegebene Galerien */
 		defaultRoleGrants: { Mitglied: ['galleries.gallery.view'] },
 		permissions: [

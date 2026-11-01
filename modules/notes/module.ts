@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { notesAssist, PERM_AI } from './assist';
 import { withNoteContext } from './access';
 import { assetEndpoints } from './assets.endpoints';
@@ -23,15 +24,11 @@ import m0002 from './migrations/0002_user_prefs.sql?raw';
 import m0003 from './migrations/0003_public_links.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'notes',
-		name: 'Notizen',
-		description:
-			'Gemeinsame Notizen mit Unterseiten: live zusammen schreiben, Markdown, Tabellen, Bilder, eingebettete Whiteboards, Teilen und Export (Markdown, PDF, Word, HTML)',
-		version: '1.3.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Notizen an Aktionen */
-		optionalDependencies: ['members', 'actions'],
+		...manifestFromPackage(pkg),
 		permissions: [PERM.view, PERM.create, PERM.viewAll, PERM.editAll, PERM.linkCreate, PERM_AI],
 		permissionDescriptions: {
 			[PERM.view]:

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { membersAssist, PERM_AI } from './assist';
-import { defineModule, type PrincipalProvider } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage, type PrincipalProvider } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import type { MembersService } from './contract';
 import { membersSearch } from './search';
 import { membersDashboard } from './dashboard';
@@ -16,6 +17,7 @@ import { groupImageEndpoints } from './group-image.endpoints';
 import { reprocessGroupImages } from './group-image.service';
 import { linkEndpoints } from './link.endpoints';
 import { listMemberSheets } from './sheets.service';
+import { buildMemberCatalog, rowFromMember } from './sheet-columns';
 import { principalsService } from './principals.service';
 import { sheetEndpoints } from './sheets.endpoints';
 import { memberEndpoints } from './members.endpoints';
@@ -52,11 +54,10 @@ import m0017 from './migrations/0017_group_age.sql?raw';
 import { hashStoredLinkTokens, membersBackup } from './link-tokens';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'members',
-		name: 'Mitglieder & Gruppen',
-		version: '1.14.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
+		...manifestFromPackage(pkg),
 		defaultRoleGrants: {
 			/** Rolle „Mitglied“ (Verknüpfungs-Konten) darf die eigenen Mitglieder sehen/bearbeiten */
 			[LINK_DEFAULT_ROLE]: ['members.own.view', 'members.own.edit'],
@@ -160,9 +161,13 @@ export default defineModule({
 	provides: {
 		...membersService,
 		listMemberSheets,
+		sheetCatalog: buildMemberCatalog,
+		sheetRow: rowFromMember,
 		...principalsService,
 		...messagingService
 	} satisfies MembersService & PrincipalProvider,
+	/** Personenquelle für Freigaben an Principals (Mitglieder/Gruppen) und Meldung gelöschter Mitglieder */
+	principals: { memberViewPermission: 'members.member.view' },
 	settings: [
 		{
 			key: 'members.address.openPlzUrl',

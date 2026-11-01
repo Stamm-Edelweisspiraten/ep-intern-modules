@@ -4,7 +4,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { errors, type Row, rowsOf, toIso, type Tx } from '$lib/sdk/server';
-import { type GalleryImage, type ImageVariant } from './schemas';
+import type { GalleryImage, ImageVariant } from './schemas';
 
 /** Spalten für `toGalleryImage` (Alias `i` für `gallery_images`) */
 export const IMAGE_COLUMNS = sql`i.id, i.gallery_id, i.description, i.position, i.original_name,

@@ -15,7 +15,7 @@ import {
 	toIso,
 	type Tx
 } from '$lib/sdk/server';
-import type { EventRefInfo } from '$lib/modules/events/contract';
+import type { EventRefInfo } from '$modules/events/contract';
 import { VARIANT_COLUMN, db, effectiveCoverSql, eventsService, fileResponse } from './files';
 import {
 	idParams,

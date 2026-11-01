@@ -1,0 +1,32 @@
+{
+	"schema": 1,
+	"id": "members",
+	"name": "Mitglieder & Gruppen",
+	"version": "1.14.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {},
+	"optionalDependencies": {},
+	"permissions": [
+		"members.ai.use",
+		"members.data.export",
+		"members.field.manage",
+		"members.group.delete",
+		"members.group.edit",
+		"members.group.view",
+		"members.led-member.edit",
+		"members.led-member.export",
+		"members.led-member.view",
+		"members.link.manage",
+		"members.link.view",
+		"members.member.delete",
+		"members.member.edit",
+		"members.member.view",
+		"members.own.edit",
+		"members.own.view",
+		"members.storage.delete",
+		"members.storage.read",
+		"members.storage.write",
+		"members.website.read"
+	],
+	"npm": {}
+}

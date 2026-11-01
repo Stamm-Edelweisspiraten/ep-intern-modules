@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { treasuryAssist, PERM_AI } from './assist';
 import { PUSH_INVOICE, PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER } from './push-notify';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { resetAreas, resetUsers } from './reset';
 import { subjectExport } from './subject-export';
 import { treasurySearch } from './search';
@@ -50,15 +51,11 @@ const days = z.number().int().min(0).max(365);
 const feeCents = z.number().int().min(0).max(100_000);
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'treasury',
-		name: 'Kasse',
-		description:
-			'Konten und Buchungen, offene Beiträge aus Aktionen, Rechnungen, Zahlungserinnerungen und Kassenberichte.',
-		version: '1.2.0',
-		dependencies: ['members', 'actions'],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Benachrichtigungen an das Amt „Kasse“ (`office-notify.ts`), nur wenn `offices` aktiv ist */
-		optionalDependencies: ['offices'],
+		...manifestFromPackage(pkg),
 		/** Mitglieder sehen die offenen Rechnungen ihrer verknüpften Mitglieder (Dashboard) */
 		defaultRoleGrants: { Mitglied: ['treasury.own.view'] },
 		offices: [

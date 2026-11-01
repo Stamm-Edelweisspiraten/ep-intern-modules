@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NOTIFY_NEW, NOTIFY_REPLIED, notificationScopesFor } from './inbox-notify.service';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { contactEndpoints } from './contact.endpoints';
 import { cleanup, resumeDeliveries } from './delivery.service';
 import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
@@ -45,14 +46,10 @@ const folderName = z
 	.regex(/^[^\u0000-\u001f\u007f*%"\\]+$/, 'Ungültiger Ordnername');
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'messages',
-		name: 'Nachrichten',
-		description:
-			'E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)',
-		version: '1.7.0',
-		dependencies: ['members'],
-		optionalDependencies: ['offices'],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
+		...manifestFromPackage(pkg),
 		permissions: [
 			PERM_SEND,
 			PERM_VIEW_ALL,

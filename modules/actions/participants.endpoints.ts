@@ -9,7 +9,7 @@ import {
 	toIso,
 	type Tx
 } from '$lib/sdk/server';
-import type { ParticipantPayment, TreasuryService } from '$lib/modules/treasury/contract';
+import type { ParticipantPayment, TreasuryService } from '$modules/treasury/contract';
 import { requireAccess } from './access';
 import { canSeeHealth, encryptHealthText, readHealthFor } from './health';
 import { effectiveSubsidyEligible } from './subsidy-eligibility';

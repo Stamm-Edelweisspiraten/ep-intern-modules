@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { NOTIFY_FILE_SHARED, NOTIFY_LINK_UPLOAD } from './schemas';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { linksEndpoints } from './links.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { nodesEndpoints } from './nodes.endpoints';
@@ -33,14 +34,11 @@ import m0005 from './migrations/0005_thumb_state.sql?raw';
 
 /** Dateien: eine Ansicht (eigene + freigegebene), Freigaben an Principals, öffentliche Ansicht-/Upload-Links, Papierkorb */
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'files',
-		name: 'Dateien',
-		description: 'Cloud-Ablage mit Ordnern, Vorschau, Freigaben und öffentlichen Links',
-		version: '1.3.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen/Mitglieder als Freigabe-Ziele */
-		optionalDependencies: ['members'],
+		...manifestFromPackage(pkg),
 		/** Verknüpfungs-Konten bekommen eine eigene Ablage und sehen Freigegebenes */
 		defaultRoleGrants: { Mitglied: [PERMISSIONS.view] },
 		permissions: [

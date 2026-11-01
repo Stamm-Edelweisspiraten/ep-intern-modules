@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/website/**", "tests/**/website-module*", "src/lib/sdk/server/html.ts", "src/lib/sdk/slug.ts"]
+paths: ["modules/website/**", "tests/**/website-module*", "src/lib/sdk/server/html.ts", "src/lib/sdk/slug.ts"]
 ---
 
 # Modul `website` (Inhalte der Stammeswebsite)
@@ -14,7 +14,7 @@ Nutzerentscheidungen (2026-10-25): Banner je Eintrag als **Leiste oben auf allen
 früheren statischen Ferienhinweis); Blog „ausführlich“ (Bilder im Text, Titelbild, Entwurf/Veröffentlicht + geplanter Zeitpunkt, Autor*in nur
 Vorname, Verknüpfung Gruppen/Termin/Galerie, Themen mit Filter, RSS, Mitschreiben per Freigabe); **getrennte Rechte**.
 
-## Dateien (`src/lib/modules/website/`)
+## Dateien (`modules/website/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest, Migration, `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`; Endpoints (Reihenfolge website → content → posts) |

@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/orders/**", "tests/**/orders*", "tests/integration/treasury-orders.test.ts", "scripts/seed-demo-orders.mjs"]
+paths: ["modules/orders/**", "tests/**/orders*", "tests/integration/treasury-orders.test.ts", "scripts/seed-demo-orders.mjs"]
 ---
 
 # Modul `orders` (Bestellungen / Kämmerer*in)
@@ -17,7 +17,7 @@ für **jedes** Mitglied.
 **2026-10-19:** Der Warenkorb (Tab „Bestellen“) bietet **nur** die verknüpften Mitglieder (Dropdown, keine Suche); für andere Mitglieder bestellt
 die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“** (`OrderCreateDialog`: Mitglied suchen, Positionen, Notiz → `POST /orders`).
 
-## Dateien (`src/lib/modules/orders/`)
+## Dateien (`modules/orders/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte + Beschreibungen, `defaultRoleGrants` Mitglied/Kämmerer*in, Amts-Vorlage `kaemmerer`), Migrationen, Jobs `sync-treasury` (stündlich) + `deficit-digest` (täglich), Endpoint-Reihenfolge images → articles → stock → supplier → orders; Hooks `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport` (kein `onMemberDeleted`) |

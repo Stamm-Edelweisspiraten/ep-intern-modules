@@ -6,7 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { formatEuro } from '$lib/components/layout/money';
 import { core, type RequestContext } from '$lib/sdk/server';
-import type { OfficeNotification } from '$lib/modules/offices/contract';
+import type { OfficeNotification } from '$modules/offices/contract';
 import { MODULE_ID, NOTIFY_ORDER_CREATED, NOTIFY_STOCK_DEFICIT, OFFICE_KEY } from './schemas';
 import { mdb, officesService, rows } from './db';
 import { loadStock } from './orders.service';

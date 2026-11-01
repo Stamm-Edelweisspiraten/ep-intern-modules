@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/messages/**", "tests/**/messages*", "scripts/seed-demo-inbox.mjs", "website/src/lib/age-range.ts", "website/src/routes/kontakt/**", "website/src/routes/probestunde/**"]
+paths: ["modules/messages/**", "tests/**/messages*", "scripts/seed-demo-inbox.mjs", "website/src/lib/age-range.ts", "website/src/routes/kontakt/**", "website/src/routes/probestunde/**"]
 ---
 
 # Modul `messages` (Nachrichten)
@@ -9,7 +9,7 @@ E-Mails an Mitglieder, Gruppen und frei eingegebene Adressen aus dem Intern-Bere
 Einzelversand je Empfänger im Hintergrund, Verlauf mit Status je Empfänger, **Posteingang** (Catch-all per IMAP, siehe unten). Schema `mod_messages`, Version 1.7.0,
 `dependencies: ['members']`, `optionalDependencies: ['offices']`. Navigation „Nachrichten“ (Icon `mail`, `order` 70) und „Postfächer“ (`admin: true`, Verwaltung, siehe unten).
 
-## Dateien (`src/lib/modules/messages/`)
+## Dateien (`modules/messages/`)
 | Datei | Inhalt |
 |---|---|
 | `ui.ts` | Routen `''` → `InboxPage`, `sent` → `HistoryPage`, `new` → `ComposePage` (`?reply=<id>[&mode=reply-all]`, `?forward=<id>`), `admin` → `MailboxAdminPage`, `inbox/:id` → `InboxMessagePage`, `:id` → `MessageDetailPage`; `profileSections` „Posteingang“ (`InboxNotificationsCard`) |

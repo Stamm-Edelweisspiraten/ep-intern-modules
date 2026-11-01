@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/notes/**", "tests/**/notes*", "scripts/seed-demo-notes.mjs", "src/lib/modules/actions/pages/ActionNotesCard.svelte", "src/lib/sdk/server/live-hub.ts", "src/lib/server/core/embeds/**", "src/routes/embed/**", "src/lib/sdk/types/embeds.ts"]
+paths: ["modules/notes/**", "tests/**/notes*", "scripts/seed-demo-notes.mjs", "modules/actions/pages/ActionNotesCard.svelte", "src/lib/sdk/server/live-hub.ts", "src/lib/server/core/embeds/**", "src/routes/embed/**", "src/lib/sdk/types/embeds.ts"]
 ---
 
 # Modul `notes` (Notizen, live gemeinsam bearbeiten)
@@ -32,7 +32,7 @@ Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); forma
 - Rückgängig/Wiederholen über den Yjs-UndoManager (nur eigene Änderungen); Wiederherstellen einer Version = eine Server-Transaktion auf dem Live-Dokument
   (`replaceContent`), offene Editoren übernehmen sie ohne Neuladen.
 
-## Dateien (`src/lib/modules/notes/`)
+## Dateien (`modules/notes/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (6 Rechte inkl. `notes.link.create`, **keine** `defaultRoleGrants`), Jobs `versions` (stündlich: verdichten + automatische Versionen) und `purge-trash` (täglich), Hooks, `provides` `NoteRefsService`, Endpoints in `withNoteContext` (transfer → notes → live → assets → versions) |

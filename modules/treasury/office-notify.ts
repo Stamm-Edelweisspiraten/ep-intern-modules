@@ -5,7 +5,7 @@
  */
 import { formatEuro } from '$lib/components/layout/money';
 import { core, type RequestContext } from '$lib/sdk/server';
-import type { OfficeNotification, OfficesService } from '$lib/modules/offices/contract';
+import type { OfficeNotification, OfficesService } from '$modules/offices/contract';
 import type { AccountingClosedEvent } from './contract';
 import { MODULE_ID, PAYABLE_SOURCE_LABELS, type PayableSource } from './schemas';
 

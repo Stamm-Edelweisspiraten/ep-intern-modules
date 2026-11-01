@@ -1,0 +1,31 @@
+{
+	"schema": 1,
+	"id": "actions",
+	"name": "Aktionen",
+	"version": "1.9.0",
+	"core": ">=2.0.0-0 <3.0.0",
+	"dependencies": {
+		"members": {
+			"version": "^1.14.0"
+		}
+	},
+	"optionalDependencies": {
+		"treasury": {
+			"version": "^1.2.0"
+		}
+	},
+	"permissions": [
+		"actions.action.create",
+		"actions.action.delete",
+		"actions.action.edit-all",
+		"actions.action.view",
+		"actions.action.view-all",
+		"actions.ai.use",
+		"actions.own.view",
+		"actions.payout.view",
+		"actions.storage.delete",
+		"actions.storage.read",
+		"actions.storage.write"
+	],
+	"npm": {}
+}

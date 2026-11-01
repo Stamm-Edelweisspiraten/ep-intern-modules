@@ -12,7 +12,7 @@ import type {
 	ClosedAccounting,
 	ClosedAccountingDetail,
 	InterimRef
-} from '$lib/modules/actions/contract';
+} from '$modules/actions/contract';
 import type { Payable } from './schemas';
 
 const TAGS = ['Modul: treasury'];

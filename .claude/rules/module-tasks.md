@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/tasks/**", "tests/**/tasks*"]
+paths: ["modules/tasks/**", "tests/**/tasks*"]
 ---
 
 # Modul `tasks` (Aufgaben, Kanban)
@@ -50,7 +50,7 @@ Standard aus); verschobene Aktion → **Nachfrage** „Daten mitverschieben?“ 
 - **Offen**: Zeitleiste ohne Zoom über Monate hinaus und ohne Ziehen auf Touch (bewusst); Vorlagen nur persönlich (nicht teilbar); Abhängigkeiten
   ohne Pfeil-Bearbeitung in der Zeitleiste; Phasen-Farben im Kalender nur, wenn gesetzt.
 
-## Dateien (`src/lib/modules/tasks/`)
+## Dateien (`modules/tasks/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte – **keine** `defaultRoleGrants`, siehe Fallen), Benachrichtigungen, Job `due-reminders` (täglich), Hooks, Endpoints in `withTaskContext` |

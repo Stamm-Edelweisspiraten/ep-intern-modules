@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { ordersAssist, PERM_AI } from './assist';
 import { NOTIFY_MY_ORDER } from './schemas';
 import { articlesEndpoints } from './articles.endpoints';
@@ -25,15 +26,11 @@ import m0002 from './migrations/0002_digest_state.sql?raw';
 import m0003 from './migrations/0003_fk_indexes.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'orders',
-		name: 'Bestellungen',
-		description:
-			'Stammesartikel bestellen (Halstuch, Liederbuch …) mit Rechnung über die Kasse, Lager und Einkauf für die*den Kämmerer*in',
-		version: '1.1.0',
-		dependencies: ['members'],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Kasse: Rechnungen/Auszahlungen (Push); Ämter: Vorlage „Kämmerer*in“ mit Benachrichtigungen */
-		optionalDependencies: ['treasury', 'offices'],
+		...manifestFromPackage(pkg),
 		permissions: [
 			PERM_AI,
 			PERMISSIONS.view,

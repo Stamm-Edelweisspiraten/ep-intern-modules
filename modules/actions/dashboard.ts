@@ -18,7 +18,7 @@ import {
 	str
 } from '$lib/sdk/server';
 import type { DashboardAgendaItem, DashboardTodo } from '$lib/sdk/types/dashboard';
-import type { MembersService } from '$lib/modules/members/contract';
+import type { MembersService } from '$modules/members/contract';
 import { loadActionKeys } from './access';
 import { listCalendarActions } from './calendar';
 import { storedToken } from './link-tokens';
@@ -151,6 +151,7 @@ async function agendaItems(
 }
 
 export const actionsDashboard: ModuleDashboardSources = {
+	agendaKinds: [{ key: 'action', label: 'Aktion', style: 'tinted' }],
 	todos: {
 		anyPermission: [VIEW, OWN],
 		async run(ctx, { today, limit }) {

@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/events/**", "tests/**/events*", "src/lib/sdk/**/sharing.ts", "tests/**/sharing*"]
+paths: ["modules/events/**", "tests/**/events*", "src/lib/sdk/**/sharing.ts", "tests/**/sharing*"]
 ---
 
 # Modul `events` (Termine)
@@ -11,7 +11,7 @@ ohne `members` nur Stamm, Rollen, Benutzer*innen). Erstes Modul mit der generisc
 (`$lib/sdk/server/sharing.ts`, siehe `architecture.md` → „Freigabe an Principals“). Navigation „Termine“ (Icon `calendar`)
 als eigener Eintrag (`order` 10, ganz oben nach dem Dashboard).
 
-## Dateien (`src/lib/modules/events/`)
+## Dateien (`modules/events/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (Rechte, `defaultRoleGrants`, Navigation), Einstellung `events.stamm.name`, Migrationen, `search`, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `provides` (`EventRefsService`), Endpoints (Reihenfolge `website` → `meta` → `events`); Dashboard-Kachel `upcoming` in `ui.ts` |

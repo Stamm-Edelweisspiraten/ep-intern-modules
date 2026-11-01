@@ -8,7 +8,7 @@
  * Spam-Schutz wie beim Kontaktformular (gleiche Aufgabe, nur einmal einlösbar). Core nie in der Modul-Transaktion.
  */
 import { core, type RequestContext } from '$lib/sdk/server';
-import type { MembersService, WebsiteGroupRef } from '$lib/modules/members/contract';
+import type { MembersService, WebsiteGroupRef } from '$modules/members/contract';
 import { groupsForAge } from './age-range';
 import {
 	requirePow,

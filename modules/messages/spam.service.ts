@@ -20,7 +20,7 @@ import {
 	userLabel,
 	type RequestContext
 } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
+import type { MembersService } from '$modules/members/contract';
 import type { ParsedInbound } from './inbound-parse';
 import { loadMailboxDirectory, accessibleMailboxes } from './mailbox.service';
 import { isValidDomain } from './sender';

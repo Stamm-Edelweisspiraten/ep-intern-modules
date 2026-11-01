@@ -196,4 +196,12 @@ export interface MembersService extends PrincipalProvider {
 	 * (`members.data.export`). Reihenfolge wie `ids` (≤ 200), unbekannte IDs entfallen.
 	 */
 	listMemberSheets(ids: string[]): Promise<MemberSheetData[]>;
+	/** Spaltenkatalog der Mitglieder-Listen (Basisspalten + je Zusatzfeld `field.<schlüssel>`), rein */
+	sheetCatalog(defs: MemberFieldDefinition[]): import('$lib/pdf-lists').ListCatalog;
+	/** Eine Listenzeile je Mitglied passend zu `sheetCatalog`, rein (`today` = `YYYY-MM-DD` fürs Alter) */
+	sheetRow(
+		member: MemberSheetData,
+		defs: MemberFieldDefinition[],
+		today: string
+	): import('$lib/pdf-lists').ListRow;
 }

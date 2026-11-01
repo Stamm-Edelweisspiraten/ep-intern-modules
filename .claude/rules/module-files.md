@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/files/**", "tests/**/files*", "tests/helpers/s3-mock.ts", "scripts/seed-demo-files.mjs"]
+paths: ["modules/files/**", "tests/**/files*", "tests/helpers/s3-mock.ts", "scripts/seed-demo-files.mjs"]
 ---
 
 # Modul `files` (Dateien / Cloud-Ablage)
@@ -27,7 +27,7 @@ der Objektprüfung (Benutzer brauchen keine `files.storage.*`-Rechte).
   und **Farbe** (vorhandener `ColorPicker` + Vorschläge); **für alle mit Zugriff gleich**, ändern darf, wer den Ordner bearbeiten darf.
   Kontingent **je Person**, Standard bleibt 1 GB, einstellbar **im Dialog „Benutzer bearbeiten“** der Verwaltung.
 
-## Dateien (`src/lib/modules/files/`)
+## Dateien (`modules/files/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` | Manifest (4 Rechte + Beschreibungen, `defaultRoleGrants` „Mitglied“ → `files.file.view`, Navigation), Einstellungen, Migrationen 0001–0005, `resetAreas`/`resetUsers`, `onUserDeleted`, `subjectExport`, `search`, `backup` (`filesBackup`), Jobs `purge-trash` (täglich) und `thumbs-backfill` (stündlich), Endpoint-Reihenfolge links → meta → recent → trash → shares → upload → quota → nodes (öffentliche/feste Pfade vor `:id`) |

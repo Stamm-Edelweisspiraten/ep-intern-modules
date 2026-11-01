@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { eventsAssist, PERM_AI } from './assist';
 import { NOTIFY_EVENT_CANCELLED, NOTIFY_EVENT_CHANGED, NOTIFY_EVENT_NEW } from './schemas';
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { eventsSearch } from './search';
 import { eventsDashboard } from './dashboard';
 import { eventEndpoints } from './events.endpoints';
@@ -22,14 +23,11 @@ import { calendarEndpoints } from './calendar.endpoints';
 import { calendarFeedsBackup } from './calendar-feeds.service';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'events',
-		name: 'Termine',
-		description: 'Interne Termine und Termine für die Stammeswebsite',
-		version: '1.4.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen und Mitglieder für Zuordnung und Sichtbarkeit (ohne `members`: nur Stamm, Rollen, Benutzer) */
-		optionalDependencies: ['members', 'actions', 'tasks'],
+		...manifestFromPackage(pkg),
 		/** Verknüpfungs-Konten (Rolle „Mitglied“) sehen die für sie sichtbaren Termine */
 		defaultRoleGrants: { Mitglied: ['events.event.view'] },
 		permissions: [

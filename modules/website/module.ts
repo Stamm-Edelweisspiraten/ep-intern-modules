@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { websiteAssist, PERM_AI } from './assist';
 import { NOTIFY_POST_INVITED, NOTIFY_POST_STATUS } from './schemas';
 import { contentEndpoints } from './content.endpoints';
@@ -10,14 +11,11 @@ import { resetAreas, resetUsers } from './reset';
 import m0001 from './migrations/0001_init.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'website',
-		name: 'Website',
-		description: 'Inhalte der Stammeswebsite: Banner/Hinweise, häufige Fragen und Blog',
-		version: '1.1.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen (Verknüpfung, Mitschreiben an Gruppen/Mitglieder), Termine und öffentliche Galerien */
-		optionalDependencies: ['members', 'events', 'galleries'],
+		...manifestFromPackage(pkg),
 		permissions: [PERM_AI, 
 			'website.content.manage',
 			'website.post.write',

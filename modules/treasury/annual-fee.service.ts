@@ -5,7 +5,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
-import type { MemberContact } from '$lib/modules/members/contract';
+import type { MemberContact } from '$modules/members/contract';
 import {
 	annualInvoiceDueOn,
 	defaultAnnualDueOn,

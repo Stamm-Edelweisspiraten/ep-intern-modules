@@ -1,5 +1,5 @@
 ---
-paths: ["src/lib/modules/treasury/**", "tests/**/treasury*", "scripts/seed-demo-treasury.mjs"]
+paths: ["modules/treasury/**", "tests/**/treasury*", "scripts/seed-demo-treasury.mjs"]
 ---
 
 # Modul `treasury` (Kasse)
@@ -24,7 +24,7 @@ HMAC für den Import-Abgleich) · **Auszahlungen** (ausstehende Überweisungen: 
 Rückzahlungen, Guthaben) · **Rechnungs-PDF bei Anmeldung** als Anhang der Anmeldebestätigung, Fassungen mit automatischem
 Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 
-## Dateien (`src/lib/modules/treasury/`)
+## Dateien (`modules/treasury/`)
 | Datei | Inhalt |
 |---|---|
 | `module.ts` / `ui.ts` | Manifest, Rechte, Einstellungen `treasury.*`, Jobs `sync` (stündlich), `reminders` (täglich), `annual-fees` (stündlich), `provides`, `search`, `backup` (`treasuryBackup`), `resetAreas`/`resetUsers`, `subjectExport` (**kein** `onUserDeleted`/`onMemberDeleted`); Routen `''`, `invoices/:id`, `accountings/:id`, `settings`; Dashboard-Kacheln `pages/widgets/CashTasksWidget`, `MyInvoicesWidget` |

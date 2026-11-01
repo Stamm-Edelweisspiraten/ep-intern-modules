@@ -13,7 +13,7 @@ import type {
 	AccountingClosedEvent,
 	ActionContributions,
 	TreasuryService
-} from '$lib/modules/treasury/contract';
+} from '$modules/treasury/contract';
 import { payeeTotals, summarize, toSummaryEntry } from './accounting';
 import { computeAutoIncome } from './auto-income';
 import { calculate } from './calculation';

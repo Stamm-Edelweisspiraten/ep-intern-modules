@@ -6,7 +6,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { errors, type RequestContext } from '$lib/sdk/server';
-import type { OrderInvoiceLine, OrderPayableInput } from '$lib/modules/treasury/contract';
+import type { OrderInvoiceLine, OrderPayableInput } from '$modules/treasury/contract';
 import { invoiceLineRef, invoiceSourceKey, payableRef } from './schemas';
 import { mdb, num, rows, str, treasuryService } from './db';
 import { loadOrders } from './orders.service';

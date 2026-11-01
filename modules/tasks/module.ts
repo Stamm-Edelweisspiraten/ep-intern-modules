@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { tasksAssist, PERM_AI } from './assist';
 import { withTaskContext } from './access';
 import { boardEndpoints } from './boards.endpoints';
@@ -15,15 +16,11 @@ import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_planning.sql?raw';
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'tasks',
-		name: 'Aufgaben',
-		description:
-			'Kanban-Boards mit Phasen, Zeitleiste, Aufgaben, Unteraufgaben, Zuständigen und Vorlagen – auch für Aktionen',
-		version: '1.2.0',
-		dependencies: [],
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Gruppen/Mitglieder als Freigabe-Ziele, Boards an Aktionen (Zugriff wird vererbt) */
-		optionalDependencies: ['members', 'actions'],
+		...manifestFromPackage(pkg),
 		permissions: [PERM_AI, PERM.view, PERM.create, PERM.viewAll, PERM.editAll],
 		permissionDescriptions: {
 			[PERM_AI]: 'KI-Schreibhilfe für Aufgabenbeschreibungen und Unteraufgaben nutzen',

@@ -7,7 +7,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { core, inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
-import type { MembersService } from '$lib/modules/members/contract';
+import type { MembersService } from '$modules/members/contract';
 import { loadActionKeys, visibleActionsFilter } from './access';
 import type { CalendarAction } from './contract';
 import { MODULE_ID } from './schemas';

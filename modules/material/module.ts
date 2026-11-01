@@ -1,4 +1,5 @@
-import { defineModule } from '$lib/sdk/server';
+import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import pkg from './atrium-module.json';
 import { reassignLocked } from './assign.service';
 import { catalogEndpoints } from './catalog.endpoints';
 import { codesEndpoints } from './codes.endpoints';
@@ -37,17 +38,11 @@ const ALL = [
 ];
 
 export default defineModule({
+	package: pkg,
 	manifest: {
-		id: 'material',
-		name: 'Material',
-		description:
-			'Materialverwaltung: Lager mit Typen, Artikeln, Sets, Kategorien und Lagerorten, Zelte als Bauplan, ' +
-			'Reservierungen für Aktionen und Gruppen mit automatischer Zuteilung, Scannen per Kamera oder ' +
-			'USB-Scanner, Etiketten und Listen',
-		version: '2.1.0',
+		// Kennung, Name, Beschreibung, Version, Abhängigkeiten: atrium-module.json
 		/** Aktionen/Gruppen als Zweck einer Reservierung; Ämter: Vorlage „Materialwart*in“ */
-		dependencies: [],
-		optionalDependencies: ['actions', 'members', 'offices'],
+		...manifestFromPackage(pkg),
 		permissions: ALL,
 		permissionDescriptions: {
 			[PERMISSIONS.view]:
