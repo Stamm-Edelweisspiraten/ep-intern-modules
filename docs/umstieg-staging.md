@@ -54,7 +54,7 @@ dieselbe: Modul-IDs, Migrationsnamen und -prüfsummen ändern sich nicht.
 2. Umgebung ergänzen:
    - `ATRIUM_MODULES_SEED` = Inhalt von `deploy/staging.seed.json` dieses Repos (eine Zeile JSON, Commit = gepushter Stand von `ep-intern-modules`)
    - `ATRIUM_GITHUB_TOKEN` = Token aus 3.3
-   - `ATRIUM_MODULE_INSTALL=supervisor` (Standard), `APP_MEM_LIMIT=4g`
+   - `ATRIUM_MODULE_INSTALL=supervisor` (Standard), `APP_MEM_LIMIT=5g` (Neubau aller Module braucht knapp 4 GB)
 3. Deploy. Ablauf beim ersten Start: Supervisor startet den mitgelieferten Build (nur Core) → lädt die Module am Commit →
    baut → Probelauf → Neustart mit Modulen. In der Zwischenzeit sind die Module „Nicht installiert“ (Daten bleiben).
 4. Prüfen: Administration → Module (alle wieder aktiv, Herkunft GitHub + Commit), Stichproben in Kasse, Mitglieder, Aktionen,
@@ -71,8 +71,20 @@ dieselbe: Modul-IDs, Migrationsnamen und -prüfsummen ändern sich nicht.
 - Core: neuer Tag in `kalypzo-atrium` → Submodul `.core` im Module-Repo nachziehen und prüfen → Deploy des Core-Stacks;
   der Supervisor baut die Module beim Start gegen den neuen Core neu.
 
-## Lokaler Probelauf (vor R3)
+## Lokaler Probelauf (2026-11-01, bestanden)
 
-Siehe Abschnitt „Probelauf“ im Abschlussbericht von Phase 9: R2-Image mit allen Modulen gegen eine frische PostgreSQL, Module aktiviert,
-Daten angelegt → R3-Image (nur Core) gegen dieselbe Datenbank → Module per ZIP aus `ep-intern-modules` installiert → Migrationen,
-Rechte, Daten unverändert.
+Docker, PostgreSQL 17, App mit `read_only`, `cap_drop ALL`, 2 CPU, 4 GB:
+
+1. **R2-Image** (`ep-intern-2`, Phase N) gegen frische Datenbank, alle 15 Module aktiviert, Mitglied/Aktion/Termin angelegt.
+2. **R3-Image** (`kalypzo-atrium` v2.0.0-pre.2, ohne Module) gegen **dieselbe** Datenbank und dasselbe Volume: startet, Module
+   „Nicht installiert“, Daten unberührt.
+3. Module per Panel aus dem ZIP von `ep-intern-modules` installiert (alle 15): Neubau + Probelauf + Neustart **107 s**.
+4. Vergleich vorher/nachher: `module_migration` (Namen + Prüfsummen), `module_state`, Rechte, Rollenrechte, `role_grant_applied`,
+   Daten – **identisch**; alle Module aktiv, Seiten und API liefern die Daten, Stammesprofil wirkt (Name „EP Intern“, Wappen).
+5. Container-Neustart: Supervisor startet direkt die gebaute Generation mit Modulen.
+
+Dabei gefunden und behoben: Installer lehnte Repo-Archive mit `.github/`/`.claude/` ab (jetzt übersprungen); Modul-Pakete
+wurden doppelt neben dem Core installiert (`prosemirror-model` zweimal → Notizen kaputt; jetzt dedupliziert).
+
+**Speicher:** Spitze beim Neubau aller Module **3,98 GiB** (inkl. laufender App und Datei-Cache) bei Limit 4 GB – für Staging
+`APP_MEM_LIMIT=5g` setzen (oder `ATRIUM_BUILD_HEAP=2560`). Den GitHub-Weg (Seed mit Token) prüft erst der echte R3-Schritt.
