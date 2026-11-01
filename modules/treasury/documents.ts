@@ -469,9 +469,9 @@ export async function renderInvoicePdf(
 				? 'Den GiroCode kannst du mit der Banking-App scannen. '
 				: '') + 'Bei Fragen zur Rechnung melde dich gern bei der Kasse. Gut Pfad!'
 	});
-	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'stamm-brief');
+	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'brief');
 	const pdf = await core.pdf.generate(ctx, {
-		template: hasLetter ? 'stamm-brief' : 'default',
+		template: hasLetter ? 'brief' : 'default',
 		title,
 		recipient: hasLetter ? s.address : undefined,
 		content
@@ -948,9 +948,9 @@ export async function payerStatementResponse(
 		);
 	}
 	content.push({ type: 'paragraph', text: 'Bei Fragen melde dich gern bei der Kasse. Gut Pfad!' });
-	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'stamm-brief');
+	const hasLetter = core.pdf.listTemplates().some((t) => t.id === 'brief');
 	const pdf = await core.pdf.generate(ctx, {
-		template: hasLetter ? 'stamm-brief' : 'default',
+		template: hasLetter ? 'brief' : 'default',
 		title: 'Übersicht offener Rechnungen',
 		recipient: hasLetter ? address : undefined,
 		content

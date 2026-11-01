@@ -337,9 +337,9 @@ export async function buildAccountingReport(
 		missingAttachments,
 		attachedEntryIds
 	};
-	const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'stamm-briefkopf');
+	const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'briefkopf');
 	const pdf = await core.pdf.generate(ctx, {
-		template: hasLetterhead ? 'stamm-briefkopf' : 'default',
+		template: hasLetterhead ? 'briefkopf' : 'default',
 		title: interim
 			? `Zwischenabrechnung Nr. ${interim.number} – ${input.actionName}`
 			: `Abrechnung – ${input.actionName}`,

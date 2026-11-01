@@ -158,7 +158,7 @@ describe('#59 Schreibrecht je Einstellung', () => {
 		const r = await put(managerKey, { 'core.system.name': 'Neu', 'setguard.iban': 'DE00' });
 		expect(r.status).toBe(403);
 		expect(r.body.error?.code).toBe('forbidden');
-		expect(await getSetting('core.system.name')).toBe('EP Intern');
+		expect(await getSetting('core.system.name')).toBe('Kalypzo Atrium');
 		expect(await getSetting('setguard.iban')).toBe('');
 		const t = await put(managerKey, { 'treasury.bank.iban': 'DE02120300000000202051' });
 		expect(t.status).toBe(403);
@@ -178,7 +178,7 @@ describe('#59 Schreibrecht je Einstellung', () => {
 			'core.design.accentColor': 'rot'
 		});
 		expect(r.status).toBe(422);
-		expect(await getSetting('core.system.name')).toBe('EP Intern');
+		expect(await getSetting('core.system.name')).toBe('Kalypzo Atrium');
 		expect(
 			await codeOf(setSettings(admin, { 'setguard.holder': 'X', 'setguard.iban': 'x'.repeat(40) }))
 		).toBe(422);
@@ -196,7 +196,7 @@ describe('#59 Schreibrecht je Einstellung', () => {
 		// Standardwert gültig → löschbar (zurück auf Standard); ohne gültigen Standard → 422
 		await setSetting(admin, 'core.system.name', 'Testsystem');
 		expect((await put(managerKey, { 'core.system.name': null })).status).toBe(200);
-		expect(await getSetting('core.system.name')).toBe('EP Intern');
+		expect(await getSetting('core.system.name')).toBe('Kalypzo Atrium');
 		expect(await codeOf(setSettings(admin, { 'setguard.code': null }))).toBe(422);
 		await setSetting(admin, 'core.ai.apiKey', 'sk-test');
 		expect((await put(managerKey, { 'core.ai.apiKey': null })).status).toBe(200);

@@ -95,7 +95,7 @@ beforeAll(async () => {
 	// Benachrichtigungen (core.notifications) prüft notifications-modules.test.ts
 	setMailTransportForTests({
 		sendMail: async (m) => {
-			if (m.headers?.['X-EP-Intern'] !== 'notification') mails.push(m as Mail);
+			if (m.headers?.['X-Atrium'] !== 'notification') mails.push(m as Mail);
 		}
 	});
 	setPdfRendererForTests(async () => new TextEncoder().encode('%PDF-fake'));

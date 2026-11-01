@@ -8,6 +8,10 @@
 			"path": "actions"
 		},
 		{
+			"id": "ep-stamm",
+			"path": "ep-stamm"
+		},
+		{
 			"id": "events",
 			"path": "events"
 		},

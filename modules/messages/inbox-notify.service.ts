@@ -4,7 +4,7 @@
  * - `inbox-new`: „Neue Nachricht von …“ mit dem Inhalt (gekürzt) und Link,
  * - `inbox-replied`: in gemeinsamen Postfächern (Amt, Gruppe, Stamm) „<Name> hat geantwortet“ an alle anderen.
  *
- * Mails tragen `X-EP-Intern`/`Auto-Submitted` (setzt der Core): Landen sie selbst im Catch-all (Konto-Adresse
+ * Mails tragen `X-Atrium` (früher `X-EP-Intern`)/`Auto-Submitted` (setzt der Core): Landen sie selbst im Catch-all (Konto-Adresse
  * auf der eigenen Domain), überspringt der Abruf sie – keine Schleife. Spam und automatische Mails
  * (Abwesenheitsnotizen) lösen keine Benachrichtigung aus. Wirft nie.
  */

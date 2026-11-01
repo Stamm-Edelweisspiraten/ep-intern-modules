@@ -32,7 +32,8 @@ await call(
 );
 if (!cookie) throw new Error('Login fehlgeschlagen - läuft der Demo-Server?');
 
-for (const id of ['members', 'actions', 'treasury']) {
+// `ep-stamm` zuerst: Stammesprofil (Briefkopf, Mail-Kopf, Wappen, „Stamm“, Ton der Schreibhilfe)
+for (const id of ['ep-stamm', 'members', 'actions', 'treasury']) {
 	const r = await call('POST', `/modules/${id}/enable`);
 	console.log(`Modul ${id} aktivieren:`, r.status);
 }

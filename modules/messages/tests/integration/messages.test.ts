@@ -24,6 +24,8 @@ import { setTodayForTests } from '$lib/sdk/dates';
 import membersModule from '$modules/members/module';
 import officesModule from '$modules/offices/module';
 import messagesModule from '$modules/messages/module';
+// Stammesprofil: Mail-Kopf mit Lilie/Wappen (Core ist seit Phase N neutral)
+import stammModule from '$modules/ep-stamm/module';
 import { deliveriesIdleForTests } from '$modules/messages/delivery.service';
 import type {
 	MessageDetail,
@@ -175,6 +177,7 @@ beforeAll(async () => {
 	registerModule(membersModule);
 	registerModule(officesModule);
 	registerModule(messagesModule);
+	registerModule(stammModule);
 	await syncModules();
 	await bootstrapAdmin('admin@example.test', 'correct-horse-battery');
 	const [u] = await getDb()
@@ -182,7 +185,7 @@ beforeAll(async () => {
 		.from(schema.user)
 		.where(eq(schema.user.email, 'admin@example.test'));
 	admin = await ctxOf(u!.id);
-	for (const id of ['members', 'offices', 'messages']) await enableModule(admin, id);
+	for (const id of ['members', 'offices', 'messages', 'ep-stamm']) await enableModule(admin, id);
 	admin = await ctxOf(u!.id);
 	keys.admin = (await createApiKey(admin, { name: 'a', scopes: [...admin.permissions] })).key;
 	await installFakeStorage(admin);

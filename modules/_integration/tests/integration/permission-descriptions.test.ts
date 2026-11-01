@@ -31,7 +31,9 @@ describe('Beschreibungen der Berechtigungen', () => {
 			const { id, permissions, permissionDescriptions = {} } = m.manifest;
 			expect(Object.keys(permissionDescriptions).sort(), id).toEqual([...permissions].sort());
 			for (const key of permissions) {
-				expect(permissionDescriptions[key]?.trim().length ?? 0, key).toBeGreaterThan(5);
+				const text = permissionDescriptions[key];
+				const de = typeof text === 'string' ? text : text?.de;
+				expect(de?.trim().length ?? 0, key).toBeGreaterThan(5);
 			}
 		}
 	});

@@ -43,7 +43,7 @@ export interface ParsedInbound {
 	serverSpamScore: number | null;
 	/** Automatische Mail (`Auto-Submitted`, Abwesenheitsnotiz) – löst keine Benachrichtigung aus */
 	autoSubmitted: boolean;
-	/** Eigene Benachrichtigung dieser App (`X-EP-Intern`) – wird nicht importiert (Schleifenschutz) */
+	/** Eigene Benachrichtigung dieser App (`X-Atrium`, früher `X-EP-Intern`) – wird nicht importiert (Schleifenschutz) */
 	ownNotification: boolean;
 	/** Ergebnis der Absenderprüfung des Mailservers (DMARC, sonst DKIM/SPF) */
 	authResult: 'pass' | 'fail' | 'none';
@@ -222,7 +222,7 @@ export async function parseInbound(source: Buffer): Promise<ParsedInbound> {
 		}),
 		autoSubmitted:
 			(!!auto && auto !== 'no') || precedence === 'auto_reply' || precedence === 'junk',
-		ownNotification: header('x-ep-intern') !== '',
+		ownNotification: header('x-atrium') !== '' || header('x-ep-intern') !== '',
 		authResult: authResultOf(linesOf('authentication-results'))
 	};
 }

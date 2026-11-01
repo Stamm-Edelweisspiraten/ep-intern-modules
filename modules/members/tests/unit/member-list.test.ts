@@ -97,7 +97,7 @@ describe('Hilfsfunktionen', () => {
 
 	it('Vorlage: Briefkopf quer, sonst compact in Querformat', () => {
 		expect(listTemplateInput([LIST_TEMPLATE, 'compact'])).toEqual({
-			template: 'stamm-briefkopf-quer',
+			template: 'briefkopf-quer',
 			orientation: 'landscape'
 		});
 		expect(listTemplateInput(['default']).template).toBe(LIST_TEMPLATE_FALLBACK);

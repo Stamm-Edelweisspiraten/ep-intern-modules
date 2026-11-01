@@ -194,7 +194,7 @@ async function letterInput(
 	const url = refundUrl(token);
 	const amount = formatEuro(row.amountCents);
 	return {
-		template: 'stamm-brief',
+		template: 'brief',
 		title: `Rückzahlung – ${action.name}`,
 		recipient: addressLines(row.name, contact),
 		content: [

@@ -381,7 +381,7 @@ describe('Datenauskunft (core.privacy.export)', () => {
 		);
 
 		const out = await exportSubject(admin, { userId: userIds.parent });
-		expect(out.format).toBe('ep-intern-datenauskunft');
+		expect(out.format).toBe('atrium-datenauskunft');
 		expect(out.errors).toEqual([]);
 		expect(out.subject.memberIds).toContain(child.id);
 		const core = out.core as { account: { email: string }; audit: unknown[] };

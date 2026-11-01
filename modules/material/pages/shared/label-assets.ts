@@ -15,7 +15,7 @@ export function loadBarcodes(): Promise<BarcodeModule> {
 }
 
 export function loadLogos(): Promise<Record<string, string>> {
-	logos ??= import('$lib/sdk/labels/logos').then((m) => m.LABEL_LOGO_DATA);
+	logos ??= import('../../label-logos').then((m) => m.MATERIAL_LABEL_LOGO_DATA);
 	return logos;
 }
 

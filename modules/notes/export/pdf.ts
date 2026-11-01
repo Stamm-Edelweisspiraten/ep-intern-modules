@@ -1,6 +1,6 @@
 /**
  * PDF-Export über `core.pdf.generate` mit dem Core-Block `richText` (HTML wird im Core erneut bereinigt).
- * Bilder als data-URL im HTML; `letterhead` → Vorlage `stamm-briefkopf`, sonst `default`. Den Titel der ersten Seite
+ * Bilder als data-URL im HTML; `letterhead` → Vorlage `briefkopf`, sonst `default`. Den Titel der ersten Seite
  * druckt die Vorlage selbst, Unterseiten bekommen eine eigene Überschrift und beginnen auf einer neuen Seite.
  */
 import { core, type RequestContext } from '$lib/sdk/server';
@@ -22,7 +22,7 @@ export async function exportPdf(
 		}
 	});
 	const result = await core.pdf.generate(ctx, {
-		template: opts.letterhead ? 'stamm-briefkopf' : 'default',
+		template: opts.letterhead ? 'briefkopf' : 'default',
 		title: (bundle.root.title || 'Notiz').slice(0, 200),
 		content: [{ type: 'richText', html }]
 	});

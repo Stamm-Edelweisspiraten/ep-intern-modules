@@ -34,6 +34,7 @@ import {
 	type LabelTarget,
 	type LabelTemplate
 } from './schemas';
+import { MATERIAL_LABEL_LOGO_DATA } from './label-logos';
 
 const tags = ['Modul: material'];
 
@@ -363,7 +364,8 @@ export const labelsEndpoints: AnyApiEndpoint[] = [
 				layout: template.layout,
 				labels,
 				startIndex: body.startIndex,
-				outlines: body.outlines
+				outlines: body.outlines,
+				logos: MATERIAL_LABEL_LOGO_DATA
 			});
 			await core.audit.logFromContext(ctx, 'material.labels.printed', {
 				target: template.id,

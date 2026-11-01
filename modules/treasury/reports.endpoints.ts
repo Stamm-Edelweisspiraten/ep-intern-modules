@@ -387,9 +387,9 @@ export const reportEndpoints = [
 		handler: async ({ ctx, query }) => {
 			const q = query as ReportQuery;
 			const r = await periodReport(q);
-			const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'stamm-briefkopf');
+			const hasLetterhead = core.pdf.listTemplates().some((t) => t.id === 'briefkopf');
 			const pdf = await core.pdf.generate(ctx, {
-				template: hasLetterhead ? 'stamm-briefkopf' : 'default',
+				template: hasLetterhead ? 'briefkopf' : 'default',
 				title: `Kassenbericht ${formatDateDe(q.from)} – ${formatDateDe(q.to)}`,
 				content: reportBlocks(r)
 			});

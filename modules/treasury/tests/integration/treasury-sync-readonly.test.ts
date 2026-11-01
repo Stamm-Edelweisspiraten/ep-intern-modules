@@ -201,7 +201,7 @@ beforeAll(async () => {
 	setMailTransportForTests({
 		sendMail: async (m) => {
 			// Benachrichtigungen (core.notifications, z. B. „Neue Anmeldung“) prüft notifications-modules.test.ts
-			if (m.headers?.['X-EP-Intern'] === 'notification') return;
+			if (m.headers?.['X-Atrium'] === 'notification') return;
 			if (failMail) throw new Error('SMTP nicht erreichbar');
 			mails.push(m as Mail);
 		}

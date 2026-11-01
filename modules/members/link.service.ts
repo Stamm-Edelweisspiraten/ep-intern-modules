@@ -144,7 +144,7 @@ export async function buildLinkLetters(
 			year: 'numeric'
 		});
 		inputs.push({
-			template: 'stamm-brief',
+			template: 'brief',
 			title: 'Konto verknüpfen',
 			recipient: recipientLines({
 				firstName: first,

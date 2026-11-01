@@ -244,7 +244,7 @@ describe('Export', () => {
 			backupPassword: BACKUP_PW,
 			password: PW
 		});
-		expect(res.fileName).toMatch(/^ep-intern-sicherung-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.epbackup$/);
+		expect(res.fileName).toMatch(/^atrium-sicherung-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.atriumbackup$/);
 		expect(res.summary.scopes).toEqual(['core:users', 'core:api-keys', 'core:settings', 'files']);
 		expect(res.summary.files).toBe(1);
 		expect(res.summary.warnings.some((w) => w.includes(missingKey))).toBe(true);

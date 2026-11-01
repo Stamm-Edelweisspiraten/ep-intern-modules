@@ -135,7 +135,7 @@ async function seedBase() {
 	await q(sql`INSERT INTO mod_rstdep.link (id, item_id) VALUES ('l1', 'a')`);
 }
 
-/** Pflicht-Export ist eine verschlüsselte `.epbackup`-Datei (kein Klartext-JSON, #29); räumt die Temp-Datei ab. */
+/** Pflicht-Export ist eine verschlüsselte `.atriumbackup`-Datei (kein Klartext-JSON, #29); räumt die Temp-Datei ab. */
 async function expectEncryptedExport(exp: { path: string; size: number; done(): Promise<void> }) {
 	const bytes = await readFile(exp.path);
 	expect(bytes.length).toBe(exp.size);
@@ -287,7 +287,7 @@ describe('Ablauf', () => {
 		);
 		expect(await count('mod_rstbase.note')).toBe(2);
 
-		expect(exp.fileName).toMatch(/^ep-intern-reset-.*\.epbackup$/);
+		expect(exp.fileName).toMatch(/^atrium-reset-.*\.atriumbackup$/);
 		await expectEncryptedExport(exp);
 
 		const res = await executeReset(admin, { token: p.token, confirmWord: RESET_CONFIRM_WORD });

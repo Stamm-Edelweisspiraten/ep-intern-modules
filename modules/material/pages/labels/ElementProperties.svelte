@@ -8,13 +8,7 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import {
-		BARCODE_TYPES,
-		BARCODE_TYPE_LABELS,
-		LABEL_LOGOS,
-		LABEL_LOGO_LABELS,
-		type LabelElement
-	} from '$lib/sdk/labels';
+	import { BARCODE_TYPES, BARCODE_TYPE_LABELS, type LabelElement } from '$lib/sdk/labels';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -25,6 +19,7 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { LABEL_FIELDS, type LabelTarget } from '../../schemas';
+	import { MATERIAL_LABEL_LOGOS, MATERIAL_LABEL_LOGO_LABELS } from '../../label-logos';
 	import type { LayerMove } from './designer';
 
 	type Patch = Partial<Omit<LabelElement, 'id' | 'type'>> & Record<string, unknown>;
@@ -300,7 +295,10 @@
 				id={id('logo')}
 				label="Logo"
 				disabled={readonly}
-				options={LABEL_LOGOS.map((l) => ({ value: l, label: LABEL_LOGO_LABELS[l] }))}
+				options={MATERIAL_LABEL_LOGOS.map((l) => ({
+					value: l,
+					label: MATERIAL_LABEL_LOGO_LABELS[l]
+				}))}
 				value={element.logo}
 				onchange={(v) => v && onchange({ logo: v }, null)}
 			/>

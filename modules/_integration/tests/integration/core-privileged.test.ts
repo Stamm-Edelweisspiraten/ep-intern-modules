@@ -3,7 +3,7 @@
  * - `core.system.backup|reset` vergeben nur Administrator*innen (Rolle anlegen/bearbeiten, Rolle zuweisen, API-Key-Scope)
  * - Nicht-Admins mit Sicherungsrecht dürfen Konten/Rollen/API-Keys/Ämter weder wiederherstellen noch zusammenführen
  * - Fall `kept` (Admin): keine zusätzlichen Rollen, nur die bisherigen
- * - Reset-Export ist eine `.epbackup`-Datei ohne Klartext, wiederherstellbar über den Backup-Import
+ * - Reset-Export ist eine `.atriumbackup`-Datei ohne Klartext, wiederherstellbar über den Backup-Import
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
@@ -202,7 +202,7 @@ describe('Pflicht-Export vor dem Zurücksetzen (#29)', () => {
 		});
 		const bytes = await readFile(exp.path);
 		await exp.done();
-		expect(exp.fileName).toMatch(/^ep-intern-reset-.*\.epbackup$/);
+		expect(exp.fileName).toMatch(/^atrium-reset-.*\.atriumbackup$/);
 		expect(bytes.subarray(0, 4).toString('latin1')).toBe('EPBK');
 		expect(bytes.toString('latin1')).not.toContain(SECRET_HEALTH);
 		expect(bytes.toString('latin1')).not.toContain('Lindenweg');

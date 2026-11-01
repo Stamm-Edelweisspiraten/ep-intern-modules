@@ -55,7 +55,9 @@ test('Dashboard zeigt Kacheln und lässt sich anpassen', async ({ page }) => {
 	// Neue Standardkacheln oben; Verwaltungskacheln sind standardmäßig aus
 	let order = await widgetOrder(page);
 	expect(order.slice(0, 2)).toEqual(['core:todos', 'core:week']);
-	await expect(page.locator('[data-widget="core:todos"]').getByText('Zu erledigen')).toBeVisible();
+	await expect(
+		page.locator('[data-widget="core:todos"]').getByRole('heading', { name: 'Zu erledigen' })
+	).toBeVisible();
 	await expect(page.getByTestId('week-grid')).toBeVisible();
 	const stats = page.locator('[data-widget="core:stats"]');
 	await expect(stats).toHaveCount(0);

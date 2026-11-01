@@ -386,7 +386,7 @@ describe('Zuordnung beim Abruf', () => {
 		expect(items).toHaveLength(1);
 	});
 
-	it('eigene Benachrichtigungen (X-EP-Intern) werden nicht übernommen, aber verschoben', async () => {
+	it('eigene Benachrichtigungen (alte Kopfzeile X-EP-Intern) werden nicht übernommen, aber verschoben', async () => {
 		const uid = deliver(
 			eml({
 				to: 'anna.mueller@pfadfinder.test',
@@ -682,7 +682,7 @@ describe('Benachrichtigungen', () => {
 		expect(note.subject).toBe('Neue Nachricht von Petra Extern: Hallo Anna');
 		expect(note.text).toContain('Neue Nachricht von Petra Extern <petra@extern.example>');
 		expect(note.text).toContain('Treffen am Samstag?');
-		expect(note.headers?.['X-EP-Intern']).toBe('notification');
+		expect(note.headers?.['X-Atrium']).toBe('notification');
 		expect(note.headers?.['Auto-Submitted']).toBe('auto-generated');
 
 		const annaCtx = (await contextForUser(userIds.anna!))!.ctx;
