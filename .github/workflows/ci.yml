@@ -31,6 +31,8 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
+          # Core liegt (privat) in KalypzoSolutions: Token mit Lesezugriff als Secret CORE_REPO_TOKEN hinterlegen
+          token: ${{ secrets.CORE_REPO_TOKEN || github.token }}
       - name: Core auf main (nur Warnlauf)
         if: matrix.core == 'main'
         run: git -C .core fetch origin main && git -C .core checkout origin/main

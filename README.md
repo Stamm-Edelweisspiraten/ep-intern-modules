@@ -1,6 +1,6 @@
 # EP Intern – Fachmodule für Kalypzo Atrium
 
-Die Fachmodule der Edelweißpiraten für die Plattform [Kalypzo Atrium](../kalypzo-atrium) (Core, eigenes Repo).
+Die Fachmodule der Edelweißpiraten für die Plattform [Kalypzo Atrium](https://github.com/KalypzoSolutions/kalypzo-atrium) (Core, eigenes Repo).
 Alle Module liegen unter `modules/<id>/`, der Katalog unter `modules/atrium-modules.json`.
 
 | Modul | Inhalt |
@@ -23,7 +23,7 @@ Alle Module liegen unter `modules/<id>/`, der Katalog unter `modules/atrium-modu
 
 ## Installation auf einem Server
 
-Administration → Module → **Installieren** → Link `https://github.com/<owner>/ep-intern-modules/tree/<commit>/modules`
+Administration → Module → **Installieren** → Link `https://github.com/Stamm-Edelweisspiraten/ep-intern-modules/tree/<commit>/modules`
 (oder ZIP dieses Repos) → Module auswählen; Abhängigkeiten werden vorgeschlagen. Für frische Deployments: Seed
 (`ATRIUM_MODULES_SEED`, siehe `docs/deployment.md` im Core).
 

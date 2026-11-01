@@ -34,18 +34,16 @@ dieselbe: Modul-IDs, Migrationsnamen und -prüfsummen ändern sich nicht.
 4. Sprache: Einstellungen → Allgemein → Sprache steht durch `ep-stamm` auf Deutsch; Englisch je Person im Profil.
 5. Rückweg: `ep-stamm` deaktivieren ändert nur das Aussehen; Code-Rückweg = vorheriges Deployment in Dokploy.
 
-## 3. R3 vorbereiten (GitHub)
+## 3. R3 vorbereiten (GitHub) – erledigt 2026-11-01
 
-1. Auf GitHub (privat) anlegen: `kalypzo-atrium`, `ep-intern-modules`, `ep-website`.
-2. Lokal pushen:
-   ```bash
-   cd K:/atrium-split/kalypzo-atrium    && git remote add origin https://github.com/CrayonGamerHD-Philipp/kalypzo-atrium.git    && git push -u origin main --tags
-   cd K:/atrium-split/ep-intern-modules && git remote add origin https://github.com/CrayonGamerHD-Philipp/ep-intern-modules.git && git push -u origin main
-   cd K:/atrium-split/ep-website        && git remote add origin https://github.com/CrayonGamerHD-Philipp/ep-website.git        && git push -u origin main
-   ```
-   Das Submodul `.core` zeigt relativ auf `../kalypzo-atrium` → nach dem Push automatisch auf das GitHub-Repo daneben.
-3. GitHub-Token (fein granular, nur Lesen von `ep-intern-modules`) für den Server erzeugen.
-4. `ep-intern-2` auf GitHub archivieren (erst nach erfolgreichem R3).
+Repos (privat): Core [KalypzoSolutions/kalypzo-atrium](https://github.com/KalypzoSolutions/kalypzo-atrium) (Tag `v2.0.0-pre.2`), Module
+[Stamm-Edelweisspiraten/ep-intern-modules](https://github.com/Stamm-Edelweisspiraten/ep-intern-modules), Website [Stamm-Edelweisspiraten/ep-website](https://github.com/Stamm-Edelweisspiraten/ep-website). Das Submodul `.core` zeigt absolut auf
+das Core-Repo (andere Organisation). Offen:
+
+1. GitHub-Token (fein granular, Lesen von `ep-intern-modules`, bei privatem Core auch `kalypzo-atrium`) für Server und CI erzeugen;
+   in der CI des Module-Repos als Secret für den Submodul-Checkout hinterlegen (`actions/checkout` mit `token:`).
+2. Dokploy braucht Lesezugriff auf `KalypzoSolutions/kalypzo-atrium` (GitHub-App bzw. Deploy-Key in Dokploy einrichten).
+3. `ep-intern-2` auf GitHub archivieren (erst nach erfolgreichem R3).
 
 ## 4. R3 auf Staging
 

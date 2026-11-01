@@ -2,7 +2,7 @@
 	"schema": 1,
 	"sources": [
 		{
-			"source": "github:CrayonGamerHD-Philipp/ep-intern-modules/modules",
+			"source": "github:Stamm-Edelweisspiraten/ep-intern-modules/modules",
 			"commit": "ea02c6d0362933270a36d79914e75b3a92bd5c24"
 		}
 	]
