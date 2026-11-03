@@ -120,6 +120,89 @@ async function requireOccurrence(
 	return row;
 }
 
+/** Filter für `listVisibleOccurrences` (wie `GET /events`, ohne Pagination) */
+export interface OccurrenceFilter {
+	from?: string | null;
+	to?: string | null;
+	search?: string | null;
+	tag?: string | null;
+	groupId?: string | null;
+}
+
+/**
+ * Sichtbare Termine und Serien-Vorkommen, sortiert und auf `MAX_OCCURRENCES` gekappt, dazu der Zugriff je
+ * Termin (für `buildItems`). Gemeinsame Grundlage von `GET /events` und dem PDF-Export, damit beide genau
+ * dasselbe zeigen. Ruft Core-Dienste (Principal-Schlüssel) vor der Transaktion auf.
+ */
+export async function listVisibleOccurrences(
+	ctx: RequestContext,
+	filter: OccurrenceFilter
+): Promise<{ occurrences: OccurrenceRow[]; access: Map<string, EventAccess> }> {
+	const keys = await principalKeysFor(ctx, MODULE_ID);
+	const from = filter.from ?? null;
+	const to = filter.to ?? null;
+	const search = filter.search || null;
+	// Serien brauchen ein Ende: ohne `to` ein Jahr ab `from` (bzw. heute)
+	const seriesTo = to ?? addDays(from ?? todayBerlin(), OPEN_WINDOW_DAYS);
+
+	const conds: SQL[] = [visibleEventsFilter(ctx, keys)];
+	const single: SQL[] = [sql`e.recurrence IS NULL`];
+	if (to) single.push(sql`e.starts_on <= ${to}::date`);
+	if (from) single.push(sql`COALESCE(e.ends_on, e.starts_on) >= ${from}::date`);
+	const series: SQL[] = [sql`e.recurrence IS NOT NULL`, sql`e.starts_on <= ${seriesTo}::date`];
+	if (from) {
+		// letztes Vorkommen + Dauer muss `from` erreichen
+		series.push(sql`(e.recurrence_until IS NULL OR
+			e.recurrence_until + COALESCE(e.ends_on - e.starts_on, 0) >= ${from}::date)`);
+	}
+	conds.push(sql`((${sql.join(single, sql` AND `)}) OR (${sql.join(series, sql` AND `)}))`);
+	if (search) {
+		const p = likePattern(search);
+		conds.push(sql`(e.title ILIKE ${p} OR e.location ILIKE ${p} OR e.description ILIKE ${p}
+			OR (e.recurrence IS NOT NULL AND EXISTS (SELECT 1 FROM event_exceptions x
+				WHERE x.event_id = e.id AND (x.override->>'title' ILIKE ${p}
+					OR x.override->>'location' ILIKE ${p}
+					OR x.override->>'description' ILIKE ${p}))))`);
+	}
+	if (filter.tag) {
+		conds.push(sql`EXISTS (SELECT 1 FROM event_tags t
+			WHERE t.event_id = e.id AND lower(t.tag) = lower(${filter.tag}))`);
+	}
+	if (filter.groupId) {
+		conds.push(sql`EXISTS (SELECT 1 FROM event_groups g
+			WHERE g.event_id = e.id AND g.group_id = ${filter.groupId})`);
+	}
+	const where = sql.join(conds, sql` AND `);
+
+	const { rows, exceptions, access } = await moduleDb(MODULE_ID).transaction(async (tx) => {
+		const raw = await rowsOf(
+			tx,
+			sql`SELECT ${EVENT_COLUMNS} FROM events e WHERE ${where}
+				ORDER BY ${EVENT_ORDER} LIMIT ${LIST_ROW_CAP}`
+		);
+		const rows = await hydrateRows(tx, raw);
+		const exceptions = await loadExceptions(
+			tx,
+			rows.filter((r) => r.recurrence).map((r) => r.id)
+		);
+		const access = await accessForMany(tx, ctx, rows, keys);
+		return { rows, exceptions, access };
+	});
+
+	const all: OccurrenceRow[] = [];
+	for (const row of rows) {
+		if (!row.recurrence) {
+			all.push(singleOccurrence(row));
+			continue;
+		}
+		let occs = expandRow(row, exceptions.get(row.id), from ?? row.startsOn, seriesTo);
+		if (search) occs = occs.filter((o) => matchesSearch(o, search));
+		all.push(...occs);
+	}
+	all.sort(compareOccurrences);
+	return { occurrences: all.slice(0, MAX_OCCURRENCES), access };
+}
+
 export const eventEndpoints = [
 	defineEndpoint({
 		method: 'GET',
@@ -129,69 +212,9 @@ export const eventEndpoints = [
 		permission: 'events.event.view',
 		query: listQuery,
 		handler: async ({ ctx, query }): Promise<EventList> => {
-			const keys = await principalKeysFor(ctx, MODULE_ID);
-			const from = query.from ?? null;
-			// Serien brauchen ein Ende: ohne `to` ein Jahr ab `from` (bzw. heute)
-			const seriesTo = query.to ?? addDays(from ?? todayBerlin(), OPEN_WINDOW_DAYS);
-
-			const conds: SQL[] = [visibleEventsFilter(ctx, keys)];
-			const single: SQL[] = [sql`e.recurrence IS NULL`];
-			if (query.to) single.push(sql`e.starts_on <= ${query.to}::date`);
-			if (from) single.push(sql`COALESCE(e.ends_on, e.starts_on) >= ${from}::date`);
-			const series: SQL[] = [sql`e.recurrence IS NOT NULL`, sql`e.starts_on <= ${seriesTo}::date`];
-			if (from) {
-				// letztes Vorkommen + Dauer muss `from` erreichen
-				series.push(sql`(e.recurrence_until IS NULL OR
-					e.recurrence_until + COALESCE(e.ends_on - e.starts_on, 0) >= ${from}::date)`);
-			}
-			conds.push(sql`((${sql.join(single, sql` AND `)}) OR (${sql.join(series, sql` AND `)}))`);
-			if (query.search) {
-				const p = likePattern(query.search);
-				conds.push(sql`(e.title ILIKE ${p} OR e.location ILIKE ${p} OR e.description ILIKE ${p}
-					OR (e.recurrence IS NOT NULL AND EXISTS (SELECT 1 FROM event_exceptions x
-						WHERE x.event_id = e.id AND (x.override->>'title' ILIKE ${p}
-							OR x.override->>'location' ILIKE ${p}
-							OR x.override->>'description' ILIKE ${p}))))`);
-			}
-			if (query.tag) {
-				conds.push(sql`EXISTS (SELECT 1 FROM event_tags t
-					WHERE t.event_id = e.id AND lower(t.tag) = lower(${query.tag}))`);
-			}
-			if (query.groupId) {
-				conds.push(sql`EXISTS (SELECT 1 FROM event_groups g
-					WHERE g.event_id = e.id AND g.group_id = ${query.groupId})`);
-			}
-			const where = sql.join(conds, sql` AND `);
-
-			const { rows, exceptions, access } = await moduleDb(MODULE_ID).transaction(async (tx) => {
-				const raw = await rowsOf(
-					tx,
-					sql`SELECT ${EVENT_COLUMNS} FROM events e WHERE ${where}
-						ORDER BY ${EVENT_ORDER} LIMIT ${LIST_ROW_CAP}`
-				);
-				const rows = await hydrateRows(tx, raw);
-				const exceptions = await loadExceptions(
-					tx,
-					rows.filter((r) => r.recurrence).map((r) => r.id)
-				);
-				const access = await accessForMany(tx, ctx, rows, keys);
-				return { rows, exceptions, access };
-			});
-
-			const all: OccurrenceRow[] = [];
-			for (const row of rows) {
-				if (!row.recurrence) {
-					all.push(singleOccurrence(row));
-					continue;
-				}
-				let occs = expandRow(row, exceptions.get(row.id), from ?? row.startsOn, seriesTo);
-				if (query.search) occs = occs.filter((o) => matchesSearch(o, query.search!));
-				all.push(...occs);
-			}
-			all.sort(compareOccurrences);
-			const capped = all.slice(0, MAX_OCCURRENCES);
-			const page = capped.slice(query.offset, query.offset + query.limit);
-			return { items: await buildItems(ctx, page, access), total: capped.length };
+			const { occurrences, access } = await listVisibleOccurrences(ctx, query);
+			const page = occurrences.slice(query.offset, query.offset + query.limit);
+			return { items: await buildItems(ctx, page, access), total: occurrences.length };
 		}
 	}),
 

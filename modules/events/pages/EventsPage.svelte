@@ -33,6 +33,8 @@
 	import EventDialog from './EventDialog.svelte';
 	import CalendarFeedsPanel from './CalendarFeedsPanel.svelte';
 	import CalendarSync from '@lucide/svelte/icons/calendar-sync';
+	import FileDown from '@lucide/svelte/icons/file-down';
+	import ExportDialog from './ExportDialog.svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 
 	const PAGE_SIZE = 50;
@@ -249,12 +251,18 @@
 
 	// Kalender-Abo (iCal) direkt von der Terminseite aus
 	let feedsOpen = $state(false);
+	// PDF-Export (Terminliste, Monatskalender, Jahresplan)
+	let exportOpen = $state(false);
+	const groupName = $derived(groups.find((g) => g.id === groupId)?.name ?? null);
 </script>
 
 <PageTitle title="Termine" />
 
 <PageHeader title="Termine" description="Interne Termine und Termine für die Stammeswebsite">
 	{#snippet actions()}
+		<Button variant="outline" onclick={() => (exportOpen = true)}>
+			<FileDown /> Exportieren
+		</Button>
 		<Button variant="outline" onclick={() => (feedsOpen = true)}>
 			<CalendarSync /> Kalender abonnieren
 		</Button>
@@ -428,6 +436,8 @@
 	{onsaved}
 	{ondeleted}
 />
+
+<ExportDialog bind:open={exportOpen} {month} {search} {groupId} {groupName} {tag} />
 
 <Dialog.Root bind:open={feedsOpen}>
 	<Dialog.Content class="sm:max-w-2xl">

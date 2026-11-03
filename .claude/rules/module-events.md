@@ -5,7 +5,7 @@ paths: ["modules/events/**", "tests/**/events*", "src/lib/sdk/**/sharing.ts", "t
 # Modul `events` (Termine)
 
 Interne Termine des Stammes und Termine für die **Stammeswebsite**, auch als **Serien** (Wiederholungstermine).
-Schema `mod_events`, Version 1.3.0, keine harten
+Schema `mod_events`, Version 1.5.0, keine harten
 Abhängigkeiten; `optionalDependencies: ['members', 'actions']` (`actions` nur fürs Kalender-Abo) (Gruppen für Zuordnung, Gruppen/Mitglieder als Freigabe-Ziele –
 ohne `members` nur Stamm, Rollen, Benutzer*innen). Erstes Modul mit der generischen **Freigabe an Principals**
 (`$lib/sdk/server/sharing.ts`, siehe `architecture.md` → „Freigabe an Principals“). Navigation „Termine“ (Icon `calendar`)
@@ -37,6 +37,9 @@ als eigener Eintrag (`order` 10, ganz oben nach dem Dashboard).
 | `pages/SeriesChoiceDialog.svelte` | Generische Auswahl (`options` mit `label`/`description`/`destructive`, `onchoose`) für „Nur diesen Termin / Ganze Serie“ |
 | `migrations/0001_init.sql` | Schema |
 | `migrations/0002_recurrence.sql` | Serien: `recurrence`, `recurrence_until`, `event_exceptions` |
+| `export.ts` | PDF-Export, reine Aufbereitung: `ExportEntry` aus `EventItem`/`CalendarAction` (`entryFromEvent`/`entryFromAction`), `listBlocks` (Terminliste), `monthCalendarHtml`/`calendarBlocks` (Monatskalender), `yearPlanHtml`/`yearBlocks` (Jahresplan), `exportTitle`, `exportFileName`, `tint`, `monthsBetween`, `monthWeeks` |
+| `export.endpoints.ts` | `GET /events/export.pdf`, `GET /events/export/options` (siehe „Export“) |
+| `pages/ExportDialog.svelte` | Dialog „Termine exportieren“ (Knopf „Exportieren“ im Seitenkopf der Terminseite) |
 | `ical.ts` (rein) | iCalendar (RFC 5545): `buildCalendar`, `eventTimes`, `escapeText`, `foldLine` (75 Bytes, UTF-8-sicher), `utcStamp`; `TZID=Europe/Berlin` + `VTIMEZONE` |
 | `calendar-feeds.service.ts` | Kalender-Abos: `listFeeds`/`createFeed`/`updateFeed`/`rotateFeed`/`deleteFeed`, `renderFeed` (öffentlicher Abruf), `feedUrl`, Backup-Hook `calendarFeedsBackup.rehash` |
 | `calendar.endpoints.ts` | `/calendar-feeds[/:id[/rotate]]`, öffentlich `/public/calendar/:token` |
@@ -244,6 +247,27 @@ Audit: `events.event.created|updated|deleted` (`target` = ID; metadata nur `onWe
 `optionalDependencies` + `tasks`; `renderFeed` holt `TaskRefsService.calendarMilestones(ctx, window)` (nur Boards mit „Meilensteine im Kalender-Abo“,
 siehe `module-tasks.md`), ganztägig „◆ Titel“, UID `milestone-<id>@tasks.<host>`, Kategorie „Meilenstein“. `CalendarFeedList.tasksAvailable`, Schalter im
 `CalendarFeedDialog`, Datenauskunft mit `includeTasks`. Test: `tests/integration/tasks-planning.test.ts`.
+
+## Export als PDF – Monats- und Jahrespläne (2026-11-03, v1.5.0, keine Migration)
+Nutzerentscheidung: drei Ausführungen **Terminliste**, **Monatskalender**, **Jahresplan** (kein CSV/iCal); Zeitraum Monat, Jahr oder frei
+(≤ `MAX_EXPORT_DAYS` 400 Tage, z. B. Schuljahr); **Aktionen** wählbar (Standard an); **Briefkopf** wählbar (Standard: Liste an, Kalender/Jahresplan aus).
+- `GET /events/export.pdf` (Recht `events.event.view`, 30/60 s, Query `exportQuery` strikt: `layout`, `from`, `to`, `search`, `tag`, `groupId`,
+  `includeActions`, `letterhead`, `withDescription` als `true|false|1|0`; `to < from` bzw. > 400 Tage → 422). Inhalt = **dieselben Vorkommen wie
+  `GET /events`** (`listVisibleOccurrences` in `events.endpoints.ts`, auch von `GET /events` genutzt; Absagen fehlen, Änderungen gelten).
+  Aktionen über `ActionsService.listCalendarActions` (sichtbare + eigene Anmeldungen), nur ohne `tag`/`groupId`, `search` auf Name/Ort, Farbe `ACTION_COLOR`.
+  Antwort `application/pdf`, `attachment` (`termine-2026-11.pdf`, `jahresplan-2027.pdf`, …), `no-store`. Audit `events.events.exported`
+  (`layout`, `count`, `withActions`, `letterhead` – keine Titel).
+- Vorlagen: Liste `briefkopf` bzw. `compact` hochkant; Monatskalender `briefkopf-quer` bzw. `compact` quer (Ränder 10/14 mm, ohne Kopfzeile);
+  Jahresplan ohne Briefkopf `compact` quer mit 12 Monaten auf **einer** Seite, mit Briefkopf `briefkopf` **hochkant je Halbjahr** (6 Spalten) –
+  31 Zeilen passen quer unter dem Briefkopf (45 mm Kopf) nicht.
+- Kalender/Jahresplan sind `richText`-Tabellen: `sanitizeDocumentHtml` erlaubt nur `color`/`background-color`/`font-size`/`text-align`/`width`
+  (kein `height`, `padding`, `vertical-align`) → gleich hohe Kalenderzellen über aufgefüllte Leerzeilen (`minLines` 6 bzw. 4 mit Briefkopf),
+  Titel im Jahresplan auf `cellChars` gekürzt („…“), nur am ersten Tag bzw. am Monatsersten, Folgetage nur getönt (`tint`). Wochenende/
+  Randtage grau. Test prüft, dass das HTML die Bereinigung unverändert übersteht.
+- `GET /events/export/options` → `{ actionsAvailable, maxDays }`.
+- UI `ExportDialog` (`SegmentedSlider` Ausführung + Zeitraum, `SelectField` Monat/Jahr, Datumsfelder, Checkboxen), übernimmt Suche/Gruppe/Tag der
+  Seite (Hinweiszeile), Download per `downloadPdf`. Tests: `tests/unit/events-export.test.ts`, `tests/integration/events-export.test.ts`.
+- Offen: keine Legende/Liste der gekürzten Titel im Jahresplan; sehr viele Termine an einem Tag verlängern die Kalenderzeile (ggf. zweite Seite).
 
 ## Kalender-Abo (iCal, 2026-10-24, v1.3.0, Migr. 0004)
 Nutzerentscheidung: Termine **und** Aktionen; **mehrere Abos je Person** mit Filter.

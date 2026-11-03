@@ -513,3 +513,59 @@ export interface CalendarFeedList {
 	tasksAvailable: boolean;
 	max: number;
 }
+
+// --- Export als PDF (Terminliste, Monatskalender, Jahresplan) --------------------------------
+
+export const EXPORT_LAYOUTS = ['list', 'calendar', 'year'] as const;
+export type ExportLayout = (typeof EXPORT_LAYOUTS)[number];
+export const EXPORT_LAYOUT_LABELS: Record<ExportLayout, string> = {
+	list: 'Terminliste',
+	calendar: 'Monatskalender',
+	year: 'Jahresplan'
+};
+/** Längster Zeitraum eines Exports (ein Jahr plus Reserve, z. B. Schuljahr August bis Juli) */
+export const MAX_EXPORT_DAYS = 400;
+
+const queryBool = z
+	.enum(['true', 'false', '1', '0'])
+	.optional()
+	.transform((v) => (v === undefined ? undefined : v === 'true' || v === '1'));
+
+/** Tage zwischen zwei gültigen `JJJJ-MM-TT` (b − a) */
+const dayDiff = (a: string, b: string) =>
+	Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+
+export const exportQuery = z
+	.object({
+		layout: z.enum(EXPORT_LAYOUTS),
+		from: dateSchema,
+		to: dateSchema,
+		search: z.string().trim().max(100).optional(),
+		tag: z.string().trim().max(MAX_TAG_LENGTH).optional(),
+		groupId: refId.optional(),
+		/** Aktionen einbeziehen (Standard ja; entfällt bei Gruppen- oder Tag-Filter) */
+		includeActions: queryBool,
+		/** Briefkopf (Standard: Liste ja, Kalender/Jahresplan nein) */
+		letterhead: queryBool,
+		/** Nur Terminliste: Beschreibungen mitdrucken (Standard nein) */
+		withDescription: queryBool
+	})
+	.strict()
+	.superRefine((q, ctx) => {
+		if (q.to < q.from) {
+			ctx.addIssue({ code: 'custom', path: ['to'], message: 'Das Ende liegt vor dem Beginn' });
+		} else if (dayDiff(q.from, q.to) >= MAX_EXPORT_DAYS) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['to'],
+				message: `Der Zeitraum darf höchstens ${MAX_EXPORT_DAYS} Tage umfassen`
+			});
+		}
+	});
+export type ExportQuery = z.infer<typeof exportQuery>;
+
+export interface ExportOptions {
+	/** Modul Aktionen aktiv (Auswahl „Aktionen einbeziehen“ anzeigen) */
+	actionsAvailable: boolean;
+	maxDays: number;
+}

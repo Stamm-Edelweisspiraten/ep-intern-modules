@@ -6,6 +6,7 @@ import pkg from './atrium-module.json';
 import { eventsSearch } from './search';
 import { eventsDashboard } from './dashboard';
 import { eventEndpoints } from './events.endpoints';
+import { exportEndpoints } from './export.endpoints';
 import { metaEndpoints } from './meta.endpoints';
 import { websiteEndpoints } from './website.endpoints';
 import { resetAreas, resetUsers } from './reset';
@@ -116,5 +117,12 @@ export default defineModule({
 	backup: calendarFeedsBackup,
 	/** Dienst für andere Module (`EventRefsService`, siehe `contract.ts`) */
 	provides: eventRefsService satisfies EventRefsService,
-	endpoints: [...websiteEndpoints, ...calendarEndpoints, ...metaEndpoints, ...eventEndpoints]
+	// Export vor `eventEndpoints`, sonst greift `/events/:id`
+	endpoints: [
+		...websiteEndpoints,
+		...calendarEndpoints,
+		...metaEndpoints,
+		...exportEndpoints,
+		...eventEndpoints
+	]
 });
