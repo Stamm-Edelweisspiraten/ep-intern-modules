@@ -65,7 +65,9 @@
 				{#if none}
 					<span class="font-medium text-warning">Nicht frei</span> · {entry.total} gesamt
 				{:else}
-					frei <span class="font-semibold">{entry.free}</span> von {entry.total}
+					frei <span class="font-semibold">{entry.free}</span> von {entry.total}{entry.unit
+						? ` ${entry.unit}`
+						: ''}
 				{/if}
 			</span>
 			<Button size="sm" variant={none ? 'outline' : 'default'} onclick={() => onselect(entry)}>

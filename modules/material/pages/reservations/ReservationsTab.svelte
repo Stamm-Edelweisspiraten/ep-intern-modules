@@ -229,7 +229,9 @@
 						>
 							{#snippet trailing()}
 								<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
-								{#if r.handedOut && r.state !== 'cancelled'}
+								{#if r.returned}
+									<Badge variant="secondary">Zurückgenommen</Badge>
+								{:else if r.handedOut && r.state !== 'cancelled'}
 									<Badge variant="success">Ausgegeben</Badge>
 								{/if}
 							{/snippet}
@@ -360,7 +362,9 @@
 				<Table.Cell>
 					<span class="flex flex-wrap gap-1">
 						<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
-						{#if r.handedOut && r.state !== 'cancelled'}<Badge variant="success">Ausgegeben</Badge
+						{#if r.returned}<Badge variant="secondary">Zurückgenommen</Badge
+							>{:else if r.handedOut && r.state !== 'cancelled'}<Badge variant="success"
+								>Ausgegeben</Badge
 							>{/if}
 					</span>
 				</Table.Cell>

@@ -436,6 +436,10 @@
 				toast.error(`Der Code ${target.code} gehört noch zu keinem Artikel.`);
 				return;
 			}
+			if (target.type === 'food') {
+				toast.error(`${target.name} ist ein Lebensmittel – im Reiter „Vorrat“ ein- und auslagern.`);
+				return;
+			}
 			const hit = findItem(target.id);
 			if (!hit) {
 				toast.error(`${target.name} kann nicht reserviert werden.`);

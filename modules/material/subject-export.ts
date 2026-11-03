@@ -1,6 +1,6 @@
 /**
  * Datenauskunft (Art. 15/20 DSGVO, Core `/admin/privacy`): Reservierungen, die das Konto angelegt hat,
- * sowie vom Konto gemeldete Zustände (ohne Daten Dritter). Eigene Modul-Transaktion.
+ * vom Konto gemeldete Zustände und Vorratsbuchungen (ohne Daten Dritter). Eigene Modul-Transaktion.
  */
 import { sql } from 'drizzle-orm';
 import type { DataSubject, ModuleSubjectExport } from '$lib/sdk/server';
@@ -19,7 +19,13 @@ async function run({ userId }: DataSubject): Promise<Record<string, unknown> | n
 			sql`SELECT name, code, condition, condition_note, condition_reported_at FROM items
 				WHERE condition_reported_by = ${userId} ORDER BY condition_reported_at, id`
 		);
-		if (!reservations.length && !reports.length) return null;
+		const pantry = await rows(
+			tx,
+			sql`SELECT p.name, m.kind, m.quantity, m.note, m.created_at FROM food_movements m
+				JOIN food_products p ON p.id = m.product_id
+				WHERE m.created_by = ${userId} ORDER BY m.created_at, m.id`
+		);
+		if (!reservations.length && !reports.length && !pantry.length) return null;
 		return {
 			reservations: reservations.map((r) => ({
 				id: String(r.id),
@@ -37,6 +43,13 @@ async function run({ userId }: DataSubject): Promise<Record<string, unknown> | n
 				condition: String(r.condition),
 				note: str(r.condition_note),
 				at: r.condition_reported_at ? iso(r.condition_reported_at) : null
+			})),
+			pantryMovements: pantry.map((r) => ({
+				product: String(r.name),
+				kind: String(r.kind),
+				quantity: Number(r.quantity),
+				note: str(r.note),
+				at: iso(r.created_at)
 			}))
 		};
 	});

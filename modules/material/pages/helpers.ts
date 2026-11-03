@@ -9,9 +9,11 @@ import {
 	BASE_PATH,
 	CONDITION_LABELS,
 	RESERVATION_STATE_LABELS,
+	formatAmount,
 	type Condition,
 	type ReservationState
 } from '../schemas';
+import type { ExpiryState } from '../pantry';
 
 /** Basis für `apiFetch` */
 export const API = BASE_PATH;
@@ -70,10 +72,21 @@ export const STATE_VARIANTS: Record<ReservationState, BadgeVariant> = {
 export { CONDITION_LABELS, RESERVATION_STATE_LABELS };
 
 /** Reiter der Materialseite (`?tab=`) */
-export type MaterialTab = 'reservieren' | 'meine' | 'alle' | 'lager' | 'etiketten';
+export type MaterialTab = 'reservieren' | 'meine' | 'alle' | 'lager' | 'vorrat' | 'etiketten';
 
 /** Link zu einem Artikel im Lager (öffnet den Artikel-Dialog) */
 export const itemHref = (id: string) => `${BASE_PATH}?tab=lager&open=${id}`;
+/** Link zu einem Lebensmittel im Vorrat */
+export const pantryHref = (id: string) => `${BASE_PATH}?tab=vorrat&open=${encodeURIComponent(id)}`;
+
+export const EXPIRY_VARIANTS: Record<ExpiryState, BadgeVariant> = {
+	none: 'outline',
+	ok: 'success',
+	soon: 'warning',
+	expired: 'destructive'
+};
+
+export { formatAmount };
 /** Link zu einer Reservierung */
 export const reservationHref = (id: string, mine = true) =>
 	`${BASE_PATH}?tab=${mine ? 'meine' : 'alle'}&open=${id}`;

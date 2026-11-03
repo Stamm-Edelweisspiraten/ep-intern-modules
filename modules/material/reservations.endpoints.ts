@@ -18,6 +18,7 @@ import {
 	fullReservation,
 	listReservations,
 	loadCatalog,
+	loadConsumables,
 	mergeLines,
 	purposeOptions,
 	replaceLines,
@@ -29,10 +30,12 @@ import {
 	assignmentInput,
 	availabilityInput,
 	catalogQuery,
+	formatAmount,
 	idParams,
 	lineParams,
 	reservationInput,
 	reservationListQuery,
+	returnInput,
 	type Catalog,
 	type LineAvailability,
 	type PurposeOptions,
@@ -44,6 +47,7 @@ import {
 const tags = ['Modul: material'];
 
 const HANDED_OUT = 'Das Material ist ausgegeben – erst die Ausgabe zurücknehmen';
+const RETURNED = 'Das Material ist schon zurückgenommen – erst die Rücknahme aufheben';
 
 const lock = (tx: Tx) =>
 	tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'material:reservations'}))`);
@@ -295,6 +299,7 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 				await lock(tx);
 				const current = await requireReservationRow(tx, params.id);
 				if (!current.handedOutAt) return;
+				if (current.returnedAt) throw errors.conflict(RETURNED);
 				await tx.execute(
 					sql`UPDATE reservations SET handed_out_at = NULL, handed_out_by = NULL, updated_at = now()
 						WHERE id = ${params.id}`
@@ -302,6 +307,111 @@ export const reservationsEndpoints: AnyApiEndpoint[] = [
 				await reassignAll(tx);
 			});
 			await core.audit.logFromContext(ctx, 'material.reservation.hand-out-undone', {
+				target: params.id
+			});
+			return fullReservation(ctx, params.id);
+		}
+	}),
+	defineEndpoint({
+		method: 'POST',
+		path: '/reservations/:id/return',
+		summary: 'Material zurücknehmen und Verbrauch eintragen (Bestand sinkt um den Verbrauch)',
+		description:
+			'Nur nach der Ausgabe. `consumed` je Verbrauchsartikel der Reservierung (fehlende = nichts verbraucht), ' +
+			'höchstens die ausgegebene Menge (sonst 422).',
+		tags,
+		permission: PERMISSIONS.view,
+		params: idParams,
+		body: returnInput,
+		handler: async ({ ctx, params, body }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Rücknahme nur mit Verwaltungsrecht');
+			let total = 0;
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (current.status !== 'reserved') throw errors.conflict('Die Reservierung ist storniert');
+				if (!current.handedOutAt) throw errors.conflict('Das Material ist noch nicht ausgegeben');
+				if (current.returnedAt) throw errors.conflict(RETURNED);
+				const issued = new Map(
+					(await loadConsumables(tx, params.id, false)).map((c) => [c.itemId, c])
+				);
+				const consumed = new Map<string, number>();
+				body.consumed.forEach((c, i) => {
+					const use = issued.get(c.itemId);
+					if (!use) {
+						throw errors.validation([
+							{
+								path: ['consumed', i, 'itemId'],
+								message: 'Kein Verbrauchsmaterial dieser Reservierung'
+							}
+						]);
+					}
+					const sum = (consumed.get(c.itemId) ?? 0) + c.quantity;
+					if (sum > use.issued) {
+						throw errors.validation([
+							{
+								path: ['consumed', i, 'quantity'],
+								message: `Höchstens ${formatAmount(use.issued, use.unit)} (ausgegeben)`
+							}
+						]);
+					}
+					consumed.set(c.itemId, sum);
+				});
+				for (const [itemId, quantity] of consumed) {
+					if (quantity <= 0) continue;
+					const use = issued.get(itemId)!;
+					total += quantity;
+					await tx.execute(
+						sql`INSERT INTO consumptions (id, reservation_id, reservation_title, item_id, item_name, unit,
+								quantity, recorded_by)
+							VALUES (${crypto.randomUUID()}, ${params.id}, ${current.title}, ${itemId}, ${use.name},
+								${use.unit}, ${quantity}, ${ctx.userId ?? null})`
+					);
+					await tx.execute(
+						sql`UPDATE items SET quantity = greatest(0, quantity - ${quantity}), updated_at = now()
+							WHERE id = ${itemId}`
+					);
+				}
+				await tx.execute(
+					sql`UPDATE reservations SET returned_at = now(), returned_by = ${ctx.userId ?? null},
+						updated_at = now() WHERE id = ${params.id}`
+				);
+				await reassignAll(tx);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.returned', {
+				target: params.id,
+				metadata: { consumedItems: body.consumed.filter((c) => c.quantity > 0).length, total }
+			});
+			return fullReservation(ctx, params.id);
+		}
+	}),
+	defineEndpoint({
+		method: 'DELETE',
+		path: '/reservations/:id/return',
+		summary: 'Rücknahme zurücknehmen (Verbrauch wird dem Bestand wieder gutgeschrieben)',
+		tags,
+		permission: PERMISSIONS.view,
+		params: idParams,
+		handler: async ({ ctx, params }): Promise<Reservation> => {
+			if (!canHandOut(ctx)) throw errors.forbidden('Rücknahme nur mit Verwaltungsrecht');
+			await mdb().transaction(async (tx) => {
+				await lock(tx);
+				const current = await requireReservationRow(tx, params.id);
+				if (!current.returnedAt) return;
+				await tx.execute(
+					sql`UPDATE items i SET quantity = i.quantity + c.n, updated_at = now()
+						FROM (SELECT item_id, sum(quantity) AS n FROM consumptions
+							WHERE reservation_id = ${params.id} AND item_id IS NOT NULL GROUP BY item_id) c
+						WHERE i.id = c.item_id`
+				);
+				await tx.execute(sql`DELETE FROM consumptions WHERE reservation_id = ${params.id}`);
+				await tx.execute(
+					sql`UPDATE reservations SET returned_at = NULL, returned_by = NULL, updated_at = now()
+						WHERE id = ${params.id}`
+				);
+				await reassignAll(tx);
+			});
+			await core.audit.logFromContext(ctx, 'material.reservation.return-undone', {
 				target: params.id
 			});
 			return fullReservation(ctx, params.id);

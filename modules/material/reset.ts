@@ -7,18 +7,29 @@ export const resetAreas: ResetArea[] = [
 		id: 'reservations',
 		label: 'Reservierungen',
 		description: 'Löscht alle Materialreservierungen.',
-		tables: ['reservation_assignments', 'reservation_lines', 'reservations']
+		tables: ['consumptions', 'reservation_assignments', 'reservation_lines', 'reservations']
+	},
+	{
+		id: 'pantry',
+		label: 'Vorrat (Lebensmittel)',
+		description: 'Löscht alle Lebensmittel-Produkte, Chargen und Buchungen.',
+		tables: ['food_movements', 'food_batches', 'food_products']
 	},
 	{
 		id: 'all',
 		label: 'Gesamter Materialbestand',
 		description:
-			'Löscht Lagerorte, Kategorien, Typen, Lagerartikel (inkl. Bilder), Sets, Zelte, Reservierungen und Etiketten.',
+			'Löscht Lagerorte, Kategorien, Typen, Lagerartikel (inkl. Bilder), Sets, Zelte, Reservierungen, Vorrat und Etiketten.',
 		implies: [
-			{ area: 'material:reservations', reason: 'Reservierungen verweisen auf den Bestand' }
+			{ area: 'material:reservations', reason: 'Reservierungen verweisen auf den Bestand' },
+			{ area: 'material:pantry', reason: 'Der Vorrat verweist auf die Lagerorte' }
 		],
 		// Kind vor Eltern
 		tables: [
+			'consumptions',
+			'food_movements',
+			'food_batches',
+			'food_products',
 			'reservation_assignments',
 			'reservation_lines',
 			'reservations',
@@ -49,6 +60,11 @@ export const USER_COLUMNS: [string, string][] = [
 	['images', 'uploaded_by'],
 	['reservations', 'created_by'],
 	['reservations', 'handed_out_by'],
+	['reservations', 'returned_by'],
+	['consumptions', 'recorded_by'],
+	['food_products', 'created_by'],
+	['food_batches', 'created_by'],
+	['food_movements', 'created_by'],
 	['tents', 'created_by'],
 	['label_templates', 'created_by'],
 	['reserved_codes', 'created_by']

@@ -8,7 +8,8 @@ import type { ModuleSearchProvider, RequestContext } from '$lib/sdk/server';
 import type { SearchHit } from '$lib/sdk/types/search';
 import { formatDateDe } from '$lib/sdk/dates';
 import { dateStr, likePattern, mdb, rows, str, today } from './db';
-import { itemLink, reservationLink } from './notify';
+import { itemLink, pantryLink, reservationLink } from './notify';
+import { normalizeBarcode } from './pantry';
 import { BASE_PATH, PERMISSIONS, normalizeCode } from './schemas';
 
 async function run(_ctx: RequestContext, query: string, limit: number): Promise<SearchHit[]> {
@@ -84,6 +85,22 @@ async function run(_ctx: RequestContext, query: string, limit: number): Promise<
 				title: String(l.name),
 				subtitle: String(l.code),
 				href: `${BASE_PATH}?tab=lager&location=${String(l.id)}`,
+				icon: 'boxes'
+			});
+		}
+		const barcode = normalizeBarcode(query);
+		for (const f of await rows(
+			tx,
+			sql`SELECT id, name, brand FROM food_products
+				WHERE archived_at IS NULL AND (barcode = ${barcode ?? ''} OR name ILIKE ${p} OR brand ILIKE ${p})
+				ORDER BY lower(name) LIMIT ${limit}`
+		)) {
+			hits.push({
+				id: `food:${String(f.id)}`,
+				type: 'Vorrat',
+				title: String(f.name),
+				subtitle: str(f.brand) || 'Lebensmittel',
+				href: pantryLink(String(f.id)),
 				icon: 'boxes'
 			});
 		}

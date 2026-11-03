@@ -15,7 +15,7 @@ import {
 	type Usage
 } from './assignment';
 import { bool, dateStr, num, rows, str, today } from './db';
-import { loadPlanItems } from './inventory';
+import { assignmentEndSql, lineEndSql, loadPlanItems } from './inventory';
 
 export interface PlanInput {
 	items: PlanItem[];
@@ -38,10 +38,10 @@ export async function loadPlanInput(
 	const lines = await rows(
 		tx,
 		sql`SELECT l.id, l.reservation_id, l.type_id, l.item_id, l.quantity, l.slot_size,
-				to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on, to_char(r.ends_on, 'YYYY-MM-DD') AS ends_on,
+				to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on, to_char(${lineEndSql}, 'YYYY-MM-DD') AS ends_on,
 				r.handed_out_at IS NOT NULL AS handed_out
 			FROM reservation_lines l JOIN reservations r ON r.id = l.reservation_id
-			WHERE r.status = 'reserved' AND r.ends_on >= ${t}::date AND l.tent_id IS NULL
+			WHERE r.status = 'reserved' AND ${lineEndSql} >= ${t}::date AND l.tent_id IS NULL
 				AND r.id::text <> ${exclude}
 			ORDER BY r.starts_on, r.created_at, l.position, l.id`
 	);
@@ -49,7 +49,7 @@ export async function loadPlanInput(
 		tx,
 		sql`SELECT a.line_id, a.item_id, a.quantity, a.pinned, a.slot
 			FROM reservation_assignments a JOIN reservations r ON r.id = a.reservation_id
-			WHERE r.status = 'reserved' AND r.ends_on >= ${t}::date AND r.id::text <> ${exclude}
+			WHERE r.status = 'reserved' AND ${assignmentEndSql} >= ${t}::date AND r.id::text <> ${exclude}
 			ORDER BY a.slot, a.id`
 	);
 	const pinnedOf = new Map<string, Pick[]>();

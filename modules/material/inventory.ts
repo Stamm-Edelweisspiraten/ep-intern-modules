@@ -106,7 +106,7 @@ export async function loadLocations(tx: Tx): Promise<Location[]> {
 }
 
 const ITEM_SELECT = sql`SELECT i.id, i.name, i.code, i.type_id, t.name AS type_name, i.quantity,
-		i.location_id, l.name AS location_name, i.condition, i.condition_note, i.condition_reported_at,
+		i.consumable, i.unit, i.location_id, l.name AS location_name, i.condition, i.condition_note, i.condition_reported_at,
 		i.condition_reported_by, i.notes, i.archived_at, i.created_at, i.set_id, s.name AS set_name,
 		c.id AS c_id, c.name AS c_name, c.icon AS c_icon, c.color AS c_color
 	FROM items i
@@ -136,6 +136,8 @@ export async function loadItems(tx: Tx, where: SQL = sql`TRUE`): Promise<Item[]>
 			categoryId: str(r.c_id) || null,
 			category: categoryRef(r),
 			quantity: num(r.quantity),
+			consumable: bool(r.consumable),
+			unit: str(r.unit),
 			locationId: str(r.location_id) || null,
 			locationName: str(r.location_name) || null,
 			setId: str(r.set_id) || null,
@@ -170,7 +172,7 @@ export async function loadTypes(tx: Tx, where: SQL = sql`TRUE`): Promise<Materia
 	);
 	const list = await rows(
 		tx,
-		sql`SELECT t.id, t.name, t.description, t.notes, t.category_id, t.archived_at,
+		sql`SELECT t.id, t.name, t.description, t.notes, t.category_id, t.archived_at, t.consumable, t.unit,
 				c.id AS c_id, c.name AS c_name, c.icon AS c_icon, c.color AS c_color,
 				(SELECT count(*) FROM items i WHERE i.type_id = t.id AND i.archived_at IS NULL) AS item_count,
 				(SELECT coalesce(sum(i.quantity), 0) FROM items i
@@ -190,6 +192,8 @@ export async function loadTypes(tx: Tx, where: SQL = sql`TRUE`): Promise<Materia
 		name: String(r.name),
 		description: str(r.description),
 		notes: str(r.notes),
+		consumable: bool(r.consumable),
+		unit: str(r.unit),
 		categoryId: str(r.category_id) || null,
 		category: categoryRef(r),
 		images: images.get(String(r.id)) ?? [],
@@ -215,6 +219,24 @@ export async function loadStock(tx: Tx): Promise<StockItem[]> {
 	}));
 }
 
+/** Offene Ausgabe: ausgegeben, noch nicht zurückgenommen (Alias `r` = reservations) */
+const OPEN_HAND_OUT = sql`r.handed_out_at IS NOT NULL AND r.returned_at IS NULL`;
+const OPEN_END = sql`DATE '9999-12-31'`;
+
+/**
+ * Wirksames Ende einer Reservierungszeile (Alias `l`, `r`): Verbrauchsmaterial einer offenen Ausgabe belegt
+ * bis zur Rücknahme, auch über das Ende hinaus
+ */
+export const lineEndSql = sql`CASE WHEN ${OPEN_HAND_OUT} AND (
+		EXISTS (SELECT 1 FROM items ci WHERE ci.id = l.item_id AND ci.consumable)
+		OR EXISTS (SELECT 1 FROM types ct WHERE ct.id = l.type_id AND ct.consumable)
+	) THEN ${OPEN_END} ELSE r.ends_on END`;
+
+/** Wie `lineEndSql` für Zuteilungen (Alias `a`, `r`) */
+export const assignmentEndSql = sql`CASE WHEN ${OPEN_HAND_OUT}
+		AND EXISTS (SELECT 1 FROM items ci WHERE ci.id = a.item_id AND ci.consumable)
+	THEN ${OPEN_END} ELSE r.ends_on END`;
+
 /**
  * Zeilen anderer, nicht stornierter Reservierungen, die den Zeitraum berühren (ohne Zelt-Zeilen; deren Teile
  * sind eigene Zeilen), dazu feste Zuteilungen (angeheftet oder bei ausgegebenen/laufenden Reservierungen)
@@ -229,9 +251,10 @@ export async function loadBookings(
 		await rows(
 			tx,
 			sql`SELECT to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on,
-					to_char(r.ends_on, 'YYYY-MM-DD') AS ends_on, l.type_id, l.item_id, l.quantity
+					to_char(${lineEndSql}, 'YYYY-MM-DD') AS ends_on, l.type_id, l.item_id, l.quantity
 				FROM reservation_lines l JOIN reservations r ON r.id = l.reservation_id
-				WHERE r.status = 'reserved' AND l.tent_id IS NULL AND r.starts_on <= ${to}::date AND r.ends_on >= ${from}::date
+				WHERE r.status = 'reserved' AND l.tent_id IS NULL AND r.starts_on <= ${to}::date
+					AND ${lineEndSql} >= ${from}::date
 					AND r.id::text <> ${excludeReservationId ?? ''}`
 		)
 	)
@@ -247,9 +270,10 @@ export async function loadBookings(
 				await rows(
 					tx,
 					sql`SELECT to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on,
-							to_char(r.ends_on, 'YYYY-MM-DD') AS ends_on, a.item_id, a.quantity
+							to_char(${assignmentEndSql}, 'YYYY-MM-DD') AS ends_on, a.item_id, a.quantity
 						FROM reservation_assignments a JOIN reservations r ON r.id = a.reservation_id
-						WHERE r.status = 'reserved' AND r.starts_on <= ${to}::date AND r.ends_on >= ${from}::date
+						WHERE r.status = 'reserved' AND r.starts_on <= ${to}::date
+							AND ${assignmentEndSql} >= ${from}::date
 							AND r.id::text <> ${excludeReservationId ?? ''}
 							AND (a.pinned OR r.handed_out_at IS NOT NULL OR r.starts_on <= ${todayBerlin()}::date)`
 				)

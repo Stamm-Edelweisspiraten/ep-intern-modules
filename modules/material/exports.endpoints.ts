@@ -21,6 +21,7 @@ import { loadItems, loadLocations } from './inventory';
 import { fullReservation, listReservations } from './reservations.service';
 import {
 	CONDITION_LABELS,
+	formatAmount,
 	INVENTORY_COLUMNS,
 	PERMISSIONS,
 	PURPOSE_LABELS,
@@ -107,7 +108,7 @@ function itemCell(item: Item, column: InventoryColumn, pdf: boolean): string {
 		case 'set':
 			return item.setName ?? '';
 		case 'quantity':
-			return String(item.quantity);
+			return formatAmount(item.quantity, item.unit);
 		case 'condition':
 			return CONDITION_LABELS[item.condition] + (item.archived ? ' (archiviert)' : '');
 		case 'notes':
@@ -233,6 +234,7 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 						]
 							.filter(Boolean)
 							.join(' · ');
+					const amount = (n: number) => formatAmount(n, l.unit);
 					if (l.kind !== 'type') {
 						return [
 							{
@@ -240,7 +242,8 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 								code: l.code ?? '',
 								place: l.locationName ?? '',
 								group: group(null),
-								quantity: String(l.quantity)
+								quantity: amount(l.quantity),
+								consumable: l.consumable
 							}
 						];
 					}
@@ -249,7 +252,8 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 						code: a.code,
 						place: a.locationName ?? '',
 						group: group(a.setName),
-						quantity: String(a.quantity)
+						quantity: amount(a.quantity),
+						consumable: l.consumable
 					}));
 					if (l.missing > 0) {
 						out.push({
@@ -257,7 +261,8 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 							code: '',
 							place: places.get(l.typeId ?? '') ?? '',
 							group: group(null),
-							quantity: String(l.missing)
+							quantity: amount(l.missing),
+							consumable: l.consumable
 						});
 					}
 					return out;
@@ -290,9 +295,9 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 							'Lagerort',
 							'Zelt / Set',
 							'Anzahl',
-							...(pdf ? ['Gepackt', 'Zurück'] : [])
+							...(pdf ? ['Gepackt', 'Zurück / verbraucht'] : [])
 						],
-						widths: pdf ? [26, 11, 20, 21, 7, 8, 7] : undefined,
+						widths: pdf ? [24, 10, 18, 20, 8, 8, 12] : undefined,
 						align: ['left', 'left', 'left', 'left', 'right', 'center', 'center'],
 						rows: lines.map((l) => [
 							l.name,
@@ -300,7 +305,7 @@ export const exportsEndpoints: AnyApiEndpoint[] = [
 							l.place,
 							l.group,
 							l.quantity,
-							...(pdf ? ['☐', '☐'] : [])
+							...(pdf ? ['☐', l.consumable ? 'verbr. ______' : '☐'] : [])
 						])
 					}
 				],

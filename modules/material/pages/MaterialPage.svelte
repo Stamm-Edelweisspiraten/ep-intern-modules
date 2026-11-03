@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Materialseite mit Reitern wie „Bestellungen“: Reservieren · Meine · Alle · Lager · Etiketten (je nach Recht).
+	// Materialseite mit Reitern wie „Bestellungen“: Reservieren · Meine · Alle · Lager · Vorrat · Etiketten (je nach Recht).
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import { can } from '$lib/sdk/client';
@@ -11,6 +11,7 @@
 	import ReservationsTab from './reservations/ReservationsTab.svelte';
 	import InventoryTab from './inventory/InventoryTab.svelte';
 	import LabelsTab from './labels/LabelsTab.svelte';
+	import PantryTab from './pantry/PantryTab.svelte';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const perm = $derived({
@@ -18,7 +19,8 @@
 		manage: can(permissions, PERMISSIONS.manage),
 		reserve: can(permissions, PERMISSIONS.reserve),
 		reservations: can(permissions, PERMISSIONS.reservations),
-		labels: can(permissions, PERMISSIONS.labels)
+		labels: can(permissions, PERMISSIONS.labels),
+		pantry: can(permissions, PERMISSIONS.pantry)
 	});
 
 	const TAB_LABELS: Record<MaterialTab, string> = {
@@ -26,6 +28,7 @@
 		meine: 'Meine Reservierungen',
 		alle: 'Alle Reservierungen',
 		lager: 'Lager',
+		vorrat: 'Vorrat',
 		etiketten: 'Etiketten'
 	};
 
@@ -35,6 +38,7 @@
 		meine: 'Meine',
 		alle: 'Alle',
 		lager: 'Lager',
+		vorrat: 'Vorrat',
 		etiketten: 'Etiketten'
 	};
 	const phone = $derived(deviceLayout() === 'phone');
@@ -46,6 +50,7 @@
 				['meine', perm.reserve],
 				['alle', perm.reservations],
 				['lager', perm.view],
+				['vorrat', perm.view],
 				['etiketten', perm.labels || perm.manage]
 			] as [MaterialTab, boolean][]
 		)
@@ -90,7 +95,7 @@
 	title="Material"
 	description={phone
 		? undefined
-		: 'Zelte, Kochkisten und alles andere aus dem Lager reservieren und verwalten.'}
+		: 'Zelte, Kochkisten und alles andere aus dem Lager reservieren und verwalten – dazu der Vorrat an Lebensmitteln.'}
 />
 
 {#if activeTab && phone}
@@ -137,6 +142,8 @@
 			{/key}
 		{:else if activeTab === 'lager'}
 			<InventoryTab onreserve={() => setTab('reservieren')} />
+		{:else if activeTab === 'vorrat'}
+			<PantryTab {openId} canManage={perm.pantry} initialFilter={param('filter')} />
 		{:else if activeTab === 'etiketten'}
 			<LabelsTab />
 		{/if}

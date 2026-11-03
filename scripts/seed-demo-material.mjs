@@ -160,6 +160,71 @@ await items({
 	locationId: regalZelte.id
 });
 
+// --- Verbrauchsmaterial ---------------------------------------------------------------
+const fackel = (
+	await call('POST', `${M}/types`, {
+		name: 'Fackel',
+		categoryId: spiel.id,
+		consumable: true,
+		description: 'Wachsfackeln, ca. 60 Minuten Brenndauer.'
+	})
+).data;
+if (fackel) {
+	await items({ typeId: fackel.id, name: 'Fackelkiste A', quantity: 30, locationId: garage.id });
+	await items({ typeId: fackel.id, name: 'Fackelkiste B', quantity: 24, locationId: garage.id });
+}
+const [petroleum] = await items({
+	name: 'Petroleum',
+	categoryId: kueche.id,
+	quantity: 15,
+	consumable: true,
+	unit: 'l',
+	locationId: garage.id
+});
+await items({
+	name: 'Gaskartusche',
+	categoryId: kueche.id,
+	quantity: 8,
+	consumable: true,
+	locationId: kiste1.id
+});
+
+// --- Vorrat (Lebensmittel) ------------------------------------------------------------
+const product = async (body, batches) => {
+	const p = (await call('POST', `${M}/pantry/products`, body)).data;
+	if (!p) return;
+	for (const [quantity, days] of batches) {
+		await call('POST', `${M}/pantry/products/${p.id}/check-in`, {
+			quantity,
+			bestBefore: days === null ? null : inDays(days)
+		});
+	}
+};
+await product(
+	{
+		name: 'Spaghetti',
+		brand: 'Nudelwerk',
+		barcode: '4006381333931',
+		unit: 'Packung',
+		packageSize: '500 g',
+		locationId: kiste1.id
+	},
+	[
+		[12, 240],
+		[4, 9]
+	]
+);
+await product(
+	{ name: 'Passierte Tomaten', unit: 'Packung', packageSize: '500 g', locationId: kiste1.id },
+	[[10, 300]]
+);
+await product({ name: 'H-Milch', unit: 'Packung', packageSize: '1 l', locationId: kiste2.id }, [
+	[6, -2]
+]);
+await product({ name: 'Salz', unit: 'Packung', packageSize: '500 g', locationId: kiste2.id }, [
+	[3, null]
+]);
+
 // Ein beschädigter Artikel
 if (kohtenBahnen[9]) {
 	await call('POST', `${M}/items/${kohtenBahnen[9].id}/condition`, {
@@ -208,7 +273,9 @@ await call('POST', `${M}/reservations`, {
 	endsOn: inDays(11),
 	lines: [
 		...(jurteZelt ? [{ kind: 'tent', tentId: jurteZelt.id, quantity: 2 }] : []),
-		{ kind: 'type', typeId: topf.id, quantity: 1 }
+		{ kind: 'type', typeId: topf.id, quantity: 1 },
+		...(fackel ? [{ kind: 'type', typeId: fackel.id, quantity: 20 }] : []),
+		...(petroleum ? [{ kind: 'item', itemId: petroleum.id, quantity: 5 }] : [])
 	]
 });
 

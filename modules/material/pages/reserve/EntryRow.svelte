@@ -61,7 +61,9 @@
 					<span class="font-medium text-warning">Nicht frei</span>
 				{:else}
 					frei <span class="font-semibold">{Math.max(0, left)}</span>
-					<span class="text-muted-foreground">von {entry.total}</span>
+					<span class="text-muted-foreground"
+						>von {entry.total}{entry.unit ? ` ${entry.unit}` : ''}</span
+					>
 				{/if}
 				{#if picked > 0}
 					<span class="text-link"> · {picked} gezielt gewählt</span>

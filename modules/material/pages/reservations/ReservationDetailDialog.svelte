@@ -1,13 +1,15 @@
 <script lang="ts">
 	// Reservierung ansehen (zentriert): Positionen mit Bild/Ort/Code und zugeteilten Artikeln (Zelte mit
 	// ihren Teilen), Hinweise zur Zuteilung, Angaben, Aktionen Bearbeiten, Stornieren, Löschen, Packliste
-	// (PDF/CSV); mit Verwaltungsrecht Ausgabe markieren, Zuteilung ändern und neu zuteilen.
+	// (PDF/CSV); mit Verwaltungsrecht Ausgabe markieren, Zuteilung ändern, neu zuteilen und zurücknehmen
+	// (Verbrauch eintragen).
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Boxes from '@lucide/svelte/icons/boxes';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import PackageCheck from '@lucide/svelte/icons/package-check';
+	import PackageOpen from '@lucide/svelte/icons/package-open';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Pin from '@lucide/svelte/icons/pin';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -31,10 +33,12 @@
 		RESERVATION_STATE_LABELS,
 		STATE_VARIANTS,
 		errorText,
+		formatAmount,
 		formatDate,
 		formatPeriod
 	} from '../helpers';
 	import AssignmentDialog from './AssignmentDialog.svelte';
+	import ReturnDialog from './ReturnDialog.svelte';
 
 	let {
 		open = $bindable(false),
@@ -96,6 +100,14 @@
 									value: `${formatDate(r.handedOutAt)}${r.handedOutByName ? ` von ${r.handedOutByName}` : ''}`
 								}
 							]
+						: []),
+					...(r.returnedAt
+						? [
+								{
+									label: 'Zurückgenommen',
+									value: `${formatDate(r.returnedAt)}${r.returnedByName ? ` von ${r.returnedByName}` : ''}`
+								}
+							]
 						: [])
 				]
 			: []
@@ -103,6 +115,23 @@
 	const canHandOut = $derived(!!r?.canHandOut && active);
 	/** Zuteilung ändern: Verwaltung, offen, nicht ausgegeben */
 	const canAssign = $derived(canHandOut && !r?.handedOutAt);
+	/** Rücknahme: nach der Ausgabe, auch wenn die Reservierung schon vorbei ist */
+	const canReturn = $derived(!!r?.canHandOut && r.status === 'reserved' && !!r.handedOutAt);
+
+	let returnOpen = $state(false);
+
+	async function undoReturn() {
+		busy = 'return';
+		try {
+			data = await apiFetch<Reservation>(`${API}/reservations/${id}/return`, { method: 'DELETE' });
+			toast.success('Rücknahme aufgehoben – der Verbrauch ist wieder im Bestand');
+			onchanged();
+		} catch (e) {
+			toast.error(errorText(e, 'Das hat nicht geklappt'));
+		} finally {
+			busy = null;
+		}
+	}
 
 	/** Zuteilungen nach Zelt-Nummer (bei Zelt-Teilen) */
 	function bySlot(l: ReservationLine): { slot: number; items: LineAssignment[] }[] {
@@ -164,7 +193,9 @@
 	}
 
 	// --- Aktionen ------------------------------------------------------------------
-	let busy = $state<'cancel' | 'delete' | 'pdf' | 'csv' | 'handout' | 'reassign' | null>(null);
+	let busy = $state<'cancel' | 'delete' | 'pdf' | 'csv' | 'handout' | 'reassign' | 'return' | null>(
+		null
+	);
 	let cancelOpen = $state(false);
 	let deleteOpen = $state(false);
 
@@ -260,7 +291,9 @@
 				Ändern
 			</Button>
 		{/if}
-		<span class="shrink-0 text-sm font-medium tabular-nums">× {l.quantity}</span>
+		<span class="shrink-0 text-sm font-medium tabular-nums">
+			{l.unit ? formatAmount(l.quantity, l.unit) : `× ${l.quantity}`}
+		</span>
 	</div>
 {/snippet}
 
@@ -308,7 +341,11 @@
 				{r?.title ?? 'Reservierung'}
 				{#if r}
 					<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
-					{#if r.handedOutAt}<Badge variant="success">Ausgegeben</Badge>{/if}
+					{#if r.returnedAt}
+						<Badge variant="secondary">Zurückgenommen</Badge>
+					{:else if r.handedOutAt}
+						<Badge variant="success">Ausgegeben</Badge>
+					{/if}
 				{/if}
 			</Dialog.Title>
 			<Dialog.Description>
@@ -365,11 +402,51 @@
 						{/each}
 					</ul>
 				</div>
+
+				{#if r.consumables.length}
+					<div class="space-y-2">
+						<h3 class="text-sm font-medium">Verbrauchsmaterial</h3>
+						<ul class="divide-y rounded-md border text-sm">
+							{#each r.consumables as c (c.itemId)}
+								<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+									<span class="min-w-0 flex-1 truncate font-medium">{c.name}</span>
+									<span class="text-muted-foreground tabular-nums">
+										{r.handedOutAt ? 'ausgegeben' : 'reserviert'}
+										{formatAmount(c.issued, c.unit)}
+									</span>
+									{#if c.consumed !== null}
+										<span class="font-medium tabular-nums">
+											verbraucht {formatAmount(c.consumed, c.unit)}
+										</span>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+						{#if r.handedOutAt && !r.returnedAt}
+							<p class="text-xs text-muted-foreground">
+								Bleibt belegt, bis es zurückgenommen und der Verbrauch eingetragen ist.
+							</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			<Dialog.Footer class="flex-wrap gap-2 sm:justify-between">
 				<div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap [&>*]:max-sm:h-10">
-					{#if canHandOut}
+					{#if canReturn}
+						{#if r.returnedAt}
+							<Button variant="outline" size="sm" disabled={!!busy} onclick={undoReturn}>
+								<Undo2 />
+								{busy === 'return' ? 'Speichert …' : 'Rücknahme aufheben'}
+							</Button>
+						{:else}
+							<Button size="sm" disabled={!!busy} onclick={() => (returnOpen = true)}>
+								<PackageOpen />
+								Zurücknehmen
+							</Button>
+						{/if}
+					{/if}
+					{#if canHandOut && !r.returnedAt}
 						{#if r.handedOutAt}
 							<Button variant="outline" size="sm" disabled={!!busy} onclick={() => handOut(false)}>
 								<Undo2 />
@@ -451,6 +528,17 @@
 	destructive
 	onconfirm={remove}
 />
+
+{#if r && canReturn && !r.returnedAt}
+	<ReturnDialog
+		bind:open={returnOpen}
+		reservation={r}
+		onsaved={(next) => {
+			data = next;
+			onchanged();
+		}}
+	/>
+{/if}
 
 {#if assignLine && r}
 	{#key assignKey}

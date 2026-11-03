@@ -2,12 +2,13 @@
 paths: ["modules/material/**", "src/lib/sdk/labels/**", "src/lib/sdk/style-presets.ts", "src/lib/server/core/pdf/labels.ts", "src/lib/components/layout/BarcodeScanner.svelte", "src/lib/components/layout/scan-input.ts", "tests/**/material*", "tests/unit/labels.test.ts", "scripts/seed-demo-material.mjs"]
 ---
 
-# Modul `material` (Materialverwaltung / Materialwart*in) – v2.1
+# Modul `material` (Materialverwaltung / Materialwart*in) – v2.2
 
 **Neu aufgebaut am 2026-10-28** (Nutzerwunsch: altes Modul mit Stücken/Kisten/Mengen, Zelt-Sets, Ausgabe/Rückgabe verworfen).
 Lager mit **Typen** und **Lagerartikeln**, Kategorien mit Icon/Farbe, flache Lagerorte, Reservieren **wie „Bestellen“ im Modul `orders`**,
 Scannen (Kamera/USB), Etiketten-Designer (erhalten), Exporte. **Seit 2026-10-28 (v2.1.0, Migr. 0005)**: Sets, Zelte als Bauplan, automatische
-Zuteilung konkreter Artikel und „Ausgegeben“. Schema `mod_material`, Version 2.1.0, keine harten Abhängigkeiten, optional
+Zuteilung konkreter Artikel und „Ausgegeben“. **Seit 2026-11-03 (v2.2.0, Migr. 0006)**: Verbrauchsmaterial mit Rücknahme und Verbrauch,
+Reiter **Vorrat** für Lebensmittel. Schema `mod_material`, Version 2.2.0, keine harten Abhängigkeiten, optional
 `actions` (Zweck Aktion), `members` (Zweck Gruppe) und `offices` (Amt „Materialwart*in“). Navigation „Material“ (Icon `boxes`, `order: 45`).
 
 ## Entscheidungen des Nutzers (2026-10-28, nicht ungefragt ändern)
@@ -25,6 +26,14 @@ Zuteilung konkreter Artikel und „Ausgegeben“. Schema `mod_material`, Version
 - Etiketten: Designer bleibt; Etikettgrößen im Menü einstellbar; oben rechts „Erstellen“, darunter Kacheln der Etiketten.
 - Scannen: Kamera (QR **oder** Strichcode, auch vom Bildschirm) oder USB-Scanner; im Reservieren → Artikel in den Warenkorb, im Lager → Artikel-Dialog
   **zentriert** (kein Seitenblatt).
+
+## Entscheidungen des Nutzers (2026-11-03, v2.2)
+- **Verbrauchsmaterial** (Fackeln, Petroleum …) läuft **über Reservierungen**: reservieren → „Ausgegeben“ → **„Zurücknehmen“** mit Verbrauch je Artikel;
+  der Bestand sinkt um den Verbrauch, der Rest ist wieder frei. (Die frühere Regel „keine Rückgabe“ gilt nur noch für anderes Material: dort ist die
+  Rücknahme eine reine Markierung.)
+- **Lebensmittel** in einem eigenen Reiter **„Vorrat“** (nicht reservierbar): Produkte mit Hersteller-Strichcode (EAN), Chargen mit Menge + **MHD**,
+  per Scan einlagern/entnehmen (zuerst ablaufende zuerst). Unbekannte Codes → Vorschlag aus **Open Food Facts** (nur der Strichcode geht hinaus).
+- **Ablaufdatum nur bei Lebensmitteln**, mit Warnung (Liste, Dashboard, Amts-Benachrichtigung).
 
 ## Dateien (`modules/material/`)
 | Datei | Inhalt |
@@ -47,7 +56,13 @@ Zuteilung konkreter Artikel und „Ausgegeben“. Schema `mod_material`, Version
 | `labels.endpoints.ts` | Formate (Vorgaben aus `$lib/sdk/labels` + eigene `custom:<id>`), Layouts, `POST /labels.pdf` (`labelValues` für `item`/`location`/`blank`) |
 | `exports.endpoints.ts` | `POST /exports/inventory` (PDF/CSV, nach Kategorie oder Lagerort), `GET /reservations/:id/packing-list?format=`, `POST /exports/reservations` |
 | `notify.ts`, `search.ts`, `reset.ts`, `user-deleted.ts`, `subject-export.ts`, `legacy-cleanup.ts` | Hooks |
-| `pages/` | `MaterialPage`, `ScanRedirectPage`, `reserve/` (Katalog inkl. Zelte/ganze Sets, Warenkorb mit Zuteilungs-Hinweis), `reservations/` (Listen, Detail mit Zuteilung/Ausgabe, `AssignmentDialog`, Export), `inventory/` (Ansichten Artikel · Sets · Zelte: Lagertabelle, `SetsView`/`SetDialog`, `TentsView`/`TentDialog`, Dialoge), `labels/` (Kacheln, Designer), `shared/` (`ScanButton`, `scan.ts`, `CategoryGlyph`, `ImageManager`, `ItemPicker` mit `seed`, `PrintLabelsDialog`, Vorschauen), `widgets/`, `helpers.ts` |
+| `dashboard.ts` | Übersicht: „Zu erledigen“ (vorbereiten, Verbrauch eintragen, Vorrat läuft ab, Schäden) und Agenda der Woche |
+| `label-logos.ts` | Logos für Etiketten (`assets/label-logos/`) |
+| `pantry.ts` (rein) | `normalizeBarcode` (EAN-8/13, UPC-A → EAN-13, GTIN-14 mit 0; Prüfziffer), `fefoOrder`, `pickBatches`, `expiryState`, `EXPIRY_WARN_DAYS` = 14 |
+| `pantry.endpoints.ts` | Vorrat: `GET /pantry` (`filter=all|stock|soon|expired`, `search`, `archived`), `GET /pantry/barcode/:code` (Produkt oder Vorschlag, OFF nur mit `pantry.manage`), Produkte CRUD (Löschen nur ohne Bestand), `check-in` (gleiches MHD + Ort → selbe Charge), `check-out` (`kind` out/discard, FEFO oder `batchId`, zu wenig → 409), `PATCH …/batches/:batchId` (Berichtigung), `loadProducts` |
+| `off.service.ts` | `lookupBarcode` (Open Food Facts v2, Timeout 4 s, 24 h Zwischenspeicher, wirft nie), `setOffFetchForTests` |
+| `pantry-expiry.ts` | Job `pantry-expiry` (täglich): Chargen mit MHD ≤ heute + 14 und `expiry_notified_at IS NULL` → **eine** Sammel-Benachrichtigung (`notifyFoodExpiring`), danach markiert; ohne `offices` bleibt offen |
+| `pages/` | `MaterialPage`, `ScanRedirectPage`, `pantry/` (`PantryTab`, `PantryScanDialog` – Menge/MHD nach dem Scan, „Speichern & weiter“ öffnet den Scanner wieder, `ProductDialog`, `ProductDetailDialog` – Chargen, Entnehmen/Entsorgen/Berichtigen, Verlauf), `reservations/ReturnDialog`, `inventory/ConsumableFields`, `reserve/` (Katalog inkl. Zelte/ganze Sets, Warenkorb mit Zuteilungs-Hinweis), `reservations/` (Listen, Detail mit Zuteilung/Ausgabe, `AssignmentDialog`, Export), `inventory/` (Ansichten Artikel · Sets · Zelte: Lagertabelle, `SetsView`/`SetDialog`, `TentsView`/`TentDialog`, Dialoge), `labels/` (Kacheln, Designer), `shared/` (`ScanButton`, `scan.ts`, `CategoryGlyph`, `ImageManager`, `ItemPicker` mit `seed`, `PrintLabelsDialog`, Vorschauen), `widgets/`, `helpers.ts` |
 
 ## Datenmodell (Migration 0004; 0001–0003 = altes Modell, nicht ändern)
 `locations` (flach, `code` `L-…`, `position`), `categories` (`icon`, `color` `#rrggbb` klein, `position`), `types` (`category_id`, `archived_at`),
@@ -58,6 +73,10 @@ action|group|other, `action_id`/`group_id` ohne FK, `status` reserved|cancelled)
 Migration 0005: `sets`, `items.set_id` (SET NULL), `tents`, `tent_parts` (`type_id` **oder** `item_id`, `quantity`, `from_one_set`, `label`),
 `reservation_lines.tent_id|parent_line_id|label|slot_size` (genau eines von Typ/Artikel/Zelt; Zelt-Zeilen belegen nichts, ihre Teile schon),
 `reservation_assignments` (`line_id`, `item_id`, `quantity`, `pinned`, `slot` = Nummer des Zelts), `reservations.handed_out_at|by`.
+Migration 0006: `types.consumable|unit`, `items.consumable|unit` (bei Artikeln mit Typ **Kopie des Typs**, beim Speichern von Typ/Artikel nachgezogen),
+`items_quantity_check` ≥ 0 (0 nur bei Verbrauchsmaterial, Server prüft), `reservations.returned_at|by`, `consumptions` (Verlauf, `reservation_id`/`item_id`
+SET NULL + Titel/Name/Einheit als Kopie), `food_products` (`barcode` UNIQUE, nur Ziffern), `food_batches` (`best_before`, `expiry_notified_at`),
+`food_movements` (`kind` in|out|discard|correct).
 
 ## Regeln
 - **Verfügbarkeit**: je Tag Artikel I frei = nutzbare Anzahl − Artikel-Zeilen(I); Typ T frei = Σ nutzbare Anzahl seiner Artikel − Artikel-Zeilen
@@ -69,6 +88,14 @@ Migration 0005: `sets`, `items.set_id` (SET NULL), `tents`, `tent_parts` (`type_
   Reservierung einer nur automatisch zugeteilten Bahn plant die andere Reservierung um. Fehlt nach einem Defekt etwas, steht es als
   „noch nicht zugeteilt“ in Detail und Packliste. Hinweis „gemischt“ nur, wenn es für den Typ überhaupt Sets gibt.
 - **Ausgabe**: `hand-out` mit `reservation.manage` oder `inventory.manage`; danach Ändern/Stornieren/Neu zuteilen 409, bis zurückgenommen.
+- **Rücknahme** (`POST /reservations/:id/return { consumed: [{ itemId, quantity }] }`, gleiche Rechte, auch nach dem Ende): nur ausgegeben (sonst 409),
+  einmal (409); Verbrauch je Verbrauchsartikel ≤ ausgegeben (Artikel-Zeilen + Zuteilungen, `loadConsumables`), sonst 422; zieht vom Bestand ab
+  (nie unter 0) und schreibt `consumptions`. `DELETE …/return` schreibt gut. Ausgabe zurücknehmen nach Rücknahme → 409.
+- **Offene Ausgabe belegt Verbrauchsmaterial bis zur Rücknahme** (`lineEndSql`/`assignmentEndSql` in `inventory.ts`: Ende = 9999-12-31), in
+  `loadBookings` und `loadPlanInput`. Anderes Material belegt weiter nur seinen Zeitraum. Dashboard-Aufgabe „Verbrauch eintragen“ für vergangene
+  Ausgaben mit Verbrauchsmaterial ohne Rücknahme; Packliste-PDF mit „verbr. ___“.
+- **Vorrat**: Scan im Lager/Reservieren mit Lebensmittel-Code → Hinweis bzw. Sprung in den Vorrat (`/codes/:code` liefert `type: 'food'`). Chargen mit
+  Menge 0 werden gelöscht; MHD-Berichtigung setzt `expiry_notified_at` zurück.
 - **Rechte**: ändern/stornieren/löschen = Ersteller*in mit `reservation.create` oder `reservation.manage`; Liste „alle“ nur mit `manage`
   (sonst 403); Detail für alle mit `view`. Löschen nur storniert oder vergangen (409). Zustand melden mit `reserve` oder `inventory.manage`.
 - **Löschen**: Typ nur ohne Artikel/Reservierungen/Zelt-Teile, Artikel nur ohne Reservierungszeilen, Zelt-Teile und feste Zuteilungen (409 →
@@ -87,6 +114,7 @@ Migration 0005: `sets`, `items.set_id` (SET NULL), `tents`, `tent_parts` (`type_
 | `material.reservation.create` | Reservieren, eigene ändern/stornieren, Schäden melden |
 | `material.reservation.manage` | Alle Reservierungen sehen, ändern, stornieren, löschen |
 | `material.labels.manage` | Etikettgrößen und Etiketten gestalten, drucken |
+| `material.pantry.manage` | Vorrat pflegen: Produkte, ein-/auslagern, Open-Food-Facts-Vorschlag (Grant: Materialwart*in **und** Gruppenleitung) |
 
 ## Handy (< 640 px, `deviceLayout() === 'phone'`; Tablet/Desktop unverändert, 2026-10-29)
 - Reiter als einzeilige `ScrollPills` mit Kurznamen (Reservieren · Meine · Alle · Lager · Etiketten), Seitenbeschreibung ausgeblendet.
@@ -99,11 +127,14 @@ Migration 0005: `sets`, `items.set_id` (SET NULL), `tents`, `tent_parts` (`type_
 ## Tests und Demo
 Unit `tests/unit/material-availability.test.ts`, `material-allocation.test.ts` (Zuteilung, Planer, Zelte), `material-cart.test.ts`,
 `material-label-designer.test.ts`, `labels.test.ts`; Integration `tests/integration/material.test.ts`, `material-sets.test.ts` (Sets, Zelte, Umplanen,
-Ausgabe, Anheften), Upgrade `material-migrations.test.ts` (0002, 0004, 0005); E2E `tests/e2e/material.spec.ts`. Demo `node scripts/seed-demo-material.mjs`
+Ausgabe, Anheften), `material-consumables-pantry.test.ts` (Rücknahme mit Verbrauch, Belegung bis zur Rücknahme, Vorrat, OFF mit Fake-Fetch,
+Ablauf-Hinweis über das Amt), Unit `material-pantry.test.ts`, Upgrade `material-migrations.test.ts` (0002, 0004, 0005); E2E `tests/e2e/material.spec.ts`. Demo `node scripts/seed-demo-material.mjs`
 (Sets K1/K2/KJ1/KJ2, Zelte Kohte/Jurte).
 
 ## Offen
 - Echte Handy-Kamera (iOS) und Etikettendrucker nur nach Deploy mit HTTPS prüfbar.
-- Keine Rückgabe per Scan und keine Historie je Artikel (bewusst entfallen); „Ausgegeben“ ist nur eine Markierung.
+- Keine Rückgabe per Scan und keine Historie je Artikel (außer Verbräuchen); Rücknahme ohne Verbrauchsmaterial ist nur eine Markierung.
+- Vorrat: Kamera liest EAN-13 (Core `BarcodeScanner`), **nicht EAN-8/UPC-E** (bräuchte Core-Änderung) – USB-Scanner/Eingabe gehen immer.
+  Mengen ganzzahlig, keine Mindestbestände, keine Bilder aus Open Food Facts. E2E für Vorrat/Rücknahme fehlt.
 - Zuteilung ist Greedy nach Beginn (optimal ohne feste Zuteilungen); mit vielen angehefteten Bahnen kann sie Fehlmengen melden, obwohl eine
   andere Verteilung ginge. Zelte haben keine eigenen Bilder (Bild des ersten Teils). E2E für Sets/Zelte fehlt noch.

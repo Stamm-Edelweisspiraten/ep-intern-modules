@@ -27,6 +27,7 @@
 	} from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import ImageManager from '../shared/ImageManager.svelte';
+	import ConsumableFields from './ConsumableFields.svelte';
 	import {
 		categoryOptions,
 		conditionOptions,
@@ -67,6 +68,8 @@
 	let name = $state('');
 	let categoryId = $state<string | null>(null);
 	let quantity = $state(1);
+	let ownConsumable = $state(false);
+	let ownUnit = $state('');
 	let locationId = $state<string | null>(null);
 	let setId = $state<string | null>(null);
 	let code = $state('');
@@ -96,6 +99,8 @@
 			name = item?.name ?? '';
 			categoryId = item?.typeId ? null : (item?.categoryId ?? null);
 			quantity = item?.quantity ?? 1;
+			ownConsumable = item?.typeId ? false : (item?.consumable ?? false);
+			ownUnit = item?.typeId ? '' : (item?.unit ?? '');
 			locationId = item?.locationId ?? preset.locationId ?? null;
 			setId = item?.setId ?? preset.setId ?? null;
 			code = item?.code ?? preset.code ?? '';
@@ -136,6 +141,11 @@
 		return list;
 	});
 	const selectedType = $derived(types.find((t) => t.id === typeId) ?? null);
+	/** Wirksam: vom Typ bzw. eigene Angaben */
+	const consumable = $derived(
+		typeId ? (selectedType?.consumable ?? item?.consumable ?? false) : ownConsumable
+	);
+	const unit = $derived(typeId ? (selectedType?.unit ?? item?.unit ?? '') : ownUnit);
 	const names = $derived(
 		!editing && multiple ? batchNames(name.trim(), count, numberFrom) : [name.trim()]
 	);
@@ -146,6 +156,7 @@
 			name,
 			categoryId: typeId ? null : categoryId,
 			quantity,
+			...(typeId ? {} : { consumable: ownConsumable, unit: ownUnit }),
 			locationId,
 			setId,
 			condition: (condition ?? 'ok') as Condition,
@@ -338,17 +349,32 @@
 					</div>
 				{/if}
 
+				{#if typeId}
+					{#if consumable}
+						<p class="text-sm text-muted-foreground">
+							Verbrauchsmaterial{unit ? ` in ${unit}` : ''} – kommt vom Typ.
+						</p>
+					{/if}
+				{:else}
+					<ConsumableFields
+						idPrefix="item"
+						bind:consumable={ownConsumable}
+						bind:unit={ownUnit}
+						error={errors.unit}
+					/>
+				{/if}
+
 				<div class="grid gap-4 sm:grid-cols-2">
 					<FormField
-						label="Anzahl"
+						label={unit ? `Anzahl (${unit})` : 'Anzahl'}
 						id="item-quantity"
-						hint="Bei Einzelstücken 1"
+						hint={consumable ? 'Aktueller Bestand, 0 = leer' : 'Bei Einzelstücken 1'}
 						error={errors.quantity}
 					>
 						<NumberStepper
 							id="item-quantity"
 							label="Anzahl"
-							min={1}
+							min={consumable ? 0 : 1}
 							max={MAX_QUANTITY}
 							bind:value={quantity}
 						/>

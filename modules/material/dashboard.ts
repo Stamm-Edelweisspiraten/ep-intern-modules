@@ -1,8 +1,8 @@
 /**
  * Übersicht (`/dashboard`):
- * - „Zu erledigen“ (nur `material.inventory.manage`, wie die Kachel „Material“): gemeldete Schäden und
- *   Reservierungen, die in den nächsten 7 Tagen beginnen und noch nicht ausgegeben sind – je eine Zeile,
- *   nur wenn es etwas gibt.
+ * - „Zu erledigen“ (nur `material.inventory.manage`, wie die Kachel „Material“): Reservierungen, die in den
+ *   nächsten 7 Tagen beginnen und noch nicht ausgegeben sind, vergangene Ausgaben mit Verbrauchsmaterial ohne
+ *   Rücknahme, ablaufende Lebensmittel und gemeldete Schäden – je eine Zeile, nur wenn es etwas gibt.
  * - „Diese Woche“: eigene Reservierungen, für Verwaltende (Lager oder Reservierungen) alle, deren
  *   Zeitraum die Woche berührt.
  */
@@ -11,6 +11,7 @@ import { addDays } from '$lib/sdk/dates';
 import type { ModuleDashboardSources, RequestContext } from '$lib/sdk/server';
 import type { DashboardAgendaItem, DashboardTodo } from '$lib/sdk/types/dashboard';
 import { canManage, canManageReservations, dateStr, mdb, num, rows } from './db';
+import { EXPIRY_WARN_DAYS } from './pantry';
 import { BASE_PATH, PERMISSIONS } from './schemas';
 
 /** So viele Tage im Voraus erscheinen anstehende Reservierungen in „Zu erledigen“ */
@@ -30,26 +31,53 @@ async function managerTodos(
 	limit: number
 ): Promise<DashboardTodo[]> {
 	const until = addDays(today, MATERIAL_PREPARE_DAYS);
-	const { damaged, firstDamaged, upcoming } = await mdb().transaction(async (tx) => {
-		const [d] = await rows(
-			tx,
-			sql`SELECT count(*) AS n FROM items WHERE archived_at IS NULL AND ${DAMAGED}`
-		);
-		const [first] = await rows(
-			tx,
-			sql`SELECT id, name FROM items WHERE archived_at IS NULL AND ${DAMAGED}
+	const { damaged, firstDamaged, upcoming, toReturn, expired, soon } = await mdb().transaction(
+		async (tx) => {
+			const [d] = await rows(
+				tx,
+				sql`SELECT count(*) AS n FROM items WHERE archived_at IS NULL AND ${DAMAGED}`
+			);
+			const [first] = await rows(
+				tx,
+				sql`SELECT id, name FROM items WHERE archived_at IS NULL AND ${DAMAGED}
 				ORDER BY condition_reported_at DESC NULLS LAST, lower(name), id LIMIT 1`
-		);
-		const upcoming = await rows(
-			tx,
-			sql`SELECT id, title, created_by, to_char(starts_on, 'YYYY-MM-DD') AS starts_on
+			);
+			const upcoming = await rows(
+				tx,
+				sql`SELECT id, title, created_by, to_char(starts_on, 'YYYY-MM-DD') AS starts_on
 				FROM reservations
 				WHERE status = 'reserved' AND handed_out_at IS NULL
 					AND starts_on >= ${today}::date AND starts_on <= ${until}::date
 				ORDER BY starts_on, lower(title), id`
-		);
-		return { damaged: num(d?.n), firstDamaged: first, upcoming };
-	});
+			);
+			const toReturn = await rows(
+				tx,
+				sql`SELECT r.id, r.title, r.created_by FROM reservations r
+				WHERE r.status = 'reserved' AND r.handed_out_at IS NOT NULL AND r.returned_at IS NULL
+					AND r.ends_on < ${today}::date
+					AND EXISTS (SELECT 1 FROM reservation_lines l LEFT JOIN types t ON t.id = l.type_id
+						LEFT JOIN items i ON i.id = l.item_id
+						WHERE l.reservation_id = r.id AND (t.consumable OR i.consumable))
+				ORDER BY r.ends_on, r.id`
+			);
+			const [food] = await rows(
+				tx,
+				sql`SELECT count(*) FILTER (WHERE b.best_before < ${today}::date) AS expired,
+					count(*) FILTER (WHERE b.best_before >= ${today}::date) AS soon
+				FROM food_batches b JOIN food_products p ON p.id = b.product_id
+				WHERE b.quantity > 0 AND p.archived_at IS NULL
+					AND b.best_before <= ${addDays(today, EXPIRY_WARN_DAYS)}::date`
+			);
+			return {
+				damaged: num(d?.n),
+				firstDamaged: first,
+				upcoming,
+				toReturn,
+				expired: num(food?.expired),
+				soon: num(food?.soon)
+			};
+		}
+	);
 
 	const out: DashboardTodo[] = [];
 	if (upcoming.length) {
@@ -75,6 +103,43 @@ async function managerTodos(
 							label: 'Ansehen',
 							href: `${BASE_PATH}?tab=${canManageReservations(ctx) ? 'alle' : 'meine'}`
 						}
+		});
+	}
+	if (toReturn.length) {
+		const first = toReturn[0]!;
+		out.push({
+			id: 'return',
+			title:
+				toReturn.length === 1
+					? `Verbrauch eintragen: ${String(first.title)}`
+					: `${toReturn.length} Rücknahmen offen`,
+			detail: 'Ausgegebenes Verbrauchsmaterial zurücknehmen und den Verbrauch eintragen',
+			severity: 'due',
+			action:
+				toReturn.length === 1
+					? {
+							label: 'Zurücknehmen',
+							href: reservationHref(ctx, String(first.id), first.created_by === ctx.userId)
+						}
+					: {
+							label: 'Ansehen',
+							href: `${BASE_PATH}?tab=${canManageReservations(ctx) ? 'alle' : 'meine'}`
+						}
+		});
+	}
+	if (expired + soon > 0) {
+		out.push({
+			id: 'pantry',
+			title:
+				expired > 0
+					? `${expired} ${expired === 1 ? 'Charge' : 'Chargen'} im Vorrat abgelaufen`
+					: `${soon} ${soon === 1 ? 'Charge läuft' : 'Chargen laufen'} bald ab`,
+			detail:
+				expired > 0 && soon > 0
+					? `Dazu ${soon} bald ablaufend (${EXPIRY_WARN_DAYS} Tage)`
+					: `Mindesthaltbarkeit in den nächsten ${EXPIRY_WARN_DAYS} Tagen oder überschritten`,
+			severity: 'due',
+			action: { label: 'Vorrat prüfen', href: `${BASE_PATH}?tab=vorrat&filter=soon` }
 		});
 	}
 	if (damaged > 0 && firstDamaged) {

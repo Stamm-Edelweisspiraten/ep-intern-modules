@@ -5,6 +5,7 @@
 import { sql } from 'drizzle-orm';
 import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
 import { mdb, nextCodes, rows } from './db';
+import { normalizeBarcode } from './pantry';
 import {
 	PERMISSIONS,
 	codeFromScan,
@@ -41,6 +42,16 @@ export const codesEndpoints: AnyApiEndpoint[] = [
 					sql`SELECT code FROM reserved_codes WHERE code = ${code}`
 				);
 				if (reserved) return { type: 'reserved', code };
+				const barcode = normalizeBarcode(code);
+				if (barcode) {
+					const [food] = await rows(
+						tx,
+						sql`SELECT id, name FROM food_products WHERE barcode = ${barcode}`
+					);
+					if (food) {
+						return { type: 'food', id: String(food.id), code: barcode, name: String(food.name) };
+					}
+				}
 				throw errors.notFound('Unbekannter Code');
 			});
 		}

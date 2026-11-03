@@ -58,6 +58,8 @@ function entry(partial: Partial<CatalogEntry> & Pick<CatalogEntry, 'kind' | 'id'
 		thumbUrl: null,
 		total: 1,
 		free: 1,
+		consumable: false,
+		unit: '',
 		items: [],
 		code: null,
 		locationName: null,
@@ -100,6 +102,8 @@ const catalog: Pick<Catalog, 'entries'> = {
 const LINE_EXTRA = {
 	tentId: null,
 	label: '',
+	consumable: false,
+	unit: '',
 	assignments: [],
 	missing: 0,
 	slotSize: null,
@@ -264,8 +268,11 @@ describe('fromReservation', () => {
 			canEdit: true,
 			handedOutAt: null,
 			handedOutByName: null,
+			returnedAt: null,
+			returnedByName: null,
 			canHandOut: false,
 			notices: [],
+			consumables: [],
 			lines: [
 				{
 					id: 'l1',

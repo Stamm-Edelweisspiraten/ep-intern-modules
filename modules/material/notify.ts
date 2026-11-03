@@ -10,6 +10,7 @@ import {
 	CONDITION_LABELS,
 	MODULE_ID,
 	NOTIFY_DAMAGE,
+	NOTIFY_FOOD_EXPIRING,
 	NOTIFY_RESERVATION_CREATED,
 	OFFICE_KEY,
 	PURPOSE_LABELS,
@@ -54,6 +55,47 @@ export async function notifyReservationCreated(ctx: RequestContext, r: Reservati
 		},
 		{ ctx, target: r.id }
 	);
+}
+
+export const pantryLink = (id?: string) =>
+	`${BASE_PATH}?tab=vorrat${id ? `&open=${encodeURIComponent(id)}` : ''}`;
+
+/**
+ * Sammel-Hinweis „Lebensmittel laufen ab“; `false`, wenn `offices` nicht aktiv ist (dann bleibt der Hinweis
+ * offen und kommt beim nächsten Lauf).
+ */
+export async function notifyFoodExpiring(
+	ctx: RequestContext,
+	lines: { productId: string; text: string }[]
+): Promise<boolean> {
+	const offices = await officesService();
+	if (!offices || !lines.length) return false;
+	await bestEffort(
+		'material.notify.food-expiring',
+		() =>
+			offices.notify(ctx, [
+				{
+					module: MODULE_ID,
+					office: OFFICE_KEY,
+					event: NOTIFY_FOOD_EXPIRING,
+					subject:
+						lines.length === 1
+							? clip(`Lebensmittel läuft ab: ${lines[0]!.text}`, 150)
+							: `${lines.length} Lebensmittel laufen bald ab`,
+					text: clip(
+						[
+							'Im Vorrat laufen Lebensmittel ab oder sind abgelaufen:',
+							'',
+							...lines.map((l) => `• ${l.text}`)
+						].join('\n'),
+						4000
+					),
+					link: lines.length === 1 ? pantryLink(lines[0]!.productId) : pantryLink()
+				}
+			]),
+		{ ctx }
+	);
+	return true;
 }
 
 export async function notifyDamage(ctx: RequestContext, item: Item, note: string): Promise<void> {

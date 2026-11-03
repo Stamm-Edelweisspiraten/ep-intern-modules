@@ -8,6 +8,8 @@ import { exportsEndpoints } from './exports.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { labelsEndpoints } from './labels.endpoints';
 import { runLegacyCleanup } from './legacy-cleanup';
+import { pantryEndpoints } from './pantry.endpoints';
+import { runPantryExpiry } from './pantry-expiry';
 import { reservationsEndpoints } from './reservations.endpoints';
 import { resetAreas, resetUsers } from './reset';
 import { setsEndpoints } from './sets.endpoints';
@@ -19,6 +21,7 @@ import {
 	LEADER_ROLE_NAME,
 	MANAGER_ROLE_NAME,
 	NOTIFY_DAMAGE,
+	NOTIFY_FOOD_EXPIRING,
 	NOTIFY_RESERVATION_CREATED,
 	OFFICE_KEY,
 	PERMISSIONS
@@ -28,13 +31,15 @@ import m0002 from './migrations/0002_article_codes.sql?raw';
 import m0003 from './migrations/0003_set_bulk_lines.sql?raw';
 import m0004 from './migrations/0004_rebuild.sql?raw';
 import m0005 from './migrations/0005_sets_tents.sql?raw';
+import m0006 from './migrations/0006_consumables_pantry.sql?raw';
 
 const ALL = [
 	PERMISSIONS.view,
 	PERMISSIONS.manage,
 	PERMISSIONS.reserve,
 	PERMISSIONS.reservations,
-	PERMISSIONS.labels
+	PERMISSIONS.labels,
+	PERMISSIONS.pantry
 ];
 
 export default defineModule({
@@ -53,11 +58,13 @@ export default defineModule({
 				'Material reservieren (für Aktion, Gruppe oder Sonstiges), eigene Reservierungen ändern und stornieren, Schäden melden',
 			[PERMISSIONS.reservations]:
 				'Alle Reservierungen sehen, ändern, stornieren und löschen; Material ausgeben und Zuteilung ändern',
-			[PERMISSIONS.labels]: 'Etikettengrößen und Etiketten gestalten; Etiketten drucken'
+			[PERMISSIONS.labels]: 'Etikettengrößen und Etiketten gestalten; Etiketten drucken',
+			[PERMISSIONS.pantry]:
+				'Vorrat (Lebensmittel) pflegen: Produkte anlegen, per Strichcode ein- und auslagern, Mindesthaltbarkeit eintragen'
 		},
 		defaultRoleGrants: {
 			[MANAGER_ROLE_NAME]: ALL,
-			[LEADER_ROLE_NAME]: [PERMISSIONS.view, PERMISSIONS.reserve]
+			[LEADER_ROLE_NAME]: [PERMISSIONS.view, PERMISSIONS.reserve, PERMISSIONS.pantry]
 		},
 		offices: [
 			{
@@ -76,6 +83,11 @@ export default defineModule({
 						key: NOTIFY_DAMAGE,
 						label: 'Schaden oder Verlust',
 						description: 'Ein Artikel wurde als beschädigt, defekt oder verloren gemeldet'
+					},
+					{
+						key: NOTIFY_FOOD_EXPIRING,
+						label: 'Lebensmittel läuft ab',
+						description: `Im Vorrat erreichen Lebensmittel bald ihr Mindesthaltbarkeitsdatum (einmal je Charge)`
 					}
 				]
 			}
@@ -95,7 +107,8 @@ export default defineModule({
 		{ name: '0002_article_codes', sql: m0002 },
 		{ name: '0003_set_bulk_lines', sql: m0003 },
 		{ name: '0004_rebuild', sql: m0004 },
-		{ name: '0005_sets_tents', sql: m0005 }
+		{ name: '0005_sets_tents', sql: m0005 },
+		{ name: '0006_consumables_pantry', sql: m0006 }
 	],
 	resetAreas,
 	resetUsers,
@@ -120,6 +133,12 @@ export default defineModule({
 				const changed = await mdb().transaction((tx) => reassignLocked(tx));
 				return changed ? `${changed} Positionen neu zugeteilt` : 'Zuteilung aktuell';
 			}
+		},
+		{
+			id: 'pantry-expiry',
+			summary: 'Lebensmittel im Vorrat, die bald ablaufen, an das Amt „Materialwart*in“ melden',
+			schedule: 'daily',
+			run: runPantryExpiry
 		}
 	],
 	// Reihenfolge: erster Treffer gewinnt (feste Pfade vor `:id`)
@@ -128,6 +147,7 @@ export default defineModule({
 		...exportsEndpoints,
 		...catalogEndpoints,
 		...setsEndpoints,
+		...pantryEndpoints,
 		...codesEndpoints,
 		...reservationsEndpoints,
 		...labelsEndpoints

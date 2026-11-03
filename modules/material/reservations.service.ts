@@ -36,6 +36,7 @@ import {
 	type Catalog,
 	type CatalogEntry,
 	type CatalogSet,
+	type ConsumableUse,
 	type LineAssignment,
 	type LineAvailability,
 	type Purpose,
@@ -133,11 +134,14 @@ interface RawReservation {
 	createdAt: string;
 	handedOutAt: string | null;
 	handedOutBy: string | null;
+	returnedAt: string | null;
+	returnedBy: string | null;
 }
 
 const RES_SELECT = sql`SELECT r.id, r.title, r.purpose, r.action_id, r.group_id,
 		to_char(r.starts_on, 'YYYY-MM-DD') AS starts_on, to_char(r.ends_on, 'YYYY-MM-DD') AS ends_on,
-		r.status, r.notes, r.created_by, r.created_at, r.handed_out_at, r.handed_out_by
+		r.status, r.notes, r.created_by, r.created_at, r.handed_out_at, r.handed_out_by,
+		r.returned_at, r.returned_by
 	FROM reservations r`;
 
 const toRaw = (r: Row): RawReservation => ({
@@ -153,8 +157,51 @@ const toRaw = (r: Row): RawReservation => ({
 	createdBy: str(r.created_by) || null,
 	createdAt: iso(r.created_at),
 	handedOutAt: isoOrNull(r.handed_out_at),
-	handedOutBy: str(r.handed_out_by) || null
+	handedOutBy: str(r.handed_out_by) || null,
+	returnedAt: isoOrNull(r.returned_at),
+	returnedBy: str(r.returned_by) || null
 });
+
+/**
+ * Verbrauchsmaterial einer Reservierung je Artikel: gezielte Artikel-Zeilen und Zuteilungen (auch in
+ * Zelten), dazu der Verbrauch aus der Rücknahme
+ */
+export async function loadConsumables(
+	tx: Tx,
+	reservationId: string,
+	returned: boolean
+): Promise<ConsumableUse[]> {
+	const list = await rows(
+		tx,
+		sql`SELECT i.id, i.name, i.code, i.unit, sum(x.quantity) AS issued
+			FROM (
+				SELECT item_id, quantity FROM reservation_lines
+					WHERE reservation_id = ${reservationId} AND item_id IS NOT NULL
+				UNION ALL SELECT item_id, quantity FROM reservation_assignments
+					WHERE reservation_id = ${reservationId}
+			) x JOIN items i ON i.id = x.item_id
+			WHERE i.consumable
+			GROUP BY i.id, i.name, i.code, i.unit
+			ORDER BY lower(i.name), i.code`
+	);
+	const used = new Map(
+		(
+			await rows(
+				tx,
+				sql`SELECT item_id, sum(quantity) AS n FROM consumptions
+					WHERE reservation_id = ${reservationId} AND item_id IS NOT NULL GROUP BY item_id`
+			)
+		).map((r) => [String(r.item_id), num(r.n)])
+	);
+	return list.map((r) => ({
+		itemId: String(r.id),
+		name: String(r.name),
+		code: String(r.code),
+		unit: str(r.unit),
+		issued: num(r.issued),
+		consumed: returned ? (used.get(String(r.id)) ?? 0) : null
+	}));
+}
 
 /** Ausgabe markieren, Zuteilung ändern: Verwaltung der Reservierungen oder des Lagers */
 export const canHandOut = (ctx: RequestContext) => canManageReservations(ctx) || canManage(ctx);
@@ -170,6 +217,7 @@ export async function loadLines(tx: Tx, ids: string[]): Promise<Map<string, Rese
 		tx,
 		sql`SELECT l.id, l.reservation_id, l.type_id, l.item_id, l.tent_id, l.parent_line_id, l.label,
 				l.slot_size, l.quantity, coalesce(i.name, t.name, z.name) AS name, i.code,
+				coalesce(i.consumable, t.consumable, false) AS consumable, coalesce(i.unit, t.unit, '') AS unit,
 				loc.name AS location_name, coalesce(i.type_id, l.type_id) AS cover_type
 			FROM reservation_lines l
 			LEFT JOIN types t ON t.id = l.type_id
@@ -254,6 +302,8 @@ export async function loadLines(tx: Tx, ids: string[]): Promise<Map<string, Rese
 			code: str(r.code) || null,
 			locationName: str(r.location_name) || null,
 			quantity,
+			consumable: bool(r.consumable),
+			unit: str(r.unit),
 			thumbUrl: cover?.thumbUrl ?? null,
 			assignments,
 			missing: typeId ? Math.max(0, quantity - assignments.reduce((n, a) => n + a.quantity, 0)) : 0,
@@ -311,17 +361,18 @@ export async function requireReservationRow(tx: Tx, id: string): Promise<RawRese
 
 /** Detail mit Namen (Benutzer, Aktion, Gruppe) – eigene Transaktion, Dienste danach */
 export async function fullReservation(ctx: RequestContext, id: string): Promise<Reservation> {
-	const { raw, lines } = await mdb().transaction(async (tx) => {
+	const { raw, lines, consumables } = await mdb().transaction(async (tx) => {
 		const raw = await requireReservationRow(tx, id);
 		const lines = (await loadLines(tx, [id])).get(id) ?? [];
-		return { raw, lines };
+		const consumables = await loadConsumables(tx, id, !!raw.returnedAt);
+		return { raw, lines, consumables };
 	});
 	const [users, actions, groups] = await Promise.all([
-		userNames(ctx, [raw.createdBy, raw.handedOutBy]),
+		userNames(ctx, [raw.createdBy, raw.handedOutBy, raw.returnedBy]),
 		actionNames([raw.actionId]),
 		groupNames([raw.groupId])
 	]);
-	const { handedOutBy, ...rest } = raw;
+	const { handedOutBy, returnedBy, ...rest } = raw;
 	return {
 		...rest,
 		state: reservationState(raw, today()),
@@ -329,6 +380,8 @@ export async function fullReservation(ctx: RequestContext, id: string): Promise<
 		groupName: raw.groupId ? (groups.get(raw.groupId) ?? null) : null,
 		createdByName: raw.createdBy ? (users.get(raw.createdBy) ?? 'Unbekannt') : 'Unbekannt',
 		handedOutByName: handedOutBy ? (users.get(handedOutBy) ?? 'Unbekannt') : null,
+		returnedByName: returnedBy ? (users.get(returnedBy) ?? 'Unbekannt') : null,
+		consumables,
 		lines,
 		canEdit:
 			raw.status === 'reserved' && !raw.handedOutAt && canEditReservation(ctx, raw.createdBy),
@@ -378,7 +431,8 @@ async function toListItems(
 			itemSummary: summarizeLines(l),
 			mine: !!ctx.userId && r.createdBy === ctx.userId,
 			canEdit: r.status === 'reserved' && !r.handedOutAt && canEditReservation(ctx, r.createdBy),
-			handedOut: !!r.handedOutAt
+			handedOut: !!r.handedOutAt,
+			returned: !!r.returnedAt
 		};
 	});
 }
@@ -750,6 +804,8 @@ export async function loadCatalog(
 			thumbUrl: t.images[0]?.thumbUrl ?? members.find((m) => m.thumbUrl)?.thumbUrl ?? null,
 			total: index.totalType(t.id),
 			free: typeFree,
+			consumable: t.consumable,
+			unit: t.unit,
 			items: catalogItems,
 			code: null,
 			locationName: null,
@@ -770,6 +826,8 @@ export async function loadCatalog(
 			thumbUrl: m.thumbUrl,
 			total: index.totalItem(m.id),
 			free: Math.max(0, index.freeItem(m.id, p)),
+			consumable: m.consumable,
+			unit: m.unit,
 			items: [],
 			code: m.code,
 			locationName: m.locationName,
@@ -790,6 +848,8 @@ export async function loadCatalog(
 			thumbUrl: z.thumbUrl,
 			total: tentFree(unbooked, z.parts, p),
 			free: tentFree(index, z.parts, p),
+			consumable: false,
+			unit: '',
 			items: [],
 			code: null,
 			locationName: null,

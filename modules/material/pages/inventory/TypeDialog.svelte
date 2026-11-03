@@ -18,7 +18,7 @@
 	import { ConfirmDialog, ErrorState, LoadingState } from '$lib/components/layout';
 	import { cn } from '$lib/utils';
 	import type { MaterialType, TypeDetail } from '../../schemas';
-	import { API, errorText } from '../helpers';
+	import { API, errorText, formatAmount } from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
 	import { inventoryPermissions } from './options';
@@ -121,12 +121,14 @@
 				<Dialog.Title class="flex flex-wrap items-center gap-2 break-words">
 					<CategoryGlyph category={type.category} size="sm" />
 					{type.name}
+					{#if type.consumable}<Badge variant="secondary">Verbrauchsmaterial</Badge>{/if}
 					{#if type.archived}<Badge variant="outline">Archiviert</Badge>{/if}
 				</Dialog.Title>
 				<Dialog.Description>
 					Typ · {type.category?.name ?? 'Ohne Kategorie'} ·
-					<span class="tabular-nums">{type.totalQuantity}</span> insgesamt, davon
-					<span class="tabular-nums">{type.usableQuantity}</span> nutzbar
+					<span class="tabular-nums">{formatAmount(type.totalQuantity, type.unit)}</span> insgesamt,
+					davon
+					<span class="tabular-nums">{formatAmount(type.usableQuantity, type.unit)}</span> nutzbar
 				</Dialog.Description>
 			</Dialog.Header>
 
@@ -196,7 +198,9 @@
 											{#if i.archived}<Badge variant="outline" class="ml-1">Archiviert</Badge>{/if}
 										</span>
 										<span class="text-muted-foreground">{i.locationName ?? 'Ohne Lagerort'}</span>
-										<span class="tabular-nums">{i.quantity} ×</span>
+										<span class="tabular-nums"
+											>{type.unit ? formatAmount(i.quantity, type.unit) : `${i.quantity} ×`}</span
+										>
 										<ConditionBadge condition={i.condition} hideOk />
 										<span class="font-mono text-xs text-muted-foreground">{i.code}</span>
 									</button>

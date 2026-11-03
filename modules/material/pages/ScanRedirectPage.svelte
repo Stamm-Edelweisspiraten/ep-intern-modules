@@ -20,6 +20,8 @@
 				await goto(`${BASE_PATH}?tab=lager&open=${target.id}`, { replaceState: true });
 			} else if (target?.type === 'location') {
 				await goto(`${BASE_PATH}?tab=lager&location=${target.id}`, { replaceState: true });
+			} else if (target?.type === 'food') {
+				await goto(`${BASE_PATH}?tab=vorrat&open=${target.id}`, { replaceState: true });
 			} else if (target?.type === 'reserved') {
 				message = `Der Code ${target.code} ist vergeben, aber noch keinem Artikel zugeordnet. Lege einen Artikel mit diesem Code an.`;
 			} else {

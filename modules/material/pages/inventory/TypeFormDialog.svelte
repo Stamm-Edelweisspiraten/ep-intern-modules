@@ -12,6 +12,7 @@
 	import { typeInput, type Category, type ImageRef, type MaterialType } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import ImageManager from '../shared/ImageManager.svelte';
+	import ConsumableFields from './ConsumableFields.svelte';
 	import { categoryOptions } from './options';
 
 	let {
@@ -37,6 +38,8 @@
 	let categoryId = $state<string | null>(null);
 	let description = $state('');
 	let notes = $state('');
+	let consumable = $state(false);
+	let unit = $state('');
 	let errors = $state<Record<string, string>>({});
 	let busy = $state(false);
 
@@ -50,6 +53,8 @@
 			categoryId = type?.categoryId ?? null;
 			description = type?.description ?? '';
 			notes = type?.notes ?? '';
+			consumable = type?.consumable ?? false;
+			unit = type?.unit ?? '';
 			images = type?.images ?? [];
 		});
 	});
@@ -57,7 +62,7 @@
 	async function save(e?: SubmitEvent) {
 		e?.preventDefault();
 		errors = {};
-		const parsed = typeInput.safeParse({ name, categoryId, description, notes });
+		const parsed = typeInput.safeParse({ name, categoryId, description, notes, consumable, unit });
 		if (!parsed.success) {
 			errors = fieldErrors(parsed.error);
 			return;
@@ -149,6 +154,7 @@
 						/>
 					</FormField>
 				</div>
+				<ConsumableFields idPrefix="type" bind:consumable bind:unit error={errors.unit} />
 				<FormField
 					label="Beschreibung"
 					id="type-description"

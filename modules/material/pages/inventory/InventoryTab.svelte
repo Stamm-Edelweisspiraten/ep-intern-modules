@@ -50,7 +50,8 @@
 		MaterialType,
 		Tent
 	} from '../../schemas';
-	import { API, errorText, safeReplaceState } from '../helpers';
+	import { goto } from '$app/navigation';
+	import { API, errorText, formatAmount, pantryHref, safeReplaceState } from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
@@ -295,6 +296,8 @@
 			} else if (target.type === 'location') {
 				locationId = target.id;
 				toast.info(`Lagerort „${target.name}“ – zeige die Artikel dort.`);
+			} else if (target.type === 'food') {
+				await goto(pantryHref(target.id));
 			} else if (perm.manage) {
 				toast.info(`Code ${target.code} ist noch frei.`, {
 					action: { label: 'Lagerartikel anlegen', onClick: () => newItem({ code: target.code }) }
@@ -526,7 +529,7 @@
 									]
 										.filter(Boolean)
 										.join(' · ')}
-									amount={`${t.totalQuantity}×`}
+									amount={t.unit ? formatAmount(t.totalQuantity, t.unit) : `${t.totalQuantity}×`}
 									onclick={() => openType(t.id)}
 								>
 									{#snippet leading()}
@@ -551,7 +554,11 @@
 								]
 									.filter(Boolean)
 									.join(' · ')}
-								amount={item.quantity > 1 ? `${item.quantity}×` : undefined}
+								amount={item.consumable || item.unit
+									? formatAmount(item.quantity, item.unit)
+									: item.quantity > 1
+										? `${item.quantity}×`
+										: undefined}
 								selecting={selected.length > 0}
 								selected={selected.includes(item.id)}
 								onclick={() => tapItem(item.id)}
@@ -726,6 +733,7 @@
 									</button>
 									<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
 										<span>Typ · {t.itemCount === 1 ? '1 Artikel' : `${t.itemCount} Artikel`}</span>
+										{#if t.consumable}<Badge variant="secondary">Verbrauch</Badge>{/if}
 										{#if t.archived}<Badge variant="outline">Archiviert</Badge>{/if}
 									</div>
 								</div>
@@ -733,7 +741,7 @@
 						</Table.Cell>
 						<Table.Cell>{t.category?.name ?? '–'}</Table.Cell>
 						<Table.Cell class="text-right tabular-nums">
-							<span class="font-medium">{t.totalQuantity}</span>
+							<span class="font-medium">{formatAmount(t.totalQuantity, t.unit)}</span>
 							{#if t.usableQuantity !== t.totalQuantity}
 								<span class="block text-xs text-muted-foreground">{t.usableQuantity} nutzbar</span>
 							{/if}
@@ -882,12 +890,18 @@
 					{#if item.setName}
 						<div class="truncate text-xs text-muted-foreground">Set {item.setName}</div>
 					{/if}
+					{#if item.consumable && !nested}<Badge variant="secondary">Verbrauch</Badge>{/if}
 					{#if item.archived}<Badge variant="outline">Archiviert</Badge>{/if}
 				</div>
 			</div>
 		</Table.Cell>
 		<Table.Cell>{item.category?.name ?? '–'}</Table.Cell>
-		<Table.Cell class="text-right font-medium tabular-nums">{item.quantity}</Table.Cell>
+		<Table.Cell
+			class={[
+				'text-right font-medium tabular-nums',
+				item.consumable && item.quantity === 0 ? 'text-destructive' : ''
+			].join(' ')}>{formatAmount(item.quantity, item.unit)}</Table.Cell
+		>
 		<Table.Cell>
 			{#if item.locationName}{item.locationName}{:else}<span class="text-muted-foreground"
 					>Ohne Lagerort</span

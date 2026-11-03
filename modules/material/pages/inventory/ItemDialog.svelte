@@ -33,6 +33,7 @@
 		STATE_VARIANTS,
 		errorText,
 		fieldErrors,
+		formatAmount,
 		formatDate,
 		formatPeriod,
 		reservationHref
@@ -240,8 +241,10 @@
 						</dd>
 					</div>
 					<div>
-						<dt class="text-xs text-muted-foreground">Anzahl</dt>
-						<dd class="font-medium tabular-nums">{item.quantity}</dd>
+						<dt class="text-xs text-muted-foreground">
+							{item.consumable ? 'Bestand (Verbrauchsmaterial)' : 'Anzahl'}
+						</dt>
+						<dd class="font-medium tabular-nums">{formatAmount(item.quantity, item.unit)}</dd>
 					</div>
 					<div>
 						<dt class="text-xs text-muted-foreground">Lagerort</dt>
@@ -344,6 +347,32 @@
 						<p class="text-sm text-muted-foreground">Keine Reservierungen.</p>
 					{/if}
 				</section>
+
+				{#if item.consumable && item.consumptions.length}
+					<section class="grid gap-2" aria-labelledby="item-consumptions-heading">
+						<h3 id="item-consumptions-heading" class="text-sm font-medium">Letzte Verbräuche</h3>
+						<ul class="divide-y rounded-lg border text-sm">
+							{#each item.consumptions as c, i (i)}
+								<li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+									{#if c.reservationId}
+										<a
+											href={reservationHref(c.reservationId, !perm.reservations)}
+											class="min-w-0 flex-1 truncate font-medium text-link hover:underline"
+										>
+											{c.reservationTitle}
+										</a>
+									{:else}
+										<span class="min-w-0 flex-1 truncate">{c.reservationTitle}</span>
+									{/if}
+									<span class="text-muted-foreground tabular-nums">{formatDate(c.recordedAt)}</span>
+									<span class="font-medium tabular-nums"
+										>−{formatAmount(c.quantity, item.unit)}</span
+									>
+								</li>
+							{/each}
+						</ul>
+					</section>
+				{/if}
 			</div>
 
 			<Dialog.Footer class="sm:justify-between">

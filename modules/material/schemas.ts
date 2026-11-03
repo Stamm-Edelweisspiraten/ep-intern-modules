@@ -11,6 +11,7 @@ import { isRealDate } from '$lib/sdk/dates';
 import { labelFormatSchema, labelLayoutSchema } from '$lib/sdk/labels';
 import type { LabelFormat, LabelLayout } from '$lib/sdk/labels';
 import { styleColor, styleIcon } from '$lib/sdk/style-presets';
+import { normalizeBarcode, type ExpiryState } from './pantry';
 
 export const MODULE_ID = 'material';
 export const BASE_PATH = '/modules/material';
@@ -25,16 +26,19 @@ export const LEADER_ROLE_NAME = 'Gruppenleitung';
 export const OFFICE_KEY = 'materialwart';
 export const NOTIFY_RESERVATION_CREATED = 'reservation-created';
 export const NOTIFY_DAMAGE = 'damage-reported';
+export const NOTIFY_FOOD_EXPIRING = 'food-expiring';
 
 export const PERMISSIONS = {
 	view: 'material.inventory.view',
 	manage: 'material.inventory.manage',
 	reserve: 'material.reservation.create',
 	reservations: 'material.reservation.manage',
-	labels: 'material.labels.manage'
+	labels: 'material.labels.manage',
+	pantry: 'material.pantry.manage'
 } as const;
 
 export const MAX_NAME = 150;
+export const MAX_UNIT = 20;
 export const MAX_TEXT = 5000;
 export const MAX_NOTE = 1000;
 export const MAX_CODE = 40;
@@ -205,6 +209,23 @@ const quantity = z
 	.int('Nur ganze Zahlen')
 	.min(1, 'Mindestens 1')
 	.max(MAX_QUANTITY, 'Zu groß');
+/** Bestand eines Artikels: 0 nur bei Verbrauchsmaterial (prüft der Server) */
+const stockQuantity = z
+	.number()
+	.int('Nur ganze Zahlen')
+	.min(0, 'Nicht negativ')
+	.max(MAX_QUANTITY, 'Zu groß');
+const unit = z
+	.string()
+	.trim()
+	.max(MAX_UNIT, `Höchstens ${MAX_UNIT} Zeichen`)
+	.nullish()
+	.transform((v) => v ?? '');
+
+/** „20 l“, „12“ (ohne Einheit = Stück) */
+export function formatAmount(n: number, unitName: string): string {
+	return unitName ? `${n} ${unitName}` : String(n);
+}
 const dateString = z.string().refine(isRealDate, 'Ungültiges Datum');
 const optionalId = z
 	.uuid()
@@ -282,15 +303,25 @@ export const typeInput = z.object({
 	name,
 	description: text(MAX_TEXT),
 	notes: text(MAX_TEXT),
-	categoryId: optionalId
+	categoryId: optionalId,
+	/** Verbrauchsmaterial (Fackeln, Petroleum): bei der Rücknahme wird der Verbrauch abgezogen */
+	consumable: z.boolean().default(false),
+	unit
 });
-export const typeUpdateInput = typeInput.partial().extend({ archived: z.boolean().optional() });
+export const typeUpdateInput = typeInput.partial().extend({
+	// ohne Standardwert: fehlt das Feld, bleibt es unverändert
+	consumable: z.boolean().optional(),
+	archived: z.boolean().optional()
+});
 
 export interface MaterialType {
 	id: string;
 	name: string;
 	description: string;
 	notes: string;
+	consumable: boolean;
+	/** Leer = Stück */
+	unit: string;
 	categoryId: string | null;
 	category: CategoryRef | null;
 	images: ImageRef[];
@@ -310,7 +341,10 @@ export const itemInput = z
 		name,
 		/** Nur ohne Typ; mit Typ gilt dessen Kategorie */
 		categoryId: optionalId,
-		quantity: quantity.default(1),
+		quantity: stockQuantity.default(1),
+		/** Nur ohne Typ; mit Typ gelten dessen Angaben */
+		consumable: z.boolean().default(false),
+		unit,
 		locationId: optionalId,
 		/** Set, zu dem der Artikel gehört (z. B. „KJ1“) */
 		setId: optionalId,
@@ -338,7 +372,9 @@ export const itemUpdateInput = z.object({
 	typeId: optionalId.optional(),
 	name: name.optional(),
 	categoryId: optionalId.optional(),
-	quantity: quantity.optional(),
+	quantity: stockQuantity.optional(),
+	consumable: z.boolean().optional(),
+	unit: unit.optional(),
 	locationId: optionalId.optional(),
 	setId: optionalId.optional(),
 	code: code.optional(),
@@ -370,6 +406,9 @@ export interface Item {
 	categoryId: string | null;
 	category: CategoryRef | null;
 	quantity: number;
+	/** Wirksam (vom Typ bzw. eigene) */
+	consumable: boolean;
+	unit: string;
 	locationId: string | null;
 	locationName: string | null;
 	setId: string | null;
@@ -385,10 +424,20 @@ export interface Item {
 	createdAt: string;
 }
 
+/** Verbrauch bei einer Rücknahme */
+export interface ConsumptionEntry {
+	reservationId: string | null;
+	reservationTitle: string;
+	quantity: number;
+	recordedAt: string;
+}
+
 export interface ItemDetail extends Item {
 	conditionReportedByName: string | null;
 	/** Laufende und kommende Reservierungen, die diesen Artikel (oder seinen Typ) betreffen */
 	reservations: (ReservationRef & { quantity: number; viaType: boolean })[];
+	/** Nur Verbrauchsmaterial: letzte Verbräuche */
+	consumptions: ConsumptionEntry[];
 }
 
 export interface TypeDetail extends MaterialType {
@@ -554,6 +603,9 @@ export interface CatalogEntry {
 	/** Nutzbare Gesamtanzahl / im Zeitraum frei */
 	total: number;
 	free: number;
+	/** Verbrauchsmaterial (Typ oder Artikel) und Einheit */
+	consumable: boolean;
+	unit: string;
 	/** Nur `type`: die Artikel zum gezielten Auswählen */
 	items: CatalogItem[];
 	/** Nur `item`: Code und Ort */
@@ -670,6 +722,9 @@ export interface ReservationLine {
 	code: string | null;
 	locationName: string | null;
 	quantity: number;
+	/** Typ- bzw. Artikel-Zeilen: Verbrauchsmaterial und Einheit */
+	consumable: boolean;
+	unit: string;
 	thumbUrl: string | null;
 	/** Nur Typ-Zeilen: zugeteilte Artikel */
 	assignments: LineAssignment[];
@@ -697,11 +752,40 @@ export interface Reservation extends ReservationRef {
 	canEdit: boolean;
 	handedOutAt: string | null;
 	handedOutByName: string | null;
+	/** Rücknahme (mit eingetragenem Verbrauch) */
+	returnedAt: string | null;
+	returnedByName: string | null;
 	/** Ausgabe markieren/zurücknehmen und Zuteilung ändern (Verwaltung) */
 	canHandOut: boolean;
 	/** Hinweise zur Zuteilung („Jurte: 1 von 2 aus Bahnen verschiedener Sets“, „2 nicht zugeteilt“) */
 	notices: string[];
+	/** Ausgegebenes Verbrauchsmaterial je Artikel (zugeteilt oder gezielt) mit Verbrauch nach der Rücknahme */
+	consumables: ConsumableUse[];
 }
+
+export interface ConsumableUse {
+	itemId: string;
+	name: string;
+	code: string;
+	unit: string;
+	/** Ausgegeben bzw. reserviert */
+	issued: number;
+	/** Verbraucht (erst nach der Rücknahme, sonst `null`) */
+	consumed: number | null;
+}
+
+/** Rücknahme: Verbrauch je Verbrauchsartikel (fehlende = nichts verbraucht) */
+export const returnInput = z.object({
+	consumed: z
+		.array(
+			z.object({
+				itemId: z.uuid(),
+				quantity: z.number().int('Nur ganze Zahlen').min(0).max(MAX_QUANTITY)
+			})
+		)
+		.max(MAX_RESERVATION_LINES)
+		.default([])
+});
 
 export interface ReservationListItem extends ReservationRef {
 	state: ReservationState;
@@ -717,6 +801,7 @@ export interface ReservationListItem extends ReservationRef {
 	mine: boolean;
 	canEdit: boolean;
 	handedOut: boolean;
+	returned: boolean;
 }
 
 export interface ReservationPage {
@@ -748,11 +833,153 @@ export interface PurposeOptions {
 export type CodeTarget =
 	| { type: 'item'; id: string; code: string; name: string }
 	| { type: 'location'; id: string; code: string; name: string }
+	| { type: 'food'; id: string; code: string; name: string }
 	| { type: 'reserved'; code: string };
 
 export const reserveCodesInput = z.object({
 	count: z.number().int().min(1).max(MAX_RESERVE_CODES)
 });
+
+// --- Vorrat (Lebensmittel) -----------------------------------------------------
+
+const barcodeField = z
+	.string()
+	.trim()
+	.nullish()
+	.transform((v, ctx) => {
+		if (!v) return null;
+		const code = normalizeBarcode(v);
+		if (!code) {
+			ctx.addIssue({ code: 'custom', message: 'Kein gültiger Strichcode (EAN/GTIN)' });
+			return z.NEVER;
+		}
+		return code;
+	});
+const optionalDate = dateString.nullish().transform((v) => v ?? null);
+
+export const productInput = z.object({
+	name,
+	brand: text(MAX_NAME),
+	barcode: barcodeField,
+	/** „Packung“, „Dose“, „kg“ – leer = Stück */
+	unit,
+	/** Füllmenge laut Packung („500 g“) */
+	packageSize: text(MAX_NAME),
+	locationId: optionalId,
+	notes: text(MAX_TEXT)
+});
+export const productUpdateInput = productInput
+	.partial()
+	.extend({ archived: z.boolean().optional() });
+
+export const checkInInput = z.object({
+	quantity,
+	bestBefore: optionalDate,
+	/** Leer = Lagerort des Produkts */
+	locationId: optionalId,
+	note: text(MAX_NOTE)
+});
+
+export const CHECK_OUT_KINDS = ['out', 'discard'] as const;
+export const checkOutInput = z.object({
+	quantity,
+	/** Nur aus dieser Charge; sonst zuerst ablaufende zuerst */
+	batchId: optionalId,
+	kind: z.enum(CHECK_OUT_KINDS).default('out'),
+	note: text(MAX_NOTE)
+});
+
+/** Charge berichtigen (Zählfehler, falsches MHD) */
+export const batchUpdateInput = z.object({
+	quantity: stockQuantity.optional(),
+	bestBefore: optionalDate.optional(),
+	note: text(MAX_NOTE)
+});
+
+export const pantryQuery = z.object({
+	search: z.string().trim().max(100).optional(),
+	/** `stock` = mit Bestand, `soon` = läuft bald ab (inkl. abgelaufen), `expired` = abgelaufen */
+	filter: z.enum(['all', 'stock', 'soon', 'expired']).default('all'),
+	archived: z.enum(['0', '1']).optional()
+});
+
+export const barcodeParams = z.object({ code: z.string().min(1).max(40) });
+export const batchParams = z.object({ id: z.uuid(), batchId: z.uuid() });
+
+export const MOVEMENT_KINDS = ['in', 'out', 'discard', 'correct'] as const;
+export type MovementKind = (typeof MOVEMENT_KINDS)[number];
+export const MOVEMENT_LABELS: Record<MovementKind, string> = {
+	in: 'Eingelagert',
+	out: 'Entnommen',
+	discard: 'Entsorgt',
+	correct: 'Berichtigt'
+};
+
+export interface FoodBatch {
+	id: string;
+	quantity: number;
+	bestBefore: string | null;
+	state: ExpiryState;
+	locationId: string | null;
+	locationName: string | null;
+	createdAt: string;
+}
+
+export interface FoodProduct {
+	id: string;
+	name: string;
+	brand: string;
+	barcode: string | null;
+	unit: string;
+	packageSize: string;
+	locationId: string | null;
+	locationName: string | null;
+	notes: string;
+	archived: boolean;
+	/** Bestand über alle Chargen */
+	quantity: number;
+	/** Frühestes MHD mit Bestand und dessen Zustand */
+	nextBestBefore: string | null;
+	state: ExpiryState;
+	/** Chargen mit Bestand (zuerst ablaufende zuerst) */
+	batches: FoodBatch[];
+}
+
+export interface FoodMovement {
+	id: string;
+	kind: MovementKind;
+	quantity: number;
+	bestBefore: string | null;
+	note: string;
+	createdByName: string | null;
+	createdAt: string;
+}
+
+export interface ProductDetail extends FoodProduct {
+	movements: FoodMovement[];
+}
+
+/** Vorschlag aus Open Food Facts für einen unbekannten Barcode */
+export interface BarcodeSuggestion {
+	found: boolean;
+	name: string;
+	brand: string;
+	packageSize: string;
+}
+
+/** Ergebnis eines Scans im Vorrat */
+export interface BarcodeResult {
+	barcode: string;
+	product: FoodProduct | null;
+	/** Nur ohne bekanntes Produkt */
+	suggestion: BarcodeSuggestion | null;
+}
+
+export interface PantrySummary {
+	products: number;
+	soon: number;
+	expired: number;
+}
 
 // --- Etiketten -----------------------------------------------------------------
 

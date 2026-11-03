@@ -2,8 +2,8 @@
 	"schema": 1,
 	"id": "material",
 	"name": "Material",
-	"description": "Materialverwaltung: Lager mit Typen, Artikeln, Sets, Kategorien und Lagerorten, Zelte als Bauplan, Reservierungen für Aktionen und Gruppen mit automatischer Zuteilung, Scannen per Kamera oder USB-Scanner, Etiketten und Listen",
-	"version": "2.1.0",
+	"description": "Materialverwaltung: Lager mit Typen, Artikeln, Sets, Kategorien und Lagerorten, Zelte als Bauplan, Verbrauchsmaterial mit Rücknahme, Vorrat für Lebensmittel mit Strichcode und Mindesthaltbarkeit, Reservierungen für Aktionen und Gruppen mit automatischer Zuteilung, Scannen per Kamera oder USB-Scanner, Etiketten und Listen",
+	"version": "2.2.0",
 	"core": ">=2.0.0-0 <3.0.0",
 	"dependencies": {},
 	"optionalDependencies": {
@@ -21,6 +21,7 @@
 		"material.inventory.manage",
 		"material.inventory.view",
 		"material.labels.manage",
+		"material.pantry.manage",
 		"material.reservation.create",
 		"material.reservation.manage"
 	],

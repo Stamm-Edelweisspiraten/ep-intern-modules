@@ -14,15 +14,18 @@ import {
 import { addDays } from '$lib/sdk/dates';
 import { loadIconSet } from '$lib/sdk/icons';
 import {
+	bool,
 	canManage,
 	claimCode,
 	dateStr,
 	idList,
+	iso,
 	likePattern,
 	mdb,
 	nextCodes,
 	num,
 	rows,
+	str,
 	today,
 	userNames
 } from './db';
@@ -49,6 +52,7 @@ import {
 	typeUpdateInput,
 	type Category,
 	type Condition,
+	type ConsumptionEntry,
 	type Inventory,
 	type Item,
 	type ItemDetail,
@@ -86,6 +90,36 @@ async function assertRefs(
 	await check('categories', refs.categoryId, 'categoryId', 'Kategorie nicht gefunden');
 	await check('locations', refs.locationId, 'locationId', 'Lagerort nicht gefunden');
 	await check('sets', refs.setId, 'setId', 'Set nicht gefunden');
+}
+
+/** Verbrauchsmaterial und Einheit eines Typs (Artikel mit Typ übernehmen sie) */
+async function typeUsage(tx: Tx, typeId: string): Promise<{ consumable: boolean; unit: string }> {
+	const [r] = await rows(tx, sql`SELECT consumable, unit FROM types WHERE id = ${typeId}`);
+	return { consumable: bool(r?.consumable), unit: str(r?.unit) };
+}
+
+function assertQuantity(quantity: number, consumable: boolean) {
+	if (quantity < 1 && !consumable) {
+		throw errors.validation([
+			{ path: ['quantity'], message: 'Mindestens 1 (0 nur bei Verbrauchsmaterial)' }
+		]);
+	}
+}
+
+/** Letzte Verbräuche eines Artikels */
+async function itemConsumptions(tx: Tx, itemId: string): Promise<ConsumptionEntry[]> {
+	return (
+		await rows(
+			tx,
+			sql`SELECT reservation_id, reservation_title, quantity, recorded_at FROM consumptions
+				WHERE item_id = ${itemId} ORDER BY recorded_at DESC, id LIMIT 20`
+		)
+	).map((r) => ({
+		reservationId: str(r.reservation_id) || null,
+		reservationTitle: str(r.reservation_title),
+		quantity: num(r.quantity),
+		recordedAt: iso(r.recorded_at)
+	}));
 }
 
 async function requireItem(tx: Tx, id: string): Promise<Item> {
@@ -501,9 +535,9 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 			const t = await mdb().transaction(async (tx) => {
 				await assertRefs(tx, { categoryId: body.categoryId });
 				await tx.execute(
-					sql`INSERT INTO types (id, name, description, notes, category_id, created_by)
+					sql`INSERT INTO types (id, name, description, notes, category_id, consumable, unit, created_by)
 						VALUES (${id}, ${body.name}, ${body.description}, ${body.notes}, ${body.categoryId},
-							${ctx.userId ?? null})`
+							${body.consumable}, ${body.unit}, ${ctx.userId ?? null})`
 				);
 				return requireType(tx, id);
 			});
@@ -528,6 +562,8 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				if (body.description !== undefined) sets.push(sql`description = ${body.description}`);
 				if (body.notes !== undefined) sets.push(sql`notes = ${body.notes}`);
 				if (body.categoryId !== undefined) sets.push(sql`category_id = ${body.categoryId}`);
+				if (body.consumable !== undefined) sets.push(sql`consumable = ${body.consumable}`);
+				if (body.unit !== undefined) sets.push(sql`unit = ${body.unit}`);
 				if (body.archived !== undefined)
 					sets.push(
 						body.archived
@@ -535,6 +571,23 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 							: sql`archived_at = NULL`
 					);
 				await tx.execute(sql`UPDATE types SET ${sql.join(sets, sql`, `)} WHERE id = ${params.id}`);
+				if (body.consumable !== undefined || body.unit !== undefined) {
+					await tx.execute(
+						sql`UPDATE items i SET consumable = t.consumable, unit = t.unit, updated_at = now()
+							FROM types t WHERE t.id = i.type_id AND i.type_id = ${params.id}`
+					);
+					if (body.consumable === false) {
+						const [empty] = await rows(
+							tx,
+							sql`SELECT 1 AS x FROM items WHERE type_id = ${params.id} AND quantity < 1 LIMIT 1`
+						);
+						if (empty) {
+							throw errors.conflict(
+								'Leere Artikel (Anzahl 0) gibt es nur bei Verbrauchsmaterial – erst auffüllen oder archivieren'
+							);
+						}
+					}
+				}
 				return requireType(tx, params.id);
 			});
 			await core.audit.logFromContext(ctx, 'material.type.updated', { target: params.id });
@@ -579,17 +632,22 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 		permission: PERMISSIONS.view,
 		params: idParams,
 		handler: async ({ ctx, params }): Promise<ItemDetail> => {
-			const { item, reservations } = await mdb().transaction(async (tx) => {
+			const { item, reservations, consumptions } = await mdb().transaction(async (tx) => {
 				const item = await loadItem(tx, params.id);
 				if (!item) throw errors.notFound('Artikel nicht gefunden');
-				return { item, reservations: await itemReservations(tx, item) };
+				return {
+					item,
+					reservations: await itemReservations(tx, item),
+					consumptions: await itemConsumptions(tx, item.id)
+				};
 			});
 			const names = await userNames(ctx, [item.reportedBy]);
 			const { reportedBy, ...rest } = item;
 			return {
 				...rest,
 				conditionReportedByName: reportedBy ? (names.get(reportedBy) ?? 'Unbekannt') : null,
-				reservations
+				reservations,
+				consumptions
 			};
 		}
 	}),
@@ -608,16 +666,22 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 			const ids = names.map(() => crypto.randomUUID());
 			const items = await mdb().transaction(async (tx) => {
 				await assertRefs(tx, body);
+				const usage = body.typeId
+					? await typeUsage(tx, body.typeId)
+					: { consumable: body.consumable, unit: body.unit };
+				assertQuantity(body.quantity, usage.consumable);
 				const codes = body.code
 					? [await claimCode(tx, body.code)]
 					: await nextCodes(tx, 'item', names.length);
 				const now = new Date().toISOString();
 				for (const [i, id] of ids.entries()) {
 					await tx.execute(
-						sql`INSERT INTO items (id, type_id, name, category_id, quantity, location_id, set_id, code,
-								condition, condition_note, condition_reported_by, condition_reported_at, notes, created_by)
+						sql`INSERT INTO items (id, type_id, name, category_id, quantity, consumable, unit, location_id,
+								set_id, code, condition, condition_note, condition_reported_by, condition_reported_at, notes,
+								created_by)
 							VALUES (${id}, ${body.typeId}, ${names[i]!}, ${body.typeId ? null : body.categoryId},
-								${body.quantity}, ${body.locationId}, ${body.setId}, ${codes[i]!}, ${body.condition},
+								${body.quantity}, ${usage.consumable}, ${usage.unit}, ${body.locationId}, ${body.setId},
+								${codes[i]!}, ${body.condition},
 								${body.conditionNote},
 								${body.condition === 'ok' ? null : (ctx.userId ?? null)},
 								${body.condition === 'ok' ? null : now}, ${body.notes}, ${ctx.userId ?? null})`
@@ -676,6 +740,14 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				const typeId = body.typeId !== undefined ? body.typeId : current.typeId;
 				if (typeId) sets.push(sql`category_id = NULL`);
 				else if (body.categoryId !== undefined) sets.push(sql`category_id = ${body.categoryId}`);
+				const usage = typeId
+					? await typeUsage(tx, typeId)
+					: {
+							consumable: body.consumable ?? current.consumable,
+							unit: body.unit ?? current.unit
+						};
+				sets.push(sql`consumable = ${usage.consumable}`, sql`unit = ${usage.unit}`);
+				assertQuantity(body.quantity ?? current.quantity, usage.consumable);
 				if (body.quantity !== undefined) sets.push(sql`quantity = ${body.quantity}`);
 				if (body.locationId !== undefined) sets.push(sql`location_id = ${body.locationId}`);
 				if (body.setId !== undefined) sets.push(sql`set_id = ${body.setId}`);
@@ -701,6 +773,7 @@ export const catalogEndpoints: AnyApiEndpoint[] = [
 				if (
 					body.typeId !== undefined ||
 					body.quantity !== undefined ||
+					body.consumable !== undefined ||
 					body.condition !== undefined ||
 					body.archived !== undefined ||
 					body.setId !== undefined
