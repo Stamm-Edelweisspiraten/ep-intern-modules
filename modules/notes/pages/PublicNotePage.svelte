@@ -196,6 +196,8 @@
 	});
 	let treeOpen = $state(true);
 	let sheetOpen = $state(false);
+	/** steigt, wenn die Seite neu geladen werden muss (abgelehnte Änderung) */
+	let resetKey = $state(0);
 	const showTree = $derived(pages.length > 1);
 
 	function openPage(id: string) {
@@ -331,7 +333,7 @@
 			</aside>
 		{/if}
 		<div class="min-w-0 flex-1">
-			{#key current.id}
+			{#key `${current.id}:${resetKey}`}
 				<PublicNoteView
 					{token}
 					page={current}
@@ -342,6 +344,7 @@
 					{pageIds}
 					onmeta={patchPage}
 					ongone={() => void loadInfo()}
+					onreset={() => resetKey++}
 					onopen={openPage}
 					ontoggletree={showTree
 						? () => (phone ? (sheetOpen = !sheetOpen) : (treeOpen = !treeOpen))

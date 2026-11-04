@@ -96,6 +96,9 @@ export class NoteSync {
 	private awarenessDirty = false;
 	private lastAwarenessAt = 0;
 	private stateRun = 0;
+	/** laufender Abgleich; ein weiterer Wunsch wartet darauf (sonst würde er den ersten, großen Download verwerfen) */
+	private syncing: Promise<void> | null = null;
+	private syncAgain = false;
 
 	constructor(
 		private readonly noteId: string,
@@ -148,6 +151,24 @@ export class NoteSync {
 	connect(): void {
 		this.closed = false;
 		this.open();
+		// Inhalt sofort holen, nicht erst nach `hello` (spart eine Runde, große Notizen erscheinen früher)
+		this.requestSync();
+	}
+
+	/** Abgleich anstoßen; läuft schon einer, folgt genau ein weiterer mit dem dann aktuellen State-Vector */
+	private requestSync(): void {
+		if (this.closed) return;
+		if (this.syncing) {
+			this.syncAgain = true;
+			return;
+		}
+		this.syncing = this.syncState().finally(() => {
+			this.syncing = null;
+			if (this.syncAgain) {
+				this.syncAgain = false;
+				this.requestSync();
+			}
+		});
 	}
 
 	private open(): void {
@@ -187,7 +208,8 @@ export class NoteSync {
 				this.clearPeers();
 				for (const p of event.peers) if (p.client !== this.client) this.peers.set(p.client, p);
 				this.setLevel(event.level);
-				void this.syncState();
+				// Änderungen zwischen erstem Abgleich und Stream-Beginn nachholen (nur noch die Differenz)
+				this.requestSync();
 				this.awarenessDirty = true;
 				this.scheduleAwareness();
 				if (this.pending.length) this.scheduleFlush(0);
@@ -198,7 +220,7 @@ export class NoteSync {
 					Y.applyUpdate(this.doc, fromBase64(event.update), REMOTE);
 				} catch {
 					// kaputtes Update → Zustand neu abgleichen
-					void this.syncState();
+					this.requestSync();
 				}
 				break;
 			case 'awareness':
@@ -296,7 +318,7 @@ export class NoteSync {
 			this.stateDelay = 1000;
 		} catch {
 			if (run !== this.stateRun || this.closed) return;
-			this.stateTimer = setTimeout(() => void this.syncState(), this.stateDelay);
+			this.stateTimer = setTimeout(() => this.requestSync(), this.stateDelay);
 			this.stateDelay = Math.min(this.stateDelay * 2, 15_000);
 		}
 	}
@@ -378,9 +400,13 @@ export class NoteSync {
 				this.close();
 				this.handlers.onGone?.('deleted');
 			} else if ([400, 409, 413, 422].includes(status)) {
+				// Endgültig abgelehnt: alle späteren Änderungen bauen darauf auf und würden auf dem Server nie sichtbar
+				// („Gespeichert“, aber nach dem Neuladen weg). Deshalb verwerfen und den Serverstand neu laden.
+				this.pending = [];
 				this.handlers.onRejected?.(
 					(e as Error).message || 'Änderung konnte nicht gespeichert werden.'
 				);
+				this.handlers.onReset?.();
 			} else {
 				// Netz/Server kurz weg: vorne wieder einreihen und später erneut senden
 				this.pending.unshift(update);

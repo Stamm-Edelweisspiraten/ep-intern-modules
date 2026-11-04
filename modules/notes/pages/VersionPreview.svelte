@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { Editor, type JSONContent } from '@tiptap/core';
 	import { noteExtensions } from '../doc/extensions';
+	import ListStyles from './editor/ListStyles.svelte';
 
 	let { content }: { content: unknown } = $props();
 	let element = $state<HTMLDivElement | null>(null);
@@ -20,6 +21,7 @@
 	});
 </script>
 
+<ListStyles />
 <div bind:this={element} class="note-root note-preview"></div>
 
 <style>

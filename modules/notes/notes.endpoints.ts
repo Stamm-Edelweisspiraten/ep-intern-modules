@@ -1,6 +1,5 @@
 /** REST für Notizen: Seitenbaum, Anlegen/Ändern/Verschieben, Papierkorb, Suche, Freigaben (`/api/v1/modules/notes/…`). */
 import { sql } from 'drizzle-orm';
-import { MarkdownManager } from '@tiptap/markdown';
 import {
 	addedPrincipals,
 	type AnyApiEndpoint,
@@ -38,7 +37,7 @@ import {
 } from './access';
 import { mdb, refOf, userRefs } from './db';
 import { jsonFromState, stateFromJson } from './doc.service';
-import { noteExtensions } from './doc/extensions';
+import { parseMarkdown } from './export/markdown';
 import { plainTextOf } from './doc/text';
 import { closeNotes, hub, recheckNotes } from './live';
 import { notifyNoteShared } from './notify';
@@ -125,9 +124,10 @@ export function snippetOf(text: string, q: string, radius = 70): string {
 function contentFromMarkdown(markdown: string) {
 	let state: Uint8Array;
 	try {
-		const json = new MarkdownManager({ extensions: noteExtensions() }).parse(markdown);
+		const json = parseMarkdown(markdown);
 		state = stateFromJson(json);
-	} catch {
+	} catch (e) {
+		console.warn('[notes] Markdown konnte nicht gelesen werden', e);
 		throw errors.validation([
 			{ path: ['markdown'], message: 'Inhalt konnte nicht gelesen werden' }
 		]);

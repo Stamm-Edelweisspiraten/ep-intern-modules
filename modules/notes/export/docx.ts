@@ -19,6 +19,7 @@ import {
 	Packer,
 	Paragraph,
 	ShadingType,
+	Tab,
 	Table,
 	TableCell,
 	TableRow,
@@ -28,6 +29,13 @@ import {
 	type ParagraphChild
 } from 'docx';
 import { isUuid } from '../doc/extensions';
+import {
+	childListContext,
+	listMarker,
+	listStart,
+	ownListStyle,
+	type ListContext
+} from '../doc/list-style';
 import type { PmNode } from '../doc/text';
 import { embedKey, embedLabel, type ResolvedEmbed } from './embeds';
 import { safeAlign, safeColor, safeFontSize, safeHref } from './html';
@@ -216,16 +224,49 @@ class Builder {
 		});
 	}
 
-	list(node: PmNode, level: number, ordered: boolean, instance: number): Block[] {
+	/**
+	 * Liste. Geordnete Listen mit Nummerierungsart (Gliederung, a), römisch …; auch geerbt) bekommen die Nummer als
+	 * Text mit hängendem Einzug – so stimmen die Nummern mit Editor und PDF überein; Standardlisten nutzen die
+	 * Word-Nummerierung.
+	 */
+	list(
+		node: PmNode,
+		level: number,
+		ordered: boolean,
+		instance: number,
+		parent: { ctx: ListContext; item: number } | null = null
+	): Block[] {
 		const out: Block[] = [];
-		for (const item of node.content ?? []) {
+		const ctx = ordered
+			? childListContext(parent?.ctx ?? null, ownListStyle(node.attrs), parent?.item)
+			: (parent?.ctx ?? null);
+		const literal = ordered && !!ctx?.style;
+		const start = listStart(node.attrs?.start);
+		const hanging = ctx?.style === 'outline' ? 720 : 454;
+		(node.content ?? []).forEach((item, index) => {
+			const n = start + index;
+			const here = ctx ? { ctx, item: n } : null;
 			let first = true;
 			for (const child of item.content ?? []) {
 				if (child.type === 'bulletList' || child.type === 'orderedList') {
 					const inst = ++this.listInstance;
-					out.push(...this.list(child, level + 1, child.type === 'orderedList', inst));
+					out.push(...this.list(child, level + 1, child.type === 'orderedList', inst, here));
 				} else if (child.type === 'taskList') {
 					out.push(...this.tasks(child, level + 1));
+				} else if (literal && (child.type === 'paragraph' || child.type === 'heading')) {
+					const left = 720 * level + hanging + 360;
+					const align = safeAlign(child.attrs?.textAlign);
+					out.push(
+						new Paragraph({
+							alignment: align ? ALIGN[align] : undefined,
+							indent: first ? { left, hanging } : { left },
+							children: [
+								...(first ? [new TextRun({ children: [listMarker(ctx!, n), new Tab()] })] : []),
+								...this.inline(child)
+							]
+						})
+					);
+					first = false;
 				} else if (child.type === 'paragraph' || child.type === 'heading') {
 					out.push(
 						this.paragraph(
@@ -246,7 +287,7 @@ class Builder {
 					out.push(...this.blocks([child]));
 				}
 			}
-		}
+		});
 		return out;
 	}
 

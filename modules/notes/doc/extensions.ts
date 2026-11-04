@@ -19,13 +19,15 @@ import {
 } from '@tiptap/core';
 import Highlight from '@tiptap/extension-highlight';
 import Image from '@tiptap/extension-image';
-import { TaskItem, TaskList } from '@tiptap/extension-list';
-import { TableKit } from '@tiptap/extension-table';
+import { OrderedList, TaskItem, TaskList } from '@tiptap/extension-list';
+import { Table, TableKit } from '@tiptap/extension-table';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyleKit } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 import type { Schema } from '@tiptap/pm/model';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { API_BASE, DEFAULT_EMBED_HEIGHT, MAX_EMBED_HEIGHT, MIN_EMBED_HEIGHT } from '../schemas';
+import { isListStyle, listStart, listStyleFromHtml, ownListStyle } from './list-style';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY_RE = /^[a-z][a-z0-9-]{0,40}$/;
@@ -119,6 +121,66 @@ export function noteImage(options: NoteExtensionOptions = {}) {
 	});
 }
 
+/*
+ * Markdown-Tokenizer: `start` ruft marked für JEDEN Absatz mit dem gesamten restlichen Text auf. Tiptaps Fassungen
+ * von Tabelle (`src.split('\n')`) und Einbettung (Regex über den ganzen Rest) sind dadurch quadratisch – ein großer
+ * Text (Import, Quelltext-Ansicht, Einfügen) brauchte Sekunden. Hier wird nur der Anfang bzw. der aktuelle Block geprüft.
+ */
+const TABLE_SEPARATOR = /^[ \t|:]*-[ \t|:-]*$/;
+
+/** Beginnt hier eine Tabelle? (nur die ersten beiden Zeilen) */
+export function tableStart(src: string): number {
+	const first = src.indexOf('\n');
+	if (first < 0) return -1;
+	const second = src.indexOf('\n', first + 1);
+	const sep = src.slice(first + 1, second < 0 ? undefined : second);
+	if (!TABLE_SEPARATOR.test(sep) || !sep.includes('|')) return -1;
+	return src.slice(0, first).includes('|') ? 0 : -1;
+}
+
+const EMBED_START = /^ {0,3}:::embed(?:\s|$)/m;
+
+/** Position einer Einbettung im aktuellen Block (bis zur nächsten Leerzeile) */
+export function embedStart(src: string): number {
+	const end = src.indexOf('\n\n');
+	const scope = end < 0 ? src : src.slice(0, end + 1);
+	return scope.match(EMBED_START)?.index ?? -1;
+}
+
+/*
+ * Aufgabenliste: Tiptaps Tokenizer zerlegt an JEDER Blockgrenze den ganzen Rest in Zeilen (`parseIndentedBlocks`) –
+ * der Hauptgrund für quadratische Laufzeit großer Texte. Vorher billig prüfen, ob hier überhaupt eine Aufgabe beginnt.
+ */
+const TASK_ITEM_START = /^(?:[ \t]*\n)*\s*[-+*]\s+\[[ xX]\]\s+/;
+const taskTokenizer = TaskList.config.markdownTokenizer!;
+
+const NoteTaskList = TaskList.extend({
+	markdownTokenizer: {
+		...taskTokenizer,
+		tokenize: (src, tokens, helper) =>
+			TASK_ITEM_START.test(src) ? taskTokenizer.tokenize(src, tokens, helper) : undefined
+	}
+});
+
+const tableTokenizer = Table.config.markdownTokenizer!;
+
+const NoteTable = Table.extend({
+	markdownTokenizer: {
+		...tableTokenizer,
+		start: tableStart,
+		// läuft an jeder Blockgrenze: ohne Tabelle am Anfang sofort aussteigen
+		tokenize: (src, tokens, helper) =>
+			tableStart(src) === 0 ? tableTokenizer.tokenize(src, tokens, helper) : undefined
+	}
+});
+
+const embedMarkdown = createAtomBlockMarkdownSpec({
+	nodeName: 'embed',
+	requiredAttributes: ['module', 'kind', 'refId'],
+	defaultAttributes: { height: DEFAULT_EMBED_HEIGHT },
+	allowedAttributes: ['module', 'kind', 'refId', 'height']
+});
+
 /** Eingebetteter Inhalt eines anderen Moduls (Darstellung im Browser per Node-View als iframe) */
 export const Embed = Node.create({
 	name: 'embed',
@@ -165,13 +227,65 @@ export const Embed = Node.create({
 	renderHTML({ HTMLAttributes }) {
 		return ['div', mergeAttributes({ 'data-embed': '' }, HTMLAttributes)];
 	},
-	...createAtomBlockMarkdownSpec({
-		nodeName: 'embed',
-		requiredAttributes: ['module', 'kind', 'refId'],
-		defaultAttributes: { height: DEFAULT_EMBED_HEIGHT },
-		allowedAttributes: ['module', 'kind', 'refId', 'height']
-	})
+	...embedMarkdown,
+	markdownTokenizer: { ...embedMarkdown.markdownTokenizer!, start: embedStart }
 });
+
+/**
+ * Geordnete Liste mit Nummerierungsart `listStyle` (siehe `list-style.ts`). Gerendert wird die wirksame eigene Art als
+ * `data-list-style` (auch aus `type`); Unterlisten ohne Attribut erben sie per CSS. Bei Gliederung o. Ä. mit Start ≠ 1
+ * setzt `--ol-start` den Zähler.
+ */
+export const NoteOrderedList = OrderedList.extend({
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			listStyle: {
+				default: null,
+				parseHTML: (el) => listStyleFromHtml(el),
+				renderHTML: (attrs) => {
+					const style = ownListStyle(attrs);
+					if (!style) return {};
+					const start = listStart(attrs.start);
+					return {
+						'data-list-style': style,
+						...(start > 1 ? { style: `--ol-start: ${start - 1}` } : {})
+					};
+				}
+			}
+		};
+	}
+});
+
+/** Nummerierungsart der Liste am Cursor (innerste geordnete Liste) setzen; `null` = Standard */
+export function setListStyleAt(
+	editor: { state: EditorState; view: { dispatch: (tr: Transaction) => void } },
+	style: string | null
+): boolean {
+	const { state } = editor;
+	const $from = state.selection.$from;
+	for (let d = $from.depth; d > 0; d--) {
+		const node = $from.node(d);
+		if (node.type.name !== 'orderedList') continue;
+		// „Zahlen“ nur dann ausdrücklich speichern, wenn eine Oberliste eine andere Art vererbt
+		let inherited = false;
+		for (let up = d - 1; up > 0; up--) {
+			const outer = $from.node(up);
+			if (outer.type.name === 'orderedList' && ownListStyle(outer.attrs)) inherited = true;
+		}
+		const next = isListStyle(style) && (style !== 'decimal' || inherited) ? style : null;
+		editor.view.dispatch(
+			state.tr.setNodeMarkup($from.before(d), undefined, {
+				...node.attrs,
+				listStyle: next,
+				// Tiptaps `type` würde sonst beim Zurücksetzen weiter gelten
+				type: null
+			})
+		);
+		return true;
+	}
+	return false;
+}
 
 /** Alle Erweiterungen, die das Schema bestimmen */
 export function noteExtensions(options: NoteExtensionOptions = {}): AnyExtension[] {
@@ -180,6 +294,7 @@ export function noteExtensions(options: NoteExtensionOptions = {}): AnyExtension
 			heading: { levels: [1, 2, 3] },
 			// Rückgängig übernimmt Yjs (nur eigene Änderungen)
 			undoRedo: false,
+			orderedList: false,
 			link: {
 				openOnClick: false,
 				autolink: true,
@@ -190,9 +305,11 @@ export function noteExtensions(options: NoteExtensionOptions = {}): AnyExtension
 		TextStyleKit.configure({ fontFamily: false, lineHeight: false }),
 		Highlight.configure({ multicolor: true }),
 		TextAlign.configure({ types: ['heading', 'paragraph'] }),
-		TaskList,
+		NoteOrderedList,
+		NoteTaskList,
 		TaskItem.configure({ nested: true }),
-		TableKit.configure({ table: { resizable: !!options.resizableImages } }),
+		TableKit.configure({ table: false }),
+		NoteTable.configure({ resizable: !!options.resizableImages }),
 		noteImage(options),
 		Embed
 	];

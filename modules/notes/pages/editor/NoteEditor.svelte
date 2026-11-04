@@ -18,13 +18,14 @@
 	import List from '@lucide/svelte/icons/list';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
+	import ListTree from '@lucide/svelte/icons/list-tree';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Pilcrow from '@lucide/svelte/icons/pilcrow';
 	import Presentation from '@lucide/svelte/icons/presentation';
 	import Quote from '@lucide/svelte/icons/quote';
 	import Table from '@lucide/svelte/icons/table';
 	import { contrastTextColor } from '$lib/components/ui/color-picker';
-	import { noteExtensions } from '../../doc/extensions';
+	import { noteExtensions, setListStyleAt } from '../../doc/extensions';
 	import { MAX_ASSET_BYTES, YDOC_FIELD } from '../../schemas';
 	import { errMsg, uploadAsset } from '../helpers';
 	import BubbleMenu from './BubbleMenu.svelte';
@@ -35,6 +36,7 @@
 	import type { NoteSync } from './sync.svelte';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Toolbar from './Toolbar.svelte';
+	import ListStyles from './ListStyles.svelte';
 	import NoteAssist from './NoteAssist.svelte';
 
 	let {
@@ -180,6 +182,14 @@
 			.run();
 	}
 
+	/** Geordnete Liste am Cursor mit Nummerierungsart (vorher in eine Liste umwandeln, falls nötig) */
+	function orderedListWith(style: string | null) {
+		if (!editor || !canEdit) return;
+		if (!editor.isActive('orderedList')) editor.chain().focus().toggleOrderedList().run();
+		setListStyleAt(editor, style);
+		editor.commands.focus();
+	}
+
 	const slashItems: SlashItem[] = [
 		{
 			id: 'text',
@@ -228,6 +238,14 @@
 			icon: ListOrdered,
 			keywords: 'liste nummer ol',
 			run: () => editor?.chain().focus().toggleOrderedList().run()
+		},
+		{
+			id: 'outline',
+			label: 'Gliederung',
+			description: 'Nummerierte Liste 1. 1.1. 1.1.1. (mit Tab einrücken)',
+			icon: ListTree,
+			keywords: 'liste nummer gliederung outline 1.1',
+			run: () => orderedListWith('outline')
 		},
 		{
 			id: 'tasks',
@@ -444,6 +462,7 @@
 		{tick}
 		{canEdit}
 		onlink={openLink}
+		onliststyle={orderedListWith}
 		onimage={guest ? undefined : () => pickImage()}
 		onembed={guest ? undefined : () => (embedOpen = true)}
 		onassist={assistOn ? () => assist?.start() : undefined}
@@ -454,6 +473,7 @@
 	</div>
 </div>
 
+<ListStyles />
 <SlashMenu bind:this={slash} {editor} {tick} items={slashWithAssist} />
 <BubbleMenu
 	{editor}

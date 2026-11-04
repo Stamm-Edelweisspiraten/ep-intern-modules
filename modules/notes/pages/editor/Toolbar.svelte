@@ -32,6 +32,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { FONT_SIZES, HIGHLIGHT_COLORS, TEXT_COLORS } from '../../schemas';
+	import { LIST_STYLE_OPTIONS, ownListStyle } from '../../doc/list-style';
 	import ColorMenu from './ColorMenu.svelte';
 	import { MOD } from './keys';
 	import ToolButton from './ToolButton.svelte';
@@ -41,6 +42,7 @@
 		tick,
 		canEdit,
 		onlink,
+		onliststyle,
 		onimage,
 		onembed,
 		onassist
@@ -49,6 +51,8 @@
 		tick: number;
 		canEdit: boolean;
 		onlink: () => void;
+		/** Nummerierte Liste mit dieser Art (`null` = Standard) */
+		onliststyle?: (style: string | null) => void;
 		/** ohne Angabe kein Knopf (Gäste) */
 		onimage?: () => void;
 		onembed?: () => void;
@@ -109,6 +113,19 @@
 	const AlignIcon = $derived(ALIGNS.find((a) => a.value === align)?.icon ?? AlignLeft);
 
 	const inTable = $derived(is('table'));
+	/** Wirksame Nummerierungsart am Cursor (innerste geordnete Liste mit eigener Art, sonst Standard) */
+	const listStyle = $derived.by(() => {
+		void tick;
+		if (!editor || !is('orderedList')) return null;
+		const from = editor.state.selection.$from;
+		for (let d = from.depth; d > 0; d--) {
+			const node = from.node(d);
+			if (node.type.name !== 'orderedList') continue;
+			const own = ownListStyle(node.attrs);
+			if (own) return own;
+		}
+		return 'decimal';
+	});
 	const canUndo = $derived.by(() => {
 		void tick;
 		return !!editor && canEdit && editor.can().undo();
@@ -308,6 +325,35 @@
 				disabled={off}
 				onclick={() => run((c) => c.toggleOrderedList())}
 			/>
+			{#if onliststyle}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger disabled={off}>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="sm"
+								class="-ml-0.5 h-8 w-5 shrink-0 px-0 text-muted-foreground"
+								aria-label="Nummerierungsart"
+								title="Nummerierungsart"
+							>
+								<ChevronDown class="size-3 opacity-60" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="start" class="w-64">
+						<DropdownMenu.Label class="text-xs font-normal text-muted-foreground">
+							Nummerierung – Unterpunkte mit Tab einrücken
+						</DropdownMenu.Label>
+						{#each LIST_STYLE_OPTIONS as o (o.value)}
+							<DropdownMenu.Item onclick={() => onliststyle(o.value)}>
+								<span class={listStyle === o.value ? 'font-semibold' : ''}>{o.label}</span>
+								<span class="ml-auto font-mono text-xs text-muted-foreground">{o.example}</span>
+							</DropdownMenu.Item>
+						{/each}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			{/if}
 			<ToolButton
 				label="Aufgabenliste"
 				shortcut={`${MOD}+Umschalt+9`}

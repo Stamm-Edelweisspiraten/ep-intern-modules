@@ -12,7 +12,7 @@
  */
 import { sql } from 'drizzle-orm';
 import * as Y from 'yjs';
-import { prosemirrorJSONToYXmlFragment, yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
+import { prosemirrorToYXmlFragment, yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { errors, rowsOf, type Tx } from '$lib/sdk/server';
 import { noteSchema } from './doc/extensions';
 import { assetIdsOf, plainTextOf } from './doc/text';
@@ -183,13 +183,33 @@ export function assertValidUpdate(update: Uint8Array): void {
 
 const b64 = (u: Uint8Array) => Buffer.from(u).toString('base64');
 
+/**
+ * Wartezeit bis zum Ableiten (Suche/Vorschau): je 256 KB Zustand 5 s länger, höchstens 60 s. Bei großen Notizen kostet
+ * jedes Ableiten (ganzes Dokument als JSON + Volltext in die Datenbank) spürbar Zeit – während jemand tippt, soll das
+ * nicht alle paar Sekunden passieren. Jede Änderung schiebt den Zeitpunkt nach hinten; Entladen und Job holen es nach.
+ */
+export function deriveDelayMs(sizeBytes: number): number {
+	return Math.min(
+		60_000,
+		DERIVE_DELAY_MS + Math.floor(Math.max(0, sizeBytes) / (256 * 1024)) * 5_000
+	);
+}
+
+/**
+ * Verdichten nach so vielen Einzel-Updates: mindestens `COMPACT_AFTER_UPDATES`, bei großen Notizen mehr (je 4 KB Zustand
+ * ein Update, höchstens 2000) – Verdichten schreibt den ganzen Zustand neu, Laden von 2000 kleinen Updates dauert < 0,2 s.
+ */
+export function compactThreshold(sizeBytes: number): number {
+	return Math.max(COMPACT_AFTER_UPDATES, Math.min(2000, Math.round(Math.max(0, sizeBytes) / 4096)));
+}
+
 function scheduleDerive(noteId: string, entry: Entry): void {
 	entry.dirty = true;
 	if (entry.deriveTimer) clearTimeout(entry.deriveTimer);
 	entry.deriveTimer = setTimeout(() => {
 		entry.deriveTimer = null;
 		void deriveNote(noteId).catch((e) => console.warn('[notes] Ableiten fehlgeschlagen', e));
-	}, DERIVE_DELAY_MS);
+	}, deriveDelayMs(entry.sizeBytes));
 	entry.deriveTimer.unref?.();
 }
 
@@ -239,7 +259,7 @@ export async function applyClientUpdate(
 		};
 		hub.broadcast(noteId, event, opts.client ?? undefined);
 		scheduleDerive(noteId, entry);
-		if (entry.pending >= COMPACT_AFTER_UPDATES) await compactLocked(noteId, entry);
+		if (entry.pending >= compactThreshold(entry.sizeBytes)) await compactLocked(noteId, entry);
 		return { sizeBytes: entry.sizeBytes };
 	});
 }
@@ -364,10 +384,21 @@ export async function snapshotJson(noteId: string): Promise<Record<string, unkno
 	}
 }
 
+/**
+ * ProseMirror-JSON in ein Yjs-Fragment schreiben. Den Knoten baut UNSER Schema – nicht `prosemirrorJSONToYXmlFragment`:
+ * Im Produktions-Build bündelt Vite `@tiptap/y-tiptap` (Modul-Paket) mit einer eigenen Kopie von `prosemirror-model`;
+ * dessen `Node.fromJSON` mit unserem Schema scheitert dann („Can not convert … to a Fragment“, mehrere Versionen
+ * geladen) – neue Notiz mit Inhalt, Import und Wiederherstellen einer Version brachen ab. Der Weg Knoten → Yjs nutzt
+ * nur Eigenschaften der Knoten, keine Klassen.
+ */
+function writeJson(json: unknown, fragment: Y.XmlFragment): void {
+	prosemirrorToYXmlFragment(noteSchema().nodeFromJSON(json), fragment);
+}
+
 /** Yjs-Startzustand aus ProseMirror-JSON (neue Notiz, Import) */
 export function stateFromJson(json: unknown): Uint8Array {
 	const doc = new Y.Doc();
-	prosemirrorJSONToYXmlFragment(noteSchema(), json, doc.getXmlFragment(YDOC_FIELD));
+	writeJson(json, doc.getXmlFragment(YDOC_FIELD));
 	const state = Y.encodeStateAsUpdate(doc);
 	doc.destroy();
 	return state;
@@ -400,7 +431,7 @@ export async function replaceContent(
 			entry.doc.transact(() => {
 				const fragment = entry.doc.getXmlFragment(YDOC_FIELD);
 				if (fragment.length) fragment.delete(0, fragment.length);
-				prosemirrorJSONToYXmlFragment(noteSchema(), json, fragment);
+				writeJson(json, fragment);
 			}, 'server');
 		} finally {
 			entry.doc.off('update', onUpdate);

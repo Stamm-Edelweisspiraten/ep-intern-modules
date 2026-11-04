@@ -9,7 +9,7 @@ formatiertem Editor (Tiptap 3) mit **Markdown-Kürzeln**, eingefügtem Markdown 
 unterstrichen, durchgestrichen, Schriftgröße, Farbe/Markierung, Ausrichtung, Listen/Aufgaben, Zitat, Code, **Tabellen**, Link, Bild, Trennlinie),
 Slash-Menü (`/`), **Bilder** (Upload/Einfügen/Ziehen, Größe per Griff), **eingebettete Whiteboards** (live bearbeitbar, Core-Mechanismus „Einbetten“),
 Teilen an Principals (vererbt auf Unterseiten), Notizen je **Aktion**, Versionen, Papierkorb, **Export** `.md`/`.zip`/`.html`/`.docx`/`.pdf` und Import
-`.md`/`.zip`. Schema `mod_notes`, v1.3.0 (2026-11-01, Links), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
+`.md`/`.zip`. Schema `mod_notes`, v1.4.0 (2026-11-04, Nummerierungsarten + große Notizen), keine harten Abhängigkeiten, `optionalDependencies: ['members','actions']`.
 Navigation „Notizen“ (Icon `notebook-pen`, `order` 72), Editor vollflächig (`fullBleedRoutes: [':id']`).
 
 Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); formatierter Editor mit Markdown-Kürzeln **plus** Quelltext-Umschalter;
@@ -25,7 +25,8 @@ Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); forma
   umgeht das 1-MB-JSON-Limit des Routers) + Awareness `POST /notes/:id/awareness` (nur weitergereicht). Start: `GET /notes/:id/state?sv=` (binär,
   nur fehlende Änderungen, Header `x-yjs-state-vector` + `x-note-level`) → Client schickt eigene fehlende Änderungen nach (offline bearbeitet).
 - **Server-Dokument** (`doc.service.ts`): je geöffneter Notiz ein `Y.Doc` im Speicher (nach 5 min ohne Verbindung entladen), Schreiben unter einer
-  Sperre je Notiz (`withDocLock`): dekodieren (kaputt → 422) → speichern → anwenden → verteilen; ab 200 Updates bzw. stündlich (Job) verdichten.
+  Sperre je Notiz (`withDocLock`): dekodieren (kaputt → 422) → speichern → anwenden → verteilen; ab 200 Updates (große Notizen später, `compactThreshold`: je 4 KB Zustand ein Update, ≤ 2000) bzw. stündlich (Job) verdichten; Ableiten
+  verzögert je 256 KB um 5 s mehr (≤ 60 s, `deriveDelayMs`).
   Grenze 20 MB je Notiz (413 „Teile sie in Unterseiten auf“). **Nur eine App-Instanz** (Dokumente und Hub im Prozess).
 - **Bilder** speichern im Dokument nur `assetId` (`image`-Knoten), die Adresse baut der Renderer (`assetUrl`), eine freie `src` wird nie ausgegeben;
   Markdown `![alt](asset:<id>)`. **Einbettungen** `embed { module, kind, refId, height }`, Markdown `:::embed {module="…" kind="…" refId="…" height="…"} :::`.
@@ -41,6 +42,7 @@ Nutzerentscheidungen (2026-10-29): eigenes Modul (nicht in „Dateien“); forma
 | `db.ts` | `mdb`, `filesCtx` (Systemkontext `notes-files`), `userRefs`/`refOf` |
 | `doc.service.ts` | Yjs im Speicher: `applyClientUpdate`, `stateFor`, `fullState`, `currentJson`, `stateFromJson`, `jsonFromState`, `replaceContent`, `flushNote`/`flushAll`, `dropDoc`, Test-Hilfen |
 | `live.ts` / `live.endpoints.ts` | Hub (`hub`, `peersOf`, `recheckNotes`, `closeNotes`), Endpunkte `state`, `live`, `updates` (1200/60 s), `awareness` (1500/60 s) |
+| `state-response.ts` | Antwort für `…/state` (intern + Gast): ab 32 KB gzip, `no-store` (`stateResponse`, `acceptsGzip`) |
 | `notes.endpoints.ts` / `tree.service.ts` | Wurzeln (eigene/geteilt/Aktionen), zuletzt bearbeitet, Suche, Papierkorb, `by-action`, Principals, CRUD, Kinder, Verschieben, Freigaben; Aufbau der DTOs, Positionen, Teilbaum |
 | `trash.service.ts` | `purgeExpiredTrash` (Job, ≤ 200 je Lauf), `afterPurge` (Dateien, Dokumente, Streams) |
 | `assets.service.ts` / `assets.endpoints.ts` / `storage.ts` | Bild-Upload (`core.images.process` thumb 640 / web 2000 WebP ohne Metadaten), Auslieferung `GET /assets/:assetId/:variant` (Zugriff über die Notiz des Assets, `IMAGE_RATE_LIMIT`), Pfade `notes/<noteId>/<assetId>-<variant>.<ext>` |
@@ -81,6 +83,18 @@ Bilder, Papierkorb, Suche, Audit), `notes-transfer.test.ts` (alle Exportformate,
 Demo: `node scripts/seed-demo-notes.mjs` (Beispielnotiz mit Unterseiten; `--big` = große Notiz für den Lasttest).
 
 ## Fallen
+- **Zwei `prosemirror-model` im Produktions-Build**: `@tiptap/y-tiptap` ist Modul-Paket und wird samt eigener Kopie gebündelt. Nie
+  `prosemirrorJSONToYXmlFragment` auf dem Server – `writeJson` in `doc.service.ts` baut den Knoten mit `noteSchema()` und ruft
+  `prosemirrorToYXmlFragment` (sonst „Can not convert … to a Fragment“: neue Notiz mit Inhalt, Import, Version wiederherstellen). Tritt nur im Build auf.
+- **`@tiptap/y-tiptap` auf 3.0.9 festgehalten** (2026-11-04): ab 3.0.10 zählt die „position migration“ bei jeder strukturellen Änderung
+  (Enter, Löschen über Blöcke, Einfügen) alle Zeichen des Dokuments durch – ~1 s je Enter bei ~1500 Blöcken, ×4 auf Tablets – und legt die
+  Root-Map `__tiptap_position_migrations:*` an (wächst ~1,4 KB je Änderung). Vor einem Update messen (Playwright, große Notiz, CPU ×4).
+- **Markdown-Tokenizer** (`doc/extensions.ts`): Tiptaps Tabelle, Einbettung und Aufgabenliste prüfen an jeder Blockgrenze den ganzen Rest
+  (quadratisch, 12 000 Blöcke ≈ 9 s). `NoteTable`/`NoteTaskList`/`embedStart` prüfen nur den Anfang. Neue Markdown-Erweiterungen genauso
+  absichern (Test `notes-large.test.ts`).
+- Client: `/state` wird beim Verbinden sofort geholt (nicht erst nach `hello`), Abgleiche laufen nacheinander (`requestSync`); Antwort ab 32 KB
+  gzip (`state-response.ts`). Endgültig abgelehnte Änderungen (400/409/413/422) → Toast + Serverstand neu laden (sonst laufen Client und
+  Server still auseinander: `Gespeichert`, nach dem Neuladen weg).
 - **Kein `content-visibility: auto`** im Editor: Safari (iPad/iPhone) zeichnet übersprungene Blöcke im contenteditable nach Änderungen nicht neu
   (Zeilen verschwanden nach Enter, 2026-10-29) und es schneidet die Namensschilder fremder Cursor ab.
 - `doc.service`-Funktionen und Core-Dienste **nie** in `mdb().transaction` (PGlite hängt).
@@ -130,3 +144,13 @@ Unterseiten, Titel, Versionen, Export, KI.
 - Tests `tests/integration/notes-links.test.ts`. Offen: echte Browser-Prüfung mit mehreren Gästen gleichzeitig, Safari/iOS; Gast-Updates zählen gegen
   das IP-Rate-Limit (1200/60 s je IP – mehrere Gäste hinter einem NAT teilen es).
 
+
+## Nummerierungsarten (2026-11-04, v1.4.0, keine Migration)
+Attribut `listStyle` an `orderedList` (`NoteOrderedList`, Logik `doc/list-style.ts`): `decimal` (1. 2.), `outline` (1. 1.1. 1.1.1.), `classic`
+(1. → a. → i. je Ebene), `lower-alpha` (a)), `upper-alpha` (A.), `upper-roman`, `lower-roman`. `null` = Standard bzw. **wie die Oberliste**: Unterlisten
+(Tab) erben die Art ohne eigenes Attribut; Tiptaps `type` (a/A/i/I aus HTML/Markdown) gilt als Art (`ownListStyle`). Gerendert als `data-list-style`,
+Darstellung per CSS-Zähler in `pages/editor/ListStyles.svelte` (global, auch Versionsvorschau; Start ≠ 1 über `--ol-start`). Auswahl: Pfeil neben
+„Nummerierung“ in der Werkzeugleiste, Slash-Eintrag „Gliederung“; `setListStyleAt` setzt die innerste Liste am Cursor (`decimal` nur ausdrücklich, wenn
+eine Oberliste etwas anderes vererbt). Export: HTML/PDF schreiben Listen mit Art als `ul.task-list`/`li.task-item` mit ausgeschriebener Nummer (die
+PDF-Bereinigung des Cores lässt an `ol` nur `start` zu), Word als Text mit hängendem Einzug, Markdown wie gewöhnliche Liste (Art geht verloren).
+Tests `notes-list-style.test.ts`.

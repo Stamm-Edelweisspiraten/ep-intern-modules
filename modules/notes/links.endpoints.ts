@@ -14,6 +14,7 @@ import {
 } from '$lib/sdk/server';
 import { mdb } from './db';
 import { applyClientUpdate, stateFor } from './doc.service';
+import { stateResponse } from './state-response';
 import { hub, peersOf } from './live';
 import { assetPaths } from './assets.service';
 import { fileResponse } from './storage';
@@ -155,17 +156,12 @@ export const publicLinkEndpoints: AnyApiEndpoint[] = [
 		rateLimit: { limit: 120, windowSec: 60 },
 		params: publicNoteParams,
 		query: publicStateQuery,
-		handler: async ({ params, query }) => {
+		handler: async ({ params, query, request }) => {
 			const access = await resolveGuest(params.token, params.noteId, query.t);
 			const { update, stateVector } = await stateFor(params.noteId, decodeStateVector(query.sv));
-			return new Response(new Uint8Array(update), {
-				status: 200,
-				headers: {
-					'content-type': 'application/octet-stream',
-					'content-length': String(update.byteLength),
-					'x-yjs-state-vector': b64(stateVector),
-					'x-note-level': access.level
-				}
+			return stateResponse(request, update, {
+				'x-yjs-state-vector': b64(stateVector),
+				'x-note-level': access.level
 			});
 		}
 	}),

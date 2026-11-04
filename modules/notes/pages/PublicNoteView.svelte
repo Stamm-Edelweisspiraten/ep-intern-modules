@@ -24,6 +24,7 @@
 		pageIds,
 		onmeta,
 		ongone,
+		onreset,
 		onopen,
 		ontoggletree
 	}: {
@@ -37,6 +38,8 @@
 		pageIds: ReadonlySet<string>;
 		onmeta: (m: Pick<PublicNoteNode, 'id' | 'title' | 'icon' | 'color'>) => void;
 		ongone: () => void;
+		/** Seite neu aufbauen (Änderung abgelehnt → Serverstand laden) */
+		onreset?: () => void;
 		onopen: (id: string) => void;
 		/** Seitenbaum ein-/ausblenden (nur bei Unterseiten) */
 		ontoggletree?: () => void;
@@ -52,7 +55,7 @@
 					l === 'edit' ? 'Du darfst jetzt mitbearbeiten.' : 'Du kannst die Notiz nur noch ansehen.'
 				),
 			onGone: () => ongone(),
-			onReset: () => undefined,
+			onReset: () => onreset?.(),
 			onRejected: (message) => toast.error(message)
 		},
 		level,

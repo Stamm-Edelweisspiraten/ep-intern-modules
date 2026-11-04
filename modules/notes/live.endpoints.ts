@@ -4,6 +4,7 @@ import { requireNoteAccess } from './access';
 import { mdb, userRefs } from './db';
 import { applyClientUpdate, stateFor } from './doc.service';
 import { hub, peersOf } from './live';
+import { stateResponse } from './state-response';
 import {
 	awarenessInput,
 	idParams,
@@ -39,18 +40,12 @@ export const liveEndpoints: AnyApiEndpoint[] = [
 		permission: PERM.view,
 		params: idParams,
 		query: stateQuery,
-		handler: async ({ ctx, params, query }) => {
+		handler: async ({ ctx, params, query, request }) => {
 			const access = await mdb().transaction((tx) => requireNoteAccess(tx, ctx, params.id));
 			const { update, stateVector } = await stateFor(params.id, decodeStateVector(query.sv));
-			return new Response(new Uint8Array(update), {
-				status: 200,
-				headers: {
-					'content-type': 'application/octet-stream',
-					'content-length': String(update.byteLength),
-					'cache-control': 'no-store',
-					'x-yjs-state-vector': b64(stateVector),
-					'x-note-level': access.level
-				}
+			return stateResponse(request, update, {
+				'x-yjs-state-vector': b64(stateVector),
+				'x-note-level': access.level
 			});
 		}
 	}),

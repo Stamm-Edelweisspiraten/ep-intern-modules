@@ -9,6 +9,13 @@
  *   - Einbettungen: Platzhalter-Kasten mit Titel und Link (Adresse aus `opts.embed`).
  */
 import { isUuid } from '../doc/extensions';
+import {
+	childListContext,
+	listMarker,
+	listStart,
+	ownListStyle,
+	type ListContext
+} from '../doc/list-style';
 import type { PmNode } from '../doc/text';
 import { embedKey, embedLabel, type ResolvedEmbed } from './embeds';
 
@@ -17,6 +24,8 @@ export interface HtmlOptions {
 	imageSrc?: (assetId: string) => string | null;
 	/** Einbettungen (Schlüssel `module:kind:refId`) */
 	embeds?: ReadonlyMap<string, ResolvedEmbed>;
+	/** intern: Nummerierung der umgebenden geordneten Liste (Unterlisten erben die Art) */
+	list?: { ctx: ListContext; item: number };
 }
 
 export function escapeHtml(value: unknown): string {
@@ -173,6 +182,32 @@ function imageHtml(node: PmNode, opts: HtmlOptions): string {
 	return `<img${attr('src', src)}${attr('alt', alt)}${styleAttr([width ? `width:${width}px` : null])} />`;
 }
 
+/**
+ * Geordnete Liste: Standard als `<ol>`; mit Nummerierungsart (Gliederung 1.1.1, a), römisch …) mit ausgeschriebenen
+ * Nummern als Liste ohne Aufzählungszeichen (`task-list`/`task-item` – die einzigen Listenklassen, die die
+ * HTML-Bereinigung des PDF-Exports durchlässt), damit HTML, PDF und Editor dieselben Nummern zeigen.
+ */
+function orderedListHtml(node: PmNode, opts: HtmlOptions): string {
+	const ctx = childListContext(opts.list?.ctx ?? null, ownListStyle(node.attrs), opts.list?.item);
+	const start = listStart(node.attrs?.start);
+	const items = Array.isArray(node.content) ? node.content : [];
+	if (!ctx.style) {
+		const s = start > 1 ? attr('start', start) : '';
+		const inner = items
+			.map((item, i) => nodeHtml(item, { ...opts, list: { ctx, item: start + i } }))
+			.join('');
+		return `<ol${s}>${inner}</ol>`;
+	}
+	const inner = items
+		.map((item, i) => {
+			const n = start + i;
+			const body = children(item, { ...opts, list: { ctx, item: n } });
+			return `<li class="task-item"><span>${escapeHtml(listMarker(ctx, n))}</span><div>${body}</div></li>`;
+		})
+		.join('');
+	return `<ul class="task-list">${inner}</ul>`;
+}
+
 /** Ein Knoten als HTML (Allowlist) */
 export function nodeHtml(node: PmNode, opts: HtmlOptions = {}): string {
 	if (!node || typeof node !== 'object') return '';
@@ -189,12 +224,8 @@ export function nodeHtml(node: PmNode, opts: HtmlOptions = {}): string {
 		}
 		case 'bulletList':
 			return `<ul>${children(node, opts)}</ul>`;
-		case 'orderedList': {
-			const start = Math.round(Number(node.attrs?.start));
-			const s =
-				Number.isFinite(start) && start > 1 && start < 1_000_000 ? attr('start', start) : '';
-			return `<ol${s}>${children(node, opts)}</ol>`;
-		}
+		case 'orderedList':
+			return orderedListHtml(node, opts);
 		case 'listItem':
 			return `<li>${children(node, opts)}</li>`;
 		case 'taskList':
@@ -283,6 +314,7 @@ li.task-item { display: flex; gap: .5rem; align-items: flex-start; }
 li.task-item > div > p { margin: 0; }
 li.task-item.checked > div { color: #6b7280; text-decoration: line-through; }
 li.task-item input { margin-top: .4rem; }
+li.task-item > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 hr { border: 0; border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
 a { color: #2563eb; }
 .embed-box { border: 1px dashed #9ca3af; border-radius: 8px; padding: .75rem 1rem; margin: 1rem 0; }
