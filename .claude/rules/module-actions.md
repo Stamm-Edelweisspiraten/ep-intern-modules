@@ -271,6 +271,9 @@ Eigentümer*in/`edit-all` (`canShare`). Liste: `visibleActionsFilter` (eigene + 
   je Einnahme-Gruppe/Ausgabe-Kategorie; **Beleg-Nummern** (`numberExpenses`: Kategorie-Reihenfolge, Datum, Erfassung, id;
   Einnahmen und `refund` ohne Nummer, „(fehlt)“ ohne Beleg); Seitenumbruch, Abschlussseite (Ergebnis **vor** Rückzahlung,
   Soll/Ist, Erstattungen mit Bankdaten, Rückzahlung, „Buchungsanweisung für die Kasse“, Anlagenverzeichnis).
+  **Für die Kasse** (2026-11-04): „Erstattungen an Personen“ mit Spalten Gesamt | ausgezahlt | noch offen (+ Summen, Caption „noch offen“);
+  Tabelle „Offene Überweisungen des Stamms“ (offene Stamm-Ausgaben: Beleg-Nr., Empfänger, IBAN/BIC, Verwendungszweck, Betrag; IBAN über
+  `ReportInput.clubIbans`, live geladen, Klartext nur mit `payout.view`); Buchungsanweisung trennt „bereits ausgezahlt“ / „noch zu überweisen“.
   Belege als Anhang (`attachments`, PDF/Bild, max. 80 Stück/50 MB, Reihenfolge = Nummer, nur mit `actions.storage.read`;
   nicht anhängbare → Hinweis). Bankdaten im Bericht nur mit `payout.view`, sonst maskiert.
 

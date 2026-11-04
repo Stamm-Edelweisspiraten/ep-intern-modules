@@ -153,23 +153,93 @@ describe('buildReportBlocks', () => {
 				bic: 'COBADEFF'
 			},
 			{ name: 'Bob', openCents: 0, reimbursedCents: 500, iban: null, bic: null },
+			{ name: 'Cleo', openCents: 300, reimbursedCents: 200, iban: null, bic: null },
 			{ name: 'Nix', openCents: 0, reimbursedCents: 0, iban: null, bic: null }
 		];
 		const b = buildReportBlocks(make(entries, { payees, actionName: 'X'.repeat(80) }));
 		const t = byCaption(b, 'Erstattungen an Personen')!;
-		expect(t.rows).toHaveLength(2);
-		expect(t.columns).toEqual(['Name', 'Bankverbindung', 'Betrag', 'Status']);
+		expect(t.rows).toHaveLength(3);
+		expect(t.columns).toEqual(['Name', 'Bankverbindung', 'Gesamt', 'ausgezahlt', 'noch offen']);
+		expect(t.caption?.right).toContain('13,00');
 		expect(t.rows[0]![1]).toBe('DE89 •••• 3000\nCOBADEFF');
-		expect(t.rows[0]![3]).toBe('offen');
-		expect(t.rows[1]![3]).toBe('ausgezahlt');
+		expect(t.rows[0]!.slice(2)).toEqual([
+			expect.stringContaining('10,00'),
+			'–',
+			expect.stringContaining('10,00')
+		]);
+		expect(t.rows[1]!.slice(2)).toEqual([
+			expect.stringContaining('5,00'),
+			expect.stringContaining('5,00'),
+			'–'
+		]);
+		expect(t.rows[2]!.slice(2)).toEqual([
+			expect.stringContaining('5,00'),
+			expect.stringContaining('2,00'),
+			expect.stringContaining('3,00')
+		]);
 		expect(t.rows[1]![1]).toBe('–');
 		expect(t.totalRow![0]).toEqual({ text: 'Summe', colspan: 2 });
-		expect(t.totalRow![1]).toContain('15,00');
+		expect(t.totalRow![1]).toContain('20,00');
+		expect(t.totalRow![2]).toContain('7,00');
+		expect(t.totalRow![3]).toContain('13,00');
+		const instr = byCaption(b, 'Buchungsanweisung für die Kasse')!;
+		const labels = instr.rows.map((r) => r[0]);
+		expect(labels).toContain('Auslagen-Erstattungen an Personen – bereits ausgezahlt');
+		expect(labels).toContain('Auslagen-Erstattungen an Personen – noch zu überweisen (2 Personen)');
 		const purpose = b
 			.filter((x) => x.type === 'paragraph')
 			.map((x) => (x as { text: string }).text)
 			.find((x) => x.startsWith('Verwendungszweck der Überweisungen:'))!;
 		expect(purpose.length).toBe('Verwendungszweck der Überweisungen: '.length + 60);
+	});
+
+	it('Offene Überweisungen des Stamms: nur offene, Bankdaten, Buchungsanweisung', () => {
+		const list = [
+			entry({ id: 'paid', description: 'Bezahlt', amountCents: 900 }),
+			entry({
+				id: 'open1',
+				description: 'Bus',
+				category: 'travel',
+				amountCents: 12000,
+				clubPaidAt: null,
+				recipient: { name: 'Busfirma', ibanMasked: 'DE12 •••• 0001', bic: 'BUSDEFF' },
+				purpose: 'Rechnung 42'
+			}),
+			entry({
+				id: 'open2',
+				description: 'Haus',
+				category: 'lodging',
+				amountCents: 30000,
+				clubPaidAt: null,
+				recipient: { name: 'Heim', ibanMasked: 'DE34 •••• 0002', bic: null },
+				purpose: null
+			})
+		];
+		const b = buildReportBlocks(make(list, { clubIbans: { open1: 'DE12500105170648489890' } }));
+		const t = byCaption(b, 'Offene Überweisungen des Stamms')!;
+		expect(t.columns).toEqual([
+			'Beleg-Nr.',
+			'Empfänger',
+			'Bankverbindung',
+			'Verwendungszweck',
+			'Betrag'
+		]);
+		expect(t.rows).toHaveLength(2);
+		const bus = t.rows.find((r) => r[1] === 'Busfirma')!;
+		expect(bus[2]).toBe('DE12500105170648489890\nBUSDEFF');
+		expect(bus[3]).toBe('Rechnung 42');
+		expect(bus[0]).toBe(String(numberExpenses(list).get('open1')));
+		const heim = t.rows.find((r) => r[1] === 'Heim')!;
+		expect(heim[2]).toBe('DE34 •••• 0002');
+		expect(heim[3]).toBe('Haus');
+		expect(t.totalRow![1]).toContain('420,00');
+		const instr = byCaption(b, 'Buchungsanweisung für die Kasse')!;
+		const row = instr.rows.find((r) => String(r[0]).startsWith('Offene Überweisungen des Stamms'))!;
+		expect(row[0]).toBe('Offene Überweisungen des Stamms (2) – noch zu überweisen');
+		expect(row[1]).toContain('420,00');
+		expect(byCaption(buildReportBlocks(make([list[0]!])), 'Offene Überweisungen des Stamms')).toBe(
+			undefined
+		);
 	});
 
 	it('Abschluss: Reihenfolge, noHeader, Soll/Differenz nur mit Plan', () => {

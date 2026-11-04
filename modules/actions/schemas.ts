@@ -1277,6 +1277,11 @@ export interface ReportInput {
 		iban: string | null;
 		bic: string | null;
 	}[];
+	/**
+	 * IBAN offener Stamm-Ausgaben je Buchungs-id, vom Endpoint entschieden: Klartext (mit
+	 * `actions.payout.view`) oder maskiert. Fehlt ein Eintrag, gilt `recipient.ibanMasked`.
+	 */
+	clubIbans?: Record<string, string>;
 	/** Gebuchte Rückzahlung an Teilnehmende (Snapshot) oder `null` */
 	refund?: {
 		/** `amountCents` = Anteil; `donatedCents` = davon an den Stamm gespendet (fehlt = 0) */

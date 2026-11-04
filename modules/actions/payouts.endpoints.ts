@@ -189,12 +189,20 @@ export async function buildAccountingReport(
 			sql`SELECT id, receipt_path FROM accounting_entries
 				WHERE action_id = ${id} AND receipt_path IS NOT NULL`
 		);
+		// Bankdaten der Stamm-Ausgaben live (auch für ZA, wie bei den Empfängern)
+		const clubBank = await rowsOf(
+			tx,
+			sql`SELECT id, recipient_iban_enc, recipient_iban_last4 FROM accounting_entries
+				WHERE action_id = ${id} AND type = 'expense' AND paid_by = 'club'
+					AND recipient_iban_last4 IS NOT NULL`
+		);
 		if (interimId) {
 			const { interim, snapshot } = await loadInterimSnapshot(tx, id, interimId);
 			return {
 				a,
 				payees,
 				receipts,
+				clubBank,
 				interim: { id: interim.id, number: interim.number, takenAt: snapshot.takenAt },
 				snapshot,
 				entries: snapshot.entries,
@@ -208,6 +216,7 @@ export async function buildAccountingReport(
 			a,
 			payees,
 			receipts,
+			clubBank,
 			interim: null,
 			snapshot: null,
 			entries,
@@ -231,6 +240,19 @@ export async function buildAccountingReport(
 		return maskFromLast(str(p.iban_last4));
 	};
 	const livePayees = new Map(data.payees.map((p) => [String(p.id), p]));
+	// Nur offene Stamm-Ausgaben des Berichts (ZA: Status aus dem Snapshot)
+	const openClubIds = new Set(
+		data.entries
+			.filter((e) => e.type === 'expense' && e.paidBy === 'club' && e.clubPaidAt === null)
+			.map((e) => e.id)
+	);
+	const clubIbans: Record<string, string> = {};
+	for (const r of data.clubBank) {
+		const entryId = String(r.id);
+		if (!openClubIds.has(entryId)) continue;
+		const iban = ibanOf({ iban_enc: r.recipient_iban_enc, iban_last4: r.recipient_iban_last4 });
+		if (iban) clubIbans[entryId] = iban;
+	}
 	let payees: ReportInput['payees'];
 	let summary: ReportInput['summary'];
 	if (snapshot) {
@@ -322,6 +344,7 @@ export async function buildAccountingReport(
 		autoIncome: data.autoIncome,
 		interim: interim ? { number: interim.number, takenAt: interim.takenAt } : null,
 		payees,
+		clubIbans,
 		refund: data.refund
 			? {
 					items: data.refund.items.map((i) => ({

@@ -420,16 +420,14 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 		(p) => cents(p.openCents) + cents(p.reimbursedCents) > 0
 	);
 	const payeesTotal = payees.reduce((a, p) => a + cents(p.openCents) + cents(p.reimbursedCents), 0);
+	const payeesPaid = payees.reduce((a, p) => a + cents(p.reimbursedCents), 0);
+	const payeesOpen = payees.reduce((a, p) => a + cents(p.openCents), 0);
+	const payeesOpenCount = payees.filter((p) => cents(p.openCents) > 0).length;
+	const bank = (iban: string | null | undefined, bic: string | null | undefined): string =>
+		iban ? (bic ? `${iban}\n${bic}` : iban) : bic ? `–\n${bic}` : '–';
+	const moneyOrDash = (value: number): string => (value > 0 ? money(value) : '–');
 	if (payees.length > 0) {
 		const purpose = `${input.actionName} Auslagen`.slice(0, 60);
-		const status = (p: (typeof payees)[number]): string =>
-			cents(p.openCents) === 0
-				? 'ausgezahlt'
-				: cents(p.reimbursedCents) === 0
-					? 'offen'
-					: 'teilweise offen';
-		const bank = (p: (typeof payees)[number]): string =>
-			p.iban ? (p.bic ? `${p.iban}\n${p.bic}` : p.iban) : p.bic ? `–\n${p.bic}` : '–';
 		blocks.push({
 			type: 'paragraph',
 			text: `Verwendungszweck der Überweisungen: ${purpose}`
@@ -437,17 +435,48 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 		blocks.push({
 			type: 'table',
 			variant: 'grid',
-			caption: { left: 'Erstattungen an Personen' },
-			columns: ['Name', 'Bankverbindung', 'Betrag', 'Status'],
-			align: ['left', 'left', 'right', 'left'],
-			widths: [3, 6, 2, 2],
+			caption: {
+				left: 'Erstattungen an Personen',
+				...(payeesOpen > 0 ? { right: `noch offen: ${money(payeesOpen)}` } : {})
+			},
+			columns: ['Name', 'Bankverbindung', 'Gesamt', 'ausgezahlt', 'noch offen'],
+			align: ['left', 'left', 'right', 'right', 'right'],
+			widths: [3, 5, 2, 2, 2],
 			rows: payees.map((p) => [
 				p.name,
-				bank(p),
+				bank(p.iban, p.bic),
 				money(cents(p.openCents) + cents(p.reimbursedCents)),
-				status(p)
+				moneyOrDash(cents(p.reimbursedCents)),
+				moneyOrDash(cents(p.openCents))
 			]),
-			totalRow: [{ text: 'Summe', colspan: 2 }, money(payeesTotal), '']
+			totalRow: [
+				{ text: 'Summe', colspan: 2 },
+				money(payeesTotal),
+				money(payeesPaid),
+				money(payeesOpen)
+			]
+		});
+	}
+
+	// Offene Stamm-Ausgaben: Überweisung durch die Kasse steht noch aus
+	const openClub = expenses.filter((e) => e.paidBy === 'club' && e.clubPaidAt === null);
+	const openClubTotal = sum(openClub);
+	if (openClub.length > 0) {
+		blocks.push({
+			type: 'table',
+			variant: 'grid',
+			caption: { left: 'Offene Überweisungen des Stamms', right: money(openClubTotal) },
+			columns: ['Beleg-Nr.', 'Empfänger', 'Bankverbindung', 'Verwendungszweck', 'Betrag'],
+			align: ['right', 'left', 'left', 'left', 'right'],
+			widths: [2, 3, 4, 3, 2],
+			rows: openClub.map((e) => [
+				String(numbering.get(e.id)),
+				e.recipient?.name ?? '–',
+				bank(input.clubIbans?.[e.id] ?? e.recipient?.ibanMasked, e.recipient?.bic),
+				e.purpose || e.description,
+				money(e.amountCents)
+			]),
+			totalRow: [{ text: 'Summe', colspan: 4 }, money(openClubTotal)]
 		});
 	}
 
@@ -509,10 +538,22 @@ export function buildReportBlocks(input: ReportInput): PdfBlock[] {
 	}
 
 	const instructions: string[][] = [['Einnahmen insgesamt', money(s.incomeCents)]];
-	if (payees.length > 0) {
+	if (payeesPaid > 0) {
 		instructions.push([
-			`Auslagen-Erstattungen an Personen (${payees.length})`,
-			`− ${money(payeesTotal)}`
+			'Auslagen-Erstattungen an Personen – bereits ausgezahlt',
+			`− ${money(payeesPaid)}`
+		]);
+	}
+	if (payeesOpen > 0) {
+		instructions.push([
+			`Auslagen-Erstattungen an Personen – noch zu überweisen (${payeesOpenCount} ${payeesOpenCount === 1 ? 'Person' : 'Personen'})`,
+			`− ${money(payeesOpen)}`
+		]);
+	}
+	if (openClub.length > 0) {
+		instructions.push([
+			`Offene Überweisungen des Stamms (${openClub.length}) – noch zu überweisen`,
+			`− ${money(openClubTotal)}`
 		]);
 	}
 	if (refund && donation) {
