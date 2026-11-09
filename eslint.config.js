@@ -11,5 +11,20 @@ const core = (await import('./.core/eslint.config.js')).default;
 
 export default [
 	...core,
-	{ ignores: ['.core/', 'modules/node_modules/', '.data/', 'test-results/', 'playwright-report/'] }
+	{
+		ignores: [
+			'.core/',
+			'.basic/',
+			'modules/node_modules/',
+			// Basismodule (Kopie aus atrium-basic-modules, dort geprüft)
+			'modules/files/',
+			'modules/notes/',
+			'modules/tasks/',
+			'modules/whiteboard/',
+			'modules/events/',
+			'.data/',
+			'test-results/',
+			'playwright-report/'
+		]
+	}
 ];

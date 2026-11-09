@@ -2,6 +2,12 @@ node_modules
 modules/node_modules
 modules/package.json
 modules/package-lock.json
+# Basismodule: von `npm run setup` aus atrium-basic-modules kopiert (scripts/basic-modules.mjs)
+/modules/files/
+/modules/notes/
+/modules/tasks/
+/modules/whiteboard/
+/modules/events/
 .data
 /test-results
 /playwright-report

@@ -12,14 +12,6 @@
 			"path": "ep-stamm"
 		},
 		{
-			"id": "events",
-			"path": "events"
-		},
-		{
-			"id": "files",
-			"path": "files"
-		},
-		{
 			"id": "galleries",
 			"path": "galleries"
 		},
@@ -36,10 +28,6 @@
 			"path": "messages"
 		},
 		{
-			"id": "notes",
-			"path": "notes"
-		},
-		{
 			"id": "offices",
 			"path": "offices"
 		},
@@ -48,20 +36,12 @@
 			"path": "orders"
 		},
 		{
-			"id": "tasks",
-			"path": "tasks"
-		},
-		{
 			"id": "treasury",
 			"path": "treasury"
 		},
 		{
 			"id": "website",
 			"path": "website"
-		},
-		{
-			"id": "whiteboard",
-			"path": "whiteboard"
 		}
 	]
 }

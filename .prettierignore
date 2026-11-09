@@ -3,4 +3,10 @@ node_modules
 modules/node_modules
 modules/package.json
 modules/package-lock.json
+modules/files
+modules/notes
+modules/tasks
+modules/whiteboard
+modules/events
 *.md
+.basic

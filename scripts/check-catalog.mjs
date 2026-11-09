@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MARKER } from './basic-modules.mjs';
 
 const MODULES = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'modules');
 const catalog = JSON.parse(readFileSync(join(MODULES, 'atrium-modules.json'), 'utf8'));
@@ -14,6 +15,8 @@ for (const e of catalog.modules ?? []) {
 }
 const onDisk = readdirSync(MODULES, { withFileTypes: true })
 	.filter((d) => d.isDirectory() && existsSync(join(MODULES, d.name, 'atrium-module.json')))
+	// kopierte Basismodule (scripts/basic-modules.mjs) gehören zum Katalog von `atrium-basic-modules`
+	.filter((d) => !existsSync(join(MODULES, d.name, MARKER)))
 	.map((d) => d.name);
 for (const id of onDisk) if (!inCatalog.has(id)) problems.push(`fehlt im Katalog: ${id}`);
 for (const [id, path] of inCatalog) {

@@ -1,3 +1,6 @@
 [submodule ".core"]
 	path = .core
 	url = https://github.com/KalypzoSolutions/kalypzo-atrium.git
+[submodule ".basic"]
+	path = .basic
+	url = https://github.com/KalypzoSolutions/atrium-basic-modules.git

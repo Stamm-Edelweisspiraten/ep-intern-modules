@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { copiedBasicModules } from './basic-modules.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CORE = join(ROOT, '.core');
@@ -24,7 +25,17 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const COMMANDS = {
 	check: [npm, ['run', 'check']],
 	// nur die Tests der Module (Core-Tests laufen im Core-Repo)
-	test: [npx, ['vitest', 'run', MODULES, ...rest]],
+	// ohne die kopierten Basismodule (deren Tests laufen in atrium-basic-modules; modulübergreifende in _integration)
+	test: [
+		npx,
+		[
+			'vitest',
+			'run',
+			MODULES,
+			...copiedBasicModules().map((id) => `--exclude=**/modules/${id}/**`),
+			...rest
+		]
+	],
 	build: [npm, ['run', 'build']],
 	// Lint/Format aus der Wurzel dieses Repos (eigene eslint.config.js lädt die des Core, eigene .prettierrc)
 	lint: [npx, ['eslint', 'modules', 'scripts', ...rest]],

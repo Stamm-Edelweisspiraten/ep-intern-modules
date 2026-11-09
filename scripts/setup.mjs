@@ -3,7 +3,8 @@
 // 1. Core als Git-Submodul `.core` holen (fester Tag, siehe .gitmodules) und dessen Abhängigkeiten installieren
 // 2. `node_modules` dieses Repos = Link auf `.core/node_modules` (Junction unter Windows), damit Moduldateien die
 //    Pakete des Core finden (Svelte, Zod, bits-ui …)
-// 3. modulspezifische npm-Pakete (Feld `npm` der `atrium-module.json`) nach `modules/node_modules` installieren –
+// 3. Basismodule aus `atrium-basic-modules` nach `modules/` kopieren (siehe scripts/basic-modules.mjs)
+// 4. modulspezifische npm-Pakete (Feld `npm` der `atrium-module.json`) nach `modules/node_modules` installieren –
 //    genau wie der Supervisor beim Neubau im Server
 import { execFileSync } from 'node:child_process';
 import {
@@ -17,6 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { syncBasicModules } from './basic-modules.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CORE = join(ROOT, '.core');
@@ -49,6 +51,9 @@ if (stat && !stat.isSymbolicLink()) {
 }
 if (stat) rmSync(link, { force: true });
 symlinkSync(join(CORE, 'node_modules'), link, 'junction');
+
+console.log('== Basismodule');
+syncBasicModules();
 
 console.log('== Pakete der Module');
 const known = new Set([

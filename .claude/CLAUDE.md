@@ -7,6 +7,9 @@ Fachmodule der Edelweißpiraten (Pfadfinder-Stamm) für den Core **Kalypzo Atriu
 ## Aufbau
 - `modules/<id>/` – je Modul `atrium-module.json`, `module.ts`, `ui.ts`, `migrations/`, `pages/`, `tests/`, `e2e/`; Katalog `modules/atrium-modules.json`.
 - `modules/_integration/` – modulübergreifende Tests (Backup mit echten Daten, Suche, Datenschutz, Endpunkt-/Doku-Abgleich).
+- Basismodule `files`, `notes`, `tasks`, `whiteboard`, `events` stammen aus dem Repo `atrium-basic-modules` und werden von
+  `npm run setup` nach `modules/<id>/` **kopiert** (gitignored, Marker `.from-basic`, `scripts/basic-modules.mjs`). Dort **nie** ändern –
+  Änderungen im Repo `atrium-basic-modules`, danach `npm run setup`. Ihre Regeln liegen dort unter `.claude/rules/module-<id>.md`.
 - `modules/ep-stamm` – Profil-Modul (Briefkopf, Mail-Kopf, Wappen, Einstellungs-Vorgaben); ohne es sieht alles neutral aus.
 - `scripts/` – `setup.mjs`, `core.mjs` (Befehle im Core mit `ATRIUM_MODULES_DIR=./modules`), Prüfskripte, Demo-Seeds `seed-demo-*.mjs`.
 - `.claude/rules/module-<id>.md` – Regeln je Modul (laden per `paths:`).
