@@ -30,13 +30,13 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 | `db.ts` | `mdb`, `rows`, `today()` (= `todayBerlin()`, Test-Override `setTodayForTests` aus `$lib/sdk/dates`), `nextNumber` (B-/E-JJJJ-NNNN, Advisory-Lock), Dienste `membersService`, `treasuryService()`/`officesService()` (optional, `null`), `userNames` |
 | `articles.service.ts` / `articles.endpoints.ts` | Artikel laden (Katalog vs. Verwaltung), CRUD, Varianten ersetzen (archivieren statt löschen, wenn verwendet), Reihenfolge |
 | `files.ts` / `images.endpoints.ts` | Bilder wie `galleries` (Systemkontext `orders-files`, `core.images.process` thumb 480 / web 1600 WebP; Auslieferung gestreamt, `IMAGE_RATE_LIMIT` 1200/60 s; Löschen per `core.storage.removeMany`, #23/#24) |
-| `orders.service.ts` / `orders.endpoints.ts` | Bestellen, Liste/Detail, Storno, Ausgabe, `/my/members`, `/members`, `/overview` |
+| `orders.service.ts` / `orders.endpoints.ts` | Bestellen, Liste/Detail, Storno, Ausgabe, Bearbeiten (`PATCH`), Löschen (`DELETE`), `/my/members`, `/members`, `/overview` |
 | `stock.endpoints.ts` | Lager (Bestand, Nachfrage, unterwegs, Fehlmenge), Korrektur, Bewegungen |
 | `supplier.endpoints.ts` | Einkauf: Vorschlag, CRUD, Wareneingang, Rest stornieren, abschließen/öffnen, Lieferantenrechnung (multipart) |
 | `treasury-link.ts` | `pushInvoice`, `pushPayable`, `syncTreasury` (Job) |
 | `notify.ts` | Amt `kaemmerer`: `order-created` (nach Bestellung), `stock-deficit` (Tagesjob, nur bei geändertem Stand – `digest_state`) |
 | `reset.ts` | Bereich `all` (alle Tabellen + Bilder, `rebuild`), `resetUsers` |
-| `pages/` | `OrdersPage` (Tabs `?tab=` bestellen · meine · bestellungen · lager · einkauf · artikel je nach Recht), `CatalogTab`/`ArticleCard`/`ArticleDetailDialog`/`CartPanel` (Warenkorb in `sessionStorage`, mobil `MobileActionBar` + Sheet), `MyOrdersTab`, `ArticlesTab`/`ArticleDialog`/`VariantEditor`/`ImageManager`, `OrdersAdminTab`/`OrderCreateDialog`/`HandoutDialog`/`CancelItemsDialog`, `StockTab`/`StockCorrectionDialog`, `SupplierOrdersTab`/`SupplierOrderDialog`/`ReceiveDialog`/`SupplierInvoiceDialog`, Badges `OrderStatusBadge`/`PaymentBadge`/`SupplierStatusBadge`, `helpers.ts`, `admin-helpers.ts` |
+| `pages/` | `OrdersPage` (Tabs `?tab=` bestellen · meine · bestellungen · lager · einkauf · artikel je nach Recht), `CatalogTab`/`ArticleCard`/`ArticleDetailDialog`/`CartPanel` (Warenkorb in `sessionStorage`, mobil `MobileActionBar` + Sheet), `MyOrdersTab`, `ArticlesTab`/`ArticleDialog`/`VariantEditor`/`ImageManager`, `OrdersAdminTab`/`OrderCreateDialog`/`OrderEditDialog`/`HandoutDialog`/`CancelItemsDialog`, `StockTab`/`StockCorrectionDialog`, `SupplierOrdersTab`/`SupplierOrderDialog`/`ReceiveDialog`/`SupplierInvoiceDialog`, Badges `OrderStatusBadge`/`PaymentBadge`/`SupplierStatusBadge`, `helpers.ts`, `admin-helpers.ts` |
 | `migrations/0001_init.sql`, `0002_digest_state.sql`, `0003_fk_indexes.sql` | Schema; Merker der Fehlmengen-Meldung; Indizes `stock_movements.order_item_id`/`supplier_item_id` (#73) |
 
 ## Datenmodell
@@ -59,6 +59,18 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
   die Listenreihenfolge wird beim Speichern zu `article_variants.position` (Katalog, Lager, Bestellung). IDs bleiben erhalten.
 - **Ausgabe** nur aus dem Lager (Menge ≤ offen und ≤ Bestand, sonst 422/409 „Nur N auf Lager“). **Storno**: eigene Bestellung (create) nur, solange nichts
   ausgegeben ist (409); `manage` storniert beliebige offene Mengen. Storno-Grund nur als `hasReason` im Audit.
+- **Bearbeiten** (2026-11-11, `PATCH /orders/:id`, Recht `orders.order.edit`, `OrderEditDialog` über den Stift im Tab „Bestellungen“):
+  `items` ist die vollständige Liste (bestehende über `itemId`, neue über `variantId`; fehlend oder Menge 0 = entfernen). `quantity` ist die
+  **gültige** Menge (bestellt ohne Storniertes): eine geänderte Menge setzt `quantity` neu und `cancelled_qty = 0`, nie unter `delivered_qty`;
+  Positionen mit Ausgabe lassen sich nicht entfernen (422). Einzelpreis änderbar (Snapshot, nur diese Bestellung). Neue Artikel müssen bestellbar
+  sein und dürfen noch nicht in der Bestellung stehen. Mindestens eine Position mit Menge > 0 → ein Voll-Storno wird aufgehoben. Danach
+  `pushInvoice` (Rechnung angepasst bzw. reaktiviert), Audit `orders.order.updated`, Benachrichtigung `my-order` „geändert“.
+  Mitglied ist **nicht** änderbar (Empfänger der Rechnung gehört der Kasse).
+- **Löschen** (2026-11-11, `DELETE /orders/:id`, Recht `orders.order.delete`, Papierkorb im Tab „Bestellungen“ mit Rückfrage): zuerst
+  `upsertOrderInvoice` ohne Posten → Rechnung **storniert**, bleibt in der Kasse (Nummernkreis lückenlos, Bezahltes wird Guthaben); dann
+  `DELETE FROM orders` (Positionen per CASCADE, `stock_movements.order_item_id` → `NULL`). Ausgegebene Ware bleibt ausgegeben, Bestand unverändert.
+  Mit Rechnung und Kasse inaktiv oder Storno-Fehler → 409, Bestellung bleibt. Audit `orders.order.deleted` (Nummer, Zähler, `invoiceCancelled`),
+  Benachrichtigung „gelöscht“ (Kopfdaten vorher gelesen, `snapshot`). `Order.canEdit`/`canDelete` spiegeln die Rechte.
 - **Lieferantenbestellung**: Positionen änderbar, solange nichts eingegangen ist (409); Wareneingang in Teilmengen erhöht den Bestand; „Rest stornieren“
   storniert offene Mengen und schließt ab (Fehlmengen erscheinen wieder im Lager).
 - Varianten, die bestellt/eingekauft/bewegt wurden oder Bestand haben, werden beim Entfernen **archiviert**; Artikel mit Verwendung werden beim Löschen archiviert.
@@ -80,24 +92,26 @@ die*der Kämmerer*in im Tab „Bestellungen“ über **„Bestellung anlegen“*
 | `orders.order.view` | Katalog, eigene Bestellungen; Grundrecht |
 | `orders.order.create` | Für verknüpfte Mitglieder bestellen, eigene stornieren (solange nichts ausgegeben) |
 | `orders.order.manage` | Alle Bestellungen, für jedes Mitglied bestellen, ausgeben, stornieren |
+| `orders.order.edit` | Bestellungen nachträglich bearbeiten (Positionen, Mengen, Preise, Notiz); die Liste aller Bestellungen braucht weiter `manage` |
+| `orders.order.delete` | Bestellungen ganz löschen (Rechnung wird storniert) |
 | `orders.article.manage` | Artikel, Größen, Preise, Notizen, Nachbestelllinks, Bilder |
 | `orders.stock.manage` | Lager, Korrekturen, Einkauf, Wareneingang, Lieferantenrechnung an die Kasse |
-`defaultRoleGrants`: „Mitglied“ → view + create; „Kämmerer*in“ → alle. Die Amts-Vorlage `kaemmerer` verleiht **keine** Rolle von selbst – Rolle „Kämmerer*in“ im
+`defaultRoleGrants`: „Mitglied“ → view + create; „Kämmerer*in“ → alle (edit/delete seit 1.2.0, einmalig nachvergeben). Die Amts-Vorlage `kaemmerer` verleiht **keine** Rolle von selbst – Rolle „Kämmerer*in“ im
 Amt verknüpfen (Modul `offices`), dann erhalten die Inhaber*innen die Rechte. Keine `orders.storage.*`-Rechte (Bilder per Systemkontext).
 
 ## API (`/api/v1/modules/orders/…`)
 `GET/POST /articles`, `PUT /articles/order`, `GET/PATCH/DELETE /articles/:id`, Bilder `POST /articles/:id/images`, `PUT …/images/order`,
 `DELETE …/images/:imageId`, `GET …/images/:imageId/:variant` · `GET /my/members`, `GET /members?search=`, `GET /overview` · `GET/POST /orders`,
-`GET /orders/:id`, `POST /orders/:id/cancel|handout` · `GET /stock`, `POST /stock/corrections`, `GET /stock/movements` · `GET /supplier-orders/suggestion`,
+`GET/PATCH/DELETE /orders/:id`, `POST /orders/:id/cancel|handout` · `GET /stock`, `POST /stock/corrections`, `GET /stock/movements` · `GET /supplier-orders/suggestion`,
 `GET/POST /supplier-orders`, `GET/PATCH /supplier-orders/:id`, `POST …/:id/receive|cancel-rest|close|reopen`, `PUT/DELETE …/:id/invoice`.
-Audit `orders.article.*`, `orders.order.created|cancelled|handed-out`, `orders.stock.corrected`, `orders.supplier-order.*` – nur IDs/Zähler/Beträge.
+Audit `orders.article.*`, `orders.order.created|updated|cancelled|handed-out|deleted`, `orders.stock.corrected`, `orders.supplier-order.*` – nur IDs/Zähler/Beträge.
 
 ## Benachrichtigungen an Bestellende (2026-10-25, `customer-notify.ts`)
-- `my-order`: angelegt (wenn jemand anderes bestellt), ausgegeben, (teilweise) storniert → bestellendes Konto + mit dem Mitglied verknüpfte Konten
+- `my-order`: angelegt (wenn jemand anderes bestellt), geändert, ausgegeben, (teilweise) storniert, gelöscht → bestellendes Konto + mit dem Mitglied verknüpfte Konten
   (`listLinkedUserIds`), nur mit `orders.order.view`, nie die handelnde Person. Nur manuell geprüft über den Typcheck (kein eigener Test).
 
 ## Tests und Demo
-Unit `tests/unit/orders-stock.test.ts`; Integration `tests/integration/orders-articles.test.ts` (Fake-Storage), `orders.test.ts`, `orders-treasury.test.ts`,
+Unit `tests/unit/orders-stock.test.ts`; Integration `tests/integration/orders-articles.test.ts` (Fake-Storage), `orders.test.ts` (u. a. „Bestellung bearbeiten und löschen“), `orders-treasury.test.ts` (Rechnung bei Bearbeiten/Löschen),
 `treasury-orders.test.ts`; E2E `tests/e2e/orders.spec.ts` (Artikel anlegen, „Bestellung anlegen“ für ein Mitglied + Ausgabe, Einkauf mit Teillieferung).
 Demo: `node scripts/seed-demo-orders.mjs` (nach `seed-demo-modules.mjs`, Bilder brauchen MinIO).
 

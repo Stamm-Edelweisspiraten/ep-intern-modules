@@ -36,6 +36,8 @@ export default defineModule({
 			PERMISSIONS.view,
 			PERMISSIONS.create,
 			PERMISSIONS.manage,
+			PERMISSIONS.edit,
+			PERMISSIONS.delete,
 			PERMISSIONS.articles,
 			PERMISSIONS.stock
 		],
@@ -47,6 +49,10 @@ export default defineModule({
 				'Für die mit dem eigenen Konto verknüpften Mitglieder bestellen und eigene Bestellungen stornieren, solange nichts ausgegeben ist',
 			[PERMISSIONS.manage]:
 				'Alle Bestellungen sehen, für jedes Mitglied bestellen, Ware ausgeben (auch teilweise) und stornieren',
+			[PERMISSIONS.edit]:
+				'Bestellungen nachträglich bearbeiten: Artikel hinzufügen oder entfernen, Mengen, Preise und Notiz ändern (Rechnung wird angepasst)',
+			[PERMISSIONS.delete]:
+				'Bestellungen ganz löschen statt nur zu stornieren (die Rechnung in der Kasse wird storniert)',
 			[PERMISSIONS.articles]:
 				'Artikel pflegen: Titel, Beschreibung, Notizen, Größen, Preise, Nachbestelllinks und Bilder',
 			[PERMISSIONS.stock]:
@@ -58,6 +64,8 @@ export default defineModule({
 				PERMISSIONS.view,
 				PERMISSIONS.create,
 				PERMISSIONS.manage,
+				PERMISSIONS.edit,
+				PERMISSIONS.delete,
 				PERMISSIONS.articles,
 				PERMISSIONS.stock
 			]
@@ -123,7 +131,7 @@ export default defineModule({
 		types: [
 			{
 				key: NOTIFY_MY_ORDER,
-				label: 'Meine Bestellung: angelegt, ausgegeben, storniert',
+				label: 'Meine Bestellung: angelegt, geändert, ausgegeben, storniert, gelöscht',
 				description:
 					'Für Bestellungen deiner Mitglieder, wenn jemand anderes sie anlegt oder bearbeitet.',
 				permission: PERMISSIONS.view

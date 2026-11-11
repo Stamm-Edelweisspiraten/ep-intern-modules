@@ -21,6 +21,10 @@ export const PERMISSIONS = {
 	view: 'orders.order.view',
 	create: 'orders.order.create',
 	manage: 'orders.order.manage',
+	/** Bestellungen nachträglich bearbeiten (Positionen, Mengen, Preise, Notiz) */
+	edit: 'orders.order.edit',
+	/** Bestellungen ganz löschen (Rechnung in der Kasse wird storniert) */
+	delete: 'orders.order.delete',
 	articles: 'orders.article.manage',
 	stock: 'orders.stock.manage'
 } as const;
@@ -261,6 +265,60 @@ export type OrderCancelInput = z.input<typeof orderCancelInput>;
 export const orderHandoutInput = z.object({ items: itemQuantities });
 export type OrderHandoutInput = z.input<typeof orderHandoutInput>;
 
+/**
+ * Position beim Bearbeiten (`PATCH /orders/:id`): bestehende über `itemId`, neue über `variantId`.
+ * `quantity` = gültige Menge (bestellt ohne Storniertes); 0 = Position entfernen (nur ohne Ausgabe).
+ * `unitPriceCents` fehlt = Preis bleibt (neue Positionen: aktueller Artikelpreis).
+ */
+export const orderUpdateItemInput = z
+	.object({
+		itemId: z.uuid().nullish(),
+		variantId: z.uuid().nullish(),
+		quantity: z
+			.number()
+			.int('Nur ganze Zahlen')
+			.min(0, 'Nicht negativ')
+			.max(MAX_QUANTITY, `Höchstens ${MAX_QUANTITY}`),
+		unitPriceCents: cents.optional()
+	})
+	.superRefine((it, c) => {
+		if (!it.itemId && !it.variantId)
+			c.addIssue({ code: 'custom', message: 'Bitte wähle einen Artikel.', path: ['variantId'] });
+		if (!it.itemId && it.quantity < 1)
+			c.addIssue({ code: 'custom', message: 'Mindestens 1', path: ['quantity'] });
+	});
+
+/** PATCH `/orders/:id` – Positionen (vollständige Liste; fehlende bestehende = entfernen) und Notiz */
+export const orderUpdateInput = z.object({
+	items: z
+		.array(orderUpdateItemInput)
+		.min(1, 'Mindestens ein Artikel')
+		.max(MAX_ORDER_ITEMS, `Höchstens ${MAX_ORDER_ITEMS} Positionen`)
+		.superRefine((list, c) => {
+			const variants = new Set<string>();
+			const items = new Set<string>();
+			list.forEach((it, i) => {
+				if (it.itemId) {
+					if (items.has(it.itemId))
+						c.addIssue({ code: 'custom', message: 'Position doppelt', path: [i, 'itemId'] });
+					items.add(it.itemId);
+				} else if (it.variantId) {
+					if (variants.has(it.variantId))
+						c.addIssue({ code: 'custom', message: 'Artikel doppelt', path: [i, 'variantId'] });
+					variants.add(it.variantId);
+				}
+			});
+			if (!list.some((it) => it.quantity > 0))
+				c.addIssue({
+					code: 'custom',
+					message: 'Mindestens ein Artikel – zum Entfernen der ganzen Bestellung „Löschen“ nutzen',
+					path: []
+				});
+		}),
+	note: optionalText(MAX_NOTE)
+});
+export type OrderUpdateInput = z.input<typeof orderUpdateInput>;
+
 export const ORDER_STATUSES = ['open', 'partial', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -333,6 +391,10 @@ export interface Order {
 	payment: OrderPayment | null;
 	/** Darf die*der Aufrufende stornieren (eigene: solange nichts ausgegeben; manage: offene Mengen) */
 	canCancel: boolean;
+	/** Recht `orders.order.edit` */
+	canEdit: boolean;
+	/** Recht `orders.order.delete` */
+	canDelete: boolean;
 	createdAt: string;
 	cancelledAt: string | null;
 }
@@ -340,6 +402,13 @@ export interface Order {
 export interface OrderList {
 	items: Order[];
 	total: number;
+}
+
+/** DELETE `/orders/:id` */
+export interface OrderDeleted {
+	number: string;
+	/** Rechnung in der Kasse storniert (bleibt dort als Stornierung erhalten) */
+	invoiceCancelled: boolean;
 }
 
 export interface OrderCreated {

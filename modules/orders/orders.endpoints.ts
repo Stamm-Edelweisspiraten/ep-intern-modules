@@ -1,6 +1,7 @@
 /**
  * Bestellungen von Mitgliedern: Auswahl der Mitglieder, Bestellen (Rechnung sofort über die Kasse),
- * Liste/Detail, Storno (auch teilweise) und Ausgabe aus dem Lager. Übersicht für die Verwaltung.
+ * Liste/Detail, Storno (auch teilweise), Ausgabe aus dem Lager, nachträgliches Bearbeiten und Löschen.
+ * Übersicht für die Verwaltung.
  */
 import { notifyCustomer } from './customer-notify';
 import { sql, type SQL } from 'drizzle-orm';
@@ -19,15 +20,18 @@ import {
 	orderCreateInput,
 	orderHandoutInput,
 	orderListQuery,
+	orderUpdateInput,
+	invoiceSourceKey,
 	payableRef,
 	PERMISSIONS,
 	type MemberOption,
 	type Order,
 	type OrderCreated,
+	type OrderDeleted,
 	type OrderList,
 	type OrdersOverview
 } from './schemas';
-import { idList, mdb, membersService, nextNumber, num, rows, treasuryService } from './db';
+import { idList, mdb, membersService, nextNumber, num, rows, str, treasuryService } from './db';
 import {
 	buildOrders,
 	canManage,
@@ -503,6 +507,236 @@ export const ordersEndpoints = [
 			});
 			await notifyCustomer(ctx, id, 'handed-out', { quantity: result.quantity });
 			return buildOne(ctx, id);
+		}
+	}),
+	defineEndpoint({
+		method: 'PATCH',
+		path: '/orders/:id',
+		summary: 'Bestellung nachträglich bearbeiten (Positionen, Mengen, Preise, Notiz)',
+		description:
+			'`items` ist die vollständige Liste: bestehende Positionen über `itemId`, neue über `variantId`; fehlende ' +
+			'bzw. Menge 0 werden entfernt (nur ohne Ausgabe). `quantity` ist die gültige Menge – eine geänderte Menge ' +
+			'ersetzt Storniertes der Position, nie unter die ausgegebene Menge. Die Rechnung in der Kasse wird angepasst.',
+		tags: TAGS,
+		permission: PERMISSIONS.edit,
+		params: idParams,
+		body: orderUpdateInput,
+		handler: async ({ ctx, params, body }): Promise<Order> => {
+			const { id } = params as { id: string };
+			const input = body as {
+				items: {
+					itemId?: string | null;
+					variantId?: string | null;
+					quantity: number;
+					unitPriceCents?: number;
+				}[];
+				note: string | null;
+			};
+			const result = await mdb().transaction(async (tx) => {
+				const data = await loadOrderOr404(tx, id, true);
+				const byItem = new Map(data.items.map((r) => [String(r.id), r]));
+				const usedVariants = new Set(data.items.map((r) => String(r.variant_id)));
+				const newIds = input.items
+					.filter((it) => !it.itemId && it.variantId)
+					.map((it) => it.variantId!);
+				const variants = newIds.length
+					? await rows(
+							tx,
+							sql`SELECT v.id, v.label, v.price_cents, v.archived_at, a.title, a.active,
+									a.archived_at AS article_archived_at
+								FROM article_variants v JOIN articles a ON a.id = v.article_id
+								WHERE v.id IN (${idList(newIds)})`
+						)
+					: [];
+				const byVariant = new Map(variants.map((v) => [String(v.id), v]));
+				const issues: Issue[] = [];
+				const seen = new Set<string>();
+				/** `quantity: null` = nur der Preis ändert sich */
+				const updates: { id: string; quantity: number | null; price: number }[] = [];
+				const removes: string[] = [];
+				const inserts: {
+					variantId: string;
+					title: string;
+					label: string;
+					price: number;
+					quantity: number;
+				}[] = [];
+				input.items.forEach((it, i) => {
+					if (it.itemId) {
+						const row = byItem.get(it.itemId);
+						if (!row) {
+							issues.push({ path: ['items', i, 'itemId'], message: 'Position nicht gefunden' });
+							return;
+						}
+						seen.add(it.itemId);
+						const q = itemQty(row);
+						if (it.quantity < q.deliveredQty) {
+							issues.push({
+								path: ['items', i, 'quantity'],
+								message: `Mindestens ${q.deliveredQty} (bereits ausgegeben)`
+							});
+							return;
+						}
+						const oldPrice = num(row.unit_price_cents);
+						const price = it.unitPriceCents ?? oldPrice;
+						const qtyChanged = it.quantity !== q.quantity - q.cancelledQty;
+						if (!qtyChanged && price === oldPrice) return;
+						if (it.quantity === 0) removes.push(it.itemId);
+						else updates.push({ id: it.itemId, quantity: qtyChanged ? it.quantity : null, price });
+						return;
+					}
+					const v = byVariant.get(it.variantId!);
+					if (!v || v.archived_at || v.article_archived_at || !v.active) {
+						issues.push({
+							path: ['items', i, 'variantId'],
+							message: 'Artikel ist nicht bestellbar'
+						});
+					} else if (usedVariants.has(it.variantId!)) {
+						issues.push({
+							path: ['items', i, 'variantId'],
+							message: 'Artikel ist schon in der Bestellung – bitte dort die Menge ändern'
+						});
+					} else {
+						inserts.push({
+							variantId: it.variantId!,
+							title: String(v.title),
+							label: String(v.label ?? ''),
+							price: it.unitPriceCents ?? num(v.price_cents),
+							quantity: it.quantity
+						});
+					}
+				});
+				// Nicht mehr aufgeführte Positionen entfallen – nur, wenn davon nichts ausgegeben ist
+				for (const r of data.items) {
+					if (seen.has(String(r.id))) continue;
+					if (num(r.delivered_qty) > 0) {
+						const size = r.variant_label ? ` (${String(r.variant_label)})` : '';
+						issues.push({
+							path: ['items'],
+							message: `${String(r.article_title)}${size} wurde bereits ausgegeben und kann nicht entfernt werden`
+						});
+					} else removes.push(String(r.id));
+				}
+				if (issues.length) throw errors.validation(issues);
+
+				for (const u of updates) {
+					await tx.execute(
+						u.quantity === null
+							? sql`UPDATE order_items SET unit_price_cents = ${u.price} WHERE id = ${u.id}`
+							: sql`UPDATE order_items SET quantity = ${u.quantity}, cancelled_qty = 0,
+									unit_price_cents = ${u.price} WHERE id = ${u.id}`
+					);
+				}
+				if (removes.length) {
+					await tx.execute(sql`DELETE FROM order_items WHERE id IN (${idList(removes)})`);
+				}
+				let position = data.items.reduce((m, r) => Math.max(m, num(r.position)), -1) + 1;
+				for (const n of inserts) {
+					await tx.execute(
+						sql`INSERT INTO order_items (id, order_id, variant_id, position, article_title,
+								variant_label, unit_price_cents, quantity)
+							VALUES (${crypto.randomUUID()}, ${id}, ${n.variantId}, ${position++},
+								${n.title}, ${n.label}, ${n.price}, ${n.quantity})`
+					);
+				}
+				const itemsChanged = updates.length + removes.length + inserts.length > 0;
+				const noteChanged = (input.note ?? null) !== (str(data.order.note) ?? null);
+				if (itemsChanged || noteChanged) {
+					// Mindestens eine Position hat eine gültige Menge (Schema) → nicht mehr storniert
+					await tx.execute(
+						sql`UPDATE orders SET note = ${input.note}, updated_at = now(),
+							treasury_dirty = treasury_dirty OR ${itemsChanged},
+							cancelled_at = CASE WHEN ${itemsChanged} THEN NULL ELSE cancelled_at END
+							WHERE id = ${id}`
+					);
+				}
+				return {
+					number: String(data.order.number),
+					itemsChanged,
+					noteChanged,
+					added: inserts.length,
+					updated: updates.length,
+					removed: removes.length
+				};
+			});
+			if (result.itemsChanged) await pushInvoice(ctx, id);
+			if (result.itemsChanged || result.noteChanged) {
+				await core.audit.logFromContext(ctx, 'orders.order.updated', {
+					target: id,
+					metadata: {
+						number: result.number,
+						added: result.added,
+						updated: result.updated,
+						removed: result.removed,
+						noteChanged: result.noteChanged
+					}
+				});
+			}
+			if (result.itemsChanged) await notifyCustomer(ctx, id, 'updated');
+			return buildOne(ctx, id, canManage(ctx) ? undefined : await linkedMemberIds(ctx));
+		}
+	}),
+	defineEndpoint({
+		method: 'DELETE',
+		path: '/orders/:id',
+		summary: 'Bestellung ganz löschen (statt nur stornieren)',
+		description:
+			'Storniert zuerst die Rechnung in der Kasse (sie bleibt dort als Stornierung erhalten; Bezahltes wird ' +
+			'Guthaben) und löscht dann die Bestellung samt Positionen. Ausgegebene Ware bleibt ausgegeben, der ' +
+			'Lagerbestand ändert sich nicht. Gibt es eine Rechnung und ist die Kasse nicht aktiv oder scheitert das ' +
+			'Stornieren → 409, die Bestellung bleibt.',
+		tags: TAGS,
+		permission: PERMISSIONS.delete,
+		params: idParams,
+		handler: async ({ ctx, params }): Promise<OrderDeleted> => {
+			const { id } = params as { id: string };
+			const data = await mdb().transaction((tx) => loadOrderOr404(tx, id));
+			const o = data.order;
+			const invoiceId = str(o.invoice_id);
+			const treasury = await treasuryService();
+			let invoiceCancelled = false;
+			if (treasury) {
+				try {
+					const r = await treasury.upsertOrderInvoice(ctx, {
+						sourceKey: invoiceSourceKey(id),
+						memberId: String(o.member_id),
+						orderNumber: String(o.number),
+						recipientName: null,
+						note: str(o.note),
+						lines: [],
+						send: false
+					});
+					invoiceCancelled = !!r.invoiceId;
+				} catch (e) {
+					logBestEffort('orders.order.delete-invoice', e, { ctx, target: id });
+					if (invoiceId) {
+						throw errors.conflict(
+							'Die Rechnung in der Kasse konnte nicht storniert werden – die Bestellung wurde nicht gelöscht.'
+						);
+					}
+				}
+			} else if (invoiceId) {
+				throw errors.conflict(
+					'Die Kasse ist nicht aktiv, die Rechnung kann nicht storniert werden. Bitte die Kasse aktivieren ' +
+						'oder die Bestellung nur stornieren.'
+				);
+			}
+			const deleted = await mdb().transaction((tx) =>
+				rows(tx, sql`DELETE FROM orders WHERE id = ${id} RETURNING id`)
+			);
+			if (!deleted.length) throw errors.notFound('Bestellung nicht gefunden');
+			const number = String(o.number);
+			await core.audit.logFromContext(ctx, 'orders.order.deleted', {
+				target: id,
+				metadata: {
+					number,
+					items: data.items.length,
+					delivered: data.items.reduce((s, r) => s + num(r.delivered_qty), 0),
+					invoiceCancelled
+				}
+			});
+			await notifyCustomer(ctx, id, 'deleted', { snapshot: o });
+			return { number, invoiceCancelled };
 		}
 	})
 ] as ApiEndpoint[];

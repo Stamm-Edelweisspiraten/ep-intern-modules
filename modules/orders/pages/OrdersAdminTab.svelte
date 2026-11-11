@@ -1,22 +1,32 @@
 <script lang="ts">
-	// Verwaltung der Mitgliedsbestellungen (Kämmerer*in): Kopfzahlen, Filter, Ausgabe und Storno.
+	// Verwaltung der Mitgliedsbestellungen (Kämmerer*in): Kopfzahlen, Filter, Ausgabe, Storno,
+	// Bearbeiten (`orders.order.edit`) und Löschen (`orders.order.delete`).
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import PackageCheck from '@lucide/svelte/icons/package-check';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import X from '@lucide/svelte/icons/x';
+	import { toast } from 'svelte-sonner';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable } from '$lib/components/layout';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import { PERMISSIONS, type Order, type OrderList, type OrdersOverview } from '../schemas';
+	import {
+		PERMISSIONS,
+		type Order,
+		type OrderDeleted,
+		type OrderList,
+		type OrdersOverview
+	} from '../schemas';
 	import {
 		API,
 		ORDER_FILTERS,
@@ -29,6 +39,7 @@
 	import CancelItemsDialog from './CancelItemsDialog.svelte';
 	import HandoutDialog from './HandoutDialog.svelte';
 	import OrderCreateDialog from './OrderCreateDialog.svelte';
+	import OrderEditDialog from './OrderEditDialog.svelte';
 	import OrderStatusBadge from './OrderStatusBadge.svelte';
 	import PaymentBadge from './PaymentBadge.svelte';
 
@@ -58,6 +69,10 @@
 	let cancelOrder = $state<Order | null>(null);
 	let cancelOpen = $state(false);
 	let createOpen = $state(false);
+	let editOrder = $state<Order | null>(null);
+	let editOpen = $state(false);
+	let deleteOrder = $state<Order | null>(null);
+	let deleteOpen = $state(false);
 
 	const query = $derived.by(() => {
 		const p = new URLSearchParams({
@@ -126,6 +141,46 @@
 	function startCancel(o: Order) {
 		cancelOrder = o;
 		cancelOpen = true;
+	}
+	function startEdit(o: Order) {
+		editOrder = o;
+		editOpen = true;
+	}
+	function startDelete(o: Order) {
+		deleteOrder = o;
+		deleteOpen = true;
+	}
+
+	/** Rückfrage beim Löschen: was mit Rechnung und ausgegebener Ware passiert */
+	const deleteText = $derived.by(() => {
+		const o = deleteOrder;
+		if (!o) return undefined;
+		const parts = [`Die Bestellung ${o.number} für ${o.member.name} wird unwiderruflich gelöscht.`];
+		if (o.invoiceNumber) {
+			parts.push(
+				o.payment && o.payment.paidCents > 0
+					? `Die Rechnung ${o.invoiceNumber} wird in der Kasse storniert; bereits Bezahltes wird dort Guthaben.`
+					: `Die Rechnung ${o.invoiceNumber} wird in der Kasse storniert.`
+			);
+		}
+		if (deliveredOf(o) > 0)
+			parts.push('Bereits ausgegebene Ware bleibt ausgegeben, der Lagerbestand ändert sich nicht.');
+		return parts.join(' ');
+	});
+
+	async function confirmDelete() {
+		const o = deleteOrder;
+		if (!o) return;
+		try {
+			const res = await apiFetch<OrderDeleted>(`${API}/orders/${o.id}`, { method: 'DELETE' });
+			toast.success(`Bestellung ${res.number} gelöscht`, {
+				description: res.invoiceCancelled ? 'Die Rechnung wurde in der Kasse storniert.' : undefined
+			});
+			expanded = expanded.filter((x) => x !== o.id);
+			await reload();
+		} catch (e) {
+			toast.error(errorMessage(e, 'Bestellung konnte nicht gelöscht werden'));
+		}
 	}
 
 	const stats = $derived(
@@ -310,20 +365,45 @@
 					class="text-right whitespace-nowrap"
 					onclick={(e: MouseEvent) => e.stopPropagation()}
 				>
-					{#if canManage && open > 0}
+					{#if (canManage && open > 0) || o.canEdit || o.canDelete}
 						<div class="flex flex-wrap justify-end gap-1">
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={!canHandout(o)}
-								title={canHandout(o) ? undefined : 'Nichts davon auf Lager'}
-								onclick={() => startHandout(o)}
-							>
-								<PackageCheck /> Ausgeben
-							</Button>
-							<Button size="sm" variant="ghost" onclick={() => startCancel(o)}>
-								<X /> Stornieren
-							</Button>
+							{#if canManage && open > 0}
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!canHandout(o)}
+									title={canHandout(o) ? undefined : 'Nichts davon auf Lager'}
+									onclick={() => startHandout(o)}
+								>
+									<PackageCheck /> Ausgeben
+								</Button>
+								<Button size="sm" variant="ghost" onclick={() => startCancel(o)}>
+									<X /> Stornieren
+								</Button>
+							{/if}
+							{#if o.canEdit}
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									aria-label={`Bestellung ${o.number} bearbeiten`}
+									title="Bearbeiten"
+									onclick={() => startEdit(o)}
+								>
+									<Pencil />
+								</Button>
+							{/if}
+							{#if o.canDelete}
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									class="text-destructive hover:text-destructive"
+									aria-label={`Bestellung ${o.number} löschen`}
+									title="Löschen"
+									onclick={() => startDelete(o)}
+								>
+									<Trash2 />
+								</Button>
+							{/if}
 						</div>
 					{/if}
 				</Table.Cell>
@@ -427,3 +507,12 @@
 <HandoutDialog bind:open={handoutOpen} order={handoutOrder} onsaved={reload} />
 <CancelItemsDialog bind:open={cancelOpen} order={cancelOrder} onsaved={reload} />
 <OrderCreateDialog bind:open={createOpen} onsaved={reload} />
+<OrderEditDialog bind:open={editOpen} order={editOrder} onsaved={reload} />
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Bestellung löschen?"
+	description={deleteText}
+	confirmLabel="Löschen"
+	destructive
+	onconfirm={confirmDelete}
+/>

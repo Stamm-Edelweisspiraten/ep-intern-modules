@@ -322,3 +322,65 @@ describe('Lieferantenrechnung', () => {
 		expect(all).not.toContain('@');
 	});
 });
+
+describe('Bearbeiten und Löschen mit Kasse', () => {
+	let created: OrderCreated;
+
+	it('Bearbeiten passt die Rechnung an', async () => {
+		created = await order([
+			{ variantId: variantM, quantity: 1 },
+			{ variantId: variantBook, quantity: 1 }
+		]);
+		const o = created.order;
+		expect(o.payment?.dueCents).toBe(1200 + 1550);
+		const res = await O(`/orders/${o.id}`, {
+			method: 'PATCH',
+			json: {
+				items: [
+					{ itemId: o.items[0]!.id, quantity: 3, unitPriceCents: 1000 },
+					{ itemId: o.items[1]!.id, quantity: 0 }
+				]
+			}
+		});
+		const after = await data<Order>(res);
+		expect(after.invoiceNumber).toBe(o.invoiceNumber);
+		expect(after.payment?.dueCents).toBe(3000);
+		const inv = await data<InvoiceDetail>(await T(`/invoices/${o.payment!.invoiceId}`));
+		const active = inv.lines.filter((l) => l.amountCents > 0);
+		expect(active.map((l) => [l.description, l.amountCents])).toEqual([
+			['Halstuch (Gr. M) × 3', 3000]
+		]);
+	});
+
+	it('Löschen storniert die Rechnung, sie bleibt in der Kasse', async () => {
+		const o = created.order;
+		const res = await data<{ number: string; invoiceCancelled: boolean }>(
+			await O(`/orders/${o.id}`, { method: 'DELETE' })
+		);
+		expect(res).toEqual({ number: o.number, invoiceCancelled: true });
+		await fail(await O(`/orders/${o.id}`), 404);
+		const inv = await data<InvoiceDetail>(await T(`/invoices/${o.payment!.invoiceId}`));
+		expect(inv.number).toBe(o.invoiceNumber);
+		expect(inv.cancelledAt).not.toBeNull();
+	});
+
+	it('Kasse inaktiv: Bestellung mit Rechnung lässt sich nicht löschen', async () => {
+		const c = await order([{ variantId: variantBook, quantity: 1 }]);
+		expect(c.order.invoiceNumber).toBeTruthy();
+		await disableModule(admin, 'treasury');
+		try {
+			const err = await fail(await O(`/orders/${c.order.id}`, { method: 'DELETE' }), 409);
+			expect(err.message).toContain('Kasse');
+			await data<Order>(await O(`/orders/${c.order.id}`));
+		} finally {
+			await enableModule(admin, 'treasury');
+		}
+	});
+
+	it('Audit für Bearbeiten und Löschen', async () => {
+		const { rows } = await listAudit({ action: 'orders.order.', limit: 200 });
+		const actions = new Set(rows.map((r) => r.action));
+		expect(actions).toContain('orders.order.updated');
+		expect(actions).toContain('orders.order.deleted');
+	});
+});

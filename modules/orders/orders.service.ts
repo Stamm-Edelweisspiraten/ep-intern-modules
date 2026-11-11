@@ -204,6 +204,8 @@ export async function buildOrders(
 			invoiceNumber: str(o.invoice_number),
 			payment: invoiceId ? (payments[invoiceId] ?? null) : null,
 			canCancel: canCancelOrder(d, ctx, linkedIds),
+			canEdit: ctx.permissions.has(PERMISSIONS.edit),
+			canDelete: ctx.permissions.has(PERMISSIONS.delete),
 			createdAt: iso(o.created_at),
 			cancelledAt: isoOrNull(o.cancelled_at)
 		};

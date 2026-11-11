@@ -665,6 +665,138 @@ describe('Fehlmengen-Meldung', () => {
 	});
 });
 
+describe('Bestellung bearbeiten und löschen', () => {
+	let aufnaeher: { articleId: string; variantIds: string[] };
+	let order: Order;
+	const patch = (who: string, json: unknown) =>
+		O(`/orders/${order.id}`, who, { method: 'PATCH', json });
+
+	beforeAll(async () => {
+		await mkUser('bearbeiter', ['core.api.manage', 'orders.order.view', 'orders.order.edit']);
+		aufnaeher = await mkArticle('Aufnäher', [
+			{ label: 'klein', priceCents: 300, stock: 5 },
+			{ label: 'groß', priceCents: 500, stock: 5 }
+		]);
+		order = (
+			await data<OrderCreated>(
+				await post('/orders', 'eltern', {
+					memberId: kindId,
+					items: [{ variantId: aufnaeher.variantIds[0], quantity: 2 }]
+				}),
+				201
+			)
+		).order;
+	});
+
+	it('nur mit Recht bearbeiten bzw. löschen', async () => {
+		expect(order.canEdit).toBe(false);
+		expect(order.canDelete).toBe(false);
+		const items = [{ itemId: order.items[0]!.id, quantity: 1 }];
+		await fail(await patch('eltern', { items }), 403);
+		await fail(await O(`/orders/${order.id}`, 'eltern', { method: 'DELETE' }), 403);
+		await fail(await O(`/orders/${order.id}`, 'bearbeiter', { method: 'DELETE' }), 403);
+		const viaAdmin = await data<Order>(await O(`/orders/${order.id}`, 'admin'));
+		expect(viaAdmin.canEdit).toBe(true);
+		expect(viaAdmin.canDelete).toBe(true);
+	});
+
+	it('ändert Menge und Preis, fügt Artikel hinzu und entfernt sie', async () => {
+		const item = order.items[0]!;
+		const res = await data<Order>(
+			await patch('bearbeiter', {
+				items: [
+					{ itemId: item.id, quantity: 3, unitPriceCents: 250 },
+					{ variantId: aufnaeher.variantIds[1], quantity: 1 }
+				],
+				note: 'Geändert'
+			})
+		);
+		expect(res.items.map((i) => [i.variantLabel, i.quantity, i.unitPriceCents])).toEqual([
+			['klein', 3, 250],
+			['groß', 1, 500]
+		]);
+		expect(res.totalCents).toBe(3 * 250 + 500);
+		expect(res.note).toBe('Geändert');
+
+		order = await data<Order>(
+			await patch('bearbeiter', { items: [{ itemId: res.items[1]!.id, quantity: 1 }] })
+		);
+		expect(order.items.map((i) => i.variantLabel)).toEqual(['groß']);
+		expect(order.totalCents).toBe(500);
+		expect(order.note).toBeNull();
+	});
+
+	it('neue Menge ersetzt Storniertes und hebt ein Voll-Storno auf', async () => {
+		const cancelled = await data<Order>(await post(`/orders/${order.id}/cancel`, 'admin'), 201);
+		expect(cancelled.status).toBe('cancelled');
+		order = await data<Order>(
+			await patch('admin', { items: [{ itemId: order.items[0]!.id, quantity: 2 }] })
+		);
+		expect(order.status).toBe('open');
+		expect(order.cancelledAt).toBeNull();
+		expect(order.items[0]).toMatchObject({ quantity: 2, cancelledQty: 0, openQty: 2 });
+	});
+
+	it('nie unter die ausgegebene Menge, ausgegebene Positionen bleiben', async () => {
+		const itemId = order.items[0]!.id;
+		await data(
+			await post(`/orders/${order.id}/handout`, 'admin', { items: [{ itemId, quantity: 1 }] }),
+			201
+		);
+		const low = await fail(await patch('admin', { items: [{ itemId, quantity: 0 }] }), 422);
+		expect(JSON.stringify(low.details)).toContain('ausgegeben');
+		await fail(
+			await patch('admin', { items: [{ variantId: aufnaeher.variantIds[0], quantity: 1 }] }),
+			422
+		);
+		order = await data<Order>(await patch('admin', { items: [{ itemId, quantity: 1 }] }));
+		expect(order.status).toBe('delivered');
+	});
+
+	it('lehnt doppelte und nicht bestellbare Artikel ab', async () => {
+		const itemId = order.items[0]!.id;
+		await fail(
+			await patch('admin', {
+				items: [
+					{ itemId, quantity: 1 },
+					{ variantId: aufnaeher.variantIds[1], quantity: 1 }
+				]
+			}),
+			422
+		);
+		await fail(
+			await patch('admin', {
+				items: [
+					{ itemId, quantity: 1 },
+					{ variantId: inactive.variantIds[0], quantity: 1 }
+				]
+			}),
+			422
+		);
+		await fail(await patch('admin', { items: [] }), 422);
+	});
+
+	it('löscht die Bestellung; der Lagerbestand bleibt', async () => {
+		const stockOf = async () =>
+			(await data<StockRow[]>(await O('/stock', 'lager'))).find(
+				(r) => r.variantId === aufnaeher.variantIds[1]
+			)!.stock;
+		const before = await stockOf();
+		expect(before).toBe(4);
+		const res = await data<{ number: string; invoiceCancelled: boolean }>(
+			await O(`/orders/${order.id}`, 'admin', { method: 'DELETE' })
+		);
+		expect(res).toEqual({ number: order.number, invoiceCancelled: false });
+		await fail(await O(`/orders/${order.id}`, 'admin'), 404);
+		await fail(await O(`/orders/${order.id}`, 'admin', { method: 'DELETE' }), 404);
+		expect(await stockOf()).toBe(before);
+		const moves = await data<{ items: StockMovement[] }>(
+			await O(`/stock/movements?variantId=${aufnaeher.variantIds[1]}`, 'lager')
+		);
+		expect(moves.items.some((m) => m.kind === 'handout' && m.orderNumber === null)).toBe(true);
+	});
+});
+
 describe('Audit und Modulstatus', () => {
 	it('protokolliert ohne personenbezogene Details', async () => {
 		const { rows } = await listAudit({ action: 'orders.', limit: 200 });
@@ -673,6 +805,8 @@ describe('Audit und Modulstatus', () => {
 			'orders.order.created',
 			'orders.order.cancelled',
 			'orders.order.handed-out',
+			'orders.order.updated',
+			'orders.order.deleted',
 			'orders.stock.corrected',
 			'orders.supplier-order.created',
 			'orders.supplier-order.updated',
