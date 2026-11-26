@@ -3,7 +3,7 @@
 	"id": "messages",
 	"name": "Nachrichten",
 	"description": "E-Mails an Mitglieder und Gruppen mit Editor, Anhängen und wählbarem Absender; Posteingang für Antworten (Catch-all per IMAP)",
-	"version": "1.7.0",
+	"version": "1.7.1",
 	"core": ">=2.0.0-0 <3.0.0",
 	"dependencies": {
 		"members": {
@@ -27,6 +27,7 @@
 	],
 	"npm": {
 		"imapflow": "2.2.10",
-		"mailparser": "3.9.36"
+		"mailparser": "3.9.36",
+		"@types/mailparser": "3.4.6"
 	}
 }
