@@ -5,23 +5,24 @@
  * Recht `pantry.manage`; dazu `POST …/images/off` = Produktbild aus Open Food Facts lokal übernehmen).
  */
 import { sql } from 'drizzle-orm';
+import { z } from 'zod';
 import {
+	type AnyApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
 	IMAGE_RATE_LIMIT,
-	readUpload,
-	type AnyApiEndpoint,
 	type RequestContext,
+	readUpload,
 	type Tx
 } from '$lib/sdk/server';
-import { mdb, num, rows, str, type Row } from './db';
+import { mdb, num, type Row, rows, str } from './db';
 import {
-	VARIANT_COLUMN,
-	VARIANT_SPECS,
 	fileResponse,
 	filesCtx,
 	removeFiles,
+	VARIANT_COLUMN,
+	VARIANT_SPECS,
 	variantPath
 } from './files';
 import { fetchOffImage } from './off.service';
@@ -29,19 +30,18 @@ import {
 	IMAGE_CONTENT_TYPES,
 	IMAGE_OWNERS,
 	IMAGE_VARIANTS,
-	MAX_IMAGES,
-	MAX_IMAGE_BYTES,
-	MODULE_ID,
-	PERMISSIONS,
-	imageOrderInput,
-	imagesPath,
-	imageUrl,
 	type ImageOwner,
 	type ImageRef,
 	type ImageSource,
-	type ImageVariant
+	type ImageVariant,
+	imageOrderInput,
+	imagesPath,
+	imageUrl,
+	MAX_IMAGE_BYTES,
+	MAX_IMAGES,
+	MODULE_ID,
+	PERMISSIONS
 } from './schemas';
-import { z } from 'zod';
 
 const tags = ['Modul: material'];
 const MAX_MB = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));

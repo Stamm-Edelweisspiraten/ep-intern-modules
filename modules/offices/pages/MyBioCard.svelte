@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { AssistTextarea } from '$lib/components/layout';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { AssistTextarea } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import {
 		Card,
@@ -13,7 +12,8 @@
 	} from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MAX_BIO, bioInput, type MyOffices } from '../schemas';
+	import { apiFetch } from '$lib/sdk/client';
+	import { bioInput, MAX_BIO, type MyOffices } from '../schemas';
 	import { BASE, errorText, issuesToErrors } from './helpers';
 
 	/** Persönliche Beschreibung für alle eigenen Ämter: Entwurf + Speichern (kein Autosave). */

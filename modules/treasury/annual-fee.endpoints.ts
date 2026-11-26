@@ -1,6 +1,7 @@
 /** REST-Endpunkte Jahresbeitrag (`/annual-fees…`) */
-import { core, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { type ApiEndpoint, core, type RequestContext } from '$lib/sdk/server';
 import {
+	type AnnualMode,
 	createRun,
 	deleteRun,
 	getRun,
@@ -11,18 +12,17 @@ import {
 	resendRun,
 	scheduleRun,
 	sendRun,
-	updateRun,
-	type AnnualMode
+	updateRun
 } from './annual-fee.service';
 import {
+	type AnnualRunInput,
+	type AnnualRunUpdate,
+	type AnnualSendResult,
 	annualPreviewQuery,
 	annualRunInput,
 	annualRunUpdate,
 	annualScheduleInput,
-	idParams,
-	type AnnualRunInput,
-	type AnnualRunUpdate,
-	type AnnualSendResult
+	idParams
 } from './schemas';
 
 const TAGS = ['Modul: treasury'];

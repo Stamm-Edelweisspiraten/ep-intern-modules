@@ -2,14 +2,21 @@
  * Datensicherung: Zusammenführen (bestehende Zeilen bleiben, fehlende kommen dazu, vorhandene Benutzer
  * bekommen keine Anmeldedaten aus der Sicherung) und Kontoschutz beim Wiederherstellen von `core:users`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
+import type { RequestContext } from '$lib/sdk/types';
 import {
-	seedBackupWorld,
-	SEED_PASSWORD,
-	SEED_USER_EMAIL,
-	type BackupWorld
-} from '../../helpers/backup-seed';
+	ADMIN_ROLE_ID,
+	contextForUser,
+	createUser,
+	executeRestore,
+	getAuth,
+	getDb,
+	RESTORE_CONFIRM_WORD,
+	resetAllForTests,
+	schema,
+	verifyUserPassword
+} from '$testing';
 import {
 	dumpTable,
 	exportBackup,
@@ -17,16 +24,12 @@ import {
 	previewBackup,
 	runRestore
 } from '../../helpers/backup-flow';
-import { getDb, schema } from '$testing';
-import { getAuth } from '$testing';
-import { contextForUser } from '$testing';
-import { createUser } from '$testing';
-import { verifyUserPassword } from '$testing';
-import { executeRestore } from '$testing';
-import { RESTORE_CONFIRM_WORD } from '$testing';
-import { ADMIN_ROLE_ID } from '$testing';
-import { resetAllForTests } from '$testing';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	type BackupWorld,
+	SEED_PASSWORD,
+	SEED_USER_EMAIL,
+	seedBackupWorld
+} from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 let file: Uint8Array;

@@ -13,15 +13,15 @@ import {
 	bestEffort,
 	core,
 	moduleDb,
-	rowsOf,
 	type NotificationItem,
 	type NotificationScopeEntry,
-	type RequestContext
+	type RequestContext,
+	rowsOf
 } from '$lib/sdk/server';
+import type { ImportedMail } from './inbound.service';
 import { isSharedMailbox } from './mailbox';
 import { accessibleMailboxes, loadMailboxDirectory, type MailboxEntry } from './mailbox.service';
 import { BASE_PATH, MODULE_ID, NOTIFY_TEXT_MAX } from './schemas';
-import type { ImportedMail } from './inbound.service';
 
 const mdb = () => moduleDb(MODULE_ID);
 

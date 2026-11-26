@@ -30,22 +30,25 @@ Administration → Module → **Installieren** → Link `https://github.com/Stam
 
 Der Core ist als Git-Submodul `.core` auf einen festen Tag gepinnt.
 
+Voraussetzung: [Bun](https://bun.sh) in der Version aus `.core/.bun-version`.
+
 ```bash
 git clone --recurse-submodules <url> && cd ep-intern-modules
-npm run setup        # Core-Abhängigkeiten, node_modules-Link, Basismodule kopieren, Pakete der Module
-npm run check        # Typprüfung (Core + Module)
-npm test             # Tests der Module (Vitest, PGlite)
-npm run build        # Produktions-Build
-npm run e2e          # Playwright (Module + modulübergreifend)
-npm run demo         # Demo-Server http://localhost:4300 mit diesen Modulen
-npm run check:catalog && npm run check:migrations
+bun run setup        # Core-Abhängigkeiten, node_modules-Link, Basismodule kopieren, Pakete der Module
+bun run check        # Typprüfung (Core + Module)
+bun run test         # Tests der Module (bun test, PGlite)
+bun run lint         # Biome (Format + Lint) und Modulgrenzen; bun run format schreibt Korrekturen
+bun run build        # Produktions-Build
+bun run e2e          # Playwright (Module + modulübergreifend)
+bun run demo         # Demo-Server http://localhost:4300 mit diesen Modulen
+bun run check:catalog && bun run check:migrations
 ```
 
-Basismodule: `npm run setup` kopiert sie nach `modules/<id>/` (gitignored, Marker `.from-basic`, nie dort ändern) – Quelle
+Basismodule: `bun run setup` kopiert sie nach `modules/<id>/` (gitignored, Marker `.from-basic`, nie dort ändern) – Quelle
 `ATRIUM_BASIC_MODULES_DIR`, sonst Submodul `.basic`, sonst Nachbarordner `../atrium-basic-modules` (`scripts/basic-modules.mjs`).
 Ihre eigenen Tests laufen dort; hier laufen nur die modulübergreifenden in `modules/_integration`.
 
-Core aktualisieren: `git -C .core fetch --tags && git -C .core checkout <tag>`, dann `npm run setup -- --force`, prüfen, committen.
+Core aktualisieren: `git -C .core fetch --tags && git -C .core checkout <tag>`, dann `bun run setup --force`, prüfen, committen.
 Angewendete Migrationen sind unveränderlich (`check:migrations` vergleicht mit dem letzten Tag dieses Repos).
 
 Regeln für die Arbeit an Modulen: `.core/.claude/rules/modules.md` (Muster, Rechte, Endpunkte) und `.claude/rules/module-<id>.md`.

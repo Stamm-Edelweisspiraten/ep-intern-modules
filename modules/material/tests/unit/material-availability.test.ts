@@ -2,7 +2,7 @@
  * Modul `material` v2 – Verfügbarkeit (`availability.ts`): Artikel- und Typ-Belegungen je Tag,
  * defekte Artikel, gemeinsame Prüfung neuer Zeilen. Dazu Codes und Mehrfach-Namen aus `schemas.ts`.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { AvailabilityIndex, type Booking, type StockItem } from '$modules/material/availability';
 import {
 	batchNames,

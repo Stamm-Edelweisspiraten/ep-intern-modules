@@ -1,26 +1,26 @@
-import type { PdfBlock } from '$lib/sdk/types';
-import { todayBerlin } from '$lib/sdk/dates';
-import { csvCents, csvDocument } from '$lib/sdk/csv';
 import { formatEuro } from '$lib/components/layout/money';
+import { csvCents, csvDocument } from '$lib/sdk/csv';
+import { todayBerlin } from '$lib/sdk/dates';
+import type { PdfBlock } from '$lib/sdk/types';
 import { appliedAutoIncome } from './auto-income';
 import { donationTotals } from './refund';
-import {
-	ACCOUNTING_CATEGORY_LABELS,
-	CALC_CATEGORIES,
-	INCOME_CATEGORIES,
-	PAID_BY_LABELS,
-	isIncomeCategory
-} from './schemas';
 import type {
 	AccountingCategory,
-	AccountingEntry,
 	AccountingCategorySummary,
+	AccountingEntry,
 	AccountingPlan,
 	AccountingSummary,
 	AutoIncome,
 	PayoutRow,
 	ReportInput,
 	SummaryEntry
+} from './schemas';
+import {
+	ACCOUNTING_CATEGORY_LABELS,
+	CALC_CATEGORIES,
+	INCOME_CATEGORIES,
+	isIncomeCategory,
+	PAID_BY_LABELS
 } from './schemas';
 
 /**
@@ -208,7 +208,9 @@ export function numberExpenses(
 				cmp(a.id, b.id)
 		);
 	const map = new Map<string, number>();
-	list.forEach((e, i) => map.set(e.id, i + 1));
+	list.forEach((e, i) => {
+		map.set(e.id, i + 1);
+	});
 	return map;
 }
 

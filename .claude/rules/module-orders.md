@@ -132,7 +132,7 @@ Audit `orders.article.*`, `orders.order.created|updated|cancelled|handed-out|del
 ## Tests und Demo
 Unit `tests/unit/orders-stock.test.ts`; Integration `tests/integration/orders-articles.test.ts` (Fake-Storage), `orders.test.ts` (u. a. „Bestellung bearbeiten und löschen“), `orders-treasury.test.ts` (Rechnung bei Bearbeiten/Löschen),
 `treasury-orders.test.ts`; E2E `tests/e2e/orders.spec.ts` (Artikel anlegen, „Bestellung anlegen“ für ein Mitglied + Ausgabe, Einkauf mit Teillieferung).
-Demo: `node scripts/seed-demo-orders.mjs` (nach `seed-demo-modules.mjs`, Bilder brauchen MinIO).
+Demo: `bun scripts/seed-demo-orders.mjs` (nach `seed-demo-modules.mjs`, Bilder brauchen MinIO).
 
 ## Offen
 - Archivierte Artikel lassen sich nicht wiederherstellen; Lieferant ist Freitext (keine Vorschläge); Storno-Grund wird nicht gespeichert.

@@ -1,5 +1,4 @@
-import { sql, type SQL } from 'drizzle-orm';
-import { notifyGalleryShared } from './notify';
+import { type SQL, sql } from 'drizzle-orm';
 import {
 	type ApiEndpoint,
 	core,
@@ -21,10 +20,9 @@ import {
 import { db, effectiveCoverSql, removeFiles } from './files';
 import {
 	CREATED_ON_SQL,
-	ENDS_ON_SQL,
-	STARTS_ON_SQL,
 	compareGalleries,
 	describeEvents,
+	ENDS_ON_SQL,
 	eventIdsByGallery,
 	finishDetail,
 	likePattern,
@@ -32,18 +30,20 @@ import {
 	loadEventIds,
 	pickEvents,
 	replaceGalleryEvents,
+	STARTS_ON_SQL,
 	sortRowOf,
 	validateEventIds
 } from './galleries.service';
+import { notifyGalleryShared } from './notify';
 import {
-	MODULE_ID,
-	PUBLISH_PERMISSION,
 	coverInput,
+	type GalleryItem,
+	type GalleryList,
 	galleryInput,
 	idParams,
 	listQuery,
-	type GalleryItem,
-	type GalleryList,
+	MODULE_ID,
+	PUBLISH_PERMISSION,
 	type Visibility
 } from './schemas';
 

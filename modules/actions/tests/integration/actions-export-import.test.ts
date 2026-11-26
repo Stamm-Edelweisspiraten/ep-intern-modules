@@ -1,23 +1,30 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { strToU8, zipSync } from 'fflate';
-import { installFakeStorage, fakeObjects, uninstallFakeStorage } from '$testing';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
-import { core } from '$lib/sdk/server';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
+import { strToU8, zipSync } from 'fflate';
+import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import { type ArchiveDocument, buildArchive, parseArchive } from '$modules/actions/action-archive';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import { buildArchive, parseArchive, type ArchiveDocument } from '$modules/actions/action-archive';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/actions';
 const IBAN = 'DE89 3704 0044 0532 0130 00';
@@ -264,8 +271,8 @@ function zipFormData(bytes: Uint8Array, type = 'application/zip', name = 'export
 	return fd;
 }
 
-const importZip = (who: string, bytes: Uint8Array, type?: string) =>
-	as(who, '/actions/import', { method: 'POST', body: zipFormData(bytes, type) });
+const importZip = (who: string, bytes: Uint8Array, type?: string, name?: string) =>
+	as(who, '/actions/import', { method: 'POST', body: zipFormData(bytes, type, name) });
 
 interface ImportData {
 	id: string;
@@ -407,7 +414,7 @@ describe('Import und Round-Trip', () => {
 		const detail = await data<{ owner: { userId: string }; participantCount: number }>(
 			await as('importer', `/actions/${imp.id}`)
 		);
-		expect(detail.owner.userId).toBe(userIds.importer);
+		expect<unknown>(detail.owner.userId).toBe(userIds.importer);
 		expect(detail.participantCount).toBe(2);
 		// Original unberührt und für Importierende nicht sichtbar
 		expect((await as('importer', `/actions/${full.id}`)).status).toBe(404);
@@ -561,7 +568,8 @@ describe('Ungültige Archive', () => {
 	});
 
 	it('falscher Content-Type -> 422, Feld fehlt -> 422 (einheitliche Upload-Regel, #33)', async () => {
-		expect((await importZip('importer', fullBytes, 'text/plain')).status).toBe(422);
+		// Bun leitet den Typ eines multipart-Teils aus der Dateiendung ab, deshalb passende Endung zum falschen Typ
+		expect((await importZip('importer', fullBytes, 'text/plain', 'export.txt')).status).toBe(422);
 		const fd = new FormData();
 		fd.set('other', 'x');
 		expect((await as('importer', '/actions/import', { method: 'POST', body: fd })).status).toBe(

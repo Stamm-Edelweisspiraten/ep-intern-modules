@@ -1,15 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		ConfirmDialog,
 		EmptyState,
@@ -17,10 +13,14 @@
 		LoadingState,
 		PageHeader
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Faq } from '../schemas';
 	import FaqDialog from './FaqDialog.svelte';
-	import WebsiteTabs from './WebsiteTabs.svelte';
 	import { BASE, errorText } from './helpers';
+	import WebsiteTabs from './WebsiteTabs.svelte';
 
 	let faqs = $state<Faq[]>([]);
 	let loading = $state(true);
@@ -113,8 +113,11 @@
 							<div class="min-w-0 flex-1 space-y-1">
 								<div class="flex flex-wrap items-center gap-2">
 									<p class="font-medium">{f.question}</p>
-									{#if !f.active}<Badge variant="outline">Ausgeblendet</Badge>
-									{:else if f.featured}<Badge variant="info">Startseite</Badge>{/if}
+									{#if !f.active}
+										<Badge variant="outline">Ausgeblendet</Badge>
+									{:else if f.featured}
+										<Badge variant="info">Startseite</Badge>
+									{/if}
 								</div>
 								<p class="text-sm text-muted-foreground">{preview(f.answerHtml)}</p>
 							</div>
@@ -124,14 +127,16 @@
 									size="icon-sm"
 									aria-label="Nach oben"
 									disabled={i === 0}
-									onclick={() => move(i, i - 1)}><ArrowUp /></Button
+									onclick={() => move(i, i - 1)}
+									><ArrowUp /></Button
 								>
 								<Button
 									variant="ghost"
 									size="icon-sm"
 									aria-label="Nach unten"
 									disabled={i === faqs.length - 1}
-									onclick={() => move(i, i + 1)}><ArrowDown /></Button
+									onclick={() => move(i, i + 1)}
+									><ArrowDown /></Button
 								>
 								<Button
 									variant="ghost"
@@ -140,7 +145,8 @@
 									onclick={() => {
 										editing = f;
 										dialogOpen = true;
-									}}><Pencil /></Button
+									}}
+									><Pencil /></Button
 								>
 								<Button
 									variant="ghost"
@@ -149,7 +155,8 @@
 									onclick={() => {
 										deleting = f;
 										deleteOpen = true;
-									}}><Trash2 /></Button
+									}}
+									><Trash2 /></Button
 								>
 							</div>
 						</Card.Content>

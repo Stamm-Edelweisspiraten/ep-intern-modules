@@ -1,7 +1,7 @@
 <script lang="ts">
+	import { contrastTextColor } from '$lib/components/ui/color-picker';
 	// Kategorie als Farbfläche mit Icon in Kontrastfarbe (ohne Farbe grau, ohne Icon ein Kästchen).
 	import { DynamicIcon } from '$lib/components/ui/icon-picker';
-	import { contrastTextColor } from '$lib/components/ui/color-picker';
 	import { cn } from '$lib/utils';
 	import type { CategoryRef } from '../../schemas';
 

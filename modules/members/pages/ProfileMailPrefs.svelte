@@ -8,7 +8,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import type { MailCategory, MyMember } from '../schemas';
-	import { MY_BASE, errorText, loadMyMembers, memberName } from './profile-shared';
+	import { errorText, loadMyMembers, MY_BASE, memberName } from './profile-shared';
 
 	// `userId` wird nicht gebraucht: Daten kommen über die eigenen Endpoints (Rechte serverseitig)
 	let { userId: _userId }: { userId: string } = $props();

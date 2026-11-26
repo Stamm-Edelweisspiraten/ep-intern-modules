@@ -1,30 +1,38 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, like, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { core } from '$testing';
-import { runJobNow } from '$testing';
 import { defineModule } from '$lib/sdk/server';
-import officesModule from '$modules/offices/module';
-import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
+import type { RequestContext } from '$lib/sdk/types';
 import type { OfficeNotification, OfficesService } from '$modules/offices/contract';
-import type { Office } from '$modules/offices/schemas';
+import officesModule from '$modules/offices/module';
 import {
 	migrateLegacyPrefs,
 	resetLegacyPrefsMigrationForTests
 } from '$modules/offices/notify.service';
-import { getMyPreferences, setMyPreference } from '$testing';
-import type { RequestContext } from '$lib/sdk/types';
+import type { Office } from '$modules/offices/schemas';
+import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	getMyPreferences,
+	handleApiRequest,
+	type MailTransport,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	setMyPreference,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Ämter aus Modul-Vorlagen und Benachrichtigungen an Inhaber*innen (Versand und Kanalwahl über core.notifications).
 
@@ -237,9 +245,9 @@ describe('Vorlagen', () => {
 
 describe('Sofort-Benachrichtigung', () => {
 	it('schickt allen Inhaber*innen eine Mail an die Konto-Adresse', async () => {
-		const r = await (
-			await service()
-		).notify(admin, [event('payable-created', 'Überweisung an Bob')]);
+		const r = await (await service()).notify(admin, [
+			event('payable-created', 'Überweisung an Bob')
+		]);
 		expect(r).toEqual({ sent: 2, queued: 0, skipped: 0 });
 		expect(recipients()).toEqual(['ben@example.test', 'uta@example.test']);
 		const m = mails[0]!;
@@ -250,9 +258,7 @@ describe('Sofort-Benachrichtigung', () => {
 	});
 
 	it('bündelt mehrere Ereignisse eines Aufrufs zu einer Mail je Person', async () => {
-		const r = await (
-			await service()
-		).notify(admin, [
+		const r = await (await service()).notify(admin, [
 			event('payable-created', 'Überweisung 1'),
 			event('accounting-closed', 'Abrechnung Sommerlager')
 		]);
@@ -265,9 +271,7 @@ describe('Sofort-Benachrichtigung', () => {
 	});
 
 	it('kürzt Betreff (eine Zeile, ≤ 150) und verwirft fremde Links', async () => {
-		await (
-			await service()
-		).notify(admin, [
+		await (await service()).notify(admin, [
 			event('payable-created', `Zeile 1\nZeile 2 ${'x'.repeat(300)}`, {
 				link: 'https://evil.example/x'
 			})
@@ -279,9 +283,7 @@ describe('Sofort-Benachrichtigung', () => {
 	});
 
 	it('ignoriert unbekannte Ereignisse und Vorlagen ohne zu werfen', async () => {
-		const r = await (
-			await service()
-		).notify(admin, [
+		const r = await (await service()).notify(admin, [
 			event('gibt-es-nicht', 'X'),
 			event('payable-created', 'Y', { office: 'fremd' }),
 			event('payable-created', 'Z', { module: 'unbekannt' })

@@ -20,19 +20,16 @@ import {
 	errors,
 	inList,
 	moduleDb,
+	type RequestContext,
 	rowsOf,
-	safeFileName,
-	type RequestContext
+	safeFileName
 } from '$lib/sdk/server';
 import { htmlToText, sanitizeInbound, textToHtml } from './html';
-import { openImap, type ImapConfig, type ImapMessage } from './imap.client';
-import { parseInbound, type ParsedInbound } from './inbound-parse';
+import { type ImapConfig, type ImapMessage, openImap } from './imap.client';
+import { type ParsedInbound, parseInbound } from './inbound-parse';
 import { notifyNewMail } from './inbox-notify.service';
-import { UNASSIGNED, buildAddressIndex, routeAddresses } from './mailbox';
+import { buildAddressIndex, routeAddresses, UNASSIGNED } from './mailbox';
 import { loadMailboxDirectory, type MailboxEntry } from './mailbox.service';
-import { isValidDomain } from './sender';
-import { evaluateSpam, loadSpamEnvironment, type SpamEnvironment } from './spam.service';
-import { loadSettings } from './sender.service';
 import {
 	INBOX_FETCH_LIMIT,
 	INBOX_MAX_BYTES,
@@ -40,9 +37,12 @@ import {
 	INBOX_SPAM_DAYS,
 	INBOX_TRASH_DAYS,
 	MODULE_ID,
-	UNASSIGNED_DAYS,
-	type PollResult
+	type PollResult,
+	UNASSIGNED_DAYS
 } from './schemas';
+import { isValidDomain } from './sender';
+import { loadSettings } from './sender.service';
+import { evaluateSpam, loadSpamEnvironment, type SpamEnvironment } from './spam.service';
 
 const mdb = () => moduleDb(MODULE_ID);
 const system = () => core.auth.systemContext(MODULE_ID);
@@ -331,7 +331,7 @@ async function runPoll(ctx: RequestContext): Promise<PollResult> {
 	const missing = missingConfig(cfg);
 	if (missing) throw errors.unavailable(missing);
 	const dir = await loadDirectory();
-	let session;
+	let session: Awaited<ReturnType<typeof openImap>>;
 	try {
 		session = await openImap(cfg);
 	} catch (e) {
@@ -380,7 +380,7 @@ export async function testConnection(): Promise<{ ok: true; message: string }> {
 	const cfg = await loadInboxConfig();
 	const missing = missingConfig(cfg);
 	if (missing) throw errors.validation([{ path: ['host'], message: missing }], missing);
-	let session;
+	let session: Awaited<ReturnType<typeof openImap>>;
 	try {
 		session = await openImap(cfg);
 	} catch (e) {

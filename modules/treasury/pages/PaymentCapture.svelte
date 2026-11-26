@@ -8,33 +8,33 @@
 </script>
 
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
+	import Delete from '@lucide/svelte/icons/delete';
+	import Search from '@lucide/svelte/icons/search';
 	// „Zahlung erfassen“ für Handy und Tablet: Bar- oder Überweisungseingang zu offenen Rechnungen.
 	// Handy: Blatt in 3 Schritten (Betrag → Wer → Zuordnen). Tablet: ein zweispaltiger Dialog.
 	// Gebucht wird über `POST /transactions` mit direkter Zuordnung (eine DB-Transaktion).
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import Check from '@lucide/svelte/icons/check';
-	import Delete from '@lucide/svelte/icons/delete';
-	import Search from '@lucide/svelte/icons/search';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import {
 		BottomSheet,
+		BUSY_SAVE,
 		ChoiceChips,
 		ErrorState,
 		ListRow,
 		LoadingState,
 		MoneyInput,
 		TouchList,
-		toastWithUndo,
-		BUSY_SAVE
+		toastWithUndo
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
+	import { apiFetch } from '$lib/sdk/client';
 	import { formatDateDe } from '$lib/sdk/dates';
 	import type {
 		Account,
@@ -380,7 +380,8 @@
 				<output
 					class="block pt-2 text-center text-5xl font-bold tracking-tight tabular-nums"
 					aria-live="polite"
-					aria-label="Betrag">{formatEuro(amountCents)}</output
+					aria-label="Betrag"
+					>{formatEuro(amountCents)}</output
 				>
 				{#if group && amountCents !== group.openCents}
 					<div class="flex justify-center">
@@ -402,7 +403,11 @@
 							aria-label={k === 'back' ? 'Letzte Ziffer löschen' : k}
 							onclick={() => press(k)}
 						>
-							{#if k === 'back'}<Delete class="size-6" />{:else}{k}{/if}
+							{#if k === 'back'}
+								<Delete class="size-6" />
+							{:else}
+								{k}
+							{/if}
 						</button>
 					{/each}
 				</div>
@@ -433,7 +438,9 @@
 					</div>
 				{/if}
 				<Button class="h-12 w-full text-base" disabled={nextDisabled} onclick={next}>
-					{#if step === 3 && !busy}<Check />{/if}
+					{#if step === 3 && !busy}
+						<Check />
+					{/if}
 					{nextLabel}
 				</Button>
 			</div>
@@ -464,9 +471,7 @@
 					</div>
 					<div class="flex flex-col gap-2">
 						<span class="text-sm font-medium">Wer hat gezahlt?</span>
-						<div class="flex max-h-80 flex-col gap-2 overflow-y-auto">
-							{@render payerList()}
-						</div>
+						<div class="flex max-h-80 flex-col gap-2 overflow-y-auto"> {@render payerList()} </div>
 					</div>
 				</div>
 				<div class="flex min-w-0 flex-col gap-4">

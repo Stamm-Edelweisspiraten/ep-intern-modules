@@ -1,21 +1,18 @@
 import { z } from 'zod';
-import { treasuryAssist, PERM_AI } from './assist';
-import { PUSH_INVOICE, PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER } from './push-notify';
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
-import { resetAreas, resetUsers } from './reset';
-import { subjectExport } from './subject-export';
-import { treasurySearch } from './search';
-import { treasuryDashboard } from './dashboard';
-import { treasuryBackup } from './backup';
 import { accountEndpoints } from './accounts.endpoints';
 import { annualFeeEndpoints } from './annual-fee.endpoints';
+import { runScheduledAnnualFees } from './annual-fee.service';
+import { PERM_AI, treasuryAssist } from './assist';
+import pkg from './atrium-module.json';
+import { treasuryBackup } from './backup';
+import { closedAccountingEndpoints } from './closed-accountings';
+import type { TreasuryService } from './contract';
+import { treasuryDashboard } from './dashboard';
 import { familyEndpoints } from './family.endpoints';
 import { historyEndpoints } from './history.endpoints';
-import { runScheduledAnnualFees } from './annual-fee.service';
 import { importEndpoints } from './import.endpoints';
 import { invoiceEndpoints } from './invoices.endpoints';
-import { myEndpoints } from './my.endpoints';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_extensions.sql?raw';
 import m0003 from './migrations/0003_payer_from_bookings.sql?raw';
@@ -25,10 +22,12 @@ import m0006 from './migrations/0006_annual_fee_items.sql?raw';
 import m0007 from './migrations/0007_orders.sql?raw';
 import m0008 from './migrations/0008_reminder_claims.sql?raw';
 import m0009 from './migrations/0009_integrity_indexes.sql?raw';
+import { myEndpoints } from './my.endpoints';
 import { runReminderJob } from './notify';
-import { closedAccountingEndpoints } from './closed-accountings';
 import { payableEndpoints, payableReceiptEndpoints } from './payables';
+import { PUSH_INVOICE, PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER } from './push-notify';
 import { reportEndpoints } from './reports.endpoints';
+import { resetAreas, resetUsers } from './reset';
 import {
 	DEFAULT_ANNUAL_BODY,
 	DEFAULT_ANNUAL_PDF_TEXT,
@@ -42,8 +41,9 @@ import {
 	DEFAULT_REMINDER_SUBJECT,
 	SETTING_KEYS
 } from './schemas';
+import { treasurySearch } from './search';
 import { treasuryService } from './service';
-import type { TreasuryService } from './contract';
+import { subjectExport } from './subject-export';
 import { syncAll } from './sync';
 import { transactionEndpoints } from './transactions.endpoints';
 

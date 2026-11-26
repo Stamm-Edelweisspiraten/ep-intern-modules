@@ -4,29 +4,14 @@
  * Namen, Zyklen), Mails einsortieren (Liste je Ordner, Zähler), Papierkorb behält den Ordner, Zuordnen
  * setzt ihn zurück, Sammelaktionen, Audit ohne Namen, Konto löschen entfernt persönliche Ordner.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, deleteUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
 import { moduleDb, rowsOf } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import messagesModule from '$modules/messages/module';
 import { setImapConnectorForTests } from '$modules/messages/imap.client';
+import messagesModule from '$modules/messages/module';
 import type {
 	DeleteFolderResult,
 	InboxDetail,
@@ -35,7 +20,30 @@ import type {
 	MailboxesResponse,
 	MoveMailsResult
 } from '$modules/messages/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	deleteUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setSettings,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'folder-password-1234';
 let close: () => Promise<void>;

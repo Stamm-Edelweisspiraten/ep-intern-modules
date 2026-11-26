@@ -15,8 +15,8 @@
 //     (`website.content.read` nur bei aktivem Modul `website`) und schreibt `website/.env`
 //     (WEBSITE_API_URL, WEBSITE_API_KEY, ORIGIN).
 //
-//   node scripts/seed-demo-website.mjs
-//   DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-website.mjs
+//   bun scripts/seed-demo-website.mjs
+//   DEMO_EMAIL=… DEMO_PASSWORD=… bun scripts/seed-demo-website.mjs
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -423,7 +423,7 @@ const gallery =
 	galleryList[0];
 if (!gallery) {
 	console.log(
-		'Hinweis: keine Galerie vorhanden – erst `node scripts/seed-demo-galleries.mjs` (MinIO).'
+		'Hinweis: keine Galerie vorhanden – erst `bun scripts/seed-demo-galleries.mjs` (MinIO).'
 	);
 } else {
 	const detail = (await call('GET', `${G}/galleries/${gallery.id}`)).data;

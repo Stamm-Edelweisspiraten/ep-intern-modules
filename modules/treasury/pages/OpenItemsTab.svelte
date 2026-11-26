@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
 	import Bell from '@lucide/svelte/icons/bell';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
@@ -10,16 +8,8 @@
 	import SquareCheck from '@lucide/svelte/icons/square-check';
 	import Users from '@lucide/svelte/icons/users';
 	import X from '@lucide/svelte/icons/x';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import { Switch } from '$lib/components/ui/switch';
-	import * as Table from '$lib/components/ui/table';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 	import {
 		BottomSheet,
 		ChoiceChips,
@@ -32,15 +22,25 @@
 		MobileActionBar,
 		SelectionBar,
 		SheetAction,
-		TouchList,
-		sheetsSettled
+		sheetsSettled,
+		TouchList
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import { Switch } from '$lib/components/ui/switch';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { InvoiceSummary, OpenItems, OpenItemsGroup } from '../schemas';
-	import { BASE, errorMessage, fmtDate, openApiFile, type SharedData } from './helpers';
 	import { openStatements, remindInvoices } from './BulkActions';
 	import CompactFilter from './CompactFilter.svelte';
 	import FilterChips from './FilterChips.svelte';
+	import { BASE, errorMessage, fmtDate, openApiFile, type SharedData } from './helpers';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
 	import type { FamilyRef } from './navigation';
 	import type { PaymentPreset } from './PaymentCapture.svelte';
@@ -460,7 +460,9 @@
 					amount={formatEuro(i.openCents)}
 					onclick={() => openInvoice(i)}
 				>
-					{#snippet trailing()}<StatusBadge invoice={i} />{/snippet}
+					{#snippet trailing()}
+						<StatusBadge invoice={i} />
+					{/snippet}
 				</ListRow>
 			{/each}
 		</TouchList>
@@ -588,7 +590,9 @@
 								onclick={() => tapGroup(g)}
 								onlongpress={gs.count ? () => startSelect(g) : undefined}
 							>
-								{#snippet trailing()}{@render groupBadge(g)}{/snippet}
+								{#snippet trailing()}
+									{@render groupBadge(g)}
+								{/snippet}
 							</ListRow>
 						{/each}
 					</TouchList>
@@ -691,13 +695,14 @@
 				</span>
 				{#if data.totals.creditCents > 0}
 					<span
-						>Guthaben <strong class="tabular-nums">{formatEuro(data.totals.creditCents)}</strong
-						></span
+						>Guthaben
+						<strong class="tabular-nums">{formatEuro(data.totals.creditCents)}</strong></span
 					>
 				{/if}
 				<span class="text-muted-foreground">
 					{groups.length}
-					{groupBy === 'payer' ? 'Familien/Personen' : 'Aktionen'} · {data.totals.invoiceCount} Rechnungen
+					{groupBy === 'payer' ? 'Familien/Personen' : 'Aktionen'} ·
+					{data.totals.invoiceCount} Rechnungen
 				</span>
 			</div>
 		{/if}

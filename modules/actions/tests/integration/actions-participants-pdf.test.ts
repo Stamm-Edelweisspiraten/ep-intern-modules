@@ -1,21 +1,26 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { core } from '$lib/sdk/server';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
+import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 const keys: Record<string, string> = {};

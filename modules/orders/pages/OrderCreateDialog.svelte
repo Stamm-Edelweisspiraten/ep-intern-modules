@@ -6,23 +6,23 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, NumberStepper } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
+		type Article,
 		MAX_NOTE,
 		MAX_QUANTITY,
-		orderCreateInput,
-		type Article,
-		RECIPIENT_KIND_LABELS,
-		RECIPIENT_KINDS,
 		type MemberOption,
 		type OrderCreated,
+		orderCreateInput,
+		RECIPIENT_KIND_LABELS,
+		RECIPIENT_KINDS,
 		type RecipientKind
 	} from '../schemas';
 	import { API, errorMessage, fieldErrorsFrom, issuesToErrors, itemName } from './admin-helpers';
@@ -407,7 +407,9 @@
 									</Button>
 								</div>
 							</div>
-							{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+							{#if err}
+								<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -439,7 +441,9 @@
 					placeholder="z. B. Abholung bei der nächsten Gruppenstunde"
 				/>
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>

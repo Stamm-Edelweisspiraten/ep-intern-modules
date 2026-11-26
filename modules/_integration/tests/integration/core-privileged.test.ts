@@ -5,23 +5,33 @@
  * - Fall `kept` (Admin): keine zusätzlichen Rollen, nur die bisherigen
  * - Reset-Export ist eine `.atriumbackup`-Datei ohne Klartext, wiederherstellbar über den Backup-Import
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { and, eq, sql } from 'drizzle-orm';
-import { seedBackupWorld, SEED_PASSWORD, type BackupWorld } from '../../helpers/backup-seed';
-import { BACKUP_PW, exportBackup, failure, previewBackup } from '../../helpers/backup-flow';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { createUser, setUserRoles } from '$testing';
-import { createApiKey } from '$testing';
-import { createRole, updateRole } from '$testing';
-import { ADMIN_ROLE_ID, PRIVILEGED_PERMISSIONS } from '$testing';
-import { canGrantPermission, isAdministrator } from '$testing';
-import { executeRestore } from '$testing';
-import { MERGE_CONFIRM_WORD, RESTORE_CONFIRM_WORD } from '$testing';
-import { backupScopesForResetAreas, exportResetData, previewReset } from '$testing';
-import { resetAllForTests } from '$testing';
 import type { RequestContext } from '$lib/sdk/types';
+import {
+	ADMIN_ROLE_ID,
+	backupScopesForResetAreas,
+	canGrantPermission,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	executeRestore,
+	exportResetData,
+	getDb,
+	isAdministrator,
+	MERGE_CONFIRM_WORD,
+	PRIVILEGED_PERMISSIONS,
+	previewReset,
+	RESTORE_CONFIRM_WORD,
+	resetAllForTests,
+	schema,
+	setUserRoles,
+	updateRole
+} from '$testing';
+import { BACKUP_PW, exportBackup, failure, previewBackup } from '../../helpers/backup-flow';
+import { type BackupWorld, SEED_PASSWORD, seedBackupWorld } from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 let helperId: string;

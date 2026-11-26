@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Bogen-/Rollen-Skizze im Maßstab (SVG). Optional: Startfeld per Klick wählen (angebrochene Bögen)
 	// und belegte Felder der ersten Seite hervorheben.
-	import { labelPageSize, labelsPerPage, type LabelFormat } from '$lib/sdk/labels';
+	import { type LabelFormat, labelPageSize, labelsPerPage } from '$lib/sdk/labels';
 	import { cn } from '$lib/utils';
 
 	let {

@@ -1,21 +1,21 @@
 <script lang="ts">
-	// Lagerorte verwalten (flache Liste, z. B. „Kiste 1“): Reihenfolge, Anlegen/Bearbeiten/Löschen, Etiketten.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Printer from '@lucide/svelte/icons/printer';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	// Lagerorte verwalten (flache Liste, z. B. „Kiste 1“): Reihenfolge, Anlegen/Bearbeiten/Löschen, Etiketten.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, ConfirmDialog, EmptyState, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, ConfirmDialog, EmptyState, FormField } from '$lib/components/layout';
-	import { locationInput, type Location } from '../../schemas';
+	import { apiFetch } from '$lib/sdk/client';
+	import { type Location, locationInput } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 
 	let {

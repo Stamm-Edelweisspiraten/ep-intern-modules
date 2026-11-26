@@ -1,16 +1,16 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import SquareKanban from '@lucide/svelte/icons/square-kanban';
+	import { toast } from 'svelte-sonner';
 	// Karte „Aufgaben“ in der Übersicht: Board des Moduls „Aufgaben“ zu dieser Aktion öffnen oder anlegen.
 	// Nur über die REST-API von `tasks` (kein Import aus dem Modul); ohne aktives Modul/Recht unsichtbar.
 	import { goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
-	import Plus from '@lucide/svelte/icons/plus';
-	import SquareKanban from '@lucide/svelte/icons/square-kanban';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { formatDateDe } from '$lib/sdk/dates';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { formatDateDe } from '$lib/sdk/dates';
 
 	let { actionId, actionName }: { actionId: string; actionName: string } = $props();
 
@@ -125,7 +125,8 @@
 			{#if info.board}
 				<p class="flex flex-wrap items-center gap-2 text-sm">
 					<span class="tabular-nums">
-						{info.board.counts.open} offen · {info.board.counts.done} von {info.board.counts.total} erledigt
+						{info.board.counts.open} offen · {info.board.counts.done} von
+						{info.board.counts.total} erledigt
 					</span>
 					{#if info.board.counts.overdue}
 						<Badge variant="destructive">{info.board.counts.overdue} überfällig</Badge>

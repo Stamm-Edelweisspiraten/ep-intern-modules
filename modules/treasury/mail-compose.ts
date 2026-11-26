@@ -1,11 +1,11 @@
 /** Setzt Kassen-Mails (Text + HTML) aus Vorlage, Rechnungen und Bankdaten zusammen (rein). */
 import {
+	type BankData,
 	formatDateDe,
+	type MailInvoice,
 	mailSubject,
 	mailVars,
-	renderTemplate,
-	type BankData,
-	type MailInvoice
+	renderTemplate
 } from './logic';
 import { itemsTable, paymentBox, paymentText, templateToHtml } from './mail-html';
 

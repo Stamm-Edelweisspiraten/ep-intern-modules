@@ -2,14 +2,14 @@
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Heart from '@lucide/svelte/icons/heart';
+	import { MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { MoneyInput } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
 	import { formatDateDe } from '$lib/sdk/dates';
-	import { validateDonation, type DonationChoice } from '../refund';
+	import { type DonationChoice, validateDonation } from '../refund';
 	import type { PublicRefundChoice } from '../schemas';
 
 	/**
@@ -215,8 +215,9 @@
 											: 'border-muted-foreground'}"
 										aria-hidden="true"
 									>
-										{#if choice === opt.value}<span class="size-2 rounded-full bg-primary"
-											></span>{/if}
+										{#if choice === opt.value}
+											<span class="size-2 rounded-full bg-primary"></span>
+										{/if}
 									</span>
 									<span>
 										<span class="block text-sm font-medium">{opt.title}</span>

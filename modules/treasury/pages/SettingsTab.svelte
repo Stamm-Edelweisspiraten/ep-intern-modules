@@ -1,40 +1,40 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import {
+		AssistTextarea,
+		BUSY_SAVE,
+		ConfirmDialog,
+		ErrorState,
+		FormField,
+		NumberStepper
+	} from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import {
-		ConfirmDialog,
-		ErrorState,
-		FormField,
-		NumberStepper,
-		BUSY_SAVE,
-		AssistTextarea
-	} from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
 		ACCOUNT_KIND_LABELS,
-		CATEGORY_KINDS,
-		CATEGORY_KIND_LABELS,
-		MAIL_PLACEHOLDERS,
-		settingsInput,
 		type Account,
+		CATEGORY_KIND_LABELS,
+		CATEGORY_KINDS,
 		type Category,
 		type CategoryKind,
+		MAIL_PLACEHOLDERS,
+		settingsInput,
 		type TreasurySettings
 	} from '../schemas';
-	import { BASE, errorMessage, fmtDate, issuesToErrors, type SharedData } from './helpers';
 	import AccountDialog from './AccountDialog.svelte';
+	import { BASE, errorMessage, fmtDate, issuesToErrors, type SharedData } from './helpers';
 
 	let {
 		accounts,
@@ -198,9 +198,15 @@
 							<Table.Row class={a.archived ? 'text-muted-foreground' : ''}>
 								<Table.Cell class="font-medium">
 									{a.name}
-									{#if a.isDefault}<Badge class="ml-1">Standard</Badge>{/if}
-									{#if a.archived}<Badge variant="outline" class="ml-1">archiviert</Badge>{/if}
-									{#if a.iban}<div class="text-xs text-muted-foreground">{a.iban}</div>{/if}
+									{#if a.isDefault}
+										<Badge class="ml-1">Standard</Badge>
+									{/if}
+									{#if a.archived}
+										<Badge variant="outline" class="ml-1">archiviert</Badge>
+									{/if}
+									{#if a.iban}
+										<div class="text-xs text-muted-foreground">{a.iban}</div>
+									{/if}
 								</Table.Cell>
 								<Table.Cell>{ACCOUNT_KIND_LABELS[a.kind]}</Table.Cell>
 								<Table.Cell class="tabular-nums">
@@ -374,16 +380,19 @@
 				<Card.Header>
 					<Card.Title>E-Mail-Texte</Card.Title>
 					<Card.Description>
-						Platzhalter: {#each MAIL_PLACEHOLDERS as [key, label], i (key)}<code
-								class="text-xs"
-								title={label}>{key}</code
-							>{i < MAIL_PLACEHOLDERS.length - 1 ? ', ' : ''}{/each}
+						Platzhalter:
+						{#each MAIL_PLACEHOLDERS as [key, label], i (key)}
+							<code class="text-xs" title={label}>{key}</code>{i < MAIL_PLACEHOLDERS.length - 1
+								? ', '
+								: ''}
+						{/each}
 					</Card.Description>
 				</Card.Header>
 				<Card.Content class="space-y-4">
 					<div class="flex items-center gap-2">
 						<Switch id="st-paid" bind:checked={settings.paidMailEnabled} />
-						<Label for="st-paid">Zahlungsbestätigung senden, sobald eine Rechnung bezahlt ist</Label
+						<Label for="st-paid"
+							>Zahlungsbestätigung senden, sobald eine Rechnung bezahlt ist</Label
 						>
 					</div>
 					<FormField label="Betreff Bestätigung" id="st-ps" error={errors.paidSubject}>

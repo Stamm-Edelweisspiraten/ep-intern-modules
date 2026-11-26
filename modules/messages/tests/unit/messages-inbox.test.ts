@@ -2,25 +2,7 @@
  * Posteingang – reine Logik: Postfach-Schlüssel und Zuordnung (`mailbox.ts`), Mail-Parser
  * (`inbound-parse.ts`), HTML-Bereinigung eingehender Mails und Zitat für Antworten (`html.ts`).
  */
-import { describe, expect, it } from 'vitest';
-import {
-	baseSubject,
-	buildAddressIndex,
-	extraKey,
-	isSharedMailbox,
-	kindOf,
-	mailboxKeyForSender,
-	prefixedSubject,
-	routeAddresses,
-	senderKeyFor,
-	MAILBOX_KEY_PATTERN
-} from '$modules/messages/mailbox';
-import {
-	authResultOf,
-	cleanAddress,
-	messageIds,
-	parseInbound
-} from '$modules/messages/inbound-parse';
+import { describe, expect, it } from 'bun:test';
 import {
 	inboxDocument,
 	inlineCidImages,
@@ -28,6 +10,24 @@ import {
 	sanitizeInbound,
 	textToHtml
 } from '$modules/messages/html';
+import {
+	authResultOf,
+	cleanAddress,
+	messageIds,
+	parseInbound
+} from '$modules/messages/inbound-parse';
+import {
+	baseSubject,
+	buildAddressIndex,
+	extraKey,
+	isSharedMailbox,
+	kindOf,
+	MAILBOX_KEY_PATTERN,
+	mailboxKeyForSender,
+	prefixedSubject,
+	routeAddresses,
+	senderKeyFor
+} from '$modules/messages/mailbox';
 
 const mailboxes = [
 	{ key: 'personal:u1', address: 'anna.mueller@stamm.de', name: 'Anna Müller' },

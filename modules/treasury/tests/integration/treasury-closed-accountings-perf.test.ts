@@ -4,26 +4,30 @@
  * - PDF: Existenzprüfung über `isAccountingClosed` (eine Abfrage) statt der ganzen Liste
  * - Ist-Werte (Kasse) je Aktion wie beim Einzelabruf
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { core } from '$lib/sdk/server';
 import { setTodayForTests } from '$lib/sdk/dates';
+import { core } from '$lib/sdk/server';
 import actionsModule from '$modules/actions/module';
+import { actionsService } from '$modules/actions/service';
 import membersModule from '$modules/members/module';
+import type { ClosedAccountingItem } from '$modules/treasury/closed-accountings';
 import treasuryModule from '$modules/treasury/module';
 import { treasuryService } from '$modules/treasury/service';
-import { actionsService } from '$modules/actions/service';
-import type { ClosedAccountingItem } from '$modules/treasury/closed-accountings';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let key = '';

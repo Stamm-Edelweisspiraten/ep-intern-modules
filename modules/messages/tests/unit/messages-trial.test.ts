@@ -1,10 +1,10 @@
 /**
  * Probestunden: Altersangaben der Gruppen lesen, passende Gruppe wählen; die Website nutzt eine Kopie der Logik.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import type { WebsiteGroupRef } from '$modules/members/contract';
 import { groupAgeRange, groupsForAge, parseAgeRange } from '$modules/messages/age-range';
 import { pickTrialGroup, trialSubject } from '$modules/messages/trial.service';
-import type { WebsiteGroupRef } from '$modules/members/contract';
 
 const groups: WebsiteGroupRef[] = [
 	{
@@ -73,7 +73,7 @@ describe('groupsForAge', () => {
 		expect(groupsForAge(groups, 30)).toMatchObject({ exact: true });
 	});
 	it('nimmt sonst die nächstgelegene (nicht exakt)', () => {
-		expect(groupsForAge(groups, 4)).toEqual({ groups: [groups[0]], exact: false });
+		expect<unknown>(groupsForAge(groups, 4)).toEqual({ groups: [groups[0]], exact: false });
 	});
 	it('Zahlen gehen vor dem Text', () => {
 		const g = { ageRange: '6 bis 10 Jahre', ageMin: 12, ageMax: null };
@@ -91,7 +91,7 @@ describe('groupsForAge', () => {
 
 describe('pickTrialGroup', () => {
 	it('gewählte Gruppe vor dem Alter, unbekannter Slug → nach Alter', () => {
-		expect(pickTrialGroup(groups, { groupSlug: 'alt', childAge: 8 })).toEqual({
+		expect<unknown>(pickTrialGroup(groups, { groupSlug: 'alt', childAge: 8 })).toEqual({
 			group: groups[2],
 			chosen: true,
 			exact: false

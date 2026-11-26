@@ -9,33 +9,33 @@ import {
 	rowsOf,
 	type Tx
 } from '$lib/sdk/server';
+import { loadMailOptOut, membersService } from './fields.service';
+import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
 import {
 	codesMatch,
-	isAdult,
 	formatLinkCode,
 	generateLinkCode,
 	generateLinkToken,
+	isAdult,
 	linkExpiry,
 	linkUrl,
 	recipientLines
 } from './link';
-import { loadMailOptOut, membersService } from './fields.service';
-import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
 import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import {
+	type ContactEntry,
 	LINK_DEFAULT_ROLE,
 	LINK_LOCK_MINUTES,
 	LINK_MAX_FAILED_ATTEMPTS,
-	MODULE_ID,
-	NOTIFY_ACCOUNT_LINKED,
-	SENSITIVE_FIELD_KEYS,
-	type ContactEntry,
 	type LinkedUser,
 	type MailCategory,
-	type MyFieldDefinition,
 	type MemberLinks,
+	MODULE_ID,
+	type MyFieldDefinition,
 	type MyMember,
-	type PublicLinkInfo
+	NOTIFY_ACCOUNT_LINKED,
+	type PublicLinkInfo,
+	SENSITIVE_FIELD_KEYS
 } from './schemas';
 
 const crypt = () => core.crypto.forModule(MODULE_ID);

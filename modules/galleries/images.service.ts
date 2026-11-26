@@ -3,7 +3,7 @@
  * Termine hängen an der Galerie (siehe `galleries.service.ts`), nicht an einzelnen Bildern.
  */
 import { sql } from 'drizzle-orm';
-import { errors, type Row, rowsOf, toIso, type Tx } from '$lib/sdk/server';
+import { errors, type Row, rowsOf, type Tx, toIso } from '$lib/sdk/server';
 import type { GalleryImage, ImageVariant, MediaType } from './schemas';
 
 /** Spalten für `toGalleryImage` (Alias `i` für `gallery_images`) */
@@ -100,7 +100,7 @@ export async function requireImagesOfGallery(
 export function sanitizeOriginalName(name: string | null | undefined, fallback = 'bild'): string {
 	const base = (name ?? '').split(/[\\/]/).pop() ?? '';
 	const cleaned = base
-		// eslint-disable-next-line no-control-regex
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 		.replace(/[\u0000-\u001f\u007f]+/g, '')
 		.replace(/\s+/g, ' ')
 		.trim()

@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Loader from '@lucide/svelte/icons/loader-circle';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash from '@lucide/svelte/icons/trash-2';
+	import { tick, untrack } from 'svelte';
+	import { FormField, formatEuro, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -13,18 +14,17 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, MoneyInput, formatEuro } from '$lib/components/layout';
 	import { isValidIban } from '../iban';
 	import {
 		MAX_EXPENSE_BATCH_BYTES,
 		MAX_EXPENSE_BATCH_ITEMS,
-		publicExpenseBatchInput,
 		type PublicExpenseBatchResult,
-		type PublicExpenseLink
+		type PublicExpenseLink,
+		publicExpenseBatchInput
 	} from '../schemas';
 	import DateInputDe, { todayIso } from './DateInputDe.svelte';
-	import ReceiptPicker from './ReceiptPicker.svelte';
 	import { fmtPeriod } from './format';
+	import ReceiptPicker from './ReceiptPicker.svelte';
 
 	let { params }: { params: Record<string, string>; path?: string } = $props();
 
@@ -356,8 +356,8 @@
 						{countLabel(done.count)} über {formatEuro(done.totalCents)} eingereicht.
 					</p>
 					<p class="text-muted-foreground text-sm">
-						{done.count === 1 ? 'Deine Auslage wird' : 'Deine Auslagen werden'} geprüft. Nach der Freigabe
-						überweisen wir den Betrag auf dein Konto.
+						{done.count === 1 ? 'Deine Auslage wird' : 'Deine Auslagen werden'} geprüft. Nach der
+						Freigabe überweisen wir den Betrag auf dein Konto.
 						{#if email.trim()}
 							{done.emailSent
 								? 'Eine Bestätigung ist per E-Mail unterwegs.'
@@ -370,8 +370,8 @@
 		{:else}
 			<p class="text-sm">
 				Du hast für diese Aktion etwas bezahlt? Trage hier deine Auslagen ein und lade je einen
-				Beleg hoch. Bis zu {MAX_EXPENSE_BATCH_ITEMS} Auslagen kannst du auf einmal einreichen. Nach der
-				Prüfung bekommst du das Geld überwiesen.
+				Beleg hoch. Bis zu {MAX_EXPENSE_BATCH_ITEMS} Auslagen kannst du auf einmal einreichen. Nach
+				der Prüfung bekommst du das Geld überwiesen.
 			</p>
 			<form class="flex flex-col gap-6" onsubmit={submit} novalidate>
 				<Card.Root>
@@ -548,8 +548,8 @@
 							</Button>
 						{:else}
 							<p class="text-muted-foreground text-xs" role="note">
-								Höchstens {MAX_EXPENSE_BATCH_ITEMS} Auslagen auf einmal. Weitere kannst du nach dem Absenden
-								in einem neuen Durchgang einreichen.
+								Höchstens {MAX_EXPENSE_BATCH_ITEMS} Auslagen auf einmal. Weitere kannst du nach dem
+								Absenden in einem neuen Durchgang einreichen.
 							</p>
 						{/if}
 						<div
@@ -563,8 +563,8 @@
 						</div>
 						{#if totalBytes > MAX_EXPENSE_BATCH_BYTES}
 							<p class="text-destructive text-xs" role="alert">
-								Alle Belege zusammen sind größer als {MAX_BATCH_MB} MB. Bitte verkleinere die Fotos oder
-								reiche die Auslagen in zwei Durchgängen ein.
+								Alle Belege zusammen sind größer als {MAX_BATCH_MB} MB. Bitte verkleinere die Fotos
+								oder reiche die Auslagen in zwei Durchgängen ein.
 							</p>
 						{/if}
 					</div>
@@ -651,8 +651,11 @@
 										href={link.privacyUrl}
 										target="_blank"
 										rel="noopener noreferrer"
-										class="underline underline-offset-2">Datenschutzerklärung</a
-									>.{/if} *
+										class="underline underline-offset-2"
+										>Datenschutzerklärung</a
+									>.
+								{/if}
+								*
 							</span>
 						</Label>
 					</div>

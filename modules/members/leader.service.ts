@@ -12,6 +12,7 @@
  * Core-Aufrufe nie innerhalb einer Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
 	bestEffort,
 	core,
@@ -22,7 +23,6 @@ import {
 	rowsOf,
 	type Tx
 } from '$lib/sdk/server';
-import { todayBerlin } from '$lib/sdk/dates';
 import { LEADER_ROLE_NAME, MODULE_ID } from './schemas';
 
 /** Mitglied zählt als Leitung: nicht ausgetreten, nicht anonymisiert */

@@ -7,13 +7,13 @@ import { sql } from 'drizzle-orm';
 import { core, errors, type RequestContext, type Tx } from '$lib/sdk/server';
 import type { MemberContact } from '$modules/members/contract';
 import {
-	annualInvoiceDueOn,
-	defaultAnnualDueOn,
-	planAnnualInvoices,
 	type AnnualMember,
 	type AnnualPayer,
 	type AnnualPlan,
-	type PlannedInvoice
+	annualInvoiceDueOn,
+	defaultAnnualDueOn,
+	type PlannedInvoice,
+	planAnnualInvoices
 } from './annual-fee';
 import {
 	idList,
@@ -30,30 +30,30 @@ import {
 import {
 	allAdults,
 	annualVars,
+	type InvoiceSnapshot,
 	isAdultOn,
 	renderInvoicePdf,
 	sendDocuments,
-	withoutMemberHint,
-	type InvoiceSnapshot
+	withoutMemberHint
 } from './documents';
 import { suggestPayers } from './logic';
 import { composeMail } from './mail-compose';
 import { loadBankData } from './notify';
 import {
-	DEFAULT_ANNUAL_BODY,
-	DEFAULT_ANNUAL_PDF_TEXT,
-	DEFAULT_ANNUAL_SUBJECT,
-	DEFAULT_FEE_RATES,
-	FEE_LEVELS,
-	SETTING_KEYS,
 	type AnnualMailPreview,
 	type AnnualPreview,
 	type AnnualRun,
 	type AnnualRunStatus,
 	type AnnualRunUpdate,
 	type AnnualSendResult,
+	DEFAULT_ANNUAL_BODY,
+	DEFAULT_ANNUAL_PDF_TEXT,
+	DEFAULT_ANNUAL_SUBJECT,
+	DEFAULT_FEE_RATES,
+	FEE_LEVELS,
 	type FeeLevel,
-	type FeeRates
+	type FeeRates,
+	SETTING_KEYS
 } from './schemas';
 
 type Row = Record<string, unknown>;
@@ -377,7 +377,7 @@ async function previewSnapshot(
 			inv.recipientName,
 			...(first ? [first.street, `${first.postalCode} ${first.city}`.trim()] : [])
 		]
-			.filter((l) => l && l.trim())
+			.filter((l) => l?.trim())
 			.map((l) => l.slice(0, 60)),
 		issuedOn: today(),
 		dueOn: run.dueOn,

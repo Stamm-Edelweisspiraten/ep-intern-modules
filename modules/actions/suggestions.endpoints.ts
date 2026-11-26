@@ -23,13 +23,13 @@ import { requireAccess } from './access';
 import { isBremenCity } from './form-support';
 import { canSeeHealth } from './health';
 import {
-	DIETS,
-	MODULE_ID,
-	idParams,
-	suggestionQuery,
 	type BankSuggestion,
+	DIETS,
 	type Diet,
-	type MemberSuggestion
+	idParams,
+	type MemberSuggestion,
+	MODULE_ID,
+	suggestionQuery
 } from './schemas';
 
 const TAGS = ['Modul: actions'];

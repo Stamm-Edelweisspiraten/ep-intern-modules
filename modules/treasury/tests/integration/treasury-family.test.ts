@@ -1,22 +1,27 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
-import { setTodayForTests } from '$lib/sdk/dates';
-import type { RequestContext } from '$lib/sdk/types';
 import type { Account, FamilyAccount, InvoiceDetail, Payer } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let close: () => Promise<void>;
@@ -202,7 +207,9 @@ describe('Familienkonto', () => {
 		const acc = await data<FamilyAccount>(await T(`/family-account?payerId=${payer.id}`));
 		expect(acc.payer?.id).toBe(payer.id);
 		expect(acc.name).toBe('Familie Müller');
-		expect(acc.members.map((m) => m.id).sort()).toEqual([memberIds.Lena, memberIds.Jonas].sort());
+		expect<unknown>(acc.members.map((m) => m.id).sort()).toEqual(
+			[memberIds.Lena, memberIds.Jonas].sort()
+		);
 		expect(acc.invoices.map((i) => i.id).sort()).toEqual([invLena.id, invJonas.id].sort());
 		expect(acc.invoices.find((i) => i.id === invOle.id)).toBeUndefined();
 		expect(acc.payments.map((p) => p.id)).toEqual([paymentId]);
@@ -229,7 +236,7 @@ describe('Familienkonto', () => {
 		const acc = await data<FamilyAccount>(await T(`/family-account?memberId=${memberIds.Ole}`));
 		expect(acc.payer).toBeNull();
 		expect(acc.name).toBe('Ole Hansen');
-		expect(acc.members.map((m) => m.id)).toEqual([memberIds.Ole]);
+		expect<unknown>(acc.members.map((m) => m.id)).toEqual([memberIds.Ole]);
 		expect(acc.invoices.map((i) => i.id)).toEqual([invOle.id]);
 		expect(acc.payments).toEqual([]);
 		expect(acc.totals.openCents).toBe(4000);

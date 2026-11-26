@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Lock from '@lucide/svelte/icons/lock';
 	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
+	import { untrack } from 'svelte';
 	import { FormRenderer } from '$lib/components/forms';
 	import { ContactListField, EntityAvatar, toastWithUndo } from '$lib/components/layout';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
@@ -10,10 +10,10 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { apiFetch } from '$lib/sdk/client';
 	import type { FormValue, FormValues } from '$lib/forms';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { MyFieldDefinition, MyMember } from '../schemas';
-	import { MY_BASE, contactErrors, errorText, issuesFrom, memberName } from './profile-shared';
+	import { contactErrors, errorText, issuesFrom, MY_BASE, memberName } from './profile-shared';
 
 	let {
 		member,
@@ -32,7 +32,7 @@
 	} = $props();
 
 	type Contact = { name: string; value: string };
-	const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+	const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 	const toRows = (list: { name: string | null; value: string }[]): Contact[] =>
 		list.map((c) => ({ name: c.name ?? '', value: c.value }));
 	const clean = (rows: Contact[]): Contact[] =>
@@ -190,8 +190,12 @@
 			<div class="min-w-0 flex-1">
 				<div class="flex flex-wrap items-center gap-2">
 					<h2 class="font-semibold">{memberName(member)}</h2>
-					{#if member.relation}<Badge variant="secondary">{member.relation}</Badge>{/if}
-					{#if !canEdit}<Badge variant="outline">Nur Ansicht</Badge>{/if}
+					{#if member.relation}
+						<Badge variant="secondary">{member.relation}</Badge>
+					{/if}
+					{#if !canEdit}
+						<Badge variant="outline">Nur Ansicht</Badge>
+					{/if}
 				</div>
 				<p class="text-xs text-muted-foreground">{subtitle}</p>
 			</div>

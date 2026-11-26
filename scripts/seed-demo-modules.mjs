@@ -1,5 +1,5 @@
 // Legt Demo-Daten für die Module `members` und `actions` an (idempotent, über die echte API).
-// Voraussetzung: demo-server läuft, `node scripts/seed-demo.mjs` wurde ausgeführt.
+// Voraussetzung: demo-server läuft, `bun scripts/seed-demo.mjs` wurde ausgeführt.
 // Enthält Geschwister (gleiche Anschrift/E-Mail), damit Sammelzahlungen in der Kasse getestet werden können.
 const BASE = 'http://127.0.0.1:4300';
 const ORIGIN = 'http://localhost:4300';

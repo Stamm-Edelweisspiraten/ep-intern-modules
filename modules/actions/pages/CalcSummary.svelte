@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
 	import Loader from '@lucide/svelte/icons/loader-circle';
-	import { Label } from '$lib/components/ui/label';
-	import { Slider } from '$lib/components/ui/slider';
 	import { CostBar, NumberStepper, SummaryList } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import { Label } from '$lib/components/ui/label';
+	import { Slider } from '$lib/components/ui/slider';
 	import { CALC_CATEGORY_LABELS, type CalculationResult, type SubsidyResult } from '../schemas';
 
 	let {
@@ -89,9 +89,8 @@
 			</span>
 			{#if teamPays && !noPayers}
 				<span class="text-muted-foreground text-xs tabular-nums">
-					Beitrag Team ({teamPercent.toLocaleString('de-DE')} %): {formatEuro(
-						result.recommendedTeamPerPersonCents
-					)}
+					Beitrag Team ({teamPercent.toLocaleString('de-DE')} %):
+					{formatEuro(result.recommendedTeamPerPersonCents)}
 				</span>
 			{/if}
 		</span>
@@ -104,13 +103,15 @@
 		{/if}
 		{#if teamPays && !noPayers}
 			<p class="text-muted-foreground text-xs">
-				Das Team zahlt {teamPercent.toLocaleString('de-DE')} % des Beitrags, der Rest wird auf die Teilnehmenden
-				umgelegt.
+				Das Team zahlt {teamPercent.toLocaleString('de-DE')} % des Beitrags, der Rest wird auf die
+				Teilnehmenden umgelegt.
 			</p>
 		{/if}
 		{#if canApply && onapply}
 			<Button onclick={onapply} disabled={applying || noPayers} class="w-full">
-				{#if applying}<Loader class="animate-spin" />{/if}
+				{#if applying}
+					<Loader class="animate-spin" />
+				{/if}
 				Beitrag in die Aktion übernehmen
 			</Button>
 		{/if}

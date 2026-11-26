@@ -1,12 +1,12 @@
 <script lang="ts">
+	import ScanLine from '@lucide/svelte/icons/scan-line';
 	// Scannen: Knopf öffnet einen Dialog mit Kamera (QR, Code 128, DataMatrix – auch von einem Bildschirm)
 	// und Eingabefeld; ein USB-Handscanner wird, solange die Komponente angezeigt wird, überall abgehört.
 	import { onMount, type Snippet } from 'svelte';
-	import ScanLine from '@lucide/svelte/icons/scan-line';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import * as Dialog from '$lib/components/ui/dialog';
 	import { BarcodeScanner, listenForScanner } from '$lib/components/layout';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
 
 	let {
 		onscan,

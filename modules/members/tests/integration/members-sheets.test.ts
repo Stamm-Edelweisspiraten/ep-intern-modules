@@ -1,20 +1,24 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import membersModule from '$modules/members/module';
-import type { MembersService } from '$modules/members/contract';
 import type { RequestContext } from '$lib/sdk/types';
+import type { MembersService } from '$modules/members/contract';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/members';
 const service = membersModule.provides as unknown as MembersService;

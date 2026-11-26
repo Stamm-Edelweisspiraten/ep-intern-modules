@@ -1,8 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import Ban from '@lucide/svelte/icons/ban';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -16,15 +12,10 @@
 	import Users from '@lucide/svelte/icons/users';
 	import Wallet from '@lucide/svelte/icons/wallet';
 	import X from '@lucide/svelte/icons/x';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as Table from '$lib/components/ui/table';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		BottomSheet,
 		ChoiceChips,
@@ -38,33 +29,42 @@
 		MoneyInput,
 		SelectionBar,
 		SheetAction,
-		TouchList,
 		sheetsSettled,
+		TouchList,
 		toastWithUndo
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
-		PAYABLE_SOURCES,
 		PAYABLE_SOURCE_LABELS,
+		PAYABLE_SOURCES,
 		type Payable,
 		type PayableList
 	} from '../schemas';
+	import BulkPayDialog from './BulkPayDialog.svelte';
+	import CompactFilter from './CompactFilter.svelte';
+	import FilterChips from './FilterChips.svelte';
+	import HistorySheet from './HistorySheet.svelte';
 	import {
 		BASE,
 		defaultAccountId,
 		errorMessage,
 		fmtDate,
 		openApiFile,
-		todayIso,
-		type SharedData
+		type SharedData,
+		todayIso
 	} from './helpers';
-	import BulkPayDialog from './BulkPayDialog.svelte';
-	import CompactFilter from './CompactFilter.svelte';
-	import FilterChips from './FilterChips.svelte';
-	import HistorySheet from './HistorySheet.svelte';
 	import type { FamilyRef } from './navigation';
-	import StatusBadge from './StatusBadge.svelte';
 	import PayableDialog from './PayableDialog.svelte';
+	import StatusBadge from './StatusBadge.svelte';
 
 	let {
 		accounts,
@@ -467,7 +467,8 @@
 							onclick={() => {
 								historyItem = p;
 								historyOpen = true;
-							}}>Verlauf anzeigen</DropdownMenu.Item
+							}}
+							>Verlauf anzeigen</DropdownMenu.Item
 						>
 					{/if}
 					{#if perm.payable}
@@ -476,7 +477,8 @@
 							onclick={() => {
 								edit = p;
 								dialogOpen = true;
-							}}>Bearbeiten</DropdownMenu.Item
+							}}
+							>Bearbeiten</DropdownMenu.Item
 						>
 						{#if p.cancelledAt}
 							<DropdownMenu.Item class="min-h-11" onclick={() => setCancelled(p, false)}
@@ -485,7 +487,8 @@
 						{:else if p.paidCents === 0}
 							<DropdownMenu.Item
 								class="min-h-11 text-destructive"
-								onclick={() => setCancelled(p, true)}>Stornieren</DropdownMenu.Item
+								onclick={() => setCancelled(p, true)}
+								>Stornieren</DropdownMenu.Item
 							>
 						{/if}
 					{/if}
@@ -649,7 +652,9 @@
 								onclick={() => tapPayable(p)}
 								onlongpress={canBulk && isOpenItem(p) ? () => startSelect(p) : undefined}
 							>
-								{#snippet trailing()}<StatusBadge payable={p} />{/snippet}
+								{#snippet trailing()}
+									<StatusBadge payable={p} />
+								{/snippet}
 							</ListRow>
 						{/each}
 					</TouchList>
@@ -688,7 +693,9 @@
 				? `${formatEuro(activeItem.openCents)} · ${activeItem.description}`
 				: undefined}
 		>
-			{#if activeItem}{@render payableActions(activeItem, 'sheet')}{/if}
+			{#if activeItem}
+				{@render payableActions(activeItem, 'sheet')}
+			{/if}
 		</BottomSheet>
 	{/if}
 {/snippet}
@@ -821,7 +828,9 @@
 						<div class="truncate">{p.description}</div>
 						<div class="mt-1 flex flex-wrap gap-1">
 							<Badge variant="outline">{PAYABLE_SOURCE_LABELS[p.source]}</Badge>
-							{#if p.action}<Badge variant="secondary">{p.action.name}</Badge>{/if}
+							{#if p.action}
+								<Badge variant="secondary">{p.action.name}</Badge>
+							{/if}
 						</div>
 					</Table.Cell>
 					<Table.Cell class="whitespace-nowrap tabular-nums {p.overdue ? 'text-destructive' : ''}">
@@ -911,7 +920,7 @@
 				</Table.Row>
 			{/each}
 			{#snippet footer()}
-				{#if data && data.items.length}
+				{#if data?.items.length}
 					<span class="text-sm text-muted-foreground">
 						{data.totals.count} offen · Summe
 						<span class="tabular-nums">{formatEuro(data.totals.openCents)}</span>
@@ -971,7 +980,8 @@
 						<div class="min-w-0">
 							<div class="truncate font-medium">{r.label}</div>
 							<div class="text-xs text-muted-foreground">
-								{fmtDate(r.date)}{r.amountCents != null ? ` · ${formatEuro(r.amountCents)}` : ''} · {r.name}
+								{fmtDate(r.date)}{r.amountCents != null ? ` · ${formatEuro(r.amountCents)}` : ''} ·
+								{r.name}
 							</div>
 						</div>
 						<Button size="sm" variant="outline" onclick={() => openReceipt(r)}>Öffnen</Button>

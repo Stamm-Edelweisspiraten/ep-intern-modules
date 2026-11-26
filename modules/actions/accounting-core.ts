@@ -5,9 +5,9 @@ import {
 	errors,
 	type RequestContext,
 	rowsOf,
+	type Tx,
 	toIso,
-	toIsoOrNull,
-	type Tx
+	toIsoOrNull
 } from '$lib/sdk/server';
 import type {
 	AccountingClosedEvent,
@@ -18,8 +18,6 @@ import { payeeTotals, summarize, toSummaryEntry } from './accounting';
 import { computeAutoIncome } from './auto-income';
 import { calculate } from './calculation';
 import { maskFromLast } from './iban';
-import { computeSubsidy } from './subsidy';
-import type { EligibilityParticipant } from './subsidy-eligibility';
 import type {
 	AccountingCategory,
 	AccountingEntry,
@@ -35,9 +33,11 @@ import type {
 	FreizeitType,
 	InterimSnapshot,
 	LodgingType,
-	ParticipantRole,
-	PaidBy
+	PaidBy,
+	ParticipantRole
 } from './schemas';
+import { computeSubsidy } from './subsidy';
+import type { EligibilityParticipant } from './subsidy-eligibility';
 
 /** Abschlussstatus; `null`, wenn die Abrechnung offen ist. */
 export async function closedInfo(
@@ -519,17 +519,16 @@ export async function loadAutoIncome(
 		teamFeeCents: act?.team_fee_cents == null ? null : Number(act.team_fee_cents),
 		payingCount: participants.filter((p) => p.role !== 'team').length,
 		teamCount: participants.filter((p) => p.role === 'team').length,
-		subsidy:
-			calc && Boolean(calc.include_subsidy)
-				? {
-						nights: Number(calc.nights),
-						lodgingType: String(calc.lodging_type) as LodgingType,
-						konfi: Boolean(calc.konfi),
-						freizeitType: String(calc.freizeit_type) as FreizeitType,
-						startsOn: String(act?.starts_on ?? ''),
-						participants
-					}
-				: null,
+		subsidy: calc?.include_subsidy
+			? {
+					nights: Number(calc.nights),
+					lodgingType: String(calc.lodging_type) as LodgingType,
+					konfi: Boolean(calc.konfi),
+					freizeitType: String(calc.freizeit_type) as FreizeitType,
+					startsOn: String(act?.starts_on ?? ''),
+					participants
+				}
+			: null,
 		entries,
 		treasury
 	});

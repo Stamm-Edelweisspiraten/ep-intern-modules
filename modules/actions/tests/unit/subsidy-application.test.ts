@@ -1,10 +1,10 @@
+import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
+import type { LeaderGender } from '$modules/actions/schemas';
 import { planSubsidyApplications } from '$modules/actions/subsidy-application';
 import { fillSubsidyApplicationPdf } from '$modules/actions/subsidy-application-pdf';
 import type { EligibilityParticipant } from '$modules/actions/subsidy-eligibility';
-import type { LeaderGender } from '$modules/actions/schemas';
 
 // Aktionsstart 2026-07-10: Kind = 2017 (9 J.), Jugendliche*r = 2011 (15 J.), Team = 2004 (22 J.)
 const START = '2026-07-10';

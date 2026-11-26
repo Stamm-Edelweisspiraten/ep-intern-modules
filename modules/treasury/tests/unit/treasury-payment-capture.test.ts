@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
-	MAX_PAYMENT_CENTS,
 	distributeOverLines,
 	foldText,
 	linesOfGroup,
+	MAX_PAYMENT_CENTS,
 	paymentCandidates,
 	pressKey
 } from '$modules/treasury/pages/payment-capture';

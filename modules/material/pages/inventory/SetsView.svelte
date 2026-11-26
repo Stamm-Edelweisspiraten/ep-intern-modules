@@ -1,16 +1,16 @@
 <script lang="ts">
-	// Lager → Sets: Karten je Set mit Vollständigkeit, Artikeln und nächster Verwendung. Pflege
-	// (Anlegen/Bearbeiten/Auflösen) mit `material.inventory.manage`.
-	import { toast } from 'svelte-sonner';
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	// Lager → Sets: Karten je Set mit Vollständigkeit, Artikeln und nächster Verwendung. Pflege
+	// (Anlegen/Bearbeiten/Auflösen) mit `material.inventory.manage`.
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { MaterialSet } from '../../schemas';
 	import { API, errorText, formatPeriod } from '../helpers';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
@@ -111,8 +111,12 @@
 											onclick={() => onopenitem(i.id)}
 										>
 											{i.name}
-											{#if i.quantity > 1}<span class="tabular-nums">× {i.quantity}</span>{/if}
-											{#if !i.usable}<ConditionBadge condition={i.condition} hideOk />{/if}
+											{#if i.quantity > 1}
+												<span class="tabular-nums">× {i.quantity}</span>
+											{/if}
+											{#if !i.usable}
+												<ConditionBadge condition={i.condition} hideOk />
+											{/if}
 										</button>
 									</li>
 								{/each}

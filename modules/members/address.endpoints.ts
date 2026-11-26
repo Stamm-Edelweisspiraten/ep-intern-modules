@@ -1,4 +1,4 @@
-import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, defineEndpoint } from '$lib/sdk/server';
 import { placesForPostalCode, suggestAddresses } from './address.service';
 import { addressPlacesQuery, addressSuggestQuery } from './schemas';
 

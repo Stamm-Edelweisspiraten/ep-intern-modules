@@ -16,17 +16,17 @@ import {
 	requireImagesOfGallery,
 	toGalleryImage
 } from './images.service';
-import { uploadMedia } from './upload.service';
 import {
-	MODULE_ID,
+	type BulkResult,
+	type GalleryImage,
 	idParams,
 	imageBulkInput,
 	imageParams,
 	imageUpdateInput,
-	variantParams,
-	type BulkResult,
-	type GalleryImage
+	MODULE_ID,
+	variantParams
 } from './schemas';
+import { uploadMedia } from './upload.service';
 
 const tags = ['Modul: galleries'];
 

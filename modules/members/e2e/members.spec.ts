@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Mitglieder: Ansicht (gesperrter Dialog), Bearbeiten mit Tabs, Mitgliedschaft (Zweitmitglied, Eintritt/Austritt),
 // Fehlerführung zum Tab „Mitgliedschaft“ und Statusfilter „Ausgetreten“.

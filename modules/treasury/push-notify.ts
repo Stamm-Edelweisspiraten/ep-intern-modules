@@ -73,9 +73,9 @@ function itemFor(kind: Kind, inv: RawInvoice, userIds: string[]): NotificationIt
 export async function pushToLinkedAccounts(kind: Kind, invoices: RawInvoice[]): Promise<void> {
 	if (!invoices.length) return;
 	await bestEffort(`treasury.push.${kind}`, async () => {
-		const byMember = await (
-			await membersService()
-		).listLinkedUserIds(invoices.flatMap(memberIdsOf));
+		const byMember = await (await membersService()).listLinkedUserIds(
+			invoices.flatMap(memberIdsOf)
+		);
 		const items: NotificationItem[] = [];
 		for (const inv of invoices) {
 			const userIds = [...new Set(memberIdsOf(inv).flatMap((m) => byMember[m] ?? []))];

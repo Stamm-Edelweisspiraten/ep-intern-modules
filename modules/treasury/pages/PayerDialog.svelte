@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, BUSY_SAVE } from '$lib/components/layout';
-	import { payerInput, type Payer, type PayerFormInput } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { type Payer, type PayerFormInput, payerInput } from '../schemas';
 	import { BASE, fieldErrorsFrom, issuesToErrors } from './helpers';
 
 	let {
@@ -166,7 +166,9 @@
 			<FormField label="Notiz" id="py-note">
 				<Textarea id="py-note" bind:value={note} rows={2} maxlength={500} />
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

@@ -1,10 +1,10 @@
 /** API-Vertrag des Moduls "actions": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
-import { isRealDate, todayBerlin } from '$lib/sdk/dates';
-import { isValidIban, normalizeIban } from './iban';
 import { formDefinitionSchema } from '$lib/forms/schema';
 import type { FormDefinition } from '$lib/forms/types';
+import { isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { PRINCIPAL_TYPES, type PrincipalType } from '$lib/sdk/types/sharing';
+import { isValidIban, normalizeIban } from './iban';
 
 export const MODULE_ID = 'actions';
 /** Benachrichtigung (core.notifications): neue Auslagen über den Kosten-Link an die Eigentümer*in */
@@ -62,9 +62,9 @@ export function ageAt(birthIso: string, onIso: string): number | null {
 
 // --- Eingaben ---------------------------------------------------------------
 
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const CONTROL_CHARS_NO_NEWLINE = /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/;
 
 const text = (max: number) =>

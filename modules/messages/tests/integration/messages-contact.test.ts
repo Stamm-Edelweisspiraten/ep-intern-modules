@@ -3,29 +3,38 @@
  * Proof-of-Work (gültig, gefälscht, zu schnell, abgelaufen, doppelt), Ablage im Stamm-Postfach bzw. „Nicht
  * zugeordnet“, Antworten an die eingegebene Adresse, Benachrichtigung, Audit ohne personenbezogene Daten.
  */
+
+import { afterAll, afterEach, beforeAll, describe, expect, it, setSystemTime } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { settleMails } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
-import membersModule from '$modules/members/module';
-import messagesModule from '$modules/messages/module';
-import type { PowChallenge } from '$modules/messages/contact-pow';
-import type { ComposePrefill, InboxDetail, InboxListResponse } from '$modules/messages/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import type { PowChallenge } from '$modules/messages/contact-pow';
+import messagesModule from '$modules/messages/module';
+import type { ComposePrefill, InboxDetail, InboxListResponse } from '$modules/messages/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	type MailTransport,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setSettings,
+	settleMails,
+	syncModules,
+	useTestDatabase,
+	waitFor as waitUntil
+} from '$testing';
 
 const PW = 'contact-password-1234';
 let close: () => Promise<void>;
@@ -73,7 +82,7 @@ async function solved(who = 'website') {
 	}
 	throw new Error('Aufgabe nicht lösbar');
 }
-const later = (ms: number) => vi.setSystemTime(Date.now() + ms);
+const later = (ms: number) => setSystemTime(Date.now() + ms);
 const input = (pow: Awaited<ReturnType<typeof solved>>, over: Record<string, unknown> = {}) => ({
 	name: 'Petra Interessiert',
 	email: 'Petra@Extern.example',
@@ -126,7 +135,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-	vi.useRealTimers();
+	setSystemTime();
 	resetAllForTests();
 });
 
@@ -147,7 +156,7 @@ describe('Kontaktformular der Website', () => {
 	});
 
 	it('legt eine gültige Anfrage ins Stamm-Postfach, Antworten gehen an die eingegebene Adresse', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const pow = await solved();
 		later(5_000);
 		mails = [];
@@ -176,7 +185,7 @@ describe('Kontaktformular der Website', () => {
 
 		// Benachrichtigung an Sven (Stamm-Postfach), nicht an Anna
 		await settleMails();
-		await vi.waitFor(() =>
+		await waitUntil(() =>
 			expect(mails.some((m) => String(m.to).includes('sven@example.test'))).toBe(true)
 		);
 		expect(mails.some((m) => String(m.to).includes('anna@example.test'))).toBe(false);
@@ -189,7 +198,7 @@ describe('Kontaktformular der Website', () => {
 	});
 
 	it('lehnt dieselbe Aufgabe ein zweites Mal ab (409)', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const pow = await solved();
 		later(5_000);
 		await data(await submit(input(pow, { message: 'Erste' })), 201);
@@ -199,7 +208,7 @@ describe('Kontaktformular der Website', () => {
 	});
 
 	it('Zeitfalle: zu schnell und abgelaufen → 422', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const fast = await solved();
 		later(1_000);
 		const e1 = await errOf(await submit(input(fast)), 422);
@@ -212,7 +221,7 @@ describe('Kontaktformular der Website', () => {
 	});
 
 	it('gefälschte Lösung oder Signatur → 422, nichts gespeichert', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const pow = await solved();
 		later(5_000);
 		const before = (await data<InboxListResponse>(await M('sven', '/inbox?mailbox=stamm'))).items
@@ -234,7 +243,7 @@ describe('Kontaktformular der Website', () => {
 	it('ohne Stamm-Adresse → „Nicht zugeordnet“ für die Verwaltung', async () => {
 		await setSettings(admin, { 'core.organization.email': '' });
 		try {
-			vi.useFakeTimers({ toFake: ['Date'] });
+			setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 			const pow = await solved();
 			later(5_000);
 			await data(await submit(input(pow, { message: 'Ohne Stamm-Adresse' })), 201);

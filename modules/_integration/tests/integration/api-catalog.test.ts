@@ -3,28 +3,33 @@
  * Prüft Vollständigkeit gegen OpenAPI, Rechte (`allowed`), Modulstatus, den Rate-Limit-Spiegel
  * gegenüber dem Router, Fehlerliste und die Doku-Hygiene aller registrierten Module.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { buildOpenApiDocument } from '$testing';
-import { resetAllForTests } from '$testing';
-import { buildApiCatalog } from '$testing';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
-import treasuryModule from '$modules/treasury/module';
-import eventsModule from '$modules/events/module';
-import galleriesModule from '$modules/galleries/module';
 import type { ApiCatalog, ApiCatalogEntry } from '$lib/api-docs/types';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import eventsModule from '$modules/events/module';
+import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import treasuryModule from '$modules/treasury/module';
+import {
+	bootstrapAdmin,
+	buildApiCatalog,
+	buildOpenApiDocument,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let admin: RequestContext;
@@ -149,7 +154,8 @@ describe('API-Katalog: Rechte und Modulstatus', () => {
 	it('deaktivierte Module: moduleEnabled false, aktive true', () => {
 		const byModule = new Map<string, boolean>();
 		for (const e of adminCatalog.entries) {
-			if (byModule.has(e.moduleId)) expect(e.moduleEnabled, e.id).toBe(byModule.get(e.moduleId));
+			if (byModule.has(e.moduleId))
+				expect<unknown>(e.moduleEnabled, e.id).toBe(byModule.get(e.moduleId));
 			byModule.set(e.moduleId, e.moduleEnabled);
 		}
 		expect(byModule.get('core')).toBe(true);

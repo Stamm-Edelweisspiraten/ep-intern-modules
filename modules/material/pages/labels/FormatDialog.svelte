@@ -1,19 +1,19 @@
 <script lang="ts">
 	// Eigene Etikettgröße (Format) anlegen/bearbeiten (Bogen oder Rolle) mit Live-Vorschau des Bogens.
 	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import { apiFetch } from '$lib/sdk/client';
 	import {
 		formatProblem,
-		labelsPerPage,
 		LABEL_FORMAT_PRESETS,
-		type LabelFormat
+		type LabelFormat,
+		labelsPerPage
 	} from '$lib/sdk/labels';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, BUSY_SAVE } from '$lib/components/layout';
-	import { labelFormatInput, type LabelFormatEntry } from '../../schemas';
+	import { type LabelFormatEntry, labelFormatInput } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import SheetPreview from '../shared/SheetPreview.svelte';
 	import { round2 } from './designer';
@@ -104,7 +104,7 @@
 		const parsed = labelFormatInput.safeParse({ name, format });
 		if (!parsed.success) {
 			errors = fieldErrors(parsed.error);
-			error = errors['format'] ?? '';
+			error = errors.format ?? '';
 			return;
 		}
 		busy = true;
@@ -160,7 +160,7 @@
 		</Dialog.Header>
 		<form id="label-format-form" class="grid gap-4 sm:grid-cols-[1fr_auto]" onsubmit={submit}>
 			<div class="min-w-0 space-y-4">
-				<FormField label="Name" id="fmt-name" required error={errors['name']}>
+				<FormField label="Name" id="fmt-name" required error={errors.name}>
 					<Input id="fmt-name" bind:value={name} maxlength={150} placeholder="z. B. Herma 4360" />
 				</FormField>
 				<div class="grid gap-4 sm:grid-cols-2">
@@ -231,9 +231,11 @@
 				{/if}
 			</div>
 		</form>
-		{#if error && error !== problem}<p class="text-sm text-destructive" role="alert">
+		{#if error && error !== problem}
+			<p class="text-sm text-destructive" role="alert">
 				{error}
-			</p>{/if}
+			</p>
+		{/if}
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 			<Button type="submit" form="label-format-form" disabled={busy || !!problem}>

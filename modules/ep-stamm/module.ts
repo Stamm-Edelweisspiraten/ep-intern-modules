@@ -1,10 +1,10 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
-import { STAMM_TEMPLATES } from './letterhead';
-import { STAMM_SETTING_DEFAULTS } from './defaults';
+import appIcon from './assets/icons/icon-512.png?inline';
 import mailLilie from './assets/mail-lilie.png?inline';
 import mailWappen from './assets/mail-wappen.png?inline';
-import appIcon from './assets/icons/icon-512.png?inline';
+import pkg from './atrium-module.json';
+import { STAMM_SETTING_DEFAULTS } from './defaults';
+import { STAMM_TEMPLATES } from './letterhead';
 
 /**
  * Stammesprofil der Edelweißpiraten: liefert dem neutralen Core (Kalypzo Atrium) das bisherige Aussehen von

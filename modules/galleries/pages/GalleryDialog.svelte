@@ -1,30 +1,30 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Globe from '@lucide/svelte/icons/globe';
 	import Lock from '@lucide/svelte/icons/lock';
+	import { tick, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
+	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
+	import { AssistTextarea, ConfirmDialog, FormField, SharePanel } from '$lib/components/layout';
+	import { shareKey } from '$lib/components/layout/share-types';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { ConfirmDialog, FormField, SharePanel, AssistTextarea } from '$lib/components/layout';
-	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
-	import { shareKey } from '$lib/components/layout/share-types';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
-		MAX_DESCRIPTION,
-		MAX_TITLE,
-		PUBLISH_PERMISSION,
-		SHARE_LEVELS,
-		SHARE_LEVEL_LABELS,
-		VISIBILITIES,
-		VISIBILITY_DESCRIPTIONS,
-		VISIBILITY_LABELS,
-		galleryInput,
 		type EventRef,
 		type GalleryDetail,
 		type GalleryInput,
+		galleryInput,
+		MAX_DESCRIPTION,
+		MAX_TITLE,
+		PUBLISH_PERMISSION,
+		SHARE_LEVEL_LABELS,
+		SHARE_LEVELS,
+		VISIBILITIES,
+		VISIBILITY_DESCRIPTIONS,
+		VISIBILITY_LABELS,
 		type Visibility
 	} from '../schemas';
 	import EventPicker from './EventPicker.svelte';

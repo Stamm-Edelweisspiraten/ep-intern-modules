@@ -6,7 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { formatEuro } from '$lib/components/layout/money';
 import { formatDateDe, formatDateTimeDe } from '$lib/sdk/dates';
-import { moduleDb, rowsOf, type ModuleAssist, type RequestContext } from '$lib/sdk/server';
+import { type ModuleAssist, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import { ASSIST_TEXT_TASKS } from '$lib/sdk/types/assist';
 import { loadActionKeys, resolveAccess } from './access';
 import { DISCLAIMER_PLACEHOLDERS, MODULE_ID } from './schemas';
@@ -57,8 +57,8 @@ async function actionContext(ctx: RequestContext, id: string) {
 		if (r.form_enabled && r.closes_at) {
 			facts['Anmeldung bis'] = formatDateTimeDe(String(r.closes_at));
 		}
-		if (r.form_enabled && r.max_participants) facts['Plätze'] = String(r.max_participants);
-		if (r.description) facts['Beschreibung'] = String(r.description).slice(0, 1500);
+		if (r.form_enabled && r.max_participants) facts.Plätze = String(r.max_participants);
+		if (r.description) facts.Beschreibung = String(r.description).slice(0, 1500);
 		return { facts };
 	});
 }

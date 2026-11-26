@@ -1,21 +1,27 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { setSettings } from '$testing';
-import { getDb, schema } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
 import type { SubsidyApplicationDto } from '$modules/actions/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setSettings,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/actions';
 let admin: RequestContext;

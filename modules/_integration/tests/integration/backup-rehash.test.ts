@@ -2,28 +2,33 @@
  * Datensicherung: Modul-Hooks `backup.rehash` (treasury, files) berechnen schlüsselgebundene Hashes aus den
  * verschlüsselten Quellspalten neu (wie nach dem Wiederherstellen auf einem Server mit anderem APP_SECRET).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { decryptSecret, keyedHash } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$lib/sdk/server';
 import type { ModuleBackupHooks, ModuleBackupRehashHelpers } from '$lib/sdk/server';
+import { core } from '$lib/sdk/server';
 import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
-import filesModule from '$modules/files/module';
-import { treasuryBackup } from '$modules/treasury/backup';
 import { filesBackup } from '$modules/files/backup';
+import filesModule from '$modules/files/module';
 import type { ShareLink } from '$modules/files/schemas';
+import membersModule from '$modules/members/module';
+import { treasuryBackup } from '$modules/treasury/backup';
+import treasuryModule from '$modules/treasury/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	decryptSecret,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	keyedHash,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const IBAN = 'DE89 3704 0044 0532 0130 00';
 const IBAN_N = 'DE89370400440532013000';

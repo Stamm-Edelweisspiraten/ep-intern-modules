@@ -2,34 +2,39 @@
  * Kasse: Lesepfade ohne Seiteneffekte, gezielter Abgleich je Aktion, gesammelte Kontakte (#12),
  * Anmeldung während eines laufenden Abgleichs (#58) und Mahnlauf ohne doppelte Erinnerungen (#57).
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$lib/sdk/server';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import { setTodayForTests } from '$lib/sdk/dates';
-import { refreshSentDocuments } from '$modules/treasury/documents';
-import { runReminderJob } from '$modules/treasury/notify';
-import { syncAll } from '$modules/treasury/sync';
-import { STANDARD_FORM_KEYS, type FormConfig } from '$modules/actions/schemas';
-import type { ActionsService } from '$modules/actions/contract';
-import type { MembersService } from '$modules/members/contract';
+import { core } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import type { ActionsService } from '$modules/actions/contract';
+import actionsModule from '$modules/actions/module';
+import { type FormConfig, STANDARD_FORM_KEYS } from '$modules/actions/schemas';
+import type { MembersService } from '$modules/members/contract';
+import membersModule from '$modules/members/module';
+import { refreshSentDocuments } from '$modules/treasury/documents';
+import treasuryModule from '$modules/treasury/module';
+import { runReminderJob } from '$modules/treasury/notify';
 import type { InvoiceDetail, InvoiceList } from '$modules/treasury/schemas';
+import { syncAll } from '$modules/treasury/sync';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let close: () => Promise<void>;

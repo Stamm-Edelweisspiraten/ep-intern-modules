@@ -1,16 +1,16 @@
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Receipt from '@lucide/svelte/icons/receipt';
 	// Dashboard-Kachel „Meine offenen Rechnungen“: offene Rechnungen der verknüpften Mitglieder
 	// mit aufklappbaren Zahlungsdaten (Empfänger, IBAN, Verwendungszweck zum Kopieren).
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Copy from '@lucide/svelte/icons/copy';
-	import Receipt from '@lucide/svelte/icons/receipt';
-	import { apiFetch } from '$lib/sdk/client';
-	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { DashboardCard } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
+	import { apiFetch } from '$lib/sdk/client';
+	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { formatIban } from '../../iban';
 	import type { MyInvoice, MyInvoices } from '../../schemas';
 	import { BASE, errorMessage, fmtDate } from '../helpers';
@@ -85,7 +85,9 @@
 						<div class="min-w-0">
 							<div class="truncate font-medium">
 								<span class="tabular-nums">{inv.number}</span>
-								{#if inv.members.length}· {inv.members.join(', ')}{/if}
+								{#if inv.members.length}
+									· {inv.members.join(', ')}
+								{/if}
 							</div>
 							<div
 								class="text-xs tabular-nums {inv.overdue

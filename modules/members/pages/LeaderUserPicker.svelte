@@ -3,9 +3,9 @@
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { Input } from '$lib/components/ui/input';
 	import { EntityAvatar } from '$lib/components/layout';
+	import { Input } from '$lib/components/ui/input';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { GroupLeaderUser, LinkUserRef } from '../schemas';
 
 	/** Benutzerkonten als Gruppenleitung: Chips der gewählten Konten + Suche (ab 2 Zeichen) */
@@ -81,7 +81,9 @@
 				>
 					<UserRound class="size-3.5 text-muted-foreground" aria-hidden="true" />
 					<span class={u.active ? '' : 'text-muted-foreground'}>{u.name}</span>
-					{#if !u.active}<span class="text-xs text-muted-foreground">(deaktiviert)</span>{/if}
+					{#if !u.active}
+						<span class="text-xs text-muted-foreground">(deaktiviert)</span>
+					{/if}
 					<button
 						type="button"
 						class="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"

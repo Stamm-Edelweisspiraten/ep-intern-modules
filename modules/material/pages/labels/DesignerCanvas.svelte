@@ -4,7 +4,7 @@
 	import type { LabelElement, LabelLayout } from '$lib/sdk/labels';
 	import { cn } from '$lib/utils';
 	import LabelPreview from '../shared/LabelPreview.svelte';
-	import { HANDLES, moveBox, PX_PER_MM, resizeBox, type Box, type Handle } from './designer';
+	import { type Box, HANDLES, type Handle, moveBox, PX_PER_MM, resizeBox } from './designer';
 
 	let {
 		layout,

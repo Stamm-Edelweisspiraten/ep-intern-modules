@@ -2,11 +2,11 @@
 	// Gewählte Lagerartikel an einen anderen Lagerort umlagern (oder „ohne Ort“).
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { BUSY_SAVE, FormField } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Location } from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import { locationOptions } from './options';
@@ -57,7 +57,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Umlagern</Dialog.Title>
 			<Dialog.Description>
-				{itemIds.length === 1 ? '1 Artikel' : `${itemIds.length} Artikel`} an einen anderen Lagerort bringen.
+				{itemIds.length === 1 ? '1 Artikel' : `${itemIds.length} Artikel`} an einen anderen Lagerort
+				bringen.
 			</Dialog.Description>
 		</Dialog.Header>
 		<FormField label="Neuer Lagerort" id="move-location">

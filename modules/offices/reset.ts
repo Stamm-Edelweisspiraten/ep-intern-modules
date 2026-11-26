@@ -1,5 +1,5 @@
 /** Bereiche für den Admin-Reset (Core `system/reset`). Siehe `ResetArea`. */
-import { sql, type SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import type { ModuleDefinition, ResetArea, Tx } from '$lib/sdk/server';
 
 /**

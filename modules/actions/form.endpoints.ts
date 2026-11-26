@@ -1,8 +1,8 @@
-import { sanitizeFormHtml } from './form-html';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { notifyRegistration } from './notify';
-import { todayBerlin } from '$lib/sdk/dates';
 import { sql } from 'drizzle-orm';
+import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
+import type { FormDefinition, FormValues } from '$lib/forms/types';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
 	type ApiEndpoint,
 	core,
@@ -12,63 +12,63 @@ import {
 	moduleDb,
 	type RequestContext,
 	rowsOf,
-	toIsoOrNull,
-	type Tx
+	type Tx,
+	toIsoOrNull
 } from '$lib/sdk/server';
-import { formDefinitionSchema, validateFormValues } from '$lib/forms/schema';
-import type { FormDefinition, FormValues } from '$lib/forms/types';
 import type { LinkedMemberData, MembersService } from '$modules/members/contract';
 import type { TreasuryService } from '$modules/treasury/contract';
 import { requireAccess } from './access';
-import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
-import { notifyTreasury } from './treasury-sync';
-import { canSeeHealth, healthColumns, readHealth } from './health';
-import { globalPrivacyUrl, purgeMailCounters, takeMailQuota } from './public-mail';
+import { sanitizeFormHtml } from './form-html';
 import {
-	OPTIN_VALID_DAYS,
-	STATUS_CONFLICT_MESSAGES,
 	buildConfirmationMail,
-	buildOptInMail,
 	buildDefaultFormDefinition,
+	buildOptInMail,
+	type CsvColumn,
 	computeFormStatus,
 	identityValues,
-	memberUpdates,
-	prefillValues,
-	withoutIdentityFields,
 	isPlausibleBirthDate,
 	mapStandardAnswers,
+	memberUpdates,
 	mergeStandardFields,
 	normalizeDedupeKey,
+	OPTIN_VALID_DAYS,
+	prefillValues,
 	renderDisclaimer,
+	STATUS_CONFLICT_MESSAGES,
 	safeFilename,
 	toCsv,
 	toPublicDefinition,
-	type CsvColumn
+	withoutIdentityFields
 } from './form-support';
+import { canSeeHealth, healthColumns, readHealth } from './health';
+import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
+import { notifyRegistration } from './notify';
+import { globalPrivacyUrl, purgeMailCounters, takeMailQuota } from './public-mail';
 import {
+	type AppliedFee,
 	DEFAULT_DISCLAIMER_TEMPLATE,
 	DIET_LABELS,
+	type Diet,
 	FORM_CONFIRM_PREFIX,
 	FORM_PUBLIC_PREFIX,
-	MODULE_ID,
-	PARTICIPANT_ROLE_LABELS,
-	STANDARD_FORM_KEYS as K,
-	formConfigInput,
-	idParams,
-	publicConfirmInput,
-	publicSubmitInput,
-	publicTokenParams,
-	type AppliedFee,
-	type Diet,
 	type FormConfig,
 	type FormConfigInput,
+	formConfigInput,
+	idParams,
+	STANDARD_FORM_KEYS as K,
+	MODULE_ID,
+	PARTICIPANT_ROLE_LABELS,
 	type ParticipantRole,
 	type PublicConfirmResult,
 	type PublicForm,
 	type PublicMemberOption,
 	type PublicSubmitInput,
-	type PublicSubmitResult
+	type PublicSubmitResult,
+	publicConfirmInput,
+	publicSubmitInput,
+	publicTokenParams
 } from './schemas';
+import { notifyTreasury } from './treasury-sync';
 
 const TAGS = ['Modul: actions'];
 
@@ -269,7 +269,7 @@ async function loadByToken(
 	token: string
 ): Promise<(Loaded & { form: FormRow; id: string }) | null> {
 	const [row] = await rowsOf(tx, sql`SELECT * FROM action_forms WHERE ${tokenMatchSql(token)}`);
-	if (!row || !row.enabled) return null;
+	if (!row?.enabled) return null;
 	const id = String(row.action_id);
 	const action = await loadAction(tx, id);
 	return { id, form: toFormRow(row), action, ...(await counts(tx, id)) };

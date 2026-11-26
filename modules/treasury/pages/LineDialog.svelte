@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { InvoiceLine } from '../schemas';
 	import { BASE, fieldErrorsFrom } from './helpers';
 
@@ -72,7 +72,9 @@
 		<Dialog.Header>
 			<Dialog.Title>Posten anpassen</Dialog.Title>
 			<Dialog.Description>
-				{#if line}{line.description} · {formatEuro(line.amountCents)}{/if}
+				{#if line}
+					{line.description} · {formatEuro(line.amountCents)}
+				{/if}
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
@@ -111,7 +113,9 @@
 					emptyLabel="Kein Mitglied"
 				/>
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

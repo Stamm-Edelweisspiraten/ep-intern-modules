@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount, type Component } from 'svelte';
 	import AtSign from '@lucide/svelte/icons/at-sign';
 	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -18,19 +17,20 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import User from '@lucide/svelte/icons/user';
 	import Users from '@lucide/svelte/icons/users';
+	import { type Component, onMount } from 'svelte';
+	import { CountBadge } from '$lib/components/layout';
 	import * as ContextMenu from '$lib/components/ui/context-menu';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { CountBadge } from '$lib/components/layout';
 	import { cn } from '$lib/utils';
-	import { buildFolderTree, descendantIds, folderDepth, subtreeHeight } from '../folders';
 	import type { FolderNode } from '../folders';
+	import { buildFolderTree, descendantIds, folderDepth, subtreeHeight } from '../folders';
 	import type { MailboxKind } from '../mailbox';
-	import { MAX_FOLDER_DEPTH, type InboxFolder, type MailboxInfo } from '../schemas';
+	import { type InboxFolder, MAX_FOLDER_DEPTH, type MailboxInfo } from '../schemas';
 	import type { FolderAction } from './helpers';
 	import {
 		FOLDER_DRAG_MIME,
-		MAIL_DRAG_MIME,
 		inboxDrag,
+		MAIL_DRAG_MIME,
 		readDrop,
 		setDragGhost
 	} from './inbox-drag.svelte';
@@ -307,7 +307,9 @@
 {#snippet contextEntries(entries: MenuEntry[])}
 	{#each entries as entry (entry.key)}
 		{@const Icon = entry.icon}
-		{#if entry.separator}<ContextMenu.Separator />{/if}
+		{#if entry.separator}
+			<ContextMenu.Separator />
+		{/if}
 		<ContextMenu.Item variant={entry.destructive ? 'destructive' : 'default'} onclick={entry.run}>
 			<Icon />
 			{entry.label}
@@ -334,7 +336,9 @@
 		<DropdownMenu.Content align="start" class="w-52">
 			{#each entriesFor(box, folder) as entry (entry.key)}
 				{@const Icon = entry.icon}
-				{#if entry.separator}<DropdownMenu.Separator />{/if}
+				{#if entry.separator}
+					<DropdownMenu.Separator />
+				{/if}
 				<DropdownMenu.Item
 					variant={entry.destructive ? 'destructive' : 'default'}
 					onclick={entry.run}
@@ -399,7 +403,9 @@
 				{@render folderMenu(box, f)}
 			</div>
 			{#if open && node.children.length}
-				<ul class="space-y-0.5">{@render folderRows(box, node.children)}</ul>
+				<ul class="space-y-0.5"
+					>{@render folderRows(box, node.children)}</ul
+				>
 			{/if}
 		</li>
 	{/each}
@@ -479,7 +485,9 @@
 										</div>
 									</li>
 									{@render folderRows(b, trees.get(b.key) ?? [])}
-									{#each SYSTEM_VIEWS.filter((s) => s.view !== 'sent' || b.kind !== 'unassigned') as s (s.view)}
+									{#each SYSTEM_VIEWS.filter(
+										(s) => s.view !== 'sent' || b.kind !== 'unassigned'
+									) as s (s.view)}
 										{@const SysIcon = s.icon}
 										{@const active = mailbox === b.key && view === s.view}
 										<li>
@@ -527,7 +535,5 @@
 			</nav>
 		{/snippet}
 	</ContextMenu.Trigger>
-	<ContextMenu.Content class="w-52">
-		{@render contextEntries(ctxEntries)}
-	</ContextMenu.Content>
+	<ContextMenu.Content class="w-52"> {@render contextEntries(ctxEntries)} </ContextMenu.Content>
 </ContextMenu.Root>

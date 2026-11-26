@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { maskEmail } from '$testing';
-import { allowedStartPages, resolveStartPage, safeDensity, safeHexColor } from '$testing';
+import { describe, expect, it } from 'bun:test';
 import { invoiceAddresses, type NameMaps, type RawInvoice } from '$modules/treasury/db';
+import {
+	allowedStartPages,
+	maskEmail,
+	resolveStartPage,
+	safeDensity,
+	safeHexColor
+} from '$testing';
 
 describe('maskEmail: Randfälle', () => {
 	it('leer, nur @, mehrere @, Domain ohne Punkt', () => {

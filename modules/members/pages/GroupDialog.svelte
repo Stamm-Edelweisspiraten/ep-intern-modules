@@ -1,37 +1,37 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { tick, untrack } from 'svelte';
-	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import { AssistTextarea, BUSY_SAVE, FileField, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { ColorPicker } from '$lib/components/ui/color-picker';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { ColorPicker } from '$lib/components/ui/color-picker';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { FileField, FormField, BUSY_SAVE, AssistTextarea } from '$lib/components/layout';
-	import LeaderUserPicker from './LeaderUserPicker.svelte';
-	import { imageUrl, personName } from './group-actions';
-	import { slugFromName } from '../slug';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import {
-		GROUP_IMAGE_CONTENT_TYPES,
-		GROUP_TYPES,
-		GROUP_TYPE_LABELS,
-		MAX_GROUP_IMAGE_BYTES,
-		MAX_GROUP_SLUG,
-		WEEKDAYS,
-		WEEKDAY_LABELS,
 		formatAgeRange,
-		groupInput,
-		type GroupFormInput,
+		GROUP_IMAGE_CONTENT_TYPES,
+		GROUP_TYPE_LABELS,
+		GROUP_TYPES,
 		type Group,
+		type GroupFormInput,
 		type GroupLeaderUser,
 		type GroupType,
+		groupInput,
+		MAX_GROUP_IMAGE_BYTES,
+		MAX_GROUP_SLUG,
 		type MemberList,
-		type MemberRef
+		type MemberRef,
+		WEEKDAY_LABELS,
+		WEEKDAYS
 	} from '../schemas';
+	import { slugFromName } from '../slug';
+	import { imageUrl, personName } from './group-actions';
+	import LeaderUserPicker from './LeaderUserPicker.svelte';
 
 	type DialogTab = 'general' | 'website';
 
@@ -703,7 +703,9 @@
 				</Tabs.Content>
 			</Tabs.Root>
 
-			{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
+			{#if formError}
+				<p class="text-sm text-destructive" role="alert">{formError}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

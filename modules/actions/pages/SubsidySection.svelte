@@ -1,8 +1,10 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Calculator from '@lucide/svelte/icons/calculator';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Info from '@lucide/svelte/icons/info';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import { NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -10,17 +12,15 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { NumberStepper } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
 	import {
-		CHECKLIST_ITEMS,
-		FREIZEIT_TYPES,
-		FREIZEIT_TYPE_LABELS,
-		LODGING_TYPES,
-		LODGING_TYPE_LABELS,
 		type CalculationInput,
 		type CalculationSuggestions,
+		CHECKLIST_ITEMS,
+		FREIZEIT_TYPE_LABELS,
+		FREIZEIT_TYPES,
 		type FreizeitType,
+		LODGING_TYPE_LABELS,
+		LODGING_TYPES,
 		type LodgingType,
 		type SubsidyResult
 	} from '../schemas';
@@ -192,14 +192,14 @@
 				{#if suggestionsError}
 					<p class="text-destructive text-sm">{suggestionsError}</p>
 				{/if}
-				{#if suggestions && suggestions.incomplete.length}
+				{#if suggestions?.incomplete.length}
 					<div class="bg-muted/50 flex gap-2 rounded-lg p-3 text-xs">
 						<TriangleAlert class="mt-0.5 size-4 shrink-0" />
 						<div>
 							<p class="font-medium">
 								{suggestions.incomplete.length}
-								{suggestions.incomplete.length === 1 ? 'Datensatz' : 'Datensätze'} unvollständig (Geburtsdatum/Wohnort
-								fehlt)
+								{suggestions.incomplete.length === 1 ? 'Datensatz' : 'Datensätze'} unvollständig
+								(Geburtsdatum/Wohnort fehlt)
 							</p>
 							<ul class="text-muted-foreground list-disc pl-4">
 								{#each suggestions.incomplete as p (p.id)}

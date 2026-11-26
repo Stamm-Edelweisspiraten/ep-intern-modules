@@ -2,12 +2,13 @@
  * Reine Hilfen für das Anmeldeformular (ohne Server-/Svelte-Imports, in Tests nutzbar):
  * Standarddefinition, Disclaimer-Rendering, Status, Antwort-Mapping, Duplikatschlüssel, CSV.
  */
-import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
-import { fieldHasValue } from '$lib/forms';
+
 import { formatEuro } from '$lib/components/layout/money';
-import { csvFromRecords, type CsvColumn } from '$lib/sdk/csv';
+import { fieldHasValue } from '$lib/forms';
+import type { FieldDefinition, FormDefinition, FormValues } from '$lib/forms/types';
+import { type CsvColumn, csvFromRecords } from '$lib/sdk/csv';
 import { safeFileName } from '$lib/sdk/file-names';
-import { DIETS, DIET_LABELS, STANDARD_FORM_KEYS, ageAt, type FormStatus } from './schemas';
+import { ageAt, DIET_LABELS, DIETS, type FormStatus, STANDARD_FORM_KEYS } from './schemas';
 
 const K = STANDARD_FORM_KEYS;
 

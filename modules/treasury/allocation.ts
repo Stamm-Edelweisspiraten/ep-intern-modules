@@ -3,8 +3,8 @@
  * Datengrundlage für Zuordnungsvorschläge.
  */
 import { sql } from 'drizzle-orm';
-import { errors, type Tx } from '$lib/sdk/server';
 import { formatEuro } from '$lib/components/layout/money';
+import { errors, type Tx } from '$lib/sdk/server';
 import {
 	collectIds,
 	idList,
@@ -17,7 +17,7 @@ import {
 	rows,
 	str
 } from './db';
-import { lineOpen, normalizeName, type MatchLine } from './logic';
+import { lineOpen, type MatchLine, normalizeName } from './logic';
 import { CONTRIBUTIONS_CATEGORY_ID, MEMBERSHIP_CATEGORY_ID, type OpenLine } from './schemas';
 
 /**

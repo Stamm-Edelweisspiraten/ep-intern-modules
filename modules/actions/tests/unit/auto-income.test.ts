@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import { buildReportBlocks, summarize } from '$modules/actions/accounting';
+import { appliedAutoIncome, computeAutoIncome } from '$modules/actions/auto-income';
+import type { ReportInput } from '$modules/actions/schemas';
 import {
 	deriveSubsidyCounts,
-	effectiveSubsidyEligible,
-	type EligibilityParticipant
+	type EligibilityParticipant,
+	effectiveSubsidyEligible
 } from '$modules/actions/subsidy-eligibility';
-import { appliedAutoIncome, computeAutoIncome } from '$modules/actions/auto-income';
-import { buildReportBlocks, summarize } from '$modules/actions/accounting';
-import type { ReportInput } from '$modules/actions/schemas';
 
 const START = '2026-07-10';
 let n = 0;

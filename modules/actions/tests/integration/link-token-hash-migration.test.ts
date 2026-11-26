@@ -5,26 +5,31 @@
  * - Neue CHECKs/Fremdschlüssel: Altbestand bereinigt, Constraints validiert, Roh-SQL mit ungültigen Werten abgewiesen.
  * - Backup-`rehash`-Hooks berechnen `token_hash` mit einem anderen Schlüssel neu.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleTo, moduleSql } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { resetAllForTests } from '$testing';
-import { getDb, schema } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
-import officesModule from '$modules/offices/module';
-import { hashStoredLinkTokens } from '$modules/actions/link-tokens';
-import type { RequestContext } from '$lib/sdk/types';
 import type { Tx } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import { hashStoredLinkTokens } from '$modules/actions/link-tokens';
+import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	migrateModuleTo,
+	moduleSql,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let admin: RequestContext;

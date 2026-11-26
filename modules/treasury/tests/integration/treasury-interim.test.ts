@@ -1,24 +1,28 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { core } from '$lib/sdk/server';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import { setTodayForTests } from '$lib/sdk/dates';
+import { core } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
 import type { AccountingState } from '$modules/actions/schemas';
-import type { Account, Payable, PayableList } from '$modules/treasury/schemas';
+import membersModule from '$modules/members/module';
 import type { ClosedAccountingItem } from '$modules/treasury/closed-accountings';
+import treasuryModule from '$modules/treasury/module';
+import type { Account, Payable, PayableList } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Neues Modell: jede Zwischenabrechnung ist ein Abbild des gesamten Stands; Auslagen gehen an die
 // Kasse, sobald eine ZA sie enthält oder die Abrechnung abgeschlossen ist – eine Auszahlung je

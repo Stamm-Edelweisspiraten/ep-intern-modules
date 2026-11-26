@@ -1,27 +1,32 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { runJobNow } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
 import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import ordersModule from '$modules/orders/module';
-import { setTodayForTests } from '$lib/sdk/dates';
-import type { InvoiceDetail, PayableList } from '$modules/treasury/schemas';
 import type { Order, OrderCreated, OrdersOverview, SupplierOrder } from '$modules/orders/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import treasuryModule from '$modules/treasury/module';
+import type { InvoiceDetail, PayableList } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Bestellungen ↔ Kasse: Rechnung sofort bei Bestellung (Mail), Anpassung bei Storno, Nachholen per Job,
 // Lieferantenrechnung als Auszahlung mit Zahlstand.
@@ -166,7 +171,7 @@ describe('Rechnung zur Bestellung', () => {
 		expect(o.invoiceNumber).toMatch(/^R-2026-\d{4}$/);
 		expect(o.payment).toMatchObject({ status: 'open', dueCents: 3950, paidCents: 0 });
 		const inv = await data<InvoiceDetail>(await T(`/invoices/${o.payment!.invoiceId}`));
-		expect(inv.number).toBe(o.invoiceNumber);
+		expect<unknown>(inv.number).toBe(o.invoiceNumber);
 		expect(inv.lines.map((l) => [l.description, l.amountCents])).toEqual([
 			['Halstuch (Gr. M) × 2', 2400],
 			['Liederbuch × 1', 1550]
@@ -360,7 +365,7 @@ describe('Bearbeiten und Löschen mit Kasse', () => {
 		expect(res).toEqual({ number: o.number, invoiceCancelled: true });
 		await fail(await O(`/orders/${o.id}`), 404);
 		const inv = await data<InvoiceDetail>(await T(`/invoices/${o.payment!.invoiceId}`));
-		expect(inv.number).toBe(o.invoiceNumber);
+		expect<unknown>(inv.number).toBe(o.invoiceNumber);
 		expect(inv.cancelledAt).not.toBeNull();
 	});
 

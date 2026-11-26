@@ -11,10 +11,10 @@
  *   `post|put|patch|del|remove|upload|sendAndWait(` direkt davor oder `method: 'X'` hinter dem Pfad (bis zum nächsten Pfad);
  *   sonst GET. Wird der Pfad einer Variablen zugewiesen (`const url = '/x'`), zählt er für alle Methoden.
  */
+
+import { describe, expect, it } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { modulesDir } from '$testing';
 import type { ModuleDefinition } from '$lib/sdk/server';
 import actionsModule from '$modules/actions/module';
 import eventsModule from '$modules/events/module';
@@ -29,6 +29,7 @@ import tasksModule from '$modules/tasks/module';
 import treasuryModule from '$modules/treasury/module';
 import websiteModule from '$modules/website/module';
 import whiteboardModule from '$modules/whiteboard/module';
+import { modulesDir } from '$testing';
 
 const MODULES: ModuleDefinition[] = [
 	actionsModule,
@@ -85,8 +86,6 @@ const UNTESTED: Record<string, Record<string, string>> = {
 		'POST /tasks/:id/checklist': LEGACY,
 		'PUT /tasks/:id/checklist/order': LEGACY,
 		'DELETE /tasks/:id/checklist/:itemId': LEGACY,
-		'PATCH /boards/:id': LEGACY,
-		'GET /boards/:id/shares': LEGACY,
 		'GET /boards/:id/people': LEGACY
 	},
 	treasury: {
@@ -105,8 +104,6 @@ const UNTESTED: Record<string, Record<string, string>> = {
 	},
 	whiteboard: {
 		'GET /boards/recent': LEGACY,
-		'PATCH /boards/:id': LEGACY,
-		'GET /boards/:id/shares': LEGACY,
 		'DELETE /boards/:id/snapshots/:snapshotId': LEGACY
 	}
 };
@@ -120,6 +117,8 @@ const HELPER_METHODS: Record<string, Method> = {
 	del: 'DELETE',
 	remove: 'DELETE',
 	upload: 'POST',
+	// `download(who, path, json)` in tasks-export.test.ts ruft POST auf
+	download: 'POST',
 	sendandwait: 'POST'
 };
 
@@ -133,7 +132,7 @@ const sources = dirs.flatMap((dir) =>
 		.map((f) => readFileSync(join(dir, f), 'utf8'))
 );
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TEMPLATE_EXPR = '\\$\\{[^}]+\\}';
 /** Beginn eines beliebigen Pfad-Literals (Grenze für die Suche nach `method:`) */
 const NEXT_PATH = /['`](?:\$\{[^}]+\})?\//g;
@@ -141,9 +140,9 @@ const NEXT_PATH = /['`](?:\$\{[^}]+\})?\//g;
 function pathPattern(moduleId: string, path: string): RegExp {
 	const body = path
 		.split('/')
-		.map((seg) => (seg.startsWith(':') ? `(?:${TEMPLATE_EXPR}|[A-Za-z0-9_.@:-]+)` : escape(seg)))
+		.map((seg) => (seg.startsWith(':') ? `(?:${TEMPLATE_EXPR}|[A-Za-z0-9_.@:-]+)` : escapeRe(seg)))
 		.join('/');
-	const prefix = `(?:${TEMPLATE_EXPR})?(?:/api/v1)?(?:/modules/${escape(moduleId)})?`;
+	const prefix = `(?:${TEMPLATE_EXPR})?(?:/api/v1)?(?:/modules/${escapeRe(moduleId)})?`;
 	return new RegExp(`['\`]${prefix}${body}(?=[?'\`]|${TEMPLATE_EXPR})`, 'g');
 }
 
@@ -153,8 +152,9 @@ function methodsAt(src: string, index: number, length: number): Method[] | 'any'
 	if (/(?:const|let|var)\s+\w+\s*(?::[^=]+)?=\s*$/.test(before)) return 'any';
 	const quoted = before.match(/['"](GET|POST|PUT|PATCH|DELETE)['"]\s*,\s*$/);
 	if (quoted) return [quoted[1] as Method];
+	// Helfer mit dem Pfad als erstem Argument oder nach einer Person (`download('owner', '/pfad', …)`)
 	const helper = before.match(
-		/\b(post|put|patch|del|remove|upload|sendAndWait)\s*(?:<[^>]*>)?\(\s*$/i
+		/\b(post|put|patch|del|remove|upload|download|sendAndWait)\s*(?:<[^>]*>)?\(\s*(?:['"][\w-]+['"]\s*,\s*)?$/i
 	);
 	if (helper) return [HELPER_METHODS[helper[1]!.toLowerCase()]!];
 	const rest = src.slice(index + length, index + length + 600);

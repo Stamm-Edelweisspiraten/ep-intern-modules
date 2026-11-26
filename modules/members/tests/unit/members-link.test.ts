@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { PDFDocument } from 'pdf-lib';
 import {
 	codesMatch,
@@ -12,8 +12,7 @@ import {
 	recipientLines
 } from '$modules/members/link';
 import { linkClaimInput, linkLettersInput, linkRegisterInput } from '$modules/members/schemas';
-import { mergePdfs } from '$testing';
-import { renderBlocks } from '$testing';
+import { mergePdfs, renderBlocks } from '$testing';
 
 const PNG =
 	'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

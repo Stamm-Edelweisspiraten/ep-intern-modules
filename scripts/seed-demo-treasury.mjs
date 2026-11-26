@@ -1,5 +1,5 @@
 // Demo-Daten für die Kasse (idempotent, über die echte API). Voraussetzung: demo-server läuft,
-// `node scripts/seed-demo.mjs` und `node scripts/seed-demo-modules.mjs` wurden ausgeführt.
+// `bun scripts/seed-demo.mjs` und `bun scripts/seed-demo-modules.mjs` wurden ausgeführt.
 // Legt Konten, Zahler (Geschwister), Buchungen inkl. Sammelzahlung, eine überfällige Rechnung
 // und einen Beispiel-Kontoauszug unter .data/demo-kontoauszug.csv an.
 import { writeFileSync } from 'node:fs';

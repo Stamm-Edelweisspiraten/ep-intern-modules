@@ -89,7 +89,7 @@ export async function receiveTrial(
 	const entry = pick ? directory.find((e) => e.key === `group:${pick.group.id}`) : undefined;
 
 	let mailbox: WebsiteMailbox;
-	if (entry && entry.userIds.length) {
+	if (entry?.userIds.length) {
 		mailbox = { key: entry.key, name: entry.name, address: entry.address };
 	} else {
 		mailbox = await stammMailbox();

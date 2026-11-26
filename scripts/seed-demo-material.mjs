@@ -3,7 +3,7 @@
 // Legt Kategorien (Icon/Farbe), Lagerorte (Kisten, Regale), Typen mit nummerierten Artikeln (Kohten-/Jurtenbahnen),
 // Artikel mit Anzahl (Tampen, Heringe), einen beschädigten Artikel, Reservierungen (Aktion „Kopenhagen 2026“, Gruppe,
 // Sonstiges) und vier Etikett-Layouts an.
-//   node scripts/seed-demo-material.mjs
+//   bun scripts/seed-demo-material.mjs
 
 const BASE = 'http://127.0.0.1:4300';
 const ORIGIN = 'http://localhost:4300';

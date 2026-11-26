@@ -2,42 +2,49 @@
  * Zusätzliche Qualitätssicherung zu Profil, Benutzer-Einstellungen, eigenen Mitgliedern,
  * Mail-Abwahlen und Standard-Rollenrechten (Lücken der Tests core-profile / members-own).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { getAuth } from '$testing';
-import { contextForUser } from '$testing';
+import { blankTheme } from '$lib/appearance';
+import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
 import {
 	AVATAR_MAX_BYTES,
+	adoptDefaultRole,
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getAuth,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	loadUserPrefs,
+	profileActions,
 	readAvatar,
+	registerCoreApi,
+	registerModule,
 	removeOwnAvatar,
 	removeUserAvatar,
 	requestEmailChange,
+	reset,
+	resetAllForTests,
+	resolveStartPage,
+	schema,
+	setMailTransportForTests,
 	setOwnAvatar,
+	setSetting,
 	setUserAvatar,
-	updateOwnName
+	syncModules,
+	uninstallFakeStorage,
+	unregisterModule,
+	updateOwnName,
+	useTestDatabase
 } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { adoptDefaultRole } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { registerModule, unregisterModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { resetAllForTests, reset } from '$testing';
-import { setSetting } from '$testing';
-import { loadUserPrefs, resolveStartPage } from '$testing';
-import { core } from '$lib/sdk/server';
-import { blankTheme } from '$lib/appearance';
-import membersModule from '$modules/members/module';
-import { profileActions } from '$testing';
-import type { RequestContext } from '$lib/sdk/types';
 
 /** Echtes kleines Bild (Profilbilder laufen durch `core.images`, #19) */
 const realImage = async (format: 'png' | 'jpeg' | 'webp' = 'png') =>

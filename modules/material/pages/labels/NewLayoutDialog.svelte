@@ -1,9 +1,9 @@
 <script lang="ts">
 	// Neues Etikett: Startpunkt wählen → Designer (`labels/new?starter=…`), gespeichert wird dort.
 	import { goto } from '$app/navigation';
-	import { LABEL_FORMAT_PRESETS } from '$lib/sdk/labels';
-	import * as Dialog from '$lib/components/ui/dialog';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { LABEL_FORMAT_PRESETS } from '$lib/sdk/labels';
 	import { BASE_PATH, LABEL_TARGET_LABELS } from '../../schemas';
 	import LabelPreview from '../shared/LabelPreview.svelte';
 	import { sampleValues } from './designer';

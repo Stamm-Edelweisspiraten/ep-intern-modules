@@ -3,7 +3,7 @@
 	// (`core/pdf/labels.ts`): absolute mm-Rahmen, Text mit Zeilenbegrenzung, Barcode-SVG füllt den Rahmen,
 	// Rahmen/Linien als SVG in mm. Gerendert in echten CSS-mm/pt und per `transform: scale` gezoomt.
 	import { SvelteMap } from 'svelte/reactivity';
-	import { logoKey, resolveLayout, type LabelLayout } from '$lib/sdk/labels';
+	import { type LabelLayout, logoKey, resolveLayout } from '$lib/sdk/labels';
 	import { cn } from '$lib/utils';
 	import { PX_PER_MM } from '../labels/designer';
 	import { barcodeUrl, loadLogos } from './label-assets';
@@ -113,7 +113,8 @@
 						style:overflow="hidden"
 						style:text-align={el.align}
 						style:white-space="pre-line"
-						style:overflow-wrap="anywhere">{el.text}</span
+						style:overflow-wrap="anywhere"
+						>{el.text}</span
 					>
 				{:else if el.type === 'barcode'}
 					{@const url = codes.get(key(el.symbology, el.value))}

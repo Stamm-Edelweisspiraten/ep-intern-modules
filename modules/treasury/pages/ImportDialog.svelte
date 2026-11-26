@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FileField, FormField } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import * as Table from '$lib/components/ui/table';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import * as Table from '$lib/components/ui/table';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_IMPORT_BYTES,
 		type Account,
 		type ImportMapping,
 		type ImportPreview,
-		type ImportResult
+		type ImportResult,
+		MAX_IMPORT_BYTES
 	} from '../schemas';
 	import { BASE, defaultAccountId, fmtDate } from './helpers';
 
@@ -225,11 +225,12 @@
 			{#if preview}
 				<div class="flex flex-wrap gap-2 text-sm" aria-live="polite">
 					<Badge>{preview.valid} neu</Badge>
-					{#if preview.duplicates}<Badge variant="secondary"
-							>{preview.duplicates} bereits vorhanden</Badge
-						>{/if}
-					{#if preview.errors}<Badge variant="destructive">{preview.errors} nicht lesbar</Badge
-						>{/if}
+					{#if preview.duplicates}
+						<Badge variant="secondary">{preview.duplicates} bereits vorhanden</Badge>
+					{/if}
+					{#if preview.errors}
+						<Badge variant="destructive">{preview.errors} nicht lesbar</Badge>
+					{/if}
 				</div>
 				<div class="max-h-72 overflow-auto rounded-md border">
 					<Table.Root>
@@ -255,9 +256,13 @@
 										{r.amountCents == null ? '–' : formatEuro(r.amountCents)}
 									</Table.Cell>
 									<Table.Cell>
-										{#if r.error}<Badge variant="destructive">{r.error}</Badge>
-										{:else if r.duplicate}<Badge variant="secondary">vorhanden</Badge>
-										{:else}<Badge variant="outline">neu</Badge>{/if}
+										{#if r.error}
+											<Badge variant="destructive">{r.error}</Badge>
+										{:else if r.duplicate}
+											<Badge variant="secondary">vorhanden</Badge>
+										{:else}
+											<Badge variant="outline">neu</Badge>
+										{/if}
 									</Table.Cell>
 								</Table.Row>
 							{/each}
@@ -270,7 +275,9 @@
 					</p>
 				{/if}
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 		</div>
 		<Dialog.Footer sticky>
 			<Button variant="outline" onclick={() => (open = false)}>Abbrechen</Button>

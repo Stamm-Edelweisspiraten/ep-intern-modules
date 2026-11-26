@@ -1,14 +1,21 @@
 <script lang="ts">
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Search from '@lucide/svelte/icons/search';
+	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	// Reiter „Reservieren“ – aufgebaut wie die Bestellen-Ansicht in `orders`: Zeitraum, Suche, Kategorien
 	// und Scannen oben, Kachelraster, Warenkorb rechts (mobil als Blatt). Bearbeiten über `editId`.
 	import { onMount, untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import Pencil from '@lucide/svelte/icons/pencil';
-	import Search from '@lucide/svelte/icons/search';
-	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import {
+		ConfirmDialog,
+		deviceLayout,
+		EmptyState,
+		ErrorState,
+		MobileActionBar
+	} from '$lib/components/layout';
+	import { localToday } from '$lib/components/layout/month-calendar';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -16,25 +23,18 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import {
-		ConfirmDialog,
-		EmptyState,
-		ErrorState,
-		MobileActionBar,
-		deviceLayout
-	} from '$lib/components/layout';
-	import { localToday } from '$lib/components/layout/month-calendar';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import { cn } from '$lib/utils';
 	import {
-		PERMISSIONS,
-		isRealDate,
-		reservationInput,
 		type Catalog,
 		type CatalogEntry,
 		type CategoryRef,
+		isRealDate,
 		type LineAvailability,
+		PERMISSIONS,
 		type PurposeOptions,
-		type Reservation
+		type Reservation,
+		reservationInput
 	} from '../../schemas';
 	import {
 		API,
@@ -48,12 +48,11 @@
 	import ScanButton from '../shared/ScanButton.svelte';
 	import { resolveScan } from '../shared/scan';
 	import CartPanel from './CartPanel.svelte';
-	import EntryCard from './EntryCard.svelte';
-	import EntryRow from './EntryRow.svelte';
-	import EntryDetailDialog from './EntryDetailDialog.svelte';
 	import {
-		CART_KEY,
 		addLine,
+		CART_KEY,
+		type CartDraft,
+		type CartLine,
 		cartCount,
 		clearDraft,
 		editCartKey,
@@ -61,17 +60,18 @@
 		fromReservation,
 		itemQuantityInCart,
 		lineKey,
-		tentQuantityInCart,
 		loadDraft,
 		reconcileCart,
 		removeLine,
 		saveDraft,
 		setQuantity,
+		tentQuantityInCart,
 		toLines,
-		typeQuantityInCart,
-		type CartDraft,
-		type CartLine
+		typeQuantityInCart
 	} from './cart';
+	import EntryCard from './EntryCard.svelte';
+	import EntryDetailDialog from './EntryDetailDialog.svelte';
+	import EntryRow from './EntryRow.svelte';
 
 	let {
 		editId,
@@ -683,7 +683,9 @@
 							>
 								<ShoppingCart />
 								{editId ? 'Reservierung' : 'Warenkorb'}
-								{#if count}<span class="tabular-nums">({count})</span>{/if}
+								{#if count}
+									<span class="tabular-nums">({count})</span>
+								{/if}
 								{#if phone && count}
 									<span class="ml-auto text-xs font-normal opacity-80">Weiter →</span>
 								{/if}
@@ -708,7 +710,8 @@
 					role="group"
 					aria-label="Kategorien"
 				>
-					{#each [{ id: null, name: 'Alle', icon: null, color: null }, ...categories] as c (c.id ?? 'all')}
+					{#each [{ id: null, name: 'Alle', icon: null, color: null }, ...categories] as c (c.id ??
+						'all')}
 						{@const active = categoryId === c.id}
 						<button
 							type="button"
@@ -721,7 +724,9 @@
 							aria-pressed={active}
 							onclick={() => (categoryId = active ? null : c.id)}
 						>
-							{#if c.id}<CategoryGlyph category={c} size="sm" />{/if}
+							{#if c.id}
+								<CategoryGlyph category={c} size="sm" />
+							{/if}
 							{c.name}
 						</button>
 					{/each}
@@ -804,9 +809,7 @@
 		{#if desktop.current}
 			<aside class="self-start lg:sticky lg:top-4">
 				<Card.Root>
-					<Card.Content>
-						{@render cartPanel()}
-					</Card.Content>
+					<Card.Content> {@render cartPanel()} </Card.Content>
 				</Card.Root>
 			</aside>
 		{/if}
@@ -819,9 +822,7 @@
 					<Sheet.Title class="sr-only">Warenkorb</Sheet.Title>
 					<Sheet.Description class="sr-only">Material prüfen und reservieren</Sheet.Description>
 				</Sheet.Header>
-				<div class="px-4 pb-6">
-					{@render cartPanel()}
-				</div>
+				<div class="px-4 pb-6"> {@render cartPanel()} </div>
 			</Sheet.Content>
 		</Sheet.Root>
 	{/if}

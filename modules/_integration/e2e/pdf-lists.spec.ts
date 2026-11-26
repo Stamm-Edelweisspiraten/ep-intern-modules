@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // PDF-Listen: Dialog „Mitgliederliste (PDF)“ mit Voreinstellung „Fahrt“, Spalte ändern, Erzeugen
 // (Request-Body mit `selection`), Auswahl wird im Browser gemerkt.

@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { Button } from '$lib/components/ui/button';
-	import * as Table from '$lib/components/ui/table';
+	import { toast } from 'svelte-sonner';
 	import { ConfirmDialog, DataTable } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import * as Table from '$lib/components/ui/table';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { AccountingInterim } from '../schemas';
 	import { downloadApiFile } from './download';
 	import { fmtDate } from './format';
@@ -98,13 +98,16 @@
 			<Table.Cell class="align-top font-medium whitespace-nowrap">ZA {it.number}</Table.Cell>
 			<Table.Cell class="align-top">
 				<div class="tabular-nums">{fmtDate(it.createdAt)}</div>
-				{#if it.createdBy}<div class="text-xs text-muted-foreground">
-						von {it.createdBy.name}
-					</div>{/if}
-				{#if it.note}<div class="text-xs text-muted-foreground">{it.note}</div>{/if}
+				{#if it.createdBy}
+					<div class="text-xs text-muted-foreground"> von {it.createdBy.name} </div>
+				{/if}
+				{#if it.note}
+					<div class="text-xs text-muted-foreground">{it.note}</div>
+				{/if}
 			</Table.Cell>
 			<Table.Cell class="text-right align-top tabular-nums">{it.entryCount}</Table.Cell>
-			<Table.Cell class="text-right align-top tabular-nums">{formatEuro(it.incomeCents)}</Table.Cell
+			<Table.Cell class="text-right align-top tabular-nums"
+				>{formatEuro(it.incomeCents)}</Table.Cell
 			>
 			<Table.Cell class="text-right align-top tabular-nums"
 				>{formatEuro(it.expenseCents)}</Table.Cell
@@ -113,7 +116,8 @@
 				class={[
 					'text-right align-top font-medium tabular-nums',
 					it.incomeCents - it.expenseCents < 0 && 'text-destructive'
-				]}>{formatEuro(it.incomeCents - it.expenseCents)}</Table.Cell
+				]}
+				>{formatEuro(it.incomeCents - it.expenseCents)}</Table.Cell
 			>
 			<Table.Cell class="text-right align-top">
 				<div class="flex flex-wrap justify-end gap-1">
@@ -149,7 +153,8 @@
 								revertOpen = true;
 							}}
 						>
-							<Undo2 /> Zurücknehmen<span class="sr-only">: Zwischenabrechnung Nr. {it.number}</span
+							<Undo2 /> Zurücknehmen<span class="sr-only"
+								>: Zwischenabrechnung Nr. {it.number}</span
 							>
 						</Button>
 					{/if}

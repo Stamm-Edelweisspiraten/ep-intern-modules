@@ -1,5 +1,5 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { LINK_CODE_TTL_DAYS, ageFromBirthDate } from './schemas';
+import { ageFromBirthDate, LINK_CODE_TTL_DAYS } from './schemas';
 
 /** Reine Hilfen für die Konto-Verknüpfung (ohne Datenbank/Core, gut testbar). */
 
@@ -31,7 +31,7 @@ export function codesMatch(a: string, b: string): boolean {
 
 const MAX_LINES = 6;
 const MAX_LINE = 60;
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 
 function clip(line: string): string {

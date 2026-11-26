@@ -5,26 +5,32 @@
  * view-all, edit-all, Fremde, ohne Basisrecht), Liste (Filter, Paging, access), Titelbild
  * (über direkte DB-Inserts, ohne Storage), Audit ohne Inhalte, Website-Key, Modul deaktiviert.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { listAudit } from '$testing';
-import { core } from '$testing';
-import galleriesModule from '$modules/galleries/module';
-import membersModule from '$modules/members/module';
-import eventsModule from '$modules/events/module';
-import type { GalleryDetail, GalleryList } from '$modules/galleries/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import eventsModule from '$modules/events/module';
+import galleriesModule from '$modules/galleries/module';
+import type { GalleryDetail, GalleryList } from '$modules/galleries/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules';
 const keys: Record<string, string> = {};
@@ -356,8 +362,8 @@ describe('CRUD', () => {
 		expect(created.title).toBe('Nur Titel');
 		expect(created.description).toBeNull();
 		expect(created.visibility).toBe('private');
-		expect(created.ownerId).toBe(userIds.owner);
-		expect(created.owner).toEqual({ id: userIds.owner, name: 'Olga Owner', image: null });
+		expect<unknown>(created.ownerId).toBe(userIds.owner);
+		expect<unknown>(created.owner).toEqual({ id: userIds.owner, name: 'Olga Owner', image: null });
 		expect(created.access).toEqual({ level: 'edit', isOwner: true });
 		expect(created.shares).toEqual([]);
 		expect(created.images).toEqual([]);
@@ -529,7 +535,7 @@ describe('Zugriffsmatrix', () => {
 			await call('d', 'PUT', `/galleries/${gMain}`, mainBody({ title: 'Hike Falke (geändert)' }))
 		);
 		expect(updated.title).toBe('Hike Falke (geändert)');
-		expect(updated.ownerId).toBe(userIds.owner);
+		expect<unknown>(updated.ownerId).toBe(userIds.owner);
 		ok(await call('d', 'PUT', `/galleries/${gMain}/cover`, { imageId: null }));
 
 		const del = ok<GalleryDetail>(
@@ -566,7 +572,7 @@ describe('Zugriffsmatrix', () => {
 			await call('h', 'PUT', `/galleries/${gPrivate}`, body({ title: 'Leiterrunde (Hans)' }))
 		);
 		expect(put.title).toBe('Leiterrunde (Hans)');
-		expect(put.ownerId).toBe(userIds.owner);
+		expect<unknown>(put.ownerId).toBe(userIds.owner);
 		const del = ok<GalleryDetail>(
 			await call('owner', 'POST', '/galleries', body({ title: 'Wegwerf H' })),
 			201

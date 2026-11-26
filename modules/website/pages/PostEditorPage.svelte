@@ -1,16 +1,29 @@
 <script lang="ts">
-	import { beforeNavigate, goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import Send from '@lucide/svelte/icons/send';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
-	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
-	import { slugify } from '$lib/sdk/slug';
+	import { toast } from 'svelte-sonner';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import {
+		AssistInput,
+		AssistRichTextEditor,
+		AssistTextarea,
+		ConfirmDialog,
+		EmptyState,
+		ErrorState,
+		FormField,
+		LoadingState,
+		PageHeader,
+		PageTitle,
+		type ShareCandidate,
+		type ShareEntry,
+		ShareMenu
+	} from '$lib/components/layout';
+	import { BUSY_SAVE, BUSY_UPLOAD } from '$lib/components/layout/busy';
+	import { shareKey } from '$lib/components/layout/share-types';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -21,32 +34,19 @@
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { TagInput } from '$lib/components/ui/tag-input';
-	import {
-		ConfirmDialog,
-		EmptyState,
-		ErrorState,
-		FormField,
-		LoadingState,
-		PageHeader,
-		PageTitle,
-		ShareMenu,
-		type ShareCandidate,
-		type ShareEntry,
-		AssistInput,
-		AssistRichTextEditor,
-		AssistTextarea
-	} from '$lib/components/layout';
-	import { BUSY_SAVE, BUSY_UPLOAD } from '$lib/components/layout/busy';
-	import { shareKey } from '$lib/components/layout/share-types';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { slugify } from '$lib/sdk/slug';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
 		MAX_POST_TEASER,
 		MAX_POST_TITLE,
 		MAX_SLUG,
 		MAX_TAG,
 		MAX_TAGS,
-		postUpdateInput,
 		type PostDetail,
 		type PostImage,
+		postUpdateInput,
 		type RefOption
 	} from '../schemas';
 	import {
@@ -412,7 +412,8 @@
 									onclick={() => {
 										publishAt = '';
 										publishOpen = true;
-									}}><Send /> Veröffentlichen</Button
+									}}
+									><Send /> Veröffentlichen</Button
 								>
 							{:else}
 								<Button variant="outline" onclick={unpublish}><Undo2 /> Zurückziehen</Button>
@@ -556,7 +557,8 @@
 									variant="outline"
 									size="sm"
 									class="shrink-0"
-									onclick={() => (slug = slugify(title, MAX_SLUG) || slug)}>Aus Titel</Button
+									onclick={() => (slug = slugify(title, MAX_SLUG) || slug)}
+									>Aus Titel</Button
 								>
 							</div>
 						</FormField>

@@ -1,14 +1,14 @@
 /**
  * Modul `galleries` (1.6.0): Zeitraum im Eingabeschema, Sortierhelfer und eindeutige ZIP-Dateinamen.
  */
-import { describe, expect, it } from 'vitest';
-import { galleryInput } from '$modules/galleries/schemas';
+import { describe, expect, it } from 'bun:test';
+import { uniqueNames } from '$modules/galleries/download.endpoints';
 import {
 	compareGalleries,
-	gallerySortDate,
-	type GallerySortRow
+	type GallerySortRow,
+	gallerySortDate
 } from '$modules/galleries/galleries.service';
-import { uniqueNames } from '$modules/galleries/download.endpoints';
+import { galleryInput } from '$modules/galleries/schemas';
 
 const base = { title: 'Lager', description: null, visibility: 'private', shares: [] };
 

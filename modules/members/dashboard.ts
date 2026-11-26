@@ -8,18 +8,18 @@
  * - Keine Gesundheitsdaten, keine Kontaktdaten. Core-Aufrufe nie in einer offenen Transaktion.
  */
 import { sql } from 'drizzle-orm';
+import { addDays, daysBetween, todayBerlin } from '$lib/sdk/dates';
 import {
 	core,
 	inList,
-	moduleDb,
 	type ModuleDashboardSources,
+	moduleDb,
 	type RequestContext,
 	rowsOf
 } from '$lib/sdk/server';
-import { addDays, daysBetween, todayBerlin } from '$lib/sdk/dates';
 import type { DashboardAgendaItem } from '$lib/sdk/types/dashboard';
 import { ledGroupIds } from './leader.service';
-import { LED_VIEW, MODULE_ID, type LedGroupOverview, type LedGroupSummary } from './schemas';
+import { LED_VIEW, type LedGroupOverview, type LedGroupSummary, MODULE_ID } from './schemas';
 
 const OWN_VIEW = 'members.own.view';
 /** Geburtstage in so vielen Tagen oder weniger erscheinen in „Meine Gruppe“ */

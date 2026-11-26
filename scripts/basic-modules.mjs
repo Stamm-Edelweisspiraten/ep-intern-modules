@@ -5,7 +5,7 @@
 //
 // Quelle (erste vorhandene): ATRIUM_BASIC_MODULES_DIR · Submodul `.basic` · Nachbarordner `../atrium-basic-modules`
 //
-// Eigenständig: `node scripts/basic-modules.mjs` (wird von `npm run setup` aufgerufen)
+// Eigenständig: `bun scripts/basic-modules.mjs` (wird von `bun run setup` aufgerufen)
 import { cpSync, existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

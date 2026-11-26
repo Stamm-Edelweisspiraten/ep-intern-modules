@@ -12,13 +12,13 @@
 </script>
 
 <script lang="ts">
+	import ImageDown from '@lucide/svelte/icons/image-down';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	// Lebensmittel-Produkt anlegen oder bearbeiten; nach einem Scan mit Strichcode und Vorschlag aus
 	// Open Food Facts vorbelegt. Nach dem Anlegen folgt ein Schritt „Bilder“ (eigene Fotos, Bild aus Open Food Facts).
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import ImageDown from '@lucide/svelte/icons/image-down';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -26,14 +26,14 @@
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, FormField } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_UNIT,
-		productInput,
-		productUpdateInput,
 		type FoodProduct,
 		type ImageRef,
-		type Location
+		type Location,
+		MAX_UNIT,
+		productInput,
+		productUpdateInput
 	} from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import { locationOptions } from '../inventory/options';
@@ -187,7 +187,11 @@
 	{#if canLoadOff}
 		<div class="flex flex-wrap items-center gap-2">
 			<Button variant="outline" size="sm" disabled={offBusy} onclick={() => loadOffImage()}>
-				{#if offBusy}<LoaderCircle class="animate-spin" />{:else}<ImageDown />{/if}
+				{#if offBusy}
+					<LoaderCircle class="animate-spin" />
+				{:else}
+					<ImageDown />
+				{/if}
 				Bild aus Open Food Facts laden
 			</Button>
 			<span class="text-xs text-muted-foreground">
@@ -208,8 +212,8 @@
 			</Dialog.Header>
 			{#if offBusy && !images.length}
 				<p class="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
-					<LoaderCircle class="size-4 animate-spin" aria-hidden="true" /> Lade Bild aus Open Food Facts
-					…
+					<LoaderCircle class="size-4 animate-spin" aria-hidden="true" /> Lade Bild aus Open Food
+					Facts …
 				</p>
 			{/if}
 			<ImageManager

@@ -1,38 +1,46 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { readFile } from 'node:fs/promises';
-import { eq, sql } from 'drizzle-orm';
-import { symmetricEncrypt } from 'better-auth/crypto';
 import { createOTP } from '@better-auth/utils/otp';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage, fakeObjects } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { getAuth } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { ADMIN_ROLE_ID } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { createApiKey } from '$testing';
-import { setSetting, getSetting } from '$testing';
-import { pauseJobs, resumeJobs, runDueJobs } from '$testing';
-import { isCoreError } from '$testing';
-import { core } from '$testing';
-import {
-	RESET_CONFIRM_WORD,
-	executeReset,
-	exportResetData,
-	listResetAreas,
-	previewReset,
-	setResetClockForTests,
-	totpCode
-} from '$testing';
+import { symmetricEncrypt } from 'better-auth/crypto';
+import { eq, sql } from 'drizzle-orm';
 import { defineModule } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	ADMIN_ROLE_ID,
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	executeReset,
+	exportResetData,
+	fakeObjects,
+	getAuth,
+	getDb,
+	getSetting,
+	installFakeStorage,
+	isCoreError,
+	listResetAreas,
+	pauseJobs,
+	previewReset,
+	RESET_CONFIRM_WORD,
+	registerCoreApi,
+	registerModule,
+	resumeJobs,
+	runDueJobs,
+	schema,
+	setResetClockForTests,
+	setSetting,
+	syncModules,
+	totpCode,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'Sehr-Sicheres-Passwort-1';
 let admin: RequestContext;

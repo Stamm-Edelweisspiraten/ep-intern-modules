@@ -4,25 +4,11 @@
  * Auslieferung mit Range (206/416), `video` nur bei Videos, Website-API, Löschen der Dateien, Audit.
  * Storage über `tests/helpers/fake-storage.ts`; Videos sind synthetische Container (`video-fixtures.ts`).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { listAudit } from '$testing';
-import { setSetting } from '$testing';
 import { DEFAULT_ALLOWED_CONTENT_TYPES } from '$lib/sdk/content-types';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import eventsModule from '$modules/events/module';
 import galleriesModule from '$modules/galleries/module';
 import type {
@@ -32,12 +18,34 @@ import type {
 	WebsiteGalleryDetail
 } from '$modules/galleries/schemas';
 import { websiteGalleryDetailSchema } from '$modules/galleries/website.schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
 import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	fakeFileRows,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setSetting,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
+import {
+	contains,
 	DEVICE_TEXT,
 	GPS_TEXT,
 	MDAT_PAYLOAD,
-	contains,
 	sampleMp4,
 	sampleWebm
 } from '../video-fixtures';
@@ -325,13 +333,13 @@ describe('mit freigegebenen Videotypen', () => {
 			expect(res.headers.get('content-type')).toBe('video/mp4');
 			expect(res.headers.get('accept-ranges')).toBe('bytes');
 			expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-			expect(new Uint8Array(await res.arrayBuffer())).toEqual(mp4);
+			expect<unknown>(new Uint8Array(await res.arrayBuffer())).toEqual(mp4);
 
 			res = await raw('reader', 'GET', base, undefined, { range: 'bytes=4-11' });
 			expect(res.status).toBe(206);
 			expect(res.headers.get('content-range')).toBe(`bytes 4-11/${mp4.length}`);
 			expect(res.headers.get('content-length')).toBe('8');
-			expect(new Uint8Array(await res.arrayBuffer())).toEqual(mp4.subarray(4, 12));
+			expect<unknown>(new Uint8Array(await res.arrayBuffer())).toEqual(mp4.subarray(4, 12));
 
 			res = await raw('reader', 'GET', base, undefined, { range: `bytes=${mp4.length}-` });
 			expect(res.status).toBe(416);

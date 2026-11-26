@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -10,7 +8,9 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -18,7 +18,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Article } from '../schemas';
 	import ArticleDialog from './ArticleDialog.svelte';
 	import { BASE, errorText, formatPriceRange, moveItem } from './helpers';
@@ -329,9 +329,9 @@
 		bind:open={
 			() => dialogOpen,
 			(v) => {
-				dialogOpen = v;
-				dialogOpenChange(v);
-			}
+		dialogOpen = v;
+		dialogOpenChange(v);
+	}
 		}
 		article={editing}
 		onsaved={saved}

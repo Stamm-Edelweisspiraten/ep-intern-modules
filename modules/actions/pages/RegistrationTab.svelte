@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Loader from '@lucide/svelte/icons/loader-circle';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { onDestroy, untrack } from 'svelte';
+	import { FormBuilder } from '$lib/components/forms';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -11,8 +11,8 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { FieldDefinition } from '$lib/forms';
-	import { FormBuilder } from '$lib/components/forms';
-	import { formConfigInput, type FormConfig } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { type FormConfig, formConfigInput } from '../schemas';
 	import DisclaimerEditor from './DisclaimerEditor.svelte';
 	import FormSettings, { type FormDraft } from './FormSettings.svelte';
 
@@ -246,7 +246,9 @@
 	{:else}
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
-				{#if !canEdit}<Badge variant="secondary">Nur Ansicht</Badge>{/if}
+				{#if !canEdit}
+					<Badge variant="secondary">Nur Ansicht</Badge>
+				{/if}
 			</div>
 			<div class="flex min-h-8 items-center gap-2 text-sm" aria-live="polite">
 				{#if !canEdit}
@@ -281,8 +283,8 @@
 				role="status"
 			>
 				<span>
-					Noch kein Beitrag übernommen – im Disclaimer erscheint {'{{beitrag}}'} erst nach der Übernahme
-					in der Kalkulation.
+					Noch kein Beitrag übernommen – im Disclaimer erscheint {'{{beitrag}}'} erst nach der
+					Übernahme in der Kalkulation.
 				</span>
 				{#if onopencalculation}
 					<Button size="sm" variant="outline" onclick={onopencalculation}>Zur Kalkulation</Button>

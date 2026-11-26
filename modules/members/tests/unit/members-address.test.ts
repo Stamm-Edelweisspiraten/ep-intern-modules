@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import { memberInput } from '$modules/members/schemas';
+import { describe, expect, it } from 'bun:test';
 import {
 	directoryName,
 	normalizeStreet,
@@ -9,6 +8,7 @@ import {
 } from '$modules/members/address.service';
 import { matchesStreetName, withHouseNumber } from '$modules/members/address-utils';
 import { countryOptions } from '$modules/members/pages/countries';
+import { memberInput } from '$modules/members/schemas';
 
 const base = {
 	firstName: 'Max',

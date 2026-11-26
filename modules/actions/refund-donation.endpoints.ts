@@ -28,7 +28,6 @@ import {
 	TREASURY_PAID_TEXT,
 	treasuryPaidByItem
 } from './refund-donation';
-import { notifyTreasury } from './treasury-sync';
 import {
 	idParams,
 	MODULE_ID,
@@ -43,6 +42,7 @@ import {
 	refundItemParams,
 	refundLettersInput
 } from './schemas';
+import { notifyTreasury } from './treasury-sync';
 
 const TAGS = ['Modul: actions'];
 const NOT_AVAILABLE = 'Dieser Link ist nicht mehr gültig.';

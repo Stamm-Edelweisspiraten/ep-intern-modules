@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { expiryState, fefoOrder, normalizeBarcode, pickBatches } from '$modules/material/pantry';
 import { formatAmount, productInput } from '$modules/material/schemas';
 

@@ -3,29 +3,37 @@
  * nur per Session, Maskieren von Kontaktdaten, Platzhalter-Prüfung, Varianten, Limit je Person, heikle
  * Daten nur mit Einstellung, Audit ohne Text.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getAuth } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
-import { setOpenAiClientFactoryForTests, type AiChatParams, type AiClient } from '$testing';
 import { parseSseChunk } from '$lib/sdk/client/assist';
+import type { AssistEvent, AssistStatus, RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
 import messagesModule from '$modules/messages/module';
 import notesModule from '$modules/notes/module';
-import type { AssistEvent, AssistStatus, RequestContext } from '$lib/sdk/types';
+import {
+	type AiChatParams,
+	type AiClient,
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getAuth,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setOpenAiClientFactoryForTests,
+	setSettings,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const ORIGIN = 'http://localhost:5173';
 const PW = 'assist-password-1234';
@@ -94,7 +102,7 @@ async function json(
 	body?: unknown
 ) {
 	const res = await call(auth, method, path, body);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: bewusst ungetypt
 	return { status: res.status, body: (await res.json()) as any };
 }
 
@@ -102,7 +110,7 @@ async function json(
 async function assist(name: string, body: Record<string, unknown>) {
 	const res = await call({ cookie: cookies[name] }, 'POST', '/ai/assist', body);
 	if (!res.headers.get('content-type')?.startsWith('text/event-stream')) {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		// biome-ignore lint/suspicious/noExplicitAny: bewusst ungetypt
 		return { status: res.status, events: [] as AssistEvent[], error: (await res.json()) as any };
 	}
 	const events: AssistEvent[] = [];

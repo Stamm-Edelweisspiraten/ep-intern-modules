@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import Landmark from '@lucide/svelte/icons/landmark';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { AccountingPayee } from '../schemas';
 	import PayeeDialog from './PayeeDialog.svelte';
 
@@ -138,7 +138,9 @@
 								Ausgezahlt: {formatEuro(p.reimbursedCents)}
 							</Badge>
 						{/if}
-						{#if p.note}<p class="text-xs text-muted-foreground">{p.note}</p>{/if}
+						{#if p.note}
+							<p class="text-xs text-muted-foreground">{p.note}</p>
+						{/if}
 						{#if editable}
 							<div class="flex flex-wrap gap-2 pt-1">
 								<Button variant="outline" size="sm" onclick={() => openEdit(p)}>

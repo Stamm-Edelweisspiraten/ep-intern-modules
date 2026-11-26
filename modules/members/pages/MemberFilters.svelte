@@ -38,12 +38,12 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import FilterX from '@lucide/svelte/icons/filter-x';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import { FormField } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField } from '$lib/components/layout';
 
 	let {
 		filter,
@@ -141,7 +141,9 @@
 		onclick={() => (advancedOpen = !showAdvanced)}
 	>
 		<SlidersHorizontal /> Erweitert
-		{#if advCount}<Badge variant="secondary">{advCount}</Badge>{/if}
+		{#if advCount}
+			<Badge variant="secondary">{advCount}</Badge>
+		{/if}
 		<ChevronDown
 			class={showAdvanced ? 'rotate-180 transition-transform' : 'transition-transform'}
 		/>

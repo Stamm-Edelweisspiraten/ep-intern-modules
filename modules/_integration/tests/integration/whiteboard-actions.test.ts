@@ -4,25 +4,14 @@
  * Gruppen-Freigabe über verknüpfte Mitglieder (lesen, Rechteentzug `revoked`, Hochstufen `access`),
  * mehrere Boards je Aktion mit vererbtem Zugriff (`/boards/by-action`) und Aktions-Karten je Betrachter*in.
  */
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
 import tasksModule from '$modules/tasks/module';
-import whiteboardModule from '$modules/whiteboard/module';
 import { closeAllStreamsForTests } from '$modules/whiteboard/live';
+import whiteboardModule from '$modules/whiteboard/module';
 import type {
 	ActionBoards,
 	BoardDetail,
@@ -31,7 +20,24 @@ import type {
 	OpsResult,
 	RefCard
 } from '$modules/whiteboard/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase,
+	waitFor as waitUntil
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules';
 const keys: Record<string, string> = {};
@@ -149,7 +155,7 @@ async function openLive(who: string, boardId: string, client: string, since?: nu
 		type: T,
 		pred: (e: Extract<LiveEvent, { type: T }>) => boolean = () => true
 	) =>
-		vi.waitFor(
+		waitUntil(
 			() => {
 				const hit = events.find(
 					(e): e is Extract<LiveEvent, { type: T }> =>
@@ -325,7 +331,7 @@ describe('Gruppen-Freigabe (members)', () => {
 			})
 		);
 		await live.waitFor('revoked');
-		await vi.waitFor(() => expect(live.isEnded()).toBe(true));
+		await waitUntil(() => expect(live.isEnded()).toBe(true));
 		fail(await call('helper', 'GET', `/boards/${boardId}`), 404, 'not_found');
 	});
 

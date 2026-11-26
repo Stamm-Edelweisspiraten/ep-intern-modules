@@ -6,8 +6,8 @@
 import {
 	core,
 	isCoreError,
-	principalKeysFor,
 	type ModuleAssist,
+	principalKeysFor,
 	type RequestContext
 } from '$lib/sdk/server';
 import { ASSIST_TEXT_TASKS } from '$lib/sdk/types/assist';

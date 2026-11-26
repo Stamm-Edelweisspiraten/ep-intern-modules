@@ -1,40 +1,22 @@
 import { z } from 'zod';
-import { membersAssist, PERM_AI } from './assist';
 import { defineModule, manifestFromPackage, type PrincipalProvider } from '$lib/sdk/server';
+import { addressEndpoints } from './address.endpoints';
+import { membersAssist, PERM_AI } from './assist';
 import pkg from './atrium-module.json';
 import type { MembersService } from './contract';
-import { membersSearch } from './search';
 import { membersDashboard } from './dashboard';
-import { resetAreas, resetUsers } from './reset';
-import { onUserDeleted } from './user-deleted';
-import { addressEndpoints } from './address.endpoints';
+import { documentEndpoints } from './documents.endpoints';
 import { fieldEndpoints } from './fields.endpoints';
 import { membersService } from './fields.service';
-import { messagingService } from './messaging.service';
-import { documentEndpoints } from './documents.endpoints';
-import { groupEndpoints } from './groups.endpoints';
 import { groupImageEndpoints } from './group-image.endpoints';
 import { reprocessGroupImages } from './group-image.service';
-import { linkEndpoints } from './link.endpoints';
-import { listMemberSheets } from './sheets.service';
-import { buildMemberCatalog, rowFromMember } from './sheet-columns';
-import { principalsService } from './principals.service';
-import { sheetEndpoints } from './sheets.endpoints';
-import { memberEndpoints } from './members.endpoints';
-import { ledEndpoints } from './led.endpoints';
+import { groupEndpoints } from './groups.endpoints';
 import { syncLeaderGrants } from './leader.service';
-import { websiteEndpoints } from './website.endpoints';
-import { retentionEndpoints } from './retention.endpoints';
-import { DEFAULT_RETENTION_YEARS, RETENTION_SETTING } from './retention.service';
-import { subjectExport } from './subject-export';
-import {
-	LEADER_ROLE_NAME,
-	LED_EDIT,
-	LED_EXPORT,
-	LED_VIEW,
-	LINK_DEFAULT_ROLE,
-	NOTIFY_ACCOUNT_LINKED
-} from './schemas';
+import { ledEndpoints } from './led.endpoints';
+import { linkEndpoints } from './link.endpoints';
+import { hashStoredLinkTokens, membersBackup } from './link-tokens';
+import { memberEndpoints } from './members.endpoints';
+import { messagingService } from './messaging.service';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_members_v2.sql?raw';
 import m0003 from './migrations/0003_user_links.sql?raw';
@@ -51,7 +33,25 @@ import m0014 from './migrations/0014_link_token_hash_constraints.sql?raw';
 import m0015 from './migrations/0015_leader_self_link.sql?raw';
 import m0016 from './migrations/0016_leader_users.sql?raw';
 import m0017 from './migrations/0017_group_age.sql?raw';
-import { hashStoredLinkTokens, membersBackup } from './link-tokens';
+import { principalsService } from './principals.service';
+import { resetAreas, resetUsers } from './reset';
+import { retentionEndpoints } from './retention.endpoints';
+import { DEFAULT_RETENTION_YEARS, RETENTION_SETTING } from './retention.service';
+import {
+	LEADER_ROLE_NAME,
+	LED_EDIT,
+	LED_EXPORT,
+	LED_VIEW,
+	LINK_DEFAULT_ROLE,
+	NOTIFY_ACCOUNT_LINKED
+} from './schemas';
+import { membersSearch } from './search';
+import { buildMemberCatalog, rowFromMember } from './sheet-columns';
+import { sheetEndpoints } from './sheets.endpoints';
+import { listMemberSheets } from './sheets.service';
+import { subjectExport } from './subject-export';
+import { onUserDeleted } from './user-deleted';
+import { websiteEndpoints } from './website.endpoints';
 
 export default defineModule({
 	package: pkg,

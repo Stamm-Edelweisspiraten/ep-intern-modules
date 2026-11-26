@@ -1,7 +1,7 @@
 /** API-Vertrag des Moduls "members": Zod-Schemas für Server und UI sowie die DTO-Typen. */
 import { z } from 'zod';
-import { ageFromBirthDate as ageOnDate, isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { listSelectionInput } from '$lib/pdf-lists/schema';
+import { ageFromBirthDate as ageOnDate, isRealDate, todayBerlin } from '$lib/sdk/dates';
 import { MEMBER_HEALTH_FIELD_KEYS } from './sheet-columns';
 
 export const MODULE_ID = 'members';
@@ -101,9 +101,9 @@ export function normalizeHexColor(value: string): string | null {
 
 // --- Eingaben ---------------------------------------------------------------
 
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const CONTROL_CHARS_NO_NEWLINE = /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/;
 
 const text = (max: number) =>

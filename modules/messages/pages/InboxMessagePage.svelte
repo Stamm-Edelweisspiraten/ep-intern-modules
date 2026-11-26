@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -16,15 +14,9 @@
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
-	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { SelectField } from '$lib/components/ui/select-field';
+	import { goto } from '$app/navigation';
 	import {
 		ConfirmDialog,
 		ErrorState,
@@ -33,6 +25,14 @@
 		PageHeader,
 		PageTitle
 	} from '$lib/components/layout';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import { apiFetch } from '$lib/sdk/client';
+	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { cn } from '$lib/utils';
 	import type {
@@ -42,8 +42,8 @@
 		MailboxInfo,
 		SpamMarkResult
 	} from '../schemas';
-	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
 	import { BASE, errorText, formatDateTime, formatSize } from './helpers';
+	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
 
 	let { params }: ModulePageProps = $props();
 
@@ -341,8 +341,9 @@
 				<ShieldAlert />
 				<AlertDescription>
 					<p>
-						{SPAM_SOURCE_TEXT[mail.spamSource ?? 'server']} Links sind deaktiviert; Anhänge nur öffnen,
-						wenn du den Absender kennst. Mit „Kein Spam“ kommt der Absender auf die Vertrauensliste.
+						{SPAM_SOURCE_TEXT[mail.spamSource ?? 'server']} Links sind deaktiviert; Anhänge nur
+						öffnen, wenn du den Absender kennst. Mit „Kein Spam“ kommt der Absender auf die
+						Vertrauensliste.
 					</p>
 					{#if reasons.length && mail.spamSource !== 'user'}
 						<ul class="mt-2 list-disc space-y-0.5 pl-5">

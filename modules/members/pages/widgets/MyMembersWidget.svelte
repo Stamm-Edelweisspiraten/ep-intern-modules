@@ -1,11 +1,11 @@
 <script lang="ts">
+	import Cake from '@lucide/svelte/icons/cake';
+	import Users from '@lucide/svelte/icons/users';
 	// Dashboard-Kachel „Meine Mitglieder“: verknüpfte Mitglieder mit Gruppen und nächstem Geburtstag.
 	import { onMount } from 'svelte';
-	import Users from '@lucide/svelte/icons/users';
-	import Cake from '@lucide/svelte/icons/cake';
+	import { DashboardCard } from '$lib/components/layout';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { MyMember } from '../../schemas';
 
 	let { onstatus }: DashboardWidgetProps = $props();
@@ -101,7 +101,8 @@
 				<p class="truncate font-medium">
 					{m.firstName}
 					{m.lastName}{#if m.scoutName}
-						<span class="font-normal text-muted-foreground"> ({m.scoutName})</span>{/if}
+						<span class="font-normal text-muted-foreground"> ({m.scoutName})</span>
+					{/if}
 				</p>
 				{#if m.groups.length}
 					<p class="truncate text-xs text-muted-foreground">

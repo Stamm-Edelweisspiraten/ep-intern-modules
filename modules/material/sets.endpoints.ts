@@ -4,22 +4,22 @@
  * Die Artikel eines Sets bleiben normale Lagerartikel ihres Typs.
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
+import { type AnyApiEndpoint, core, defineEndpoint, errors, type Tx } from '$lib/sdk/server';
 import { reassignLocked } from './assign.service';
 import { idList, mdb, num, rows } from './db';
 import { loadSets, loadTents } from './inventory';
 import {
-	PERMISSIONS,
 	idParams,
+	type MaterialSet,
 	orderInput,
+	PERMISSIONS,
 	setInput,
 	setItemsInput,
 	setUpdateInput,
-	tentInput,
-	tentUpdateInput,
-	type MaterialSet,
 	type Tent,
-	type TentPartInput
+	type TentPartInput,
+	tentInput,
+	tentUpdateInput
 } from './schemas';
 
 const tags = ['Modul: material'];

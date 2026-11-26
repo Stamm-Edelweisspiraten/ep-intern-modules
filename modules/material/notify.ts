@@ -8,13 +8,13 @@ import { officesService } from './db';
 import {
 	BASE_PATH,
 	CONDITION_LABELS,
+	type Item,
 	MODULE_ID,
 	NOTIFY_DAMAGE,
 	NOTIFY_FOOD_EXPIRING,
 	NOTIFY_RESERVATION_CREATED,
 	OFFICE_KEY,
 	PURPOSE_LABELS,
-	type Item,
 	type Reservation
 } from './schemas';
 

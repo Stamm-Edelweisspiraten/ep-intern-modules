@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
+	type AnnualMember,
 	annualInvoiceDueOn,
 	annualRef,
 	defaultAnnualDueOn,
@@ -8,8 +9,7 @@ import {
 	isMemberOn,
 	joinNames,
 	levelsFor,
-	planAnnualInvoices,
-	type AnnualMember
+	planAnnualInvoices
 } from '$modules/treasury/annual-fee';
 import { DEFAULT_FEE_RATES, FEE_LEVELS } from '$modules/treasury/schemas';
 

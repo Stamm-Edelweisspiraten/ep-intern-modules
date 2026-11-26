@@ -4,33 +4,15 @@
  * Bereinigung des HTML, Anhänge, Antworten/Weiterleiten mit In-Reply-To und Verlauf, Benachrichtigungen
  * („neue Nachricht“, „… hat geantwortet“) mit Profil-Einstellungen, Zuordnen, Papierkorb/Aufbewahrung, Audit.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { getSetting, setSetting, setSettings } from '$testing';
-import { dueBefore, runJobNow } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
 import { moduleDb } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import messagesModule from '$modules/messages/module';
 import { deliveriesIdleForTests } from '$modules/messages/delivery.service';
 import { setImapConnectorForTests } from '$modules/messages/imap.client';
-import { navBadgeCounts } from '$testing';
-import { getMyPreferences, setMyPreference } from '$testing';
+import messagesModule from '$modules/messages/module';
 import type {
 	ComposePrefill,
 	InboxDetail,
@@ -40,7 +22,36 @@ import type {
 	MessageDetail,
 	PollResult
 } from '$modules/messages/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	dueBefore,
+	enableModule,
+	getDb,
+	getMyPreferences,
+	getSetting,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	type MailTransport,
+	navBadgeCounts,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	setMyPreference,
+	setSetting,
+	setSettings,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'inbox-password-1234';
 let close: () => Promise<void>;
@@ -571,7 +582,7 @@ describe('Antworten und Weiterleiten', () => {
 		expect(out.from).toContain('kasse@pfadfinder.test');
 		expect(out.replyTo).toBe('kasse@pfadfinder.test');
 		expect(out.headers?.['In-Reply-To']).toBe('<orig-1@extern.example>');
-		expect(out.headers?.['References']).toBe('<orig-1@extern.example>');
+		expect(out.headers?.References).toBe('<orig-1@extern.example>');
 		expect(out.messageId).toMatch(/@pfadfinder\.test>$/);
 		// Olga (zweite Inhaberin) bekommt „Otto Amt hat geantwortet“, Otto selbst nicht
 		const info = mails.find(

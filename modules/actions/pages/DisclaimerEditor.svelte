@@ -1,7 +1,7 @@
 <script lang="ts">
+	import { AssistButton } from '$lib/components/layout';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { AssistButton } from '$lib/components/layout';
 	import { DISCLAIMER_PLACEHOLDERS } from '../schemas';
 
 	let {

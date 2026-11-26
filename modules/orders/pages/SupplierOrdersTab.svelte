@@ -1,27 +1,27 @@
 <script lang="ts">
-	// Einkauf: Bestellungen beim Lieferanten mit Wareneingang, Rechnung an die Kasse und Abschluss.
-	import { onMount } from 'svelte';
-	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import PackageOpen from '@lucide/svelte/icons/package-open';
 	import Plus from '@lucide/svelte/icons/plus';
+	// Einkauf: Bestellungen beim Lieferanten mit Wareneingang, Rechnung an die Kasse und Abschluss.
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
-	import { PERMISSIONS, type OrdersOverview, type SupplierOrder } from '../schemas';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { type OrdersOverview, PERMISSIONS, type SupplierOrder } from '../schemas';
 	import {
 		API,
-		SUPPLIER_FILTERS,
 		errorMessage,
 		fmtDate,
 		fmtRatio,
 		itemName,
+		SUPPLIER_FILTERS,
 		type SupplierFilter
 	} from './admin-helpers';
 	import PaymentBadge from './PaymentBadge.svelte';
@@ -177,10 +177,11 @@
 						toggle(o.id);
 					}}
 				>
-					{#if isOpen}<ChevronDown class="size-4" aria-hidden="true" />{:else}<ChevronRight
-							class="size-4"
-							aria-hidden="true"
-						/>{/if}
+					{#if isOpen}
+						<ChevronDown class="size-4" aria-hidden="true" />
+					{:else}
+						<ChevronRight class="size-4" aria-hidden="true" />
+					{/if}
 					{o.number}
 				</button>
 			</Table.Cell>
@@ -189,7 +190,9 @@
 			<Table.Cell><SupplierStatusBadge status={o.status} /></Table.Cell>
 			<Table.Cell class="text-right tabular-nums">
 				{fmtRatio(receivedQty(o), orderedQty(o))}
-				{#if rest > 0}<div class="text-xs text-muted-foreground">{rest} offen</div>{/if}
+				{#if rest > 0}
+					<div class="text-xs text-muted-foreground">{rest} offen</div>
+				{/if}
 			</Table.Cell>
 			<Table.Cell class="text-right tabular-nums">
 				{#if o.invoice}
@@ -275,7 +278,9 @@
 					<div class="space-y-2 py-1">
 						<div class="overflow-x-auto">
 							<table class="w-full min-w-[26rem] text-sm">
-								<caption class="sr-only">Positionen von {o.number}</caption>
+								<caption class="sr-only"
+									>Positionen von {o.number}</caption
+								>
 								<thead class="text-xs text-muted-foreground">
 									<tr>
 										<th class="py-1 pr-2 text-left font-medium">Artikel</th>
@@ -303,12 +308,15 @@
 							</table>
 						</div>
 						<p class="text-xs text-muted-foreground">
-							{#if o.createdBy}Angelegt von {o.createdBy.name}{/if}
-							{#if o.closedAt}· abgeschlossen am {fmtDate(o.closedAt)}{/if}
+							{#if o.createdBy}
+								Angelegt von {o.createdBy.name}
+							{/if}
+							{#if o.closedAt}
+								· abgeschlossen am {fmtDate(o.closedAt)}
+							{/if}
 							{#if o.invoice?.payment}
-								· {formatEuro(o.invoice.payment.paidCents)} von {formatEuro(
-									o.invoice.payment.amountCents
-								)} bezahlt
+								· {formatEuro(o.invoice.payment.paidCents)} von
+								{formatEuro(o.invoice.payment.amountCents)} bezahlt
 							{/if}
 						</p>
 						{#if o.note}

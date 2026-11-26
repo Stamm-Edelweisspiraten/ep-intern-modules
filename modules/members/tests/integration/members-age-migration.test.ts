@@ -2,13 +2,17 @@
  * #64: Upgrade-Test members 0017 – Freitext-Altersangaben der Gruppen werden zu Zahlen (von/bis),
  * nach denselben Regeln wie `messages/age-range.ts` (`parseAgeRange`); nicht lesbare Texte bleiben ohne Zahlen.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleRest, migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
 import membersModule from '$modules/members/module';
 import { parseAgeRange } from '$modules/messages/age-range';
+import {
+	migrateModuleRest,
+	migrateModuleTo,
+	moduleSql,
+	registerModule,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 

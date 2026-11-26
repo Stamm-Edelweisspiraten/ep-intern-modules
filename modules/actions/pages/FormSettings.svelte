@@ -16,18 +16,18 @@
 </script>
 
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Download from '@lucide/svelte/icons/download';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { AssistTextarea, ConfirmDialog, NumberStepper } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { AssistTextarea, ConfirmDialog, NumberStepper } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { FormConfig, FormStatus } from '../schemas';
 
 	let {

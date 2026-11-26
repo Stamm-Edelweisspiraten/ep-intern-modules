@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { csvCell, csvCents } from '$lib/sdk/csv';
+import {
+	applyMapping,
+	detectDelimiter,
+	guessMapping,
+	parseAmount,
+	parseCsv,
+	parseDate
+} from '$modules/treasury/csv-import';
 import {
 	addDays,
 	computeDueOn,
@@ -9,6 +17,8 @@ import {
 	invoiceNumbersIn,
 	invoiceTotals,
 	lineOpen,
+	type MatchLine,
+	type MemberLite,
 	mailVars,
 	matchMember,
 	normalizeName,
@@ -17,18 +27,8 @@ import {
 	reminderLevelDue,
 	renderTemplate,
 	suggestMatch,
-	suggestPayers,
-	type MatchLine,
-	type MemberLite
+	suggestPayers
 } from '$modules/treasury/logic';
-import {
-	applyMapping,
-	detectDelimiter,
-	guessMapping,
-	parseAmount,
-	parseCsv,
-	parseDate
-} from '$modules/treasury/csv-import';
 
 const member = (
 	id: string,
@@ -525,8 +525,9 @@ describe('CSV', () => {
 
 describe('IBAN (Kasse)', () => {
 	it('prüft, normalisiert und maskiert', async () => {
-		const { isValidIban, normalizeIban, maskIban, formatIban } =
-			await import('$modules/treasury/iban');
+		const { isValidIban, normalizeIban, maskIban, formatIban } = await import(
+			'$modules/treasury/iban'
+		);
 		expect(isValidIban('DE89 3704 0044 0532 0130 00')).toBe(true);
 		expect(isValidIban('DE89370400440532013001')).toBe(false);
 		expect(isValidIban('DE8937040044053201300')).toBe(false);

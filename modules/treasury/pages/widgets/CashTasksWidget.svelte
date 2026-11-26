@@ -1,13 +1,13 @@
 <script lang="ts">
-	// Dashboard-Kachel „Aufgaben der Kasse“: offene Aufgaben aus der Kassen-Übersicht (`Overview.tasks`).
-	import { onMount } from 'svelte';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Info from '@lucide/svelte/icons/info';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Wallet from '@lucide/svelte/icons/wallet';
+	// Dashboard-Kachel „Aufgaben der Kasse“: offene Aufgaben aus der Kassen-Übersicht (`Overview.tasks`).
+	import { onMount } from 'svelte';
+	import { DashboardCard } from '$lib/components/layout';
 	import { apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { Overview, OverviewTask } from '../../schemas';
 	import { BASE, errorMessage } from '../helpers';
 	import { taskView } from '../task-view';

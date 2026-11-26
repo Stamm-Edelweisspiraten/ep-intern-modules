@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import {
+	type ApiEndpoint,
 	core,
 	errors,
+	type RequestContext,
 	readFormData,
-	takeUpload,
-	type ApiEndpoint,
-	type RequestContext
+	takeUpload
 } from '$lib/sdk/server';
 import { loadMatchLines } from './allocation';
 import { ibanHash, storeIban } from './bank';
@@ -14,27 +14,27 @@ import {
 	applyMapping,
 	detectDelimiter,
 	guessMapping,
-	parseCsv,
-	type ParsedRow
+	type ParsedRow,
+	parseCsv
 } from './csv-import';
 import {
-	NEEDS_ALLOCATION_SQL,
 	idList,
 	loadTransactionsWhere,
 	mdb,
-	payerByIbanHash,
+	NEEDS_ALLOCATION_SQL,
 	num,
+	payerByIbanHash,
 	requireAccount,
 	rows
 } from './db';
 import { suggestMatch } from './logic';
 import {
-	MAX_IMPORT_BYTES,
-	MAX_IMPORT_ROWS,
-	importMappingSchema,
 	type ImportMapping,
 	type ImportPreview,
 	type ImportResult,
+	importMappingSchema,
+	MAX_IMPORT_BYTES,
+	MAX_IMPORT_ROWS,
 	type MatchSuggestion
 } from './schemas';
 
@@ -148,7 +148,7 @@ async function existingHashes(accountId: string, hashes: string[]): Promise<Set<
 
 /** Vorschläge für alle (oder bestimmte) nicht vollständig zugeordneten Einnahmen */
 export async function bulkSuggestions(
-	ctx: RequestContext,
+	_ctx: RequestContext,
 	transactionIds?: string[]
 ): Promise<MatchSuggestion[]> {
 	const raw = await mdb().transaction((tx) =>

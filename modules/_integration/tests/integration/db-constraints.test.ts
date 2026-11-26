@@ -2,18 +2,23 @@
  * #73 Datenbank-Rückhalt: CHECKs der Termine (07-11, Migration events/0003 inkl. Bereinigung des
  * Altbestands) und Indizes der Lagerbewegungen (07-10, Migration orders/0003).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, runModuleMigrations, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { getDb, schema } from '$testing';
-import membersModule from '$modules/members/module';
 import eventsModule from '$modules/events/module';
+import membersModule from '$modules/members/module';
 import ordersModule from '$modules/orders/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	enableModule,
+	getDb,
+	registerCoreApi,
+	registerModule,
+	runModuleMigrations,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 

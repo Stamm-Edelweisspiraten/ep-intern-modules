@@ -9,35 +9,35 @@ import { sql } from 'drizzle-orm';
 import {
 	core,
 	errors,
+	type RequestContext,
 	readFormData,
 	rowsOf,
 	takeUpload,
-	type RequestContext,
 	type UploadedFile
 } from '$lib/sdk/server';
 import { requireAccess } from './access';
 import {
-	POSTER_SPECS,
-	VARIANT_SPECS,
-	VIDEO_EXTENSION,
 	db,
 	filesCtx,
+	POSTER_SPECS,
 	removeFiles,
 	uploadLimits,
+	VARIANT_SPECS,
+	VIDEO_EXTENSION,
 	variantPath,
 	videoPath
 } from './files';
 import { requireImageRow, sanitizeOriginalName, toGalleryImage } from './images.service';
 import {
+	type GalleryImage,
 	IMAGE_CONTENT_TYPES,
-	MAX_IMAGES_PER_GALLERY,
+	type ImageVariant,
 	MAX_IMAGE_BYTES,
+	MAX_IMAGES_PER_GALLERY,
+	type MediaType,
 	MODULE_ID,
 	uploadFields,
-	videoTypeOf,
-	type GalleryImage,
-	type ImageVariant,
-	type MediaType
+	videoTypeOf
 } from './schemas';
 import { sniffVideoType, stripVideoMetadata, type VideoContentType } from './video';
 

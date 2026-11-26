@@ -6,17 +6,21 @@
  * - galleries 0002: Termin-Zuordnungen der Bilder wandern auf die Galerie (ohne Duplikate)
  * Die Zwischenabrechnungen (actions 0011/0016, `legacySnapshot`) prüft `actions-migrations.test.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleRest, migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
-import { splitSqlStatements } from '$testing';
-import membersModule from '$modules/members/module';
 import actionsModule from '$modules/actions/module';
-import treasuryModule from '$modules/treasury/module';
 import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
 import treasury0002 from '$modules/treasury/migrations/0002_extensions.sql?raw';
+import treasuryModule from '$modules/treasury/module';
+import {
+	migrateModuleRest,
+	migrateModuleTo,
+	moduleSql,
+	registerModule,
+	splitSqlStatements,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 

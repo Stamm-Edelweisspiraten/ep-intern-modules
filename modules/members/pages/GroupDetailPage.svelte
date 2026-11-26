@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Cake from '@lucide/svelte/icons/cake';
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
@@ -15,15 +12,9 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Table from '$lib/components/ui/table';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		ConfirmDialog,
 		DataTable,
@@ -31,28 +22,37 @@
 		EntityAvatar,
 		ErrorState
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import * as Table from '$lib/components/ui/table';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+	import {
+		ageFromBirthDate,
+		GROUP_TYPE_LABELS,
+		type Group,
+		type GroupOverview,
+		type LedGroupBirthday,
+		type Member,
+		type MemberList,
+		STAGE_LABELS,
+		STAGES
+	} from '../schemas';
 	import GroupDialog from './GroupDialog.svelte';
 	import GroupSheetsDialog from './GroupSheetsDialog.svelte';
 	import {
-		GROUPS_PATH,
 		composeFor,
+		GROUPS_PATH,
 		imageUrl,
 		meetingText,
 		memberCountText,
 		memberHref,
 		personName
 	} from './group-actions';
-	import {
-		GROUP_TYPE_LABELS,
-		STAGES,
-		STAGE_LABELS,
-		ageFromBirthDate,
-		type Group,
-		type GroupOverview,
-		type LedGroupBirthday,
-		type Member,
-		type MemberList
-	} from '../schemas';
 
 	let { params }: ModulePageProps = $props();
 	const id = $derived(params.id ?? '');
@@ -265,7 +265,9 @@
 							</DropdownMenu.Item>
 						{/if}
 						{#if canDelete}
-							{#if canMail || canExport}<DropdownMenu.Separator />{/if}
+							{#if canMail || canExport}
+								<DropdownMenu.Separator />
+							{/if}
 							<DropdownMenu.Item variant="destructive" onclick={() => (deleteOpen = true)}>
 								<Trash2 /> Löschen
 							</DropdownMenu.Item>
@@ -293,7 +295,8 @@
 				<Card.Root>
 					<Card.Header>
 						<Card.Title level={2} class="flex items-center gap-2">
-							<CalendarClock class="size-4 text-muted-foreground" aria-hidden="true" /> Gruppenstunde
+							<CalendarClock class="size-4 text-muted-foreground" aria-hidden="true" />
+							Gruppenstunde
 						</Card.Title>
 					</Card.Header>
 					<Card.Content>
@@ -317,7 +320,9 @@
 											aria-hidden="true"
 										/>
 										{g.meetingPlace}
-									{:else}–{/if}
+									{:else}
+										–
+									{/if}
 								</dd>
 							</div>
 						</dl>
@@ -519,7 +524,8 @@
 			<Card.Root>
 				<Card.Header>
 					<Card.Title level={2} class="flex items-center gap-2">
-						<Globe class="size-4 text-muted-foreground" aria-hidden="true" /> Steckbrief auf der Website
+						<Globe class="size-4 text-muted-foreground" aria-hidden="true" /> Steckbrief auf der
+						Website
 					</Card.Title>
 					<Card.Description>
 						{g.website.onWebsite && g.website.slug
@@ -549,7 +555,9 @@
 								{:else if g.description}
 									<span class="text-muted-foreground">(interne Beschreibung)</span>
 									{g.description}
-								{:else}–{/if}
+								{:else}
+									–
+								{/if}
 							</dd>
 						</div>
 					</dl>

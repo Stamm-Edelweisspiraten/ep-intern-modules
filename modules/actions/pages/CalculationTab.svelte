@@ -1,35 +1,34 @@
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Download from '@lucide/svelte/icons/download';
+	import Loader from '@lucide/svelte/icons/loader-circle';
+	import Moon from '@lucide/svelte/icons/moon';
 	import { onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import CircleAlert from '@lucide/svelte/icons/circle-alert';
-	import Check from '@lucide/svelte/icons/check';
-	import Download from '@lucide/svelte/icons/download';
-	import Moon from '@lucide/svelte/icons/moon';
-	import Loader from '@lucide/svelte/icons/loader-circle';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { ConfirmDialog, NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { ConfirmDialog } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
-	import { fmtDate } from './format';
 	import { Label } from '$lib/components/ui/label';
 	import * as Popover from '$lib/components/ui/popover';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Slider } from '$lib/components/ui/slider';
 	import { Switch } from '$lib/components/ui/switch';
-	import { NumberStepper } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { calculate, nightsBetween } from '../calculation';
 	import {
-		calculationInput,
+		type AppliedFee,
 		type CalculationDto,
 		type CalculationInput,
-		type AppliedFee,
-		type CalculationSuggestions
+		type CalculationSuggestions,
+		calculationInput
 	} from '../schemas';
-	import { calculate, nightsBetween } from '../calculation';
 	import { computeSubsidy } from '../subsidy';
 	import CalcItemsEditor from './CalcItemsEditor.svelte';
 	import CalcSummary from './CalcSummary.svelte';
+	import { fmtDate } from './format';
 	import SubsidySection from './SubsidySection.svelte';
 
 	let {
@@ -365,9 +364,11 @@
 					Übernommen: {formatEuro(applied.participantCents)} pro Teilnehmende*r{applied.teamCents >
 					0
 						? ` · Team ${formatEuro(applied.teamCents)}`
-						: ''} · am {fmtDate(applied.appliedAt)}{applied.appliedBy
+						: ''}
+					· am {fmtDate(applied.appliedAt)}{applied.appliedBy
 						? ` von ${applied.appliedBy.name}`
-						: ''} – wird für Anmeldung und Abrechnung verwendet
+						: ''}
+					– wird für Anmeldung und Abrechnung verwendet
 				</span>
 				{#if canEdit}
 					<Button size="sm" variant="outline" disabled={feeBusy} onclick={() => (clearOpen = true)}>
@@ -381,9 +382,9 @@
 				role="status"
 			>
 				<span>
-					Die Kalkulation hat sich seit der Übernahme geändert (übernommen: {formatEuro(
-						applied.participantCents
-					)}, aktuell: {formatEuro(result.recommendedPerPersonCents)}).
+					Die Kalkulation hat sich seit der Übernahme geändert (übernommen:
+					{formatEuro(applied.participantCents)}, aktuell:
+					{formatEuro(result.recommendedPerPersonCents)}).
 				</span>
 				{#if canEdit}
 					<span class="flex gap-2">
@@ -430,8 +431,8 @@
 											{:else if suggestions}
 												<p class="text-sm">
 													<span class="font-medium tabular-nums">
-														{suggestions.participants} Teilnehmende, {suggestions.team} Team{suggestions.nights !==
-														null
+														{suggestions.participants} Teilnehmende,
+														{suggestions.team} Team{suggestions.nights !== null
 															? `, ${suggestions.nights} ${suggestions.nights === 1 ? 'Nacht' : 'Nächte'}`
 															: ''}
 													</span>
@@ -606,7 +607,8 @@
 					</span>
 				</span>
 			{/if}
-			<span class="text-muted-foreground ml-auto hidden text-xs sm:inline">Zur Zusammenfassung</span
+			<span class="text-muted-foreground ml-auto hidden text-xs sm:inline"
+				>Zur Zusammenfassung</span
 			>
 		</button>
 	{/if}

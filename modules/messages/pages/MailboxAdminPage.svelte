@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import AtSign from '@lucide/svelte/icons/at-sign';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Forward from '@lucide/svelte/icons/forward';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, DataTable, FormField, PageHeader } from '$lib/components/layout';
+	import { BUSY_SAVE } from '$lib/components/layout/busy';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -17,18 +18,17 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ConfirmDialog, DataTable, FormField, PageHeader } from '$lib/components/layout';
-	import { BUSY_SAVE } from '$lib/components/layout/busy';
-	import ExtraMailboxDialog from './ExtraMailboxDialog.svelte';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		EXTRA_SHARE_LEVEL_LABELS,
-		MAILBOX_KIND_LABELS,
-		aliasInput,
-		type AliasTarget,
 		type AliasesResponse,
+		type AliasTarget,
+		aliasInput,
+		EXTRA_SHARE_LEVEL_LABELS,
 		type ExtraMailbox,
+		MAILBOX_KIND_LABELS,
 		type MailboxAlias
 	} from '../schemas';
+	import ExtraMailboxDialog from './ExtraMailboxDialog.svelte';
 	import { BASE, errorText } from './helpers';
 
 	let tab = $state<'mailboxes' | 'aliases'>('mailboxes');

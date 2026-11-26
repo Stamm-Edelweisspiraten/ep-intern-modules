@@ -1,6 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import type { ModuleDefinition } from '$testing';
-import { validateModuleReferences } from '$testing';
+import { describe, expect, it } from 'bun:test';
 import actionsModule from '$modules/actions/module';
 import eventsModule from '$modules/events/module';
 import filesModule from '$modules/files/module';
@@ -10,6 +8,8 @@ import officesModule from '$modules/offices/module';
 import ordersModule from '$modules/orders/module';
 import treasuryModule from '$modules/treasury/module';
 import whiteboardModule from '$modules/whiteboard/module';
+import type { ModuleDefinition } from '$testing';
+import { validateModuleReferences } from '$testing';
 
 const ALL: ModuleDefinition[] = [
 	membersModule,

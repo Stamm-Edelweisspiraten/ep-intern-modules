@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Zahlstand aus der Kasse – für Mitgliedsbestellungen (Rechnung) und Lieferantenrechnungen (Auszahlung).
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
-	import { PAYMENT_STATUS_LABELS, type OrderPayment, type SupplierPayment } from '../schemas';
+	import { type OrderPayment, PAYMENT_STATUS_LABELS, type SupplierPayment } from '../schemas';
 
 	let {
 		payment,

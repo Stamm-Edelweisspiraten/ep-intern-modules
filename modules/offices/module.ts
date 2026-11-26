@@ -1,8 +1,14 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
 import { officesAssist, PERM_AI } from './assist';
+import pkg from './atrium-module.json';
+import type { OfficesService } from './contract';
 import { syncGrants } from './grants.service';
 import { holderEndpoints } from './holders.endpoints';
+import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_templates_notifications.sql?raw';
+import m0003 from './migrations/0003_notification_queue_retention.sql?raw';
+import m0004 from './migrations/0004_website_optin.sql?raw';
+import m0005 from './migrations/0005_bio_check.sql?raw';
 import {
 	migrateLegacyPrefs,
 	notificationScopesFor,
@@ -10,21 +16,15 @@ import {
 	sendDigest,
 	TEMPLATE_TYPE
 } from './notify.service';
-import type { OfficesService } from './contract';
 import { officeEndpoints } from './offices.endpoints';
 import { profileEndpoints } from './profile.endpoints';
 import { resetAreas, resetUsers } from './reset';
-import { onUserDeleted } from './user-deleted';
+import { HOLDER_ROLE_NAME } from './schemas';
 import { officesSearch } from './search';
 import { subjectExport } from './subject-export';
 import { applyTemplates } from './templates.service';
+import { onUserDeleted } from './user-deleted';
 import { websiteEndpoints } from './website.endpoints';
-import { HOLDER_ROLE_NAME } from './schemas';
-import m0001 from './migrations/0001_init.sql?raw';
-import m0002 from './migrations/0002_templates_notifications.sql?raw';
-import m0003 from './migrations/0003_notification_queue_retention.sql?raw';
-import m0004 from './migrations/0004_website_optin.sql?raw';
-import m0005 from './migrations/0005_bio_check.sql?raw';
 
 export default defineModule({
 	package: pkg,

@@ -19,7 +19,9 @@
 			<Sheet.Description>{title}</Sheet.Description>
 		</Sheet.Header>
 		<div class="p-4">
-			{#if id}<HistoryPanel {kind} {id} />{/if}
+			{#if id}
+				<HistoryPanel {kind} {id} />
+			{/if}
 		</div>
 	</Sheet.Content>
 </Sheet.Root>

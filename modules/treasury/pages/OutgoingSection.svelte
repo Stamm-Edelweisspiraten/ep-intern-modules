@@ -1,16 +1,16 @@
 <script lang="ts">
+	import { ScrollPills } from '$lib/components/layout';
+	import AccountingsTab from './AccountingsTab.svelte';
+	import FilterChips from './FilterChips.svelte';
 	// Bereich „Ausgänge“: Auszahlungen · Abrechnungen (nur mit Berichtsrecht)
 	import type { SharedData } from './helpers';
-	import { ScrollPills } from '$lib/components/layout';
-	import FilterChips from './FilterChips.svelte';
-	import AccountingsTab from './AccountingsTab.svelte';
-	import PayablesTab from './PayablesTab.svelte';
 	import {
-		OUTGOING_VIEWS,
-		OUTGOING_VIEW_LABELS,
 		type FamilyRef,
+		OUTGOING_VIEW_LABELS,
+		OUTGOING_VIEWS,
 		type OutgoingView
 	} from './navigation';
+	import PayablesTab from './PayablesTab.svelte';
 
 	let {
 		view,

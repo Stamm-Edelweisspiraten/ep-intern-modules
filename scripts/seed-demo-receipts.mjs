@@ -1,8 +1,8 @@
 // Hängt Beispiel-Belege (abwechselnd PDF und PNG) an alle Ausgaben der Demo-Aktion "Kopenhagen 2026"
 // und speichert den Bericht als .data/demo-report.pdf. Voraussetzung: Demo-Storage eingerichtet
-// (docker compose -f docker-compose.demo.yml up -d; node scripts/setup-demo-storage.mjs).
+// (docker compose -f docker-compose.demo.yml up -d; bun scripts/setup-demo-storage.mjs).
 import { writeFileSync } from 'node:fs';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 const BASE = 'http://127.0.0.1:4300';
 const headers = { origin: 'http://localhost:4300' };
@@ -23,7 +23,7 @@ const list = await (
 ).json();
 const ACTION = list.data.items.find((a) => a.name === 'Kopenhagen 2026')?.id;
 if (!ACTION)
-	throw new Error('Demo-Aktion "Kopenhagen 2026" fehlt (node scripts/seed-demo-modules.mjs)');
+	throw new Error('Demo-Aktion "Kopenhagen 2026" fehlt (bun scripts/seed-demo-modules.mjs)');
 const api = (path, init = {}) =>
 	fetch(`${BASE}/api/v1/modules/actions/actions/${ACTION}/accounting${path}`, {
 		...init,

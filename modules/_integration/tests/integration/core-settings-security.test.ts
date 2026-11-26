@@ -4,32 +4,37 @@
  * #59 Schreibrecht je Einstellung (`writePermission`, Modul-Schlüssel mit `<modul>.settings.manage`), atomares
  *     Speichern mehrerer Werte, höchstens 100 Schlüssel, `null` nur bei löschbaren Schlüsseln.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { getDb, schema } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { createApiKey } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
+import { defineModule } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
+import treasuryModule from '$modules/treasury/module';
 import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
 	getDefinition,
 	getSetting,
+	handleApiRequest,
 	MAX_SETTINGS_PER_WRITE,
+	registerCoreApi,
+	registerModule,
+	schema,
+	sendMail,
+	setMailTransportForTests,
 	setSetting,
-	setSettings
+	setSettings,
+	smtpTransportOptions,
+	syncModules,
+	useTestDatabase
 } from '$testing';
-import { sendMail, setMailTransportForTests, smtpTransportOptions } from '$testing';
-import { defineModule } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
-import treasuryModule from '$modules/treasury/module';
-import type { RequestContext } from '$lib/sdk/types';
 
 const PW = 'Sehr-Sicheres-Passwort-1';
 let close: () => Promise<void>;

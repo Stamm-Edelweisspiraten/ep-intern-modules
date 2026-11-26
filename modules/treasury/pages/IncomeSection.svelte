@@ -1,14 +1,14 @@
 <script lang="ts">
+	import { ScrollPills } from '$lib/components/layout';
+	import AnnualFeeTab from './AnnualFeeTab.svelte';
+	import FilterChips from './FilterChips.svelte';
 	// Bereich „Eingänge“: Offene Posten · Rechnungen · Familien · Jahresbeitrag
 	import type { SharedData } from './helpers';
-	import { ScrollPills } from '$lib/components/layout';
-	import FilterChips from './FilterChips.svelte';
-	import type { PaymentPreset } from './PaymentCapture.svelte';
-	import AnnualFeeTab from './AnnualFeeTab.svelte';
 	import InvoicesTab from './InvoicesTab.svelte';
+	import { type FamilyRef, INCOME_VIEW_LABELS, INCOME_VIEWS, type IncomeView } from './navigation';
 	import OpenItemsTab from './OpenItemsTab.svelte';
 	import PayersTab from './PayersTab.svelte';
-	import { INCOME_VIEWS, INCOME_VIEW_LABELS, type FamilyRef, type IncomeView } from './navigation';
+	import type { PaymentPreset } from './PaymentCapture.svelte';
 
 	let {
 		view,

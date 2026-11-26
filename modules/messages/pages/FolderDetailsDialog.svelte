@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { apiFetch } from '$lib/sdk/client';
-	import * as Dialog from '$lib/components/ui/dialog';
 	import { ErrorState, LoadingState } from '$lib/components/layout';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { FolderDetails } from '../schemas';
 	import { BASE, errorText, formatDateTime, formatSize } from './helpers';
 

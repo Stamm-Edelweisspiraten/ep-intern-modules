@@ -1,15 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		ConfirmDialog,
 		EmptyState,
@@ -17,10 +13,14 @@
 		LoadingState,
 		PageHeader
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Banner } from '../schemas';
 	import BannerDialog from './BannerDialog.svelte';
-	import WebsiteTabs from './WebsiteTabs.svelte';
 	import { BANNER_STATE_LABELS, BASE, errorText, formatDateTime } from './helpers';
+	import WebsiteTabs from './WebsiteTabs.svelte';
 
 	let banners = $state<Banner[]>([]);
 	let loading = $state(true);
@@ -124,15 +124,20 @@
 									<Badge variant="outline">
 										{b.placement === 'bar' ? 'Leiste auf allen Seiten' : 'Startseite'}
 									</Badge>
-									{#if b.level === 'important'}<Badge variant="warning">Wichtig</Badge>{/if}
+									{#if b.level === 'important'}
+										<Badge variant="warning">Wichtig</Badge>
+									{/if}
 								</div>
 								<p class="text-sm">
-									{#if b.title}<strong>{b.title}:</strong>{/if}
+									{#if b.title}
+										<strong>{b.title}:</strong>
+									{/if}
 									{b.text}
 								</p>
 								<p class="text-xs text-muted-foreground">
 									{windowText(b)}{#if b.linkUrl}
-										· Link: {b.linkLabel ?? b.linkUrl}{/if}
+										· Link: {b.linkLabel ?? b.linkUrl}
+									{/if}
 								</p>
 							</div>
 							<div class="flex shrink-0 gap-1">
@@ -141,14 +146,16 @@
 									size="icon-sm"
 									aria-label="Nach oben"
 									disabled={i === 0}
-									onclick={() => move(i, i - 1)}><ArrowUp /></Button
+									onclick={() => move(i, i - 1)}
+									><ArrowUp /></Button
 								>
 								<Button
 									variant="ghost"
 									size="icon-sm"
 									aria-label="Nach unten"
 									disabled={i === banners.length - 1}
-									onclick={() => move(i, i + 1)}><ArrowDown /></Button
+									onclick={() => move(i, i + 1)}
+									><ArrowDown /></Button
 								>
 								<Button
 									variant="ghost"
@@ -157,7 +164,8 @@
 									onclick={() => {
 										editing = b;
 										dialogOpen = true;
-									}}><Pencil /></Button
+									}}
+									><Pencil /></Button
 								>
 								<Button
 									variant="ghost"
@@ -166,7 +174,8 @@
 									onclick={() => {
 										deleting = b;
 										deleteOpen = true;
-									}}><Trash2 /></Button
+									}}
+									><Trash2 /></Button
 								>
 							</div>
 						</Card.Content>

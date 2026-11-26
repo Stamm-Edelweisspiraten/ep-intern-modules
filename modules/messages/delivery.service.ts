@@ -14,37 +14,37 @@ import {
 	errors,
 	inList,
 	moduleDb,
+	type RequestContext,
 	rowsOf,
 	safeFileName,
 	toIso,
-	userLabel,
-	type RequestContext
+	userLabel
 } from '$lib/sdk/server';
 import { htmlToText, plainDocument, sanitizeBody } from './html';
 import { loadInboxConfig } from './inbound.service';
-import { notifyReplied } from './inbox-notify.service';
 import { forwardAttachments, loadInboxRow, sentViaAccessibleMailbox } from './inbox.service';
+import { notifyReplied } from './inbox-notify.service';
 import { MESSAGE_ID_PATTERN, mailboxKeyForSender } from './mailbox';
 import { resolveRecipients } from './recipients.service';
-import { accountEmail, loadSettings, requireSender } from './sender.service';
 import {
 	ATTACHMENT_DAYS,
 	MAX_BODY_HTML,
 	MAX_FILES,
 	MAX_TOTAL_BYTES,
-	MODULE_ID,
-	PERM_VIEW_ALL,
-	RETENTION_DAYS,
 	type MessageAttachmentInfo,
 	type MessageDetail,
 	type MessagePreview,
 	type MessageRecipientInfo,
 	type MessageStatus,
 	type MessageSummary,
+	MODULE_ID,
+	PERM_VIEW_ALL,
 	type PreviewInput,
+	RETENTION_DAYS,
 	type RecipientStatus,
 	type SendInput
 } from './schemas';
+import { accountEmail, loadSettings, requireSender } from './sender.service';
 
 const mdb = () => moduleDb(MODULE_ID);
 
@@ -145,21 +145,25 @@ export async function getMessage(ctx: RequestContext, id: string): Promise<Messa
 		replyTo: data.m.reply_to == null ? null : String(data.m.reply_to),
 		replyOf: data.m.reply_of == null ? null : String(data.m.reply_of),
 		forwardOf: data.m.forward_of == null ? null : String(data.m.forward_of),
-		attachments: data.attachments.map((a): MessageAttachmentInfo => ({
-			id: String(a.id),
-			filename: String(a.filename),
-			contentType: String(a.content_type),
-			size: Number(a.size),
-			removed: a.removed_at != null
-		})),
-		recipients: data.recipients.map((r): MessageRecipientInfo => ({
-			id: String(r.id),
-			name: r.name == null ? null : String(r.name),
-			address: String(r.address),
-			status: String(r.status) as RecipientStatus,
-			error: r.error == null ? null : String(r.error),
-			sentAt: r.sent_at == null ? null : toIso(r.sent_at)
-		}))
+		attachments: data.attachments.map(
+			(a): MessageAttachmentInfo => ({
+				id: String(a.id),
+				filename: String(a.filename),
+				contentType: String(a.content_type),
+				size: Number(a.size),
+				removed: a.removed_at != null
+			})
+		),
+		recipients: data.recipients.map(
+			(r): MessageRecipientInfo => ({
+				id: String(r.id),
+				name: r.name == null ? null : String(r.name),
+				address: String(r.address),
+				status: String(r.status) as RecipientStatus,
+				error: r.error == null ? null : String(r.error),
+				sentAt: r.sent_at == null ? null : toIso(r.sent_at)
+			})
+		)
 	};
 }
 

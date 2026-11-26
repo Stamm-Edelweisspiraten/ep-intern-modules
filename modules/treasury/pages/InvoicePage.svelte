@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { afterNavigate, goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Ban from '@lucide/svelte/icons/ban';
 	import Bell from '@lucide/svelte/icons/bell';
@@ -13,33 +10,37 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Send from '@lucide/svelte/icons/send';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+	import { toast } from 'svelte-sonner';
+	import { afterNavigate, goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import {
+		BottomSheet,
+		ConfirmDialog,
+		deviceLayout,
+		EmptyState,
+		PageHeader,
+		SheetAction,
+		SummaryList,
+		toastWithUndo
+	} from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import {
-		BottomSheet,
-		ConfirmDialog,
-		EmptyState,
-		PageHeader,
-		SheetAction,
-		SummaryList,
-		deviceLayout,
-		toastWithUndo
-	} from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
-	import {
+		type Account,
 		DOCUMENT_REASON_LABELS,
 		INVOICE_SOURCE_LABELS,
-		type Account,
 		type InvoiceDetail,
 		type InvoiceLine,
 		type Payer
 	} from '../schemas';
+	import HistoryCard from './HistoryCard.svelte';
 	import {
 		BASE,
 		errorMessage,
@@ -53,7 +54,6 @@
 	import LineDialog from './LineDialog.svelte';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
 	import PaymentCapture from './PaymentCapture.svelte';
-	import HistoryCard from './HistoryCard.svelte';
 
 	let { params }: ModulePageProps = $props();
 	/** Handy: feste Aktionsleiste unten, Seltenes im Blatt hinter ⋯ */
@@ -263,8 +263,9 @@
 			</Button>
 			<div class="flex min-w-0 flex-1 flex-col">
 				<strong class="truncate text-lg">{inv ? inv.number : 'Rechnung'}</strong>
-				{#if inv}<span class="truncate text-xs text-muted-foreground">{inv.recipientName}</span
-					>{/if}
+				{#if inv}
+					<span class="truncate text-xs text-muted-foreground">{inv.recipientName}</span>
+				{/if}
 			</div>
 			{#if inv && (canSend || canEdit || canDelete)}
 				<Button
@@ -368,12 +369,18 @@
 		{/if}
 
 		<div class="flex flex-wrap items-center gap-2">
-			{#if layout !== 'phone'}<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>{/if}
+			{#if layout !== 'phone'}
+				<Badge variant={statusVariant(inv)}>{statusText(inv)}</Badge>
+			{/if}
 			<Badge variant="outline"
 				>{inv.source === 'action' ? 'Aus Aktion' : INVOICE_SOURCE_LABELS[inv.source]}</Badge
 			>
-			{#if inv.remindersPaused}<Badge variant="outline">Erinnerungen pausiert</Badge>{/if}
-			{#if inv.paidNotifiedAt}<Badge variant="secondary">Bestätigung versendet</Badge>{/if}
+			{#if inv.remindersPaused}
+				<Badge variant="outline">Erinnerungen pausiert</Badge>
+			{/if}
+			{#if inv.paidNotifiedAt}
+				<Badge variant="secondary">Bestätigung versendet</Badge>
+			{/if}
 		</div>
 		{#if inv.status === 'cancelled'}
 			<p class="rounded-md border bg-muted/40 px-3 py-2 text-sm" role="note">
@@ -381,8 +388,8 @@
 					? `: ${inv.cancelReason}`
 					: ''}.
 				{#if inv.creditCents > 0}
-					Bereits bezahlte {formatEuro(inv.creditCents)} stehen als Guthaben – bitte zurückzahlen oder
-					verrechnen.
+					Bereits bezahlte {formatEuro(inv.creditCents)} stehen als Guthaben – bitte zurückzahlen
+					oder verrechnen.
 				{/if}
 			</p>
 		{/if}
@@ -398,9 +405,9 @@
 								<Table.Head class="text-right">Betrag</Table.Head>
 								<Table.Head class="text-right">Bezahlt</Table.Head>
 								<Table.Head class="text-right">Offen</Table.Head>
-								{#if canEdit && editable}<Table.Head
-										><span class="sr-only">Aktionen</span></Table.Head
-									>{/if}
+								{#if canEdit && editable}
+									<Table.Head><span class="sr-only">Aktionen</span></Table.Head>
+								{/if}
 							</Table.Row>
 						</Table.Header>
 						<Table.Body>
@@ -467,7 +474,8 @@
 								<a
 									class="underline-offset-4 hover:underline"
 									href="/modules/treasury?tab=annual"
-									title="Zum Tab Jahresbeitrag">{INVOICE_SOURCE_LABELS.annual}</a
+									title="Zum Tab Jahresbeitrag"
+									>{INVOICE_SOURCE_LABELS.annual}</a
 								>
 							</div>
 						{:else if inv.action}
@@ -484,7 +492,9 @@
 							<div>
 								<div class="text-muted-foreground">Mails gehen an</div>
 								<ul class="mt-1 space-y-0.5">
-									{#each inv.recipients as r (r)}<li class="truncate">{r}</li>{/each}
+									{#each inv.recipients as r (r)}
+										<li class="truncate">{r}</li>
+									{/each}
 								</ul>
 							</div>
 						{:else if canEdit || canSend}
@@ -492,7 +502,9 @@
 								Keine E-Mail-Adresse: Mitglied zuordnen oder E-Mail eintragen.
 							</p>
 						{/if}
-						{#if inv.note}<p class="whitespace-pre-line text-muted-foreground">{inv.note}</p>{/if}
+						{#if inv.note}
+							<p class="whitespace-pre-line text-muted-foreground">{inv.note}</p>
+						{/if}
 					</Card.Content>
 				</Card.Root>
 			</div>
@@ -564,9 +576,8 @@
 										<div class="text-xs text-muted-foreground">
 											{d.sentAt
 												? `versendet ${fmtDateTime(d.sentAt)} an ${d.recipients} Adresse(n)`
-												: `erstellt ${fmtDateTime(d.createdAt)}, nicht versendet`} · {formatEuro(
-												d.totalCents
-											)}
+												: `erstellt ${fmtDateTime(d.createdAt)}, nicht versendet`}
+											· {formatEuro(d.totalCents)}
 										</div>
 									</div>
 									<Button size="sm" variant="outline" onclick={() => versionPdf(d.version)}>

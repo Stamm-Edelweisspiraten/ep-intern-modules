@@ -1,10 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { apiLogPath } from '$testing';
-import { allEndpoints, matchEndpoint } from '$testing';
-import { registerModule, unregisterModule } from '$testing';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import actionsModule from '$modules/actions/module';
 import filesModule from '$modules/files/module';
 import membersModule from '$modules/members/module';
+import {
+	allEndpoints,
+	apiLogPath,
+	matchEndpoint,
+	registerModule,
+	unregisterModule
+} from '$testing';
 
 // Zugriffsprotokoll: Link-Tokens öffentlicher Endpunkte dürfen nie im Klartext im api_log stehen.
 

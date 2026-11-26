@@ -1,12 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
-	MIN_REFUND_PER_HEAD_CENTS,
 	choiceOf,
 	computeManualRefund,
 	computeRefund,
 	deadlineRunning,
 	donationForChoice,
 	donationTotals,
+	MIN_REFUND_PER_HEAD_CENTS,
 	payoutCents,
 	refundThresholdOk,
 	validateDonation

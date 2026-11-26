@@ -3,32 +3,40 @@
  * (Zeitraum ?? frühester Termin ?? Anlagedatum) und ZIP-Download der ganzen Galerie
  * (eigenes Recht `galleries.gallery.download`). Storage über `tests/helpers/fake-storage.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import { unzipSync } from 'fflate';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { listAudit } from '$testing';
-import { setSetting } from '$testing';
-import { core } from '$testing';
 import { DEFAULT_ALLOWED_CONTENT_TYPES } from '$lib/sdk/content-types';
+import type { RequestContext } from '$lib/sdk/types';
 import eventsModule from '$modules/events/module';
-import membersModule from '$modules/members/module';
 import galleriesModule from '$modules/galleries/module';
 import type { GalleryDetail, GalleryImage, GalleryList } from '$modules/galleries/schemas';
 import { websiteGalleryListSchema } from '$modules/galleries/website.schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	fakeFileRows,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setSetting,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 import { sampleMp4 } from '../video-fixtures';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/galleries';
@@ -354,9 +362,9 @@ describe('ZIP-Download', () => {
 
 		const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
 		expect(Object.keys(files)).toEqual(['see.jpg', 'SEE (2).jpg', 'film.mp4']);
-		expect(files['see.jpg']).toEqual(storedFile(await fullPathOf(a.id)));
-		expect(files['SEE (2).jpg']).toEqual(storedFile(await fullPathOf(b.id)));
-		expect(files['film.mp4']).toEqual(storedFile(await fullPathOf(v.id)));
+		expect<unknown>(files['see.jpg']).toEqual(storedFile(await fullPathOf(a.id)));
+		expect<unknown>(files['SEE (2).jpg']).toEqual(storedFile(await fullPathOf(b.id)));
+		expect<unknown>(files['film.mp4']).toEqual(storedFile(await fullPathOf(v.id)));
 
 		const { rows } = await listAudit({ action: 'galleries.gallery.downloaded', limit: 50 });
 		const entry = rows.find((e) => e.target === g.id)!;

@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Search from '@lucide/svelte/icons/search';
 	import Unlink from '@lucide/svelte/icons/unlink';
 	import UserCheck from '@lucide/svelte/icons/user-check';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_LOAD, ConfirmDialog, EntityAvatar } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { ConfirmDialog, EntityAvatar, BUSY_LOAD } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { LinkedUser, LinkUserRef, Member, MemberLinks } from '../schemas';
 	import { downloadPdf } from './download';
 
@@ -200,8 +200,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Verknüpfte Konten</Dialog.Title>
 			<Dialog.Description>
-				{member ? `${member.firstName} ${member.lastName}` : ''} – Benutzerkonten, die mit diesem Mitglied
-				verknüpft sind (z. B. Eltern).
+				{member ? `${member.firstName} ${member.lastName}` : ''} – Benutzerkonten, die mit diesem
+				Mitglied verknüpft sind (z. B. Eltern).
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -217,8 +217,12 @@
 							<div class="min-w-0">
 								<p class="truncate text-sm font-medium">
 									{u.name}
-									{#if u.relation}<Badge variant="secondary" class="ml-1">{u.relation}</Badge>{/if}
-									{#if u.self}<Badge variant="info" class="ml-1">Eigenes Konto</Badge>{/if}
+									{#if u.relation}
+										<Badge variant="secondary" class="ml-1">{u.relation}</Badge>
+									{/if}
+									{#if u.self}
+										<Badge variant="info" class="ml-1">Eigenes Konto</Badge>
+									{/if}
 								</p>
 								<p class="truncate text-xs text-muted-foreground">
 									{u.email ?? '–'} · verknüpft am {fmt(u.linkedAt)}
@@ -237,7 +241,8 @@
 										title={u.self
 											? 'Eigenes Konto des Mitglieds – Markierung entfernen'
 											: 'Als eigenes Konto des Mitglieds markieren (nicht Eltern)'}
-										onclick={() => toggleSelf(u)}><UserCheck /></Button
+										onclick={() => toggleSelf(u)}
+										><UserCheck /></Button
 									>
 									<Button
 										size="icon"
@@ -246,7 +251,8 @@
 										onclick={() => {
 											removeUser = u;
 											removeOpen = true;
-										}}><Unlink /></Button
+										}}
+										><Unlink /></Button
 									>
 								</div>
 							{/if}
@@ -321,7 +327,8 @@
 												<EntityAvatar name={u.name} size={28} />
 												<span class="min-w-0 flex-1">
 													<span class="block truncate text-sm font-medium">{u.name}</span>
-													<span class="block truncate text-xs text-muted-foreground">{u.email}</span
+													<span class="block truncate text-xs text-muted-foreground"
+														>{u.email}</span
 													>
 												</span>
 												<UserPlus class="size-4 text-muted-foreground" aria-hidden="true" />

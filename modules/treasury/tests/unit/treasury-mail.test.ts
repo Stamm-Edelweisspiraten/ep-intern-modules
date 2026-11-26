@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { epcPayload } from '$modules/treasury/logic';
-import { paymentBox, paymentText, templateToHtml } from '$modules/treasury/mail-html';
 import { composeMail } from '$modules/treasury/mail-compose';
+import { paymentBox, paymentText, templateToHtml } from '$modules/treasury/mail-html';
 
 const bank = {
 	holder: 'VCP Stamm',

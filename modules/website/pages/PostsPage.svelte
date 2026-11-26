@@ -1,15 +1,8 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
-	import Plus from '@lucide/svelte/icons/plus';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as Table from '$lib/components/ui/table';
 	import {
 		DataTable,
 		FormField,
@@ -18,9 +11,16 @@
 		SearchInput
 	} from '$lib/components/layout';
 	import { BUSY_SAVE } from '$lib/components/layout/busy';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import { MAX_POST_TITLE, PERM, type PostDetail, type PostListPage } from '../schemas';
-	import WebsiteTabs from './WebsiteTabs.svelte';
 	import { BASE, errorText, formatDateTime, postStatusLabel, postStatusVariant } from './helpers';
+	import WebsiteTabs from './WebsiteTabs.svelte';
 
 	const PAGE_SIZE = 25;
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
@@ -169,7 +169,9 @@
 					<Table.Cell>{p.authorName}</Table.Cell>
 					<Table.Cell>
 						<div class="flex flex-wrap gap-1">
-							{#each p.tags as t (t)}<Badge variant="secondary">{t}</Badge>{/each}
+							{#each p.tags as t (t)}
+								<Badge variant="secondary">{t}</Badge>
+							{/each}
 						</div>
 					</Table.Cell>
 				</Table.Row>
@@ -186,7 +188,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Beitrag schreiben</Dialog.Title>
 			<Dialog.Description
-				>Der Beitrag startet als Entwurf und ist erst nach dem Veröffentlichen sichtbar.</Dialog.Description
+				>Der Beitrag startet als Entwurf und ist erst nach dem Veröffentlichen
+				sichtbar.</Dialog.Description
 			>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={create}>

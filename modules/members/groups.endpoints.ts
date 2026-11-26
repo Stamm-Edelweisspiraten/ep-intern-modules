@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { todayBerlin } from '$lib/sdk/dates';
 import {
 	type AnyApiEndpoint,
 	type ApiEndpoint,
@@ -8,29 +9,28 @@ import {
 	inList,
 	isUniqueViolation,
 	moduleDb,
-	resultRows,
 	type RequestContext,
 	type Row,
-	toIso,
-	type Tx
+	resultRows,
+	type Tx,
+	toIso
 } from '$lib/sdk/server';
+import { groupSummaries } from './dashboard';
+import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
 import {
 	formatAgeRange,
-	groupInput,
-	idParams,
 	type Group,
 	type GroupInput,
-	type GroupOverview,
 	type GroupLeaderUser,
+	type GroupOverview,
 	type GroupType,
 	type GroupWebsite,
+	groupInput,
+	idParams,
 	type LinkUserRef,
 	linkUserSearchQuery,
 	type MemberRef
 } from './schemas';
-import { assertCanGrantLeader, syncLeaderGrantsAfterChange } from './leader.service';
-import { groupSummaries } from './dashboard';
-import { todayBerlin } from '$lib/sdk/dates';
 
 const MODULE = 'members';
 

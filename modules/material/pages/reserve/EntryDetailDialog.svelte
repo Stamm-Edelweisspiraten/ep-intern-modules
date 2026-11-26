@@ -7,24 +7,24 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
+	import { NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { NumberStepper } from '$lib/components/layout';
 	import { cn } from '$lib/utils';
 	import {
-		isUsableCondition,
 		type CatalogEntry,
 		type CatalogItem,
-		type CatalogSet
+		type CatalogSet,
+		isUsableCondition
 	} from '../../schemas';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
 	import {
+		type CartLine,
 		itemQuantityInCart,
 		tentQuantityInCart,
-		typeQuantityInCart,
-		type CartLine
+		typeQuantityInCart
 	} from './cart';
 
 	let {
@@ -178,7 +178,8 @@
 		<Dialog.Header>
 			<Dialog.Title>{entry.name}</Dialog.Title>
 			<Dialog.Description class="tabular-nums">
-				{isTent ? 'Zelt' : (entry.category?.name ?? 'Ohne Kategorie')} · frei {entry.free} von {entry.total}
+				{isTent ? 'Zelt' : (entry.category?.name ?? 'Ohne Kategorie')} · frei {entry.free} von
+				{entry.total}
 				· {period}
 			</Dialog.Description>
 		</Dialog.Header>
@@ -252,7 +253,9 @@
 							{#each entry.parts as p, i (i)}
 								<li class="flex items-baseline justify-between gap-3 px-3 py-2">
 									<span class="min-w-0">
-										{#if p.label}<span class="font-medium">{p.label}:</span>{/if}
+										{#if p.label}
+											<span class="font-medium">{p.label}:</span>
+										{/if}
 										{p.name}
 										{#if p.fromOneSet}
 											<span class="block text-xs text-muted-foreground"
@@ -274,7 +277,9 @@
 								{entry.locationName}
 							</span>
 						{/if}
-						{#if entry.code}<span class="font-mono">{entry.code}</span>{/if}
+						{#if entry.code}
+							<span class="font-mono">{entry.code}</span>
+						{/if}
 					</p>
 				{/if}
 			</div>
@@ -290,7 +295,9 @@
 						<p class="text-xs text-muted-foreground">
 							Die Bahnen werden automatisch zugeteilt – möglichst zusammengehörige Sets. Ist keins
 							mehr vollständig frei, werden Bahnen aus verschiedenen Sets kombiniert.
-							{#if inCartTent}Schon im Warenkorb: {inCartTent}.{/if}
+							{#if inCartTent}
+								Schon im Warenkorb: {inCartTent}.
+							{/if}
 						</p>
 						{#if maxTent > 0}
 							<NumberStepper label="Anzahl Zelte" bind:value={tentQty} min={1} max={maxTent} />
@@ -305,7 +312,9 @@
 						<span class="text-sm font-medium">Beliebige {entry.name}</span>
 						<p class="text-xs text-muted-foreground">
 							Konkrete Artikel werden automatisch zugeteilt – bevorzugt ganze Sets.
-							{#if inCartType}Schon im Warenkorb: {inCartType}.{/if}
+							{#if inCartType}
+								Schon im Warenkorb: {inCartType}.
+							{/if}
 						</p>
 						<NumberStepper
 							label={`Anzahl beliebige ${entry.name}`}

@@ -1,5 +1,5 @@
 /** Website: reine Helfer (aus `tests/unit/sdk-html.test.ts` herausgelöst) */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { bannerState, firstNameOf } from '$modules/website/schemas';
 
 describe('website: reine Helfer', () => {

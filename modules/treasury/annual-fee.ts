@@ -15,6 +15,8 @@
  *   steht in `items`. Idempotenz: Mitglieder mit vorhandener Aufschlüsselung `annual:<jahr>:<mitglied>:<ebene>`
  *   (auch ältere Rechnungen mit Posten je Ebene) werden übersprungen.
  */
+
+import { addDays } from '$lib/sdk/dates';
 import type {
 	AnnualPreview,
 	AnnualPreviewInvoice,
@@ -22,7 +24,6 @@ import type {
 	FeeLevel,
 	FeeRates
 } from './schemas';
-import { addDays } from '$lib/sdk/dates';
 import { FEE_FULL_UNTIL, FEE_LEVEL_LABELS, FEE_LEVELS } from './schemas';
 
 export interface AnnualMember {
@@ -114,7 +115,7 @@ export function isBillable(
 
 /** Eintritt im Beitragsjahr nach dem 28.02. */
 export function isLateEntry(m: Pick<AnnualMember, 'entryDate'>, year: number): boolean {
-	if (!m.entryDate || !m.entryDate.startsWith(`${year}-`)) return false;
+	if (!m.entryDate?.startsWith(`${year}-`)) return false;
 	return m.entryDate.slice(5) > FEE_FULL_UNTIL;
 }
 
@@ -216,7 +217,7 @@ export function planAnnualInvoices(p: {
 		inv.totalCents += member.totalCents;
 		const emails = new Set(inv.emails);
 		for (const e of [...(payer?.email ? [payer.email] : []), ...m.emails]) {
-			if (e && e.trim()) emails.add(e.trim().toLowerCase());
+			if (e?.trim()) emails.add(e.trim().toLowerCase());
 		}
 		inv.emails = [...emails];
 		inv.emailCount = inv.emails.length;

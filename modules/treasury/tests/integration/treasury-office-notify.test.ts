@@ -1,25 +1,31 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import officesModule from '$modules/offices/module';
-import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
-import { setTodayForTests } from '$lib/sdk/dates';
 import type { Office } from '$modules/offices/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
+import treasuryModule from '$modules/treasury/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Amt „Kasse“ (Vorlage aus `treasury`): Mails bei neuer Auszahlung und bei Abrechnungsabschluss/Zwischenabrechnung.
 

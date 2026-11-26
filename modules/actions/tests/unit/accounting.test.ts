@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { payeeTotals, summarize, toPayoutCsv } from '$modules/actions/accounting';
 import type { AccountingPlan, PayoutRow, SummaryEntry } from '$modules/actions/schemas';
 

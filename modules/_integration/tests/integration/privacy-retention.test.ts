@@ -5,29 +5,35 @@
  * - Löschfrist nach Austritt: Vorschlagsliste + Sammel-Anonymisieren (nur `members.member.delete`)
  * - Datenauskunft `/admin/privacy`: Export aus Core + allen aktiven Modulen, Recht `core.privacy.export`
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
-import { setSetting } from '$testing';
-import { runJobNow } from '$testing';
-import { exportSubject, findPrivacySubjects } from '$testing';
-import { resetAllForTests } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import { purgeExpiredHealthData } from '$modules/actions/privacy';
-import type { Member } from '$modules/members/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import { purgeExpiredHealthData } from '$modules/actions/privacy';
+import membersModule from '$modules/members/module';
+import type { Member } from '$modules/members/schemas';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	exportSubject,
+	findPrivacySubjects,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setSetting,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const keys: Record<string, string> = {};
 const userIds: Record<string, string> = {};

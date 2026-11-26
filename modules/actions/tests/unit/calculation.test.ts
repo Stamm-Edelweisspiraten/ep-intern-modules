@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { calculate, nightsBetween } from '$modules/actions/calculation';
 import type { CalcItem, CalculateInput } from '$modules/actions/schemas';
 

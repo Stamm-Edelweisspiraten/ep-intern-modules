@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { groupBy } from '$modules/treasury/logic';
+import { describe, expect, it } from 'bun:test';
 import { detectContentType } from '$lib/sdk/server/file-response';
+import { groupBy } from '$modules/treasury/logic';
 
 // Belegprüfung zentral über `detectContentType` (vorher eigene Kopie `detectReceiptType`, #33)
 const detectReceiptType = detectContentType;

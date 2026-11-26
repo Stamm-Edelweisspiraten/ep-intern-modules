@@ -7,19 +7,19 @@ import {
 	core,
 	errors,
 	inList,
-	moduleDb,
-	rowsOf,
-	str as textOrNull,
 	toIso as iso,
+	moduleDb,
 	type RequestContext,
 	type Row,
-	type Tx
+	rowsOf,
+	type Tx,
+	str as textOrNull
 } from '$lib/sdk/server';
-import { registeredTemplates } from './templates';
 import { MODULE_ID, type Office, type OfficeEmail, type OfficeNotificationInfo } from './schemas';
+import { registeredTemplates } from './templates';
 
 /** Grundhelfer aus dem SDK (`$lib/sdk/server/db.ts`), unter den im Modul üblichen Namen */
-export { inList, iso, rowsOf, textOrNull, type Row };
+export { inList, iso, type Row, rowsOf, textOrNull };
 
 /** Höchstzahl je Verzeichnis-Aufruf (`core.users.directory` / `core.roles.directory` liefern max. 30) */
 const DIRECTORY_CHUNK = 30;
@@ -99,19 +99,21 @@ export async function loadOffices(tx: Tx, ids?: readonly string[]): Promise<Offi
 		}
 	}
 
-	const offices = officeRows.map((r): OfficeData => ({
-		id: String(r.id),
-		name: String(r.name),
-		description: textOrNull(r.description),
-		position: Number(r.position ?? 0),
-		emails: [],
-		roleIds: [],
-		holders: [],
-		sourceModule: textOrNull(r.source_module),
-		sourceKey: textOrNull(r.source_key),
-		createdAt: iso(r.created_at),
-		updatedAt: iso(r.updated_at)
-	}));
+	const offices = officeRows.map(
+		(r): OfficeData => ({
+			id: String(r.id),
+			name: String(r.name),
+			description: textOrNull(r.description),
+			position: Number(r.position ?? 0),
+			emails: [],
+			roleIds: [],
+			holders: [],
+			sourceModule: textOrNull(r.source_module),
+			sourceKey: textOrNull(r.source_key),
+			createdAt: iso(r.created_at),
+			updatedAt: iso(r.updated_at)
+		})
+	);
 	const byId = new Map(offices.map((o) => [o.id, o]));
 	for (const r of emailRows) {
 		byId.get(String(r.office_id))?.emails.push({
@@ -204,29 +206,31 @@ export async function buildOffices(ctx: RequestContext, data: OfficesData): Prom
 			notifications
 		};
 	};
-	return data.offices.map((o): Office => ({
-		id: o.id,
-		name: o.name,
-		description: o.description,
-		position: o.position,
-		emails: o.emails,
-		roles: o.roleIds
-			.map((id) => ({ id, name: roles.get(id) ?? 'Unbekannte Rolle' }))
-			.sort((a, b) => a.name.localeCompare(b.name, 'de')),
-		holders: o.holders.map((h) => {
-			const u = users.get(h.userId);
-			return {
-				userId: h.userId,
-				name: u?.name ?? 'Unbekannt',
-				image: u?.image ?? null,
-				since: h.since,
-				bio: data.bios.get(h.userId) ?? null
-			};
-		}),
-		...sourceOf(o),
-		createdAt: o.createdAt,
-		updatedAt: o.updatedAt
-	}));
+	return data.offices.map(
+		(o): Office => ({
+			id: o.id,
+			name: o.name,
+			description: o.description,
+			position: o.position,
+			emails: o.emails,
+			roles: o.roleIds
+				.map((id) => ({ id, name: roles.get(id) ?? 'Unbekannte Rolle' }))
+				.sort((a, b) => a.name.localeCompare(b.name, 'de')),
+			holders: o.holders.map((h) => {
+				const u = users.get(h.userId);
+				return {
+					userId: h.userId,
+					name: u?.name ?? 'Unbekannt',
+					image: u?.image ?? null,
+					since: h.since,
+					bio: data.bios.get(h.userId) ?? null
+				};
+			}),
+			...sourceOf(o),
+			createdAt: o.createdAt,
+			updatedAt: o.updatedAt
+		})
+	);
 }
 
 export async function buildOffice(ctx: RequestContext, data: OfficesData): Promise<Office> {

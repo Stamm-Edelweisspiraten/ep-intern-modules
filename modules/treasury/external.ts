@@ -10,8 +10,8 @@ import {
 	checkUploadBytes,
 	core,
 	errors,
-	safeFileName,
 	type RequestContext,
+	safeFileName,
 	type Tx
 } from '$lib/sdk/server';
 import { storeIban } from './bank';
@@ -29,16 +29,16 @@ import {
 	membersService,
 	nextInvoiceNumber,
 	num,
+	RECEIPT_UPLOAD,
+	type Row,
 	rows,
 	str,
-	today,
-	type Row,
-	RECEIPT_UPLOAD
+	today
 } from './db';
 import { refreshSentDocuments, sendDocuments } from './documents';
 import { addDays, invoiceTotals } from './logic';
 import { notifyKasse, payableNotification } from './office-notify';
-import { MODULE_ID, SETTING_KEYS, payableInput } from './schemas';
+import { MODULE_ID, payableInput, SETTING_KEYS } from './schemas';
 
 const ORDER_CANCEL_REASON = 'Bestellung storniert';
 const MAX_KEY = 200;
@@ -273,7 +273,7 @@ export async function upsertOrderInvoice(
 					change.removed++;
 				}
 			}
-			if (wasCancelled && Boolean(cur.auto_cancelled)) {
+			if (wasCancelled && cur.auto_cancelled) {
 				await tx.execute(
 					sql`UPDATE invoices SET cancelled_at = NULL, cancel_reason = NULL, auto_cancelled = false,
 						updated_at = now() WHERE id = ${id}`
@@ -515,7 +515,7 @@ export async function cancelOrderPayable(ctx: RequestContext, ref: string): Prom
 				coalesce((SELECT sum(pp.amount_cents) FROM payable_payments pp WHERE pp.payable_id = p.id), 0) AS paid
 			FROM payables p WHERE p.source_ref = ${ref} FOR UPDATE`
 		);
-		if (!cur || cur.source !== 'order' || cur.cancelled_at != null) return null;
+		if (cur?.source !== 'order' || cur.cancelled_at != null) return null;
 		if (num(cur.paid) > 0) {
 			throw errors.conflict('Die Auszahlung ist bereits (teilweise) bezahlt');
 		}

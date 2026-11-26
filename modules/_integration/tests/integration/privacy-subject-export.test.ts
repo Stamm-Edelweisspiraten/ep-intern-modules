@@ -4,24 +4,30 @@
  * alles mit Bezug zur Person (Konto und/oder verknüpfte Mitglieder) enthalten ist, Daten Dritter
  * fehlen und keine Geheimnisse (Token, Hashes, Chiffrate, Speicherpfade) im Export stehen.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { exportSubject } from '$testing';
-import { resetAllForTests } from '$testing';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import eventsModule from '$modules/events/module';
 import filesModule from '$modules/files/module';
+import membersModule from '$modules/members/module';
 import ordersModule from '$modules/orders/module';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createUser,
+	disableModule,
+	enableModule,
+	exportSubject,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let adminKey: string;
@@ -107,8 +113,7 @@ beforeAll(async () => {
 	);
 
 	// --- Termine ---
-	await db()
-		.execute(sql`INSERT INTO mod_events.events (id, title, description, starts_on, owner_id, created_by)
+	await db().execute(sql`INSERT INTO mod_events.events (id, title, description, starts_on, owner_id, created_by)
 		VALUES ('ev-own', 'Elternabend', 'Eigener Termin', '2026-11-01', ${parentId}, ${parentId}),
 			('ev-shared', 'Sommerlager', NULL, '2026-07-01', ${otherId}, ${otherId}),
 			('ev-child', 'Kinderfest', NULL, '2026-08-01', ${otherId}, ${otherId}),
@@ -116,8 +121,7 @@ beforeAll(async () => {
 	await db().execute(
 		sql`INSERT INTO mod_events.event_tags (event_id, tag, position) VALUES ('ev-own', 'Eltern', 0)`
 	);
-	await db()
-		.execute(sql`INSERT INTO mod_events.event_shares (event_id, principal_type, principal_id, level)
+	await db().execute(sql`INSERT INTO mod_events.event_shares (event_id, principal_type, principal_id, level)
 		VALUES ('ev-shared', 'user', ${parentId}, 'read'),
 			('ev-child', 'member', ${childId}, 'read'),
 			('ev-foreign', 'user', ${otherId}, 'edit')`);
@@ -127,8 +131,7 @@ beforeAll(async () => {
 			content_type, size_bytes, thumb_path, created_by)
 		VALUES ('n-folder', 'folder', 'personal', ${parentId}, 'Meine Ablage', NULL, NULL, NULL, NULL, ${parentId}),
 			('n-foreign', 'folder', 'personal', ${otherId}, 'Fremder Ordner', NULL, NULL, NULL, NULL, ${otherId})`);
-	await db()
-		.execute(sql`INSERT INTO mod_files.nodes (id, parent_id, kind, space, owner_id, name, storage_path,
+	await db().execute(sql`INSERT INTO mod_files.nodes (id, parent_id, kind, space, owner_id, name, storage_path,
 			content_type, size_bytes, thumb_path, created_by)
 		VALUES ('n-file', 'n-folder', 'file', 'personal', ${parentId}, 'Brief.pdf', 'secret/storage/path.pdf',
 				'application/pdf', 1234, 'secret/thumb.webp', ${parentId}),
@@ -136,8 +139,7 @@ beforeAll(async () => {
 				'image/jpeg', 99, NULL, ${parentId}),
 			('n-other', 'n-foreign', 'file', 'personal', ${otherId}, 'Privat.txt', 'x/z.txt',
 				'text/plain', 5, NULL, ${otherId})`);
-	await db()
-		.execute(sql`INSERT INTO mod_files.node_shares (node_id, principal_type, principal_id, level)
+	await db().execute(sql`INSERT INTO mod_files.node_shares (node_id, principal_type, principal_id, level)
 		VALUES ('n-foreign', 'member', ${childId}, 'read')`);
 	await db().execute(sql`INSERT INTO mod_files.share_links (id, node_id, token_hash, password_hash,
 			token_enc, mode, created_by, access_count)
@@ -145,21 +147,17 @@ beforeAll(async () => {
 
 	// --- Bestellungen ---
 	await db().execute(sql`INSERT INTO mod_orders.articles (id, title) VALUES ('a-1', 'Halstuch')`);
-	await db()
-		.execute(sql`INSERT INTO mod_orders.article_variants (id, article_id, label, price_cents, stock)
+	await db().execute(sql`INSERT INTO mod_orders.article_variants (id, article_id, label, price_cents, stock)
 		VALUES ('v-1', 'a-1', 'M', 1200, 5)`);
-	await db()
-		.execute(sql`INSERT INTO mod_orders.orders (id, number, year, seq, member_id, member_name, ordered_by, note)
+	await db().execute(sql`INSERT INTO mod_orders.orders (id, number, year, seq, member_id, member_name, ordered_by, note)
 		VALUES ('o-child', 'B-2026-0001', 2026, 1, ${childId}, 'Kira Muster', ${parentId}, 'Bitte bald'),
 			('o-stranger', 'B-2026-0002', 2026, 2, ${strangerMemberId}, 'Fremd Muster', ${parentId}, 'Daten Dritter'),
 			('o-foreign', 'B-2026-0003', 2026, 3, ${strangerMemberId}, 'Fremd Muster', ${otherId}, NULL)`);
-	await db()
-		.execute(sql`INSERT INTO mod_orders.order_items (id, order_id, variant_id, article_title,
+	await db().execute(sql`INSERT INTO mod_orders.order_items (id, order_id, variant_id, article_title,
 			variant_label, unit_price_cents, quantity, delivered_qty)
 		VALUES ('i-1', 'o-child', 'v-1', 'Halstuch', 'M', 1200, 2, 1),
 			('i-2', 'o-stranger', 'v-1', 'Halstuch', 'M', 1200, 1, 0)`);
-	await db()
-		.execute(sql`INSERT INTO mod_orders.stock_movements (id, variant_id, delta, kind, order_item_id)
+	await db().execute(sql`INSERT INTO mod_orders.stock_movements (id, variant_id, delta, kind, order_item_id)
 		VALUES ('m-1', 'v-1', -1, 'handout', 'i-1')`);
 });
 

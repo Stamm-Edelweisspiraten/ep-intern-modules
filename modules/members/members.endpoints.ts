@@ -1,5 +1,4 @@
-import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
-import { bulkInput, idParams, memberIdsQuery, memberInput, memberListQuery } from './schemas';
+import { type ApiEndpoint, core, defineEndpoint } from '$lib/sdk/server';
 import {
 	bulkUpdateMembers,
 	createMember,
@@ -9,6 +8,7 @@ import {
 	listMembers,
 	updateMember
 } from './members.service';
+import { bulkInput, idParams, memberIdsQuery, memberInput, memberListQuery } from './schemas';
 
 const tags = ['Mitglieder'];
 

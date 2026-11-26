@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { AssistRichTextEditor, FormField } from '$lib/components/layout';
+	import { BUSY_SAVE } from '$lib/components/layout/busy';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { FormField, AssistRichTextEditor } from '$lib/components/layout';
-	import { BUSY_SAVE } from '$lib/components/layout/busy';
-	import { MAX_FAQ_QUESTION, faqInput, type Faq } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { type Faq, faqInput, MAX_FAQ_QUESTION } from '../schemas';
 	import { BASE, detailsToErrors, errorText, issuesToErrors } from './helpers';
 
 	let {

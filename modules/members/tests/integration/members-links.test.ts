@@ -1,22 +1,29 @@
-import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import { PDFDocument } from 'pdf-lib';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, setUserActive } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { createRole } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { resetAllForTests } from '$testing';
 import { core } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setPdfRendererForTests,
+	setUserActive,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const ADMIN_EMAIL = 'admin@example.test';
 const ADMIN_PW = 'correct-horse-battery';

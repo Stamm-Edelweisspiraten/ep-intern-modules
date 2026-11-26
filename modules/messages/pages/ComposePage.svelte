@@ -1,26 +1,16 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Mail from '@lucide/svelte/icons/mail';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Send from '@lucide/svelte/icons/send';
 	import X from '@lucide/svelte/icons/x';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { assistStatus } from '$lib/sdk/client/assist';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { Badge } from '$lib/components/ui/badge';
-	import { contrastTextColor } from '$lib/components/ui/color-picker/color';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { page } from '$app/state';
 	import {
+		type AssistConfig,
 		AssistInput,
 		AssistRichTextEditor,
-		type AssistConfig,
 		BUSY_SEND,
 		ConfirmDialog,
 		FormField,
@@ -28,23 +18,33 @@
 		PageHeader,
 		PageTitle
 	} from '$lib/components/layout';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { contrastTextColor } from '$lib/components/ui/color-picker/color';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { assistStatus } from '$lib/sdk/client/assist';
 	import {
 		type ComposePrefill,
 		emailAddress,
 		type InboxAttachmentInfo,
-		LAYOUTS,
 		LAYOUT_LABELS,
-		type MessageLayout,
+		LAYOUTS,
 		MAX_ADDRESSES,
-		MAX_FILES,
 		MAX_FILE_BYTES,
+		MAX_FILES,
 		MAX_TOTAL_BYTES,
 		type MessageDetail,
+		type MessageLayout,
 		type MessagePreview,
 		type RecipientsResult,
 		type SendersResponse
 	} from '../schemas';
-	import { BASE, COMPOSE_KEY, errorText, formatSize, type ComposePreset } from './helpers';
+	import { BASE, COMPOSE_KEY, type ComposePreset, errorText, formatSize } from './helpers';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	/** Wer alle Mitglieder sehen darf, nutzt `/members`; Gruppenleitungen den eigenen Bereich `/led` */
@@ -315,11 +315,13 @@
 		const groupHits = groups
 			.filter((g) => !groupIds.includes(g.id) && (!q || fold(g.name).includes(q)))
 			.map((g): Option => ({ kind: 'group', id: g.id, label: g.name, color: g.color }));
-		const memberHits = memberResults.map((m): Option => ({
-			kind: 'member',
-			id: m.id,
-			label: m.name
-		}));
+		const memberHits = memberResults.map(
+			(m): Option => ({
+				kind: 'member',
+				id: m.id,
+				label: m.name
+			})
+		);
 		return [...addressHit, ...groupHits, ...memberHits];
 	});
 	const open = $derived(focused && options.length > 0);
@@ -721,7 +723,9 @@
 					{:else if preview}
 						<p>
 							<strong>{preview.recipients.length}</strong> Adressen
-							{#if preview.members}von <strong>{preview.members}</strong> Mitgliedern{/if}
+							{#if preview.members}
+								von <strong>{preview.members}</strong> Mitgliedern
+							{/if}
 							{#if preview.external}
 								{preview.members ? '+' : '–'}
 								<strong>{preview.external}</strong>
@@ -954,12 +958,13 @@
 								/>
 							</label>
 							<span class="text-xs text-muted-foreground">
-								Bis zu {MAX_FILES} Dateien, je {formatSize(MAX_FILE_BYTES)}, zusammen {formatSize(
-									MAX_TOTAL_BYTES
-								)} (PDF, Bilder, Office, Text, ZIP)
+								Bis zu {MAX_FILES} Dateien, je {formatSize(MAX_FILE_BYTES)}, zusammen
+								{formatSize(MAX_TOTAL_BYTES)} (PDF, Bilder, Office, Text, ZIP)
 							</span>
 						</div>
-						{#if fileError}<p class="text-xs text-destructive" role="alert">{fileError}</p>{/if}
+						{#if fileError}
+							<p class="text-xs text-destructive" role="alert">{fileError}</p>
+						{/if}
 						{#if attachmentCount}
 							<ul class="divide-y rounded-md border" aria-label="Anhänge">
 								{#each forwarded as f (f.id)}
@@ -1011,7 +1016,9 @@
 			</Card.Content>
 		</Card.Root>
 
-		{#if formError}<p class="text-sm text-destructive" role="alert">{formError}</p>{/if}
+		{#if formError}
+			<p class="text-sm text-destructive" role="alert">{formError}</p>
+		{/if}
 		<div class="flex flex-wrap justify-end gap-2">
 			<Button variant="outline" href={BASE}>Abbrechen</Button>
 			<Button onclick={askSend} disabled={busy}>

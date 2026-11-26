@@ -5,19 +5,19 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Upload from '@lucide/svelte/icons/upload';
+	import { ColorBadge, DataTable } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Table from '$lib/components/ui/table';
-	import { ColorBadge, DataTable } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
 	import {
 		ACCOUNTING_CATEGORY_LABELS,
-		RECEIPT_CONTENT_TYPES,
-		type AccountingEntry
+		type AccountingEntry,
+		RECEIPT_CONTENT_TYPES
 	} from '../schemas';
-	import { fmtDate } from './format';
 	import type { AutoIncome } from './auto-types';
+	import { fmtDate } from './format';
 	import { REFUND_CATEGORY, REFUND_CATEGORY_LABEL } from './refund-types';
 
 	export type EntryFilter = 'all' | 'income' | 'expense' | 'missing';
@@ -114,9 +114,8 @@
 </script>
 
 {#snippet amount(cents: number, income: boolean)}
-	<span aria-hidden="true">{income ? '+' : '−'}</span><span class="sr-only"
-		>{income ? 'plus ' : 'minus '}</span
-	>{formatEuro(cents)}
+	<span aria-hidden="true">{income ? '+' : '−'}</span
+	><span class="sr-only">{income ? 'plus ' : 'minus '}</span>{formatEuro(cents)}
 {/snippet}
 
 {#snippet mobileList()}
@@ -169,25 +168,32 @@
 								Beleg fehlt
 							</Badge>
 						{/if}
-						{#if e.paidBy === 'person' && e.payee}<span>bezahlt von {e.payee.name}</span>{/if}
+						{#if e.paidBy === 'person' && e.payee}
+							<span>bezahlt von {e.payee.name}</span>
+						{/if}
 						{#if e.reimbursedAt}
 							<Badge variant="secondary"
 								><Check class="size-3" aria-hidden="true" /> Ausgezahlt</Badge
 							>
 						{/if}
 						{#if e.type === 'expense' && e.paidBy === 'club' && !isRefund(e)}
-							{#if e.recipient}<span>an {e.recipient.name}</span>{/if}
+							{#if e.recipient}
+								<span>an {e.recipient.name}</span>
+							{/if}
 							{#if e.clubPaidAt === null}
 								<Badge
 									variant="outline"
 									class="border-warning-border text-warning"
-									title={e.purpose ?? undefined}>Überweisung offen</Badge
+									title={e.purpose ?? undefined}
+									>Überweisung offen</Badge
 								>
 							{:else if e.clubPaidVia === 'treasury'}
 								<Badge variant="secondary"
-									><Check class="size-3" aria-hidden="true" /> Überwiesen {new Date(
-										e.clubPaidAt
-									).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</Badge
+									><Check class="size-3" aria-hidden="true" /> Überwiesen
+									{new Date(e.clubPaidAt).toLocaleDateString('de-DE', {
+										day: '2-digit',
+										month: '2-digit'
+									})}</Badge
 								>
 							{/if}
 						{/if}
@@ -262,7 +268,9 @@
 			: 'Erfasse hier Einnahmen und Ausgaben der Aktion, am besten mit Beleg. Daraus entstehen Saldo und Auszahlungen.'}
 	>
 		{#snippet footer()}
-			{#if filtered.length || autoRows.length}{@render mobileList()}{/if}
+			{#if filtered.length || autoRows.length}
+				{@render mobileList()}
+			{/if}
 		{/snippet}
 		{#snippet toolbar()}
 			<div class="flex flex-wrap gap-1" role="group" aria-label="Buchungen filtern">
@@ -287,9 +295,9 @@
 				<Table.Head>Bezeichnung</Table.Head>
 				<Table.Head class="text-right">Betrag</Table.Head>
 				<Table.Head>Beleg</Table.Head>
-				{#if editable}<Table.Head class="text-right"
-						><span class="sr-only">Aktionen</span></Table.Head
-					>{/if}
+				{#if editable}
+					<Table.Head class="text-right"><span class="sr-only">Aktionen</span></Table.Head>
+				{/if}
 			</Table.Row>
 		{/snippet}
 		{#each autoRows as r (r.key)}
@@ -335,25 +343,32 @@
 						class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
 					>
 						<ColorBadge>{label(e)}</ColorBadge>
-						{#if e.paidBy === 'person' && e.payee}<span>bezahlt von {e.payee.name}</span>{/if}
+						{#if e.paidBy === 'person' && e.payee}
+							<span>bezahlt von {e.payee.name}</span>
+						{/if}
 						{#if e.reimbursedAt}
 							<Badge variant="secondary"
 								><Check class="size-3" aria-hidden="true" /> Ausgezahlt</Badge
 							>
 						{/if}
 						{#if e.type === 'expense' && e.paidBy === 'club' && !isRefund(e)}
-							{#if e.recipient}<span>an {e.recipient.name}</span>{/if}
+							{#if e.recipient}
+								<span>an {e.recipient.name}</span>
+							{/if}
 							{#if e.clubPaidAt === null}
 								<Badge
 									variant="outline"
 									class="border-warning-border text-warning"
-									title={e.purpose ?? undefined}>Überweisung offen</Badge
+									title={e.purpose ?? undefined}
+									>Überweisung offen</Badge
 								>
 							{:else if e.clubPaidVia === 'treasury'}
 								<Badge variant="secondary"
-									><Check class="size-3" aria-hidden="true" /> Überwiesen {new Date(
-										e.clubPaidAt
-									).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</Badge
+									><Check class="size-3" aria-hidden="true" /> Überwiesen
+									{new Date(e.clubPaidAt).toLocaleDateString('de-DE', {
+										day: '2-digit',
+										month: '2-digit'
+									})}</Badge
 								>
 							{/if}
 						{/if}
@@ -365,9 +380,10 @@
 						e.type === 'income' && 'text-success'
 					]}
 				>
-					<span aria-hidden="true">{e.type === 'income' ? '+' : '−'}</span><span class="sr-only"
-						>{e.type === 'income' ? 'plus ' : 'minus '}</span
-					>{formatEuro(e.amountCents)}
+					<span aria-hidden="true">{e.type === 'income' ? '+' : '−'}</span
+					><span class="sr-only">{e.type === 'income' ? 'plus ' : 'minus '}</span>{formatEuro(
+						e.amountCents
+					)}
 				</Table.Cell>
 				<Table.Cell class="align-top">
 					<div class="flex flex-wrap items-center gap-2">

@@ -1,10 +1,4 @@
 <script lang="ts">
-	// Reservierung ansehen (zentriert): Positionen mit Bild/Ort/Code und zugeteilten Artikeln (Zelte mit
-	// ihren Teilen), Hinweise zur Zuteilung, Angaben, Aktionen Bearbeiten, Stornieren, Löschen, Packliste
-	// (PDF/CSV); mit Verwaltungsrecht Ausgabe markieren, Zuteilung ändern, neu zuteilen und zurücknehmen
-	// (Verbrauch eintragen).
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Boxes from '@lucide/svelte/icons/boxes';
 	import FileDown from '@lucide/svelte/icons/file-down';
 	import MapPin from '@lucide/svelte/icons/map-pin';
@@ -15,27 +9,33 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	// Reservierung ansehen (zentriert): Positionen mit Bild/Ort/Code und zugeteilten Artikeln (Zelte mit
+	// ihren Teilen), Hinweise zur Zuteilung, Angaben, Aktionen Bearbeiten, Stornieren, Löschen, Packliste
+	// (PDF/CSV); mit Verwaltungsrecht Ausgabe markieren, Zuteilung ändern, neu zuteilen und zurücknehmen
+	// (Verbrauch eintragen).
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, ErrorState, LoadingState, SummaryList } from '$lib/components/layout';
+	import { downloadPdf } from '$lib/components/layout/download';
 	import * as Alert from '$lib/components/ui/alert';
-	import { apiFetch } from '$lib/sdk/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ConfirmDialog, ErrorState, LoadingState, SummaryList } from '$lib/components/layout';
-	import { downloadPdf } from '$lib/components/layout/download';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
-		PURPOSE_LABELS,
 		type LineAssignment,
+		PURPOSE_LABELS,
 		type Reservation,
 		type ReservationLine
 	} from '../../schemas';
 	import {
 		API,
-		RESERVATION_STATE_LABELS,
-		STATE_VARIANTS,
 		errorText,
 		formatAmount,
 		formatDate,
-		formatPeriod
+		formatPeriod,
+		RESERVATION_STATE_LABELS,
+		STATE_VARIANTS
 	} from '../helpers';
 	import AssignmentDialog from './AssignmentDialog.svelte';
 	import ReturnDialog from './ReturnDialog.svelte';
@@ -260,7 +260,9 @@
 		{/if}
 		<div class="min-w-0 flex-1">
 			<p class={['truncate text-sm', part ? '' : 'font-medium']}>
-				{#if l.label}<span class="font-medium">{l.label}:</span>{/if}
+				{#if l.label}
+					<span class="font-medium">{l.label}:</span>
+				{/if}
 				{l.name}
 				{#if l.kind !== 'item'}
 					<span class="font-normal text-muted-foreground">
@@ -270,7 +272,9 @@
 			</p>
 			{#if l.code || l.locationName}
 				<p class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-					{#if l.code}<span class="font-mono">{l.code}</span>{/if}
+					{#if l.code}
+						<span class="font-mono">{l.code}</span>
+					{/if}
 					{#if l.locationName}
 						<span class="inline-flex items-center gap-1">
 							<MapPin class="size-3" aria-hidden="true" />{l.locationName}
@@ -316,9 +320,13 @@
 									.filter(Boolean)
 									.join(' · ')}
 							>
-								{#if a.pinned}<Pin class="size-3" aria-label="fest zugeteilt" />{/if}
+								{#if a.pinned}
+									<Pin class="size-3" aria-label="fest zugeteilt" />
+								{/if}
 								{a.name}
-								{#if a.quantity > 1}<span class="tabular-nums">× {a.quantity}</span>{/if}
+								{#if a.quantity > 1}
+									<span class="tabular-nums">× {a.quantity}</span>
+								{/if}
 							</Badge>
 						{/each}
 					</div>
@@ -377,7 +385,9 @@
 							<Alert.Title>Hinweis zur Zuteilung</Alert.Title>
 							<Alert.Description>
 								<ul class="list-disc space-y-0.5 pl-4">
-									{#each r.notices as n, i (i)}<li>{n}</li>{/each}
+									{#each r.notices as n, i (i)}
+										<li>{n}</li>
+									{/each}
 								</ul>
 							</Alert.Description>
 						</Alert.Root>

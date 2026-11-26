@@ -44,7 +44,7 @@
 	// Vorschau-URL je Bild erzeugen und beim Wechsel/Entfernen/Unmount freigeben
 	$effect(() => {
 		const f = file;
-		if (!f || !f.type.startsWith('image/')) {
+		if (!f?.type.startsWith('image/')) {
 			previewUrl = null;
 			return;
 		}

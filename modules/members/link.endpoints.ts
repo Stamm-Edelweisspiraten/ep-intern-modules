@@ -1,5 +1,5 @@
-import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
 import type { FormValue } from '$lib/forms';
+import { type ApiEndpoint, core, defineEndpoint } from '$lib/sdk/server';
 import { membersService } from './fields.service';
 import {
 	buildLinkLetters,
@@ -18,6 +18,7 @@ import {
 } from './link.service';
 import {
 	idParams,
+	type LinkUserRef,
 	linkClaimInput,
 	linkLettersInput,
 	linkManualInput,
@@ -28,8 +29,7 @@ import {
 	linkUserSearchQuery,
 	mailPrefInput,
 	myContactsInput,
-	myFieldsInput,
-	type LinkUserRef
+	myFieldsInput
 } from './schemas';
 
 const tags = ['Mitglieder'];

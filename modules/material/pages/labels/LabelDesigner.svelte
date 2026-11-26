@@ -1,35 +1,34 @@
 <script lang="ts">
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Barcode from '@lucide/svelte/icons/barcode';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Image from '@lucide/svelte/icons/image';
+	import Lock from '@lucide/svelte/icons/lock';
+	import Maximize from '@lucide/svelte/icons/maximize';
+	import Minus from '@lucide/svelte/icons/minus';
+	import Printer from '@lucide/svelte/icons/printer';
+	import QrCode from '@lucide/svelte/icons/qr-code';
+	import Redo2 from '@lucide/svelte/icons/redo-2';
+	import Save from '@lucide/svelte/icons/save';
+	import SeparatorVertical from '@lucide/svelte/icons/separator-vertical';
+	import Square from '@lucide/svelte/icons/square';
+	import Type from '@lucide/svelte/icons/type';
+	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
+	import { toast } from 'svelte-sonner';
+	import { beforeNavigate, goto } from '$app/navigation';
 	// Etiketten-Designer (vollflächig): Zeichenfläche in mm, Elemente, Eigenschaften, Verlauf,
 	// Format/Ziel, Speichern und Testdruck. `params.id` = Layout-ID oder `new` (`?starter=`).
 	import { page } from '$app/state';
-	import { beforeNavigate, goto } from '$app/navigation';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import Redo2 from '@lucide/svelte/icons/redo-2';
-	import Type from '@lucide/svelte/icons/type';
-	import QrCode from '@lucide/svelte/icons/qr-code';
-	import Barcode from '@lucide/svelte/icons/barcode';
-	import Image from '@lucide/svelte/icons/image';
-	import Square from '@lucide/svelte/icons/square';
-	import Minus from '@lucide/svelte/icons/minus';
-	import SeparatorVertical from '@lucide/svelte/icons/separator-vertical';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import ZoomIn from '@lucide/svelte/icons/zoom-in';
-	import ZoomOut from '@lucide/svelte/icons/zoom-out';
-	import Maximize from '@lucide/svelte/icons/maximize';
-	import Printer from '@lucide/svelte/icons/printer';
-	import Save from '@lucide/svelte/icons/save';
-	import Lock from '@lucide/svelte/icons/lock';
-	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
 	import {
-		placeholdersIn,
-		type LabelElement,
-		type LabelElementType,
-		type LabelLayout,
-		type LabelLogo
-	} from '$lib/sdk/labels';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+		BUSY_SAVE,
+		deviceLayout,
+		ErrorState,
+		FormField,
+		LoadingState,
+		PageTitle
+	} from '$lib/components/layout';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -37,53 +36,54 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import { SelectField } from '$lib/components/ui/select-field';
+	import { Switch } from '$lib/components/ui/switch';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
-		BUSY_SAVE,
-		ErrorState,
-		FormField,
-		LoadingState,
-		PageTitle,
-		deviceLayout
-	} from '$lib/components/layout';
+		type LabelElement,
+		type LabelElementType,
+		type LabelLayout,
+		type LabelLogo,
+		placeholdersIn
+	} from '$lib/sdk/labels';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import {
 		BASE_PATH,
 		LABEL_FIELDS,
-		LABEL_TARGETS,
 		LABEL_TARGET_LABELS,
-		PERMISSIONS,
-		labelTemplateInput,
+		LABEL_TARGETS,
 		type LabelFormatEntry,
 		type LabelTarget,
-		type LabelTemplate
+		type LabelTemplate,
+		labelTemplateInput,
+		PERMISSIONS
 	} from '../../schemas';
 	import { API, errorText, fieldErrors } from '../helpers';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
 	import DesignerCanvas from './DesignerCanvas.svelte';
-	import FormatDialog from './FormatDialog.svelte';
-	import ElementProperties from './ElementProperties.svelte';
 	import {
+		type Box,
 		clamp,
 		createElement,
 		createHistory,
 		duplicateElement,
 		formatSize,
+		type History,
+		type LayerMove,
 		MAX_ELEMENTS,
 		nudge,
 		overflowing,
-		pushHistory,
 		PX_PER_MM,
+		pushHistory,
 		redoHistory,
 		reorder,
 		round2,
 		sampleValues,
 		scaleLayout,
-		undoHistory,
-		type Box,
-		type History,
-		type LayerMove
+		undoHistory
 	} from './designer';
+	import ElementProperties from './ElementProperties.svelte';
+	import FormatDialog from './FormatDialog.svelte';
 	import { LABEL_STARTERS, starterLayout } from './starters';
 
 	let { params }: ModulePageProps = $props();
@@ -431,7 +431,7 @@
 		const parsed = labelTemplateInput.safeParse(payload);
 		if (!parsed.success) {
 			const errs = fieldErrors(parsed.error);
-			nameError = errs['name'] ?? '';
+			nameError = errs.name ?? '';
 			const first = Object.entries(errs).find(([k]) => k !== 'name');
 			toast.error(
 				first
@@ -554,9 +554,9 @@
 					class="h-8 max-w-xs min-w-0"
 					oninput={() => (nameError = '')}
 				/>
-				{#if dirty}<span class="hidden text-xs text-muted-foreground sm:inline"
-						>Nicht gespeichert</span
-					>{/if}
+				{#if dirty}
+					<span class="hidden text-xs text-muted-foreground sm:inline">Nicht gespeichert</span>
+				{/if}
 			{/if}
 		</div>
 		{#if !readonly}
@@ -607,8 +607,9 @@
 	{:else if loadError}
 		<div class="p-4">
 			<ErrorState message={loadError} onretry={() => load(params.id ?? 'new')}>
-				{#snippet details()}<Button href={BACK} variant="outline">Zu den Etiketten</Button
-					>{/snippet}
+				{#snippet details()}
+					<Button href={BACK} variant="outline">Zu den Etiketten</Button>
+				{/snippet}
 			</ErrorState>
 		</div>
 	{:else}
@@ -636,10 +637,8 @@
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
 							<Button {...props} variant="ghost" size="sm">
-								<Image aria-hidden="true" /> Logo <ChevronDown
-									aria-hidden="true"
-									class="size-3.5"
-								/>
+								<Image aria-hidden="true" /> Logo
+								<ChevronDown aria-hidden="true" class="size-3.5" />
 							</Button>
 						{/snippet}
 					</DropdownMenu.Trigger>
@@ -675,7 +674,8 @@
 					variant="ghost"
 					size="icon-sm"
 					aria-label="Verkleinern"
-					onclick={() => zoomBy(1 / 1.25)}><ZoomOut /></Button
+					onclick={() => zoomBy(1 / 1.25)}
+					><ZoomOut /></Button
 				>
 				<span class="w-12 text-center text-xs tabular-nums" aria-live="polite"
 					>{Math.round(zoom * 100)} %</span
@@ -688,7 +688,8 @@
 					size="icon-sm"
 					aria-label="Einpassen"
 					title="Einpassen"
-					onclick={fit}><Maximize /></Button
+					onclick={fit}
+					><Maximize /></Button
 				>
 				{#if !readonly}
 					<SelectField
@@ -724,7 +725,7 @@
 			>
 				<div
 					class="flex min-h-full min-w-full items-center justify-center p-6"
-					style="width: max-content"
+					style="width: max-content;"
 				>
 					<DesignerCanvas
 						layout={displayLayout}
@@ -764,8 +765,8 @@
 						<h2 id="designer-label-heading" class="text-sm font-semibold">Etikett</h2>
 						{#if readonly}
 							<p class="text-sm text-muted-foreground">
-								{LABEL_TARGET_LABELS[target]} · {formats.find((f) => f.key === formatKey)?.name ??
-									formatKey}
+								{LABEL_TARGET_LABELS[target]} ·
+								{formats.find((f) => f.key === formatKey)?.name ?? formatKey}
 							</p>
 						{:else}
 							<FormField label="Name" id="designer-name" required error={nameError}>
@@ -811,8 +812,8 @@
 						{/if}
 						{#if outside.length}
 							<p class="text-xs text-warning" role="status">
-								{outside.length === 1 ? 'Ein Element ragt' : `${outside.length} Elemente ragen`} über
-								den Rand und wird beim Druck abgeschnitten.
+								{outside.length === 1 ? 'Ein Element ragt' : `${outside.length} Elemente ragen`}
+								über den Rand und wird beim Druck abgeschnitten.
 							</p>
 						{/if}
 						{#if unknownFields.length}
@@ -832,7 +833,8 @@
 
 				<section class="space-y-2" aria-labelledby="designer-layers-heading">
 					<h2 id="designer-layers-heading" class="text-sm font-semibold">
-						Elemente <span class="font-normal text-muted-foreground tabular-nums"
+						Elemente
+						<span class="font-normal text-muted-foreground tabular-nums"
 							>({layout.elements.length}/{MAX_ELEMENTS})</span
 						>
 					</h2>

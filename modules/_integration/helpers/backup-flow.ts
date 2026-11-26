@@ -2,14 +2,13 @@
  * Ablauf-Helfer für Datensicherungs-Tests: Export → Datei, Upload in Stücken, Vorschau, Ausführen,
  * Tabellenabzug (Geheimnisse als Klartext-Marker, damit neu verschlüsselte Werte vergleichbar sind).
  */
-import { expect } from 'vitest';
+import { expect } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { sql } from 'drizzle-orm';
-import { getDb } from '$lib/server/core/database/client';
+import type { ExportSummary, RestorePreview, RunStatus } from '$lib/backup/contract';
+import type { RequestContext } from '$lib/sdk/types';
 import { startBackupExport, takeBackupDownload } from '$lib/server/core/backup/export';
-import { listBackupScopes } from '$lib/server/core/backup/scopes';
 import { loadTableInfo } from '$lib/server/core/backup/introspect';
-import { encodeRowSecrets } from '$lib/server/core/backup/secrets';
 import {
 	analyzeBackup,
 	appendUpload,
@@ -17,10 +16,11 @@ import {
 	executeRestore,
 	waitForRestore
 } from '$lib/server/core/backup/restore';
+import { listBackupScopes } from '$lib/server/core/backup/scopes';
+import { encodeRowSecrets } from '$lib/server/core/backup/secrets';
 import { MERGE_CONFIRM_WORD, RESTORE_CONFIRM_WORD } from '$lib/server/core/backup/types';
+import { getDb } from '$lib/server/core/database/client';
 import { resetAllForTests } from '$lib/server/core/rate-limit';
-import type { ExportSummary, RestorePreview, RunStatus } from '$lib/backup/contract';
-import type { RequestContext } from '$lib/sdk/types';
 import { SEED_PASSWORD } from './backup-seed';
 
 export const BACKUP_PW = 'Sicherung-Passwort-2026';

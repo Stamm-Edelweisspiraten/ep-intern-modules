@@ -1,18 +1,12 @@
 <script lang="ts">
-	// Lebensmittel ansehen: Chargen mit MHD, Einlagern, Entnehmen/Entsorgen (zuerst ablaufende zuerst oder aus
-	// einer Charge), Charge berichtigen, Verlauf; Bearbeiten, Archivieren, Löschen.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
+	// Lebensmittel ansehen: Chargen mit MHD, Einlagern, Entnehmen/Entsorgen (zuerst ablaufende zuerst oder aus
+	// einer Charge), Charge berichtigen, Verlauf; Bearbeiten, Archivieren, Löschen.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		BUSY_SAVE,
 		ConfirmDialog,
@@ -21,19 +15,25 @@
 		LoadingState,
 		NumberStepper
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import { apiFetch } from '$lib/sdk/client';
 	import { EXPIRY_LABELS } from '../../pantry';
 	import {
-		MAX_QUANTITY,
-		MOVEMENT_LABELS,
 		type FoodBatch,
 		type FoodProduct,
 		type Location,
+		MAX_QUANTITY,
+		MOVEMENT_LABELS,
 		type ProductDetail
 	} from '../../schemas';
 	import {
 		API,
-		EXPIRY_VARIANTS,
 		apiFieldErrors,
+		EXPIRY_VARIANTS,
 		errorText,
 		formatAmount,
 		formatDate
@@ -218,7 +218,9 @@
 				{#if p && p.quantity > 0}
 					<Badge variant={EXPIRY_VARIANTS[p.state]}>{EXPIRY_LABELS[p.state]}</Badge>
 				{/if}
-				{#if p?.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+				{#if p?.archived}
+					<Badge variant="outline">Archiviert</Badge>
+				{/if}
 			</Dialog.Title>
 			<Dialog.Description>
 				{#if p}
@@ -275,7 +277,9 @@
 						<dd class="font-mono">{p.barcode ?? '–'}</dd>
 					</div>
 				</dl>
-				{#if p.notes}<p class="text-sm whitespace-pre-line">{p.notes}</p>{/if}
+				{#if p.notes}
+					<p class="text-sm whitespace-pre-line">{p.notes}</p>
+				{/if}
 
 				{#if canManage && !p.archived && !action}
 					<div class="grid grid-cols-3 gap-2">
@@ -283,12 +287,14 @@
 						<Button
 							variant="outline"
 							disabled={!p.quantity}
-							onclick={() => start({ kind: 'out', batch: null })}>Entnehmen</Button
+							onclick={() => start({ kind: 'out', batch: null })}
+							>Entnehmen</Button
 						>
 						<Button
 							variant="outline"
 							disabled={!p.quantity}
-							onclick={() => start({ kind: 'discard', batch: null })}>Entsorgen</Button
+							onclick={() => start({ kind: 'discard', batch: null })}
+							>Entsorgen</Button
 						>
 					</div>
 				{/if}
@@ -372,7 +378,9 @@
 										<span class="font-medium tabular-nums">{amount(b.quantity)}</span>
 										<span class="text-muted-foreground">
 											· {b.bestBefore ? `MHD ${formatDate(b.bestBefore)}` : 'ohne MHD'}
-											{#if b.locationName}· {b.locationName}{/if}
+											{#if b.locationName}
+												· {b.locationName}
+											{/if}
 										</span>
 									</span>
 									<Badge variant={EXPIRY_VARIANTS[b.state]}>{EXPIRY_LABELS[b.state]}</Badge>
@@ -381,18 +389,21 @@
 											<Button
 												size="sm"
 												variant="ghost"
-												onclick={() => start({ kind: 'out', batch: b })}>Entnehmen</Button
+												onclick={() => start({ kind: 'out', batch: b })}
+												>Entnehmen</Button
 											>
 											<Button
 												size="sm"
 												variant="ghost"
-												onclick={() => start({ kind: 'discard', batch: b })}>Entsorgen</Button
+												onclick={() => start({ kind: 'discard', batch: b })}
+												>Entsorgen</Button
 											>
 											<Button
 												size="sm"
 												variant="ghost"
 												aria-label="Charge berichtigen"
-												onclick={() => start({ kind: 'correct', batch: b })}><Pencil /></Button
+												onclick={() => start({ kind: 'correct', batch: b })}
+												><Pencil /></Button
 											>
 										</span>
 									{/if}
@@ -414,9 +425,9 @@
 									<span class="tabular-nums">
 										{m.kind === 'in' ? '+' : m.kind === 'correct' ? '' : '−'}{amount(m.quantity)}
 									</span>
-									{#if m.note}<span class="min-w-0 flex-1 truncate text-muted-foreground"
-											>{m.note}</span
-										>{/if}
+									{#if m.note}
+										<span class="min-w-0 flex-1 truncate text-muted-foreground">{m.note}</span>
+									{/if}
 									<span class="ml-auto text-xs text-muted-foreground">
 										{formatDate(m.createdAt)}{m.createdByName ? ` · ${m.createdByName}` : ''}
 									</span>
@@ -448,7 +459,11 @@
 							disabled={!!busy}
 							onclick={() => setArchived(!p.archived)}
 						>
-							{#if p.archived}<ArchiveRestore /> Wiederherstellen{:else}<Archive /> Archivieren{/if}
+							{#if p.archived}
+								<ArchiveRestore /> Wiederherstellen
+							{:else}
+								<Archive /> Archivieren
+							{/if}
 						</Button>
 					</div>
 					<Button

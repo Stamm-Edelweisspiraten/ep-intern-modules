@@ -4,14 +4,14 @@
 import { page } from '$app/state';
 import { can } from '$lib/sdk/client';
 import {
-	CONDITIONS,
-	CONDITION_LABELS,
-	PERMISSIONS,
 	type Category,
+	CONDITION_LABELS,
+	CONDITIONS,
 	type Item,
 	type Location,
 	type MaterialSet,
-	type MaterialType
+	type MaterialType,
+	PERMISSIONS
 } from '../../schemas';
 
 /** Vorbelegung beim Anlegen eines Lagerartikels */

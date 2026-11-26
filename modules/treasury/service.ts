@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { RequestContext } from '$lib/sdk/server';
+import { bankAccount, searchBankAccounts } from './bank-accounts';
 import type {
 	AccountingClosedEvent,
 	ActionContributions,
@@ -16,7 +17,6 @@ import {
 	upsertOrderPayable
 } from './external';
 import { lineOpen, sourceRef } from './logic';
-import { bankAccount, searchBankAccounts } from './bank-accounts';
 import { loadBankData } from './notify';
 import { accountingClosedNotification, notifyKasse } from './office-notify';
 import { syncAction } from './sync';
@@ -107,9 +107,9 @@ export const treasuryService: TreasuryService = {
 
 	async invoiceForRegistration(actionId: string, participantId: string) {
 		// Vergangene Aktionen: keine Rechnung (Anmeldebestätigung ohne Zahlungsblock)
-		const [source] = await (
-			await actionsService()
-		).listReceivableSources({ actionIds: [actionId] });
+		const [source] = await (await actionsService()).listReceivableSources({
+			actionIds: [actionId]
+		});
 		if (source?.isPast) return null;
 		// Gezielter Abgleich NUR dieser Aktion; startet nach laufenden Abgleichen und sieht daher die
 		// eben committete Anmeldung (kein geteilter, veralteter Vollabgleich)

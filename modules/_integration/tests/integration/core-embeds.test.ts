@@ -2,23 +2,29 @@
  * Core `embeds` (Einbetten von Modul-Inhalten) mit dem Whiteboard als Anbieterin: Arten, Suche nur über sichtbare
  * Boards, Auflösung je Betrachter*in (fremd/unbekannt/Modul aus → `available: false`), Pfade, Eingabegrenzen.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
-import whiteboardModule from '$modules/whiteboard/module';
-import type { EmbedHit, EmbedInfo, EmbedKind } from '$lib/sdk/types/embeds';
 import type { RequestContext } from '$lib/sdk/types';
+import type { EmbedHit, EmbedInfo, EmbedKind } from '$lib/sdk/types/embeds';
+import whiteboardModule from '$modules/whiteboard/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const API = 'http://localhost:5173/api/v1';
 const keys: Record<string, string> = {};

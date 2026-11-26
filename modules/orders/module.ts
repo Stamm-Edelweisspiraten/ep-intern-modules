@@ -1,32 +1,32 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
-import { ordersAssist, PERM_AI } from './assist';
-import { NOTIFY_MY_ORDER } from './schemas';
 import { articlesEndpoints } from './articles.endpoints';
-import { imagesEndpoints } from './images.endpoints';
-import { ordersEndpoints } from './orders.endpoints';
-import { stockEndpoints } from './stock.endpoints';
-import { supplierEndpoints } from './supplier.endpoints';
-import { runDeficitDigest } from './notify';
-import { syncTreasury } from './treasury-link';
-import { resetAreas, resetUsers } from './reset';
-import { onUserDeleted } from './user-deleted';
-import { subjectExport } from './subject-export';
-import { ordersSearch } from './search';
+import { ordersAssist, PERM_AI } from './assist';
+import pkg from './atrium-module.json';
 import { ordersDashboard } from './dashboard';
+import { imagesEndpoints } from './images.endpoints';
+import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_digest_state.sql?raw';
+import m0003 from './migrations/0003_fk_indexes.sql?raw';
+import m0004 from './migrations/0004_recipients.sql?raw';
+import { runDeficitDigest } from './notify';
+import { ordersEndpoints } from './orders.endpoints';
+import { resetAreas, resetUsers } from './reset';
 import {
 	LEADER_ROLE_NAME,
 	MANAGER_ROLE_NAME,
 	MATERIAL_ROLE_NAME,
+	NOTIFY_MY_ORDER,
 	NOTIFY_ORDER_CREATED,
 	NOTIFY_STOCK_DEFICIT,
 	OFFICE_KEY,
 	PERMISSIONS
 } from './schemas';
-import m0001 from './migrations/0001_init.sql?raw';
-import m0002 from './migrations/0002_digest_state.sql?raw';
-import m0003 from './migrations/0003_fk_indexes.sql?raw';
-import m0004 from './migrations/0004_recipients.sql?raw';
+import { ordersSearch } from './search';
+import { stockEndpoints } from './stock.endpoints';
+import { subjectExport } from './subject-export';
+import { supplierEndpoints } from './supplier.endpoints';
+import { syncTreasury } from './treasury-link';
+import { onUserDeleted } from './user-deleted';
 
 export default defineModule({
 	package: pkg,

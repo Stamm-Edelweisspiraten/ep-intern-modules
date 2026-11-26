@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
 	coverInput,
 	galleryInput,
@@ -11,9 +11,9 @@ import {
 	MAX_EVENTS_PER_GALLERY,
 	MAX_SHARES,
 	variantParams,
+	WEBSITE_VARIANTS,
 	websiteListQuery,
-	websiteVariantParams,
-	WEBSITE_VARIANTS
+	websiteVariantParams
 } from '$modules/galleries/schemas';
 
 const uuid = () => crypto.randomUUID();
@@ -100,7 +100,7 @@ describe('galleryInput', () => {
 			{ type: 'user', id: 'U1', level: 'edit' },
 			{ type: 'member', id: uuid(), level: 'read' }
 		];
-		expect(galleryInput.parse({ title: 'x', shares }).shares).toEqual(shares);
+		expect<unknown>(galleryInput.parse({ title: 'x', shares }).shares).toEqual(shares);
 	});
 
 	it('lehnt unbekannte Typen, Stufen und IDs ab', () => {

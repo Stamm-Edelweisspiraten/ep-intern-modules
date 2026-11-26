@@ -5,14 +5,14 @@
  */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, logBestEffort, secureFileResponse, type ApiEndpoint } from '$lib/sdk/server';
-import { actionsService, mdb, rows, str } from './db';
-import { listPayables } from './payables';
+import { type ApiEndpoint, core, errors, logBestEffort, secureFileResponse } from '$lib/sdk/server';
 import type {
 	ClosedAccounting,
 	ClosedAccountingDetail,
 	InterimRef
 } from '$modules/actions/contract';
+import { actionsService, mdb, rows, str } from './db';
+import { listPayables } from './payables';
 import type { Payable } from './schemas';
 
 const TAGS = ['Modul: treasury'];
@@ -77,12 +77,14 @@ export const closedAccountingEndpoints = [
 					filedBy: by ? (users.find((u) => u.id === by)?.name ?? 'Unbekannt') : null
 				};
 			};
-			const closedItems = list.map((a): ClosedAccountingItem => ({
-				...a,
-				status: 'closed',
-				interims: byAction.get(a.actionId) ?? [],
-				...filedOf(a.actionId)
-			}));
+			const closedItems = list.map(
+				(a): ClosedAccountingItem => ({
+					...a,
+					status: 'closed',
+					interims: byAction.get(a.actionId) ?? [],
+					...filedOf(a.actionId)
+				})
+			);
 			// Nur zwischenabgerechnet: Summen = Summe der Zwischenabrechnungen
 			const interimItems = refs.map((r): ClosedAccountingItem => {
 				const its = byAction.get(r.id) ?? [];

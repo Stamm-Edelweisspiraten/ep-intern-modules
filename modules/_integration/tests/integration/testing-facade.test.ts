@@ -2,14 +2,16 @@
  * Test-Schnittstelle `$testing` (Kalypzo Atrium, Phase 3): Ein Modultest kommt nur mit `$testing` und dem
  * eigenen Modul aus – Aufbau, Aktivieren, Rolle/Benutzer/API-Key, REST-Aufruf, Audit.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
 import {
 	adminContext,
 	apiCall,
+	contextForUser,
 	createApiKey,
 	createRole,
 	createUser,
-	contextForUser,
 	enableModule,
 	listAudit,
 	registerCoreApi,
@@ -17,8 +19,6 @@ import {
 	syncModules,
 	useTestDatabase
 } from '$testing';
-import membersModule from '$modules/members/module';
-import type { RequestContext } from '$lib/sdk/types';
 
 let close: () => Promise<void>;
 let admin: RequestContext;

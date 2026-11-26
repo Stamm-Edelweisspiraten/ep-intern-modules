@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import { untrack } from 'svelte';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -9,8 +10,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MoneyInput } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { distribute, normalizeName } from '../logic';
 	import type { MatchPreview, OpenLine, Payable } from '../schemas';
 	import { BASE, fmtDate } from './helpers';
@@ -250,7 +250,9 @@
 			<span class="text-xs text-muted-foreground">
 				{total}
 				{direction === 'income' ? 'offene Posten' : 'offene Auszahlungen'}
-				{#if selectedCount}· {selectedCount} ausgewählt{/if}
+				{#if selectedCount}
+					· {selectedCount} ausgewählt
+				{/if}
 			</span>
 		{/if}
 	</div>
@@ -261,9 +263,8 @@
 		>
 			<Sparkles class="size-5 text-link" aria-hidden="true" />
 			<p>
-				Gib einen Betrag ein – die Kasse schlägt dann passende {direction === 'income'
-					? 'Rechnungen'
-					: 'Auszahlungen'} vor.
+				Gib einen Betrag ein – die Kasse schlägt dann passende
+				{direction === 'income' ? 'Rechnungen' : 'Auszahlungen'} vor.
 			</p>
 			<p class="text-xs">Name, Verwendungszweck und IBAN machen den Vorschlag genauer.</p>
 		</div>
@@ -443,8 +444,8 @@
 					{@const p = payables.find((x) => x.id === payableId)}
 					{#if p && p.openCents !== amountCents}
 						<p class="text-xs text-warning">
-							Offen sind {formatEuro(p.openCents)} – der Betrag weicht ab, angerechnet wird höchstens
-							der offene Betrag.
+							Offen sind {formatEuro(p.openCents)} – der Betrag weicht ab, angerechnet wird
+							höchstens der offene Betrag.
 						</p>
 					{/if}
 				{/if}

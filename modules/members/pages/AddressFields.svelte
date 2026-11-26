@@ -12,16 +12,16 @@
 </script>
 
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Users from '@lucide/svelte/icons/users';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Input } from '$lib/components/ui/input';
+	import { untrack } from 'svelte';
 	import { FormField } from '$lib/components/layout';
+	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import type { AddressSuggestion } from '../schemas';
+	import { apiFetch } from '$lib/sdk/client';
 	import { matchesStreetName, splitHouseNumber, withHouseNumber } from '../address-utils';
+	import type { AddressSuggestion } from '../schemas';
 	import { countryOptions } from './countries';
 
 	/**
@@ -312,7 +312,8 @@
 							onclick={() => {
 								city = p;
 								places = [];
-							}}>{p}</button
+							}}
+							>{p}</button
 						>
 					{/each}
 				</p>

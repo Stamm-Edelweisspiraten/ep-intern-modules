@@ -5,16 +5,16 @@
 	// API: `<PrintLabelsDialog bind:open target={'item' | 'location' | 'blank'} ids={string[]} title?={string} />`
 	import Printer from '@lucide/svelte/icons/printer';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
-	import { fitLayout, labelsPerPage, formatProblem, type LabelFormat } from '$lib/sdk/labels';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { ErrorState, FormField, LoadingState, NumberStepper } from '$lib/components/layout';
+	import { downloadPdf } from '$lib/components/layout/download';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { ErrorState, FormField, LoadingState, NumberStepper } from '$lib/components/layout';
-	import { downloadPdf } from '$lib/components/layout/download';
+	import { apiFetch } from '$lib/sdk/client';
+	import { fitLayout, formatProblem, type LabelFormat, labelsPerPage } from '$lib/sdk/labels';
 	import {
 		BASE_PATH,
 		LABEL_TARGET_LABELS,
@@ -24,9 +24,9 @@
 	} from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import { formatSize, sampleValues } from '../labels/designer';
+	import ItemPicker from './ItemPicker.svelte';
 	import LabelPreview from './LabelPreview.svelte';
 	import SheetPreview from './SheetPreview.svelte';
-	import ItemPicker from './ItemPicker.svelte';
 
 	let {
 		open = $bindable(false),
@@ -298,8 +298,8 @@
 						{#if format.kind === 'sheet'}
 							<div class="space-y-1">
 								<p class="text-xs text-muted-foreground">
-									Startfeld: <span class="tabular-nums">{startIndex + 1}</span> – klicke auf das erste
-									freie Feld eines angebrochenen Bogens.
+									Startfeld: <span class="tabular-nums">{startIndex + 1}</span> – klicke auf das
+									erste freie Feld eines angebrochenen Bogens.
 								</p>
 								<SheetPreview
 									{format}
@@ -330,7 +330,9 @@
 			</p>
 		{/if}
 
-		{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+		{#if error}
+			<p class="text-sm text-destructive" role="alert">{error}</p>
+		{/if}
 
 		<Dialog.Footer>
 			<Button variant="outline" onclick={() => (open = false)}>Abbrechen</Button>

@@ -1,53 +1,64 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { goto, replaceState } from '$app/navigation';
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Plus from '@lucide/svelte/icons/plus';
-	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import ArrowDownToLine from '@lucide/svelte/icons/arrow-down-to-line';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import ArrowUpFromLine from '@lucide/svelte/icons/arrow-up-from-line';
 	import ChartColumn from '@lucide/svelte/icons/chart-column';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import HandCoins from '@lucide/svelte/icons/hand-coins';
 	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import List from '@lucide/svelte/icons/list';
 	import ListPlus from '@lucide/svelte/icons/list-plus';
+	import Plus from '@lucide/svelte/icons/plus';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Send from '@lucide/svelte/icons/send';
-	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings from '@lucide/svelte/icons/settings';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Upload from '@lucide/svelte/icons/upload';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import {
+		BottomSheet,
+		deviceLayout,
+		MobileTabBar,
+		type MobileTabItem,
+		PageHeader,
+		SheetAction,
+		sheetsSettled
+	} from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import {
-		BottomSheet,
-		MobileTabBar,
-		PageHeader,
-		SheetAction,
-		deviceLayout,
-		sheetsSettled,
-		type MobileTabItem
-	} from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import type {
 		Account,
 		Category,
-		InvoiceDetail,
 		ImportResult,
+		InvoiceDetail,
 		Payer,
 		Transaction
 	} from '../schemas';
-	import { BASE, errorMessage } from './helpers';
 	import AllocateDialog from './AllocateDialog.svelte';
 	import FamilySheet from './FamilySheet.svelte';
+	import { BASE, errorMessage } from './helpers';
 	import ImportDialog from './ImportDialog.svelte';
 	import IncomeSection from './IncomeSection.svelte';
 	import InvoiceDialog from './InvoiceDialog.svelte';
+	import {
+		type FamilyRef,
+		type IncomeView,
+		type OutgoingView,
+		resolveLocation,
+		SECTION_LABELS,
+		SECTIONS,
+		type Section,
+		type TreasuryLocation,
+		type TreasuryPerm
+	} from './navigation';
 	import OutgoingSection from './OutgoingSection.svelte';
 	import OverviewTab from './OverviewTab.svelte';
 	import PaymentCapture, { type PaymentPreset } from './PaymentCapture.svelte';
@@ -56,17 +67,6 @@
 	import TransactionDialog from './TransactionDialog.svelte';
 	import TransactionsTab from './TransactionsTab.svelte';
 	import TransferDialog from './TransferDialog.svelte';
-	import {
-		SECTIONS,
-		SECTION_LABELS,
-		resolveLocation,
-		type FamilyRef,
-		type IncomeView,
-		type OutgoingView,
-		type Section,
-		type TreasuryLocation,
-		type TreasuryPerm
-	} from './navigation';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const perm = $derived<TreasuryPerm>({
@@ -385,9 +385,7 @@
 			</Button>
 		</div>
 		{#each visited as s (s)}
-			<div hidden={s !== activeSection}>
-				{@render sectionBody(s)}
-			</div>
+			<div hidden={s !== activeSection}> {@render sectionBody(s)} </div>
 		{/each}
 	</div>
 	<MobileTabBar
@@ -428,7 +426,9 @@
 										<Send /> Überweisung als bezahlt
 									</DropdownMenu.Item>
 								{/if}
-								{#if perm.editTx || perm.editInvoice}<DropdownMenu.Separator />{/if}
+								{#if perm.editTx || perm.editInvoice}
+									<DropdownMenu.Separator />
+								{/if}
 								{#if perm.editTx}
 									<DropdownMenu.Item class="min-h-11" onclick={() => (transferOpen = true)}>
 										<ArrowLeftRight /> Umbuchung
@@ -499,7 +499,8 @@
 							<Plus /> Buchung
 							<kbd
 								class="ml-0.5 hidden rounded border border-current/30 px-1 font-mono text-xs leading-4 opacity-70 sm:inline"
-								aria-hidden="true">N</kbd
+								aria-hidden="true"
+								>N</kbd
 							>
 						</Button>
 						<Button variant="outline" onclick={() => (importOpen = true)}>
@@ -527,7 +528,9 @@
 										<Sparkles /> Zuordnungsvorschläge prüfen
 									</DropdownMenu.Item>
 								{/if}
-								{#if perm.editTx && perm.editInvoice}<DropdownMenu.Separator />{/if}
+								{#if perm.editTx && perm.editInvoice}
+									<DropdownMenu.Separator />
+								{/if}
 								{#if perm.editInvoice}
 									<DropdownMenu.Label class="text-xs text-muted-foreground"
 										>Rechnungen</DropdownMenu.Label
@@ -553,9 +556,7 @@
 					<Tabs.Trigger value={s} class="flex-none px-2 sm:px-3">{SECTION_LABELS[s]}</Tabs.Trigger>
 				{/each}
 			</Tabs.List>
-			<Tabs.Content value={activeSection}>
-				{@render sectionBody(activeSection)}
-			</Tabs.Content>
+			<Tabs.Content value={activeSection}> {@render sectionBody(activeSection)} </Tabs.Content>
 		</Tabs.Root>
 	</div>
 {/if}

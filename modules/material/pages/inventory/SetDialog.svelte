@@ -3,13 +3,13 @@
 	// KJ1.1–KJ1.6). Ein Artikel gehört höchstens zu einem Set – wird er hier gewählt, verlässt er sein altes.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, FormField } from '$lib/components/layout';
-	import { MAX_BATCH_ITEMS, setInput, type MaterialSet } from '../../schemas';
+	import { apiFetch } from '$lib/sdk/client';
+	import { MAX_BATCH_ITEMS, type MaterialSet, setInput } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import ItemPicker from '../shared/ItemPicker.svelte';
 

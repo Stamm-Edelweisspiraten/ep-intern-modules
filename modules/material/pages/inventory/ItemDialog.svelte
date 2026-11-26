@@ -1,8 +1,4 @@
 <script lang="ts">
-	// Ansicht eines Lagerartikels als zentrierter Dialog (auch nach einem Scan): Bilder, Daten, Zustand,
-	// kommende Reservierungen; Aktionen je nach Recht.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
 	import CalendarPlus from '@lucide/svelte/icons/calendar-plus';
@@ -11,13 +7,10 @@
 	import Printer from '@lucide/svelte/icons/printer';
 	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
+	// Ansicht eines Lagerartikels als zentrierter Dialog (auch nach einem Scan): Bilder, Daten, Zustand,
+	// kommende Reservierungen; Aktionen je nach Recht.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		BUSY_SAVE,
 		ConfirmDialog,
@@ -25,18 +18,25 @@
 		FormField,
 		LoadingState
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import { apiFetch } from '$lib/sdk/client';
 	import { cn } from '$lib/utils';
-	import { conditionInput, reservationState, type Item, type ItemDetail } from '../../schemas';
+	import { conditionInput, type Item, type ItemDetail, reservationState } from '../../schemas';
 	import {
 		API,
-		RESERVATION_STATE_LABELS,
-		STATE_VARIANTS,
 		errorText,
 		fieldErrors,
 		formatAmount,
 		formatDate,
 		formatPeriod,
-		reservationHref
+		RESERVATION_STATE_LABELS,
+		reservationHref,
+		STATE_VARIANTS
 	} from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
@@ -177,11 +177,15 @@
 			<Dialog.Header>
 				<Dialog.Title class="flex flex-wrap items-center gap-2 break-words">
 					{item.name}
-					{#if item.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+					{#if item.archived}
+						<Badge variant="outline">Archiviert</Badge>
+					{/if}
 				</Dialog.Title>
 				<Dialog.Description>
 					<span class="font-mono">{item.code}</span>
-					{#if item.typeName}· Typ {item.typeName}{/if}
+					{#if item.typeName}
+						· Typ {item.typeName}
+					{/if}
 				</Dialog.Description>
 			</Dialog.Header>
 
@@ -260,12 +264,14 @@
 						<dt class="text-xs text-muted-foreground">Zustand</dt>
 						<dd class="grid gap-1">
 							<span><ConditionBadge condition={item.condition} /></span>
-							{#if item.conditionNote}<span>{item.conditionNote}</span>{/if}
+							{#if item.conditionNote}
+								<span>{item.conditionNote}</span>
+							{/if}
 							{#if item.conditionReportedAt}
 								<span class="text-xs text-muted-foreground">
-									Gemeldet {item.conditionReportedByName
-										? `von ${item.conditionReportedByName} `
-										: ''}am {formatDate(item.conditionReportedAt)}
+									Gemeldet
+									{item.conditionReportedByName ? `von ${item.conditionReportedByName} ` : ''}am
+									{formatDate(item.conditionReportedAt)}
 								</span>
 							{/if}
 						</dd>
@@ -300,7 +306,9 @@
 								/>
 							</FormField>
 						</div>
-						{#if reportCondition === 'damaged' || reportCondition === 'defect' || reportCondition === 'lost'}
+						{#if reportCondition === 'damaged' ||
+							reportCondition === 'defect' ||
+							reportCondition === 'lost'}
 							<p class="text-xs text-muted-foreground">
 								Die Materialwart*innen werden benachrichtigt.
 							</p>
@@ -381,9 +389,7 @@
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button {...props} variant="outline" disabled={busy}>
-										<Ellipsis /> Mehr
-									</Button>
+									<Button {...props} variant="outline" disabled={busy}> <Ellipsis /> Mehr </Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content align="start">

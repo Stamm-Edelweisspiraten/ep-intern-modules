@@ -1,31 +1,31 @@
 <script lang="ts">
+	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import { onMount } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { EmptyState, MobileActionBar, SearchInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, MobileActionBar, SearchInput } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
-	import { PERMISSIONS, type Article, type OrderCreated } from '../schemas';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { type Article, type OrderCreated, PERMISSIONS } from '../schemas';
 	import ArticleCard from './ArticleCard.svelte';
 	import ArticleDetailDialog from './ArticleDetailDialog.svelte';
 	import CartPanel from './CartPanel.svelte';
 	import {
-		BASE,
 		addToCart,
+		BASE,
+		type CartItem,
 		cartCount,
 		cartTotal,
 		errorText,
 		itemLabel,
 		loadCart,
 		reconcileCart,
-		saveCart,
-		type CartItem
+		saveCart
 	} from './helpers';
 
 	let {
@@ -206,9 +206,7 @@
 	{#if desktop.current}
 		<aside class="self-start lg:sticky lg:top-4">
 			<Card.Root>
-				<Card.Content>
-					{@render cartPanel()}
-				</Card.Content>
+				<Card.Content> {@render cartPanel()} </Card.Content>
 			</Card.Root>
 		</aside>
 	{/if}
@@ -221,9 +219,7 @@
 				<Sheet.Title class="sr-only">Warenkorb</Sheet.Title>
 				<Sheet.Description class="sr-only">Positionen prüfen und bestellen</Sheet.Description>
 			</Sheet.Header>
-			<div class="px-4 pb-6">
-				{@render cartPanel()}
-			</div>
+			<div class="px-4 pb-6"> {@render cartPanel()} </div>
 		</Sheet.Content>
 	</Sheet.Root>
 {/if}

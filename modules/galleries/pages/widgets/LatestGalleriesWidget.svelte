@@ -1,12 +1,12 @@
 <script lang="ts">
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import Images from '@lucide/svelte/icons/images';
 	// Dashboard-Kachel „Neue Galerien“: die zuletzt geänderten Galerien mit Titelbild.
 	import { onMount } from 'svelte';
-	import Images from '@lucide/svelte/icons/images';
-	import ImageIcon from '@lucide/svelte/icons/image';
+	import { DashboardCard } from '$lib/components/layout';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
-	import { imageUrl, type GalleryItem, type GalleryList } from '../../schemas';
+	import { type GalleryItem, type GalleryList, imageUrl } from '../../schemas';
 
 	let { onstatus }: DashboardWidgetProps = $props();
 

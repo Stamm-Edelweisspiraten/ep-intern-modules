@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { AssistTextarea, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -9,18 +9,16 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, AssistTextarea } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
+		type Article,
+		type ArticleImage,
+		articleInput,
 		MAX_DESCRIPTION,
 		MAX_NOTES,
 		MAX_TITLE,
-		MAX_URL,
-		articleInput,
-		type Article,
-		type ArticleImage
+		MAX_URL
 	} from '../schemas';
-	import ImageManager from './ImageManager.svelte';
-	import VariantEditor from './VariantEditor.svelte';
 	import {
 		BASE,
 		detailsToErrors,
@@ -29,6 +27,8 @@
 		newVariantRow,
 		type VariantRow
 	} from './helpers';
+	import ImageManager from './ImageManager.svelte';
+	import VariantEditor from './VariantEditor.svelte';
 
 	/**
 	 * Artikel anlegen/bearbeiten. Der Aufrufer rendert den Dialog per `{#key}` neu, damit das
@@ -184,20 +184,19 @@
 		<Tabs.Root value={tab} onValueChange={(v) => (tab = v as Tab)}>
 			<Tabs.List variant="line" class="mb-2" aria-label="Bereiche des Artikels">
 				<Tabs.Trigger value="general">
-					Allgemein{#if generalErrorCount}<span class="ml-1 text-destructive" aria-hidden="true"
-							>•</span
-						>{/if}
+					Allgemein{#if generalErrorCount}
+						<span class="ml-1 text-destructive" aria-hidden="true">•</span>
+					{/if}
 				</Tabs.Trigger>
 				<Tabs.Trigger value="variants">
-					Größen & Preise{#if variantErrorCount}<span
-							class="ml-1 text-destructive"
-							aria-hidden="true">•</span
-						>{/if}
+					Größen & Preise{#if variantErrorCount}
+						<span class="ml-1 text-destructive" aria-hidden="true">•</span>
+					{/if}
 				</Tabs.Trigger>
 				<Tabs.Trigger value="images">
-					Bilder{#if current?.images.length}<span class="ml-1 text-muted-foreground tabular-nums"
-							>({current.images.length})</span
-						>{/if}
+					Bilder{#if current?.images.length}
+						<span class="ml-1 text-muted-foreground tabular-nums">({current.images.length})</span>
+					{/if}
 				</Tabs.Trigger>
 			</Tabs.List>
 

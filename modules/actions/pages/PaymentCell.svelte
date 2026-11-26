@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
-	import { Badge } from '$lib/components/ui/badge';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
 	import type { Participant } from '../schemas';
 
 	let {
@@ -55,7 +55,8 @@
 		<a
 			href={`/modules/treasury/invoices/${payment.invoiceId}`}
 			class="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-			aria-label={`${title} – Rechnung in der Kasse öffnen`}>{@render badge()}</a
+			aria-label={`${title} – Rechnung in der Kasse öffnen`}
+			>{@render badge()}</a
 		>
 	{:else}
 		{@render badge()}

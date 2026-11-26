@@ -2,13 +2,11 @@
  * #64: Upgrade-Test für `messages` 0005_spam – vom Mailserver markierter Altbestand bekommt die Quelle
  * `server`, übrige Mails bleiben ohne Quelle; neue Spalten haben Standardwerte, die Liste ist leer.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
 import membersModule from '$modules/members/module';
 import messagesModule from '$modules/messages/module';
+import { migrateModuleTo, moduleSql, registerModule, useTestDatabase } from '$testing';
 
 let close: () => Promise<void>;
 

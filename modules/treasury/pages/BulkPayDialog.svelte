@@ -1,15 +1,15 @@
 <script lang="ts">
-	// Mehrere Auszahlungen auf einmal als bezahlt buchen (je Auszahlung `POST /payables/:id/pay`).
-	import { apiFetch } from '$lib/sdk/client';
+	import { FormField } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	// Mehrere Auszahlungen auf einmal als bezahlt buchen (je Auszahlung `POST /payables/:id/pay`).
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Account, Category, Payable } from '../schemas';
-	import { BASE, defaultAccountId, todayIso } from './helpers';
 	import { runSequential, toastOutcome } from './BulkActions';
+	import { BASE, defaultAccountId, todayIso } from './helpers';
 
 	let {
 		open = $bindable(false),
@@ -91,8 +91,8 @@
 	bind:open={
 		() => open,
 		(v) => {
-			if (!busy) open = v;
-		}
+		if (!busy) open = v;
+	}
 	}
 >
 	<Dialog.Content class="sm:max-w-md">
@@ -140,9 +140,7 @@
 			</ul>
 			{#if busy}
 				<div class="space-y-1" aria-live="polite">
-					<div class="text-xs text-muted-foreground">
-						Bucht … {done} von {payable.length}
-					</div>
+					<div class="text-xs text-muted-foreground"> Bucht … {done} von {payable.length} </div>
 					<div class="h-1.5 overflow-hidden rounded-full bg-muted">
 						<div
 							class="h-full bg-primary transition-[width]"

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
-	CART_KEY,
 	addLine,
+	CART_KEY,
+	type CartLine,
 	cartCount,
 	clearDraft,
 	editCartKey,
@@ -17,8 +18,7 @@ import {
 	setQuantity,
 	shiftDate,
 	toLines,
-	typeQuantityInCart,
-	type CartLine
+	typeQuantityInCart
 } from '$modules/material/pages/reserve/cart';
 import type { Catalog, CatalogEntry, Reservation } from '$modules/material/schemas';
 
@@ -333,15 +333,26 @@ describe('fromReservation', () => {
 
 describe('sessionStorage', () => {
 	let store: Map<string, string>;
+	// Ersatz für `vi.stubGlobal`/`vi.unstubAllGlobals` (gibt es in bun:test nicht)
+	const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+	const stubStorage = (value: unknown) =>
+		Object.defineProperty(globalThis, 'sessionStorage', {
+			value,
+			configurable: true,
+			writable: true
+		});
 	beforeEach(() => {
 		store = new Map();
-		vi.stubGlobal('sessionStorage', {
+		stubStorage({
 			getItem: (k: string) => store.get(k) ?? null,
 			setItem: (k: string, v: string) => void store.set(k, v),
 			removeItem: (k: string) => void store.delete(k)
 		});
 	});
-	afterEach(() => vi.unstubAllGlobals());
+	afterEach(() => {
+		if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+		else Reflect.deleteProperty(globalThis, 'sessionStorage');
+	});
 
 	it('speichert getrennt für Entwurf und Bearbeiten', () => {
 		const d = { ...emptyDraft(TODAY), title: 'Neu', lines: [bahnen] };
@@ -357,7 +368,7 @@ describe('sessionStorage', () => {
 	it('übersteht kaputtes JSON und fehlenden Speicher', () => {
 		store.set(CART_KEY, '{kaputt');
 		expect(loadDraft(CART_KEY, TODAY)).toBeNull();
-		vi.stubGlobal('sessionStorage', undefined);
+		stubStorage(undefined);
 		expect(loadDraft(CART_KEY, TODAY)).toBeNull();
 		expect(() => saveDraft(CART_KEY, emptyDraft(TODAY))).not.toThrow();
 		expect(() => clearDraft(CART_KEY)).not.toThrow();

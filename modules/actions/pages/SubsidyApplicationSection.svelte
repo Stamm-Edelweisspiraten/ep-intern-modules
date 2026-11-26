@@ -1,30 +1,30 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import FileDown from '@lucide/svelte/icons/file-down';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { formatDateDe } from '$lib/sdk/dates';
+	import { toast } from 'svelte-sonner';
+	import {
+		AssistInput,
+		EmptyState,
+		ErrorState,
+		FormField,
+		LoadingState
+	} from '$lib/components/layout';
+	import { BUSY_SAVE } from '$lib/components/layout/busy';
+	import { formatEuro } from '$lib/components/layout/money';
+	import { Alert } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Alert } from '$lib/components/ui/alert';
 	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { formatDateDe } from '$lib/sdk/dates';
 	import {
-		EmptyState,
-		ErrorState,
-		FormField,
-		LoadingState,
-		AssistInput
-	} from '$lib/components/layout';
-	import { BUSY_SAVE } from '$lib/components/layout/busy';
-	import { formatEuro } from '$lib/components/layout/money';
-	import {
-		UNASSIGNED_REASON_LABELS,
-		subsidyApplicationInput,
 		type LeaderGender,
-		type SubsidyApplicationDto
+		type SubsidyApplicationDto,
+		subsidyApplicationInput,
+		UNASSIGNED_REASON_LABELS
 	} from '../schemas';
 	import { downloadApiFile } from './download';
 
@@ -295,9 +295,8 @@
 					{plan.forms.length === 1 ? 'Ein Antrag' : `${plan.forms.length} Anträge`}
 				</h3>
 				<p class="text-sm text-muted-foreground tabular-nums">
-					Zuschuss laut Richtlinie {formatEuro(subsidyTotal)} · Taschengeld {formatEuro(
-						allowanceTotal
-					)}
+					Zuschuss laut Richtlinie {formatEuro(subsidyTotal)} · Taschengeld
+					{formatEuro(allowanceTotal)}
 				</p>
 			</div>
 			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -306,7 +305,8 @@
 						<Card.Header>
 							<Card.Title level={4}>Antrag {form.number}</Card.Title>
 							<Card.Description class="tabular-nums">
-								{form.children.length} Kinder · {form.youth.length} Jugendliche · {form.nights} Nächte
+								{form.children.length} Kinder · {form.youth.length} Jugendliche ·
+								{form.nights} Nächte
 							</Card.Description>
 						</Card.Header>
 						<Card.Content class="space-y-2 text-sm">
@@ -340,7 +340,8 @@
 				<Card.Header>
 					<Card.Title level={3}>Nicht berücksichtigt</Card.Title>
 					<Card.Description>
-						{left.length === 1 ? '1 Person passt' : `${left.length} Personen passen`} auf keinen Antrag.
+						{left.length === 1 ? '1 Person passt' : `${left.length} Personen passen`} auf keinen
+						Antrag.
 					</Card.Description>
 				</Card.Header>
 				<Card.Content>
@@ -358,8 +359,8 @@
 		{#if noAllowance.length}
 			<p class="text-sm text-muted-foreground">
 				<span class="font-medium text-foreground">Ohne Taschengeld:</span>
-				{noAllowance.map((u) => u.name).join(', ')} – stehen auf dem Antrag, aber die Grenze von 1 Ehrenamtlichen
-				je 5 Kinder bzw. 7 Jugendliche (höchstens 5 je Antrag) ist erreicht.
+				{noAllowance.map((u) => u.name).join(', ')} – stehen auf dem Antrag, aber die Grenze von 1
+				Ehrenamtlichen je 5 Kinder bzw. 7 Jugendliche (höchstens 5 je Antrag) ist erreicht.
 			</p>
 		{/if}
 		{#if !left.length && plan.forms.every((f) => f.children.length + f.youth.length === 0)}

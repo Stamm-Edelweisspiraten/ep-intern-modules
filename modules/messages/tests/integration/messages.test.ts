@@ -2,39 +2,47 @@
  * Modul `messages` (Nachrichten): Absender (persönlich, Amt, Gruppe, Stamm), Empfänger aus Mitgliedern und
  * Gruppen, Einzelversand mit Anhängen, Verlauf/Wiederholen, Gruppenleitungs-Bereich, Audit ohne Adressen.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, navigationFor, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSetting } from '$testing';
-import { runJobNow } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
-import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import messagesModule from '$modules/messages/module';
+import type { RequestContext } from '$lib/sdk/types';
 // Stammesprofil: Mail-Kopf mit Lilie/Wappen (Core ist seit Phase N neutral)
 import stammModule from '$modules/ep-stamm/module';
+import membersModule from '$modules/members/module';
 import { deliveriesIdleForTests } from '$modules/messages/delivery.service';
+import messagesModule from '$modules/messages/module';
 import type {
 	MessageDetail,
-	MessageSummary,
 	MessagePreview,
+	MessageSummary,
 	RecipientsResult,
 	SendersResponse
 } from '$modules/messages/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	type MailTransport,
+	navigationFor,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	setSetting,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'messages-password-1234';
 let close: () => Promise<void>;

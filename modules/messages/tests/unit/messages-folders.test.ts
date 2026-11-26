@@ -1,14 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
 	buildFolderTree,
 	descendantIds,
+	type FolderRef,
 	flattenFolderTree,
 	folderDepth,
 	folderPath,
 	nameTaken,
 	subtreeHeight,
-	wouldCycle,
-	type FolderRef
+	wouldCycle
 } from '$modules/messages/folders';
 
 //  Lager

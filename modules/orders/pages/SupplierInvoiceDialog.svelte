@@ -2,19 +2,19 @@
 	// Lieferantenrechnung an die Kasse übergeben (legt dort eine Auszahlung an bzw. aktualisiert sie).
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { ConfirmDialog, FileField, FormField, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { ConfirmDialog, FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
 		MAX_NOTE,
 		MAX_PRICE_CENTS,
 		MAX_RECEIPT_BYTES,
 		RECEIPT_ACCEPT,
-		supplierInvoiceInput,
-		type SupplierOrder
+		type SupplierOrder,
+		supplierInvoiceInput
 	} from '../schemas';
 	import { API, fieldErrorsFrom, issuesToErrors } from './admin-helpers';
 	import PaymentBadge from './PaymentBadge.svelte';
@@ -237,7 +237,9 @@
 				/>
 				<p class="text-xs text-muted-foreground">PDF oder Bild, höchstens 10 MB.</p>
 			</div>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer class="gap-2 sm:justify-between">
 				{#if invoice}
 					<Button

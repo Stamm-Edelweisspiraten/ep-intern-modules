@@ -162,7 +162,7 @@ unzuordenbare Mails in „Nicht zugeordnet“ für die Verwaltung; nach dem Impo
   `core.mail.send({ autoSubmitted })`; `core.permissions.usersWith(key)`; `ModuleSettingDefinition.secretBoundTo` (IMAP-Passwort verfällt bei neuem
   Server/Port/Benutzer). Abhängigkeiten `imapflow` 2.2.10, `mailparser` 3.9.36 (fest gepinnt).
 - **Tests**: `tests/unit/messages-inbox.test.ts`, `tests/integration/messages-inbox.test.ts` (IMAP-Ersatz), E2E `messages.spec.ts` (Posteingang ohne IMAP).
-  Demo: GreenMail in `docker-compose.demo.yml` (IMAP `127.0.0.1:1143`), `node scripts/seed-demo-inbox.mjs`. Einrichtung: `docs/deployment.md`.
+  Demo: GreenMail in `docker-compose.demo.yml` (IMAP `127.0.0.1:1143`), `bun scripts/seed-demo-inbox.mjs`. Einrichtung: `docs/deployment.md`.
 - **Offen**: echter Provider-Catch-all ungeprüft (nur GreenMail); Namensänderung → alte persönliche Adresse wird „Nicht zugeordnet“; Mehrinstanz-Betrieb
   (Sperre je Prozess); kein IMAP IDLE (Verzögerung bis 1 min); keine Volltextsuche im Inhalt; keine Labels; Dashboard-Kachel fehlt.
 

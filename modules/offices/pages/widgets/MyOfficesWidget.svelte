@@ -1,12 +1,12 @@
 <script lang="ts">
+	import Bell from '@lucide/svelte/icons/bell';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
 	// Dashboard-Kachel „Meine Ämter“: eigene Ämter, Hinweis auf die Benachrichtigungen im Profil.
 	import { onMount } from 'svelte';
-	import Briefcase from '@lucide/svelte/icons/briefcase';
-	import Bell from '@lucide/svelte/icons/bell';
+	import { DashboardCard } from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { Badge } from '$lib/components/ui/badge';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { MyOffices } from '../../schemas';
 	import { BASE } from '../helpers';
 
@@ -71,7 +71,8 @@
 				Benachrichtigungen zu deinen Ämtern stellst du im
 				<a href="/profile" class="font-medium text-foreground underline-offset-2 hover:underline"
 					>Profil</a
-				> ein.
+				>
+				ein.
 			</span>
 		</p>
 	</div>

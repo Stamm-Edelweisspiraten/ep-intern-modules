@@ -1,24 +1,24 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import Wheat from '@lucide/svelte/icons/wheat';
+	import X from '@lucide/svelte/icons/x';
 	// Reiter „Vorrat“: Lebensmittel mit Bestand und Mindesthaltbarkeit. Scannen (Kamera oder USB-Scanner) des
 	// Hersteller-Strichcodes → Einlagern/Entnehmen; unbekannte Codes mit Vorschlag aus Open Food Facts anlegen.
 	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Wheat from '@lucide/svelte/icons/wheat';
-	import X from '@lucide/svelte/icons/x';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import * as Table from '$lib/components/ui/table';
 	import {
+		deviceLayout,
 		EmptyState,
 		ErrorState,
 		ListRow,
 		LoadingState,
-		ScrollPills,
-		deviceLayout
+		ScrollPills
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch } from '$lib/sdk/client';
 	import { EXPIRY_LABELS, EXPIRY_WARN_DAYS, normalizeBarcode } from '../../pantry';
 	import type { BarcodeResult, FoodProduct, Location } from '../../schemas';
 	import {
@@ -264,7 +264,9 @@
 	{#if p.quantity > 0 && p.state !== 'ok' && p.state !== 'none'}
 		<Badge variant={EXPIRY_VARIANTS[p.state]}>{EXPIRY_LABELS[p.state]}</Badge>
 	{/if}
-	{#if p.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+	{#if p.archived}
+		<Badge variant="outline">Archiviert</Badge>
+	{/if}
 {/snippet}
 
 <div class="space-y-4">
@@ -328,10 +330,12 @@
 
 	{#if filter === 'all' && !search.trim() && (counts.soon || counts.expired)}
 		<p class="text-sm text-muted-foreground">
-			{#if counts.expired}<span class="font-medium text-destructive"
-					>{counts.expired} abgelaufen</span
-				>{/if}
-			{#if counts.expired && counts.soon}·{/if}
+			{#if counts.expired}
+				<span class="font-medium text-destructive">{counts.expired} abgelaufen</span>
+			{/if}
+			{#if counts.expired && counts.soon}
+				·
+			{/if}
 			{#if counts.soon}
 				<span class="font-medium text-warning"
 					>{counts.soon} laufen in {EXPIRY_WARN_DAYS} Tagen ab</span
@@ -360,7 +364,8 @@
 						search = '';
 						showArchived = false;
 						setFilter('all');
-					}}><X /> Filter zurücksetzen</Button
+					}}
+					><X /> Filter zurücksetzen</Button
 				>
 			{/if}
 		</EmptyState>
@@ -375,8 +380,12 @@
 						amountClass={p.quantity ? undefined : 'text-muted-foreground'}
 						onclick={() => openDetail(p.id)}
 					>
-						{#snippet leading()}{@render thumb(p)}{/snippet}
-						{#snippet trailing()}{@render expiryBadge(p)}{/snippet}
+						{#snippet leading()}
+							{@render thumb(p)}
+						{/snippet}
+						{#snippet trailing()}
+							{@render expiryBadge(p)}
+						{/snippet}
 					</ListRow>
 				</div>
 			{/each}
@@ -422,7 +431,8 @@
 								class={[
 									'text-right font-medium tabular-nums',
 									p.quantity ? '' : 'text-muted-foreground'
-								].join(' ')}>{stockText(p)}</Table.Cell
+								].join(' ')}
+								>{stockText(p)}</Table.Cell
 							>
 							<Table.Cell class="tabular-nums">
 								{p.nextBestBefore ? formatDate(p.nextBestBefore) : '–'}

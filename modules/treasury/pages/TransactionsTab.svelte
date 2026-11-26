@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import History from '@lucide/svelte/icons/history';
 	import Link from '@lucide/svelte/icons/link';
@@ -10,17 +7,12 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Users from '@lucide/svelte/icons/users';
-	import { addDays, todayBerlin } from '$lib/sdk/dates';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as Table from '$lib/components/ui/table';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		BottomSheet,
+		BUSY_SAVE,
 		ChoiceChips,
 		ConfirmDialog,
 		DataTable,
@@ -32,10 +24,18 @@
 		ScrollPills,
 		SheetAction,
 		TouchList,
-		toastWithUndo,
-		BUSY_SAVE
+		toastWithUndo
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { addDays, todayBerlin } from '$lib/sdk/dates';
 	import type {
 		AllocationResult,
 		MatchSuggestion,
@@ -44,18 +44,18 @@
 		Transaction,
 		TransactionList
 	} from '../schemas';
+	import CompactFilter from './CompactFilter.svelte';
+	import FilterChips from './FilterChips.svelte';
+	import HistorySheet from './HistorySheet.svelte';
 	import {
 		BASE,
 		errorMessage,
 		fmtDate,
 		openApiFile,
+		type SharedData,
 		signedEuro,
-		transactionTitle,
-		type SharedData
+		transactionTitle
 	} from './helpers';
-	import CompactFilter from './CompactFilter.svelte';
-	import FilterChips from './FilterChips.svelte';
-	import HistorySheet from './HistorySheet.svelte';
 	import type { FamilyRef } from './navigation';
 
 	let {
@@ -395,7 +395,9 @@
 					<span class="min-w-0 flex-1" title={s.reason}>
 						Vorschlag: <strong>{s.invoiceNumbers.join(', ')}</strong>
 						<span class="text-muted-foreground">· {confidenceLabel[s.confidence]}</span>
-						{#if big}<span class="block truncate text-muted-foreground">{s.reason}</span>{/if}
+						{#if big}
+							<span class="block truncate text-muted-foreground">{s.reason}</span>
+						{/if}
 					</span>
 					<Button
 						size="sm"
@@ -500,7 +502,8 @@
 				<Button
 					class="h-11"
 					variant={t.needsAllocation ? 'default' : 'outline'}
-					onclick={() => onallocate(t)}><Link /> Zuordnen</Button
+					onclick={() => onallocate(t)}
+					><Link /> Zuordnen</Button
 				>
 			{/if}
 			{#if perm.payable && t.amountCents < 0 && !t.transferId}
@@ -540,7 +543,8 @@
 								onclick={() => {
 									historyTx = t;
 									historyOpen = true;
-								}}>Verlauf anzeigen</DropdownMenu.Item
+								}}
+								>Verlauf anzeigen</DropdownMenu.Item
 							>
 						{/if}
 						{#if perm.deleteTx}
@@ -549,7 +553,8 @@
 								onclick={() => {
 									toDelete = t;
 									deleteOpen = true;
-								}}>Löschen</DropdownMenu.Item
+								}}
+								>Löschen</DropdownMenu.Item
 							>
 						{/if}
 					</DropdownMenu.Content>
@@ -697,7 +702,9 @@
 											{/if}
 										{/snippet}
 										{#snippet below()}
-											{#if layout === 'phone'}{@render suggestionBox(t, false)}{/if}
+											{#if layout === 'phone'}
+												{@render suggestionBox(t, false)}
+											{/if}
 										{/snippet}
 									</ListRow>
 								{/each}
@@ -709,7 +716,8 @@
 									variant="outline"
 									class="h-11"
 									disabled={offset === 0}
-									onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+									onclick={() => (offset = Math.max(0, offset - LIMIT))}
+									>Zurück</Button
 								>
 								<span class="tabular-nums">
 									{offset + 1}–{Math.min(offset + LIMIT, data.total)} von {data.total}
@@ -718,7 +726,8 @@
 									variant="outline"
 									class="h-11"
 									disabled={offset + LIMIT >= data.total}
-									onclick={() => (offset += LIMIT)}>Weiter</Button
+									onclick={() => (offset += LIMIT)}
+									>Weiter</Button
 								>
 							</div>
 						{/if}
@@ -741,7 +750,9 @@
 				? `${signedEuro(activeTx.amountCents)} · ${fmtDate(activeTx.bookedOn)} · ${activeTx.accountName}`
 				: undefined}
 		>
-			{#if activeTx}{@render txSheetActions(activeTx)}{/if}
+			{#if activeTx}
+				{@render txSheetActions(activeTx)}
+			{/if}
 		</BottomSheet>
 	{/if}
 {/snippet}
@@ -816,12 +827,13 @@
 				<Table.Cell class="max-w-80 align-top">
 					<div class="flex items-center gap-1 truncate font-medium">
 						{transactionTitle(t)}
-						{#if t.receipt}<Paperclip
-								class="size-3.5 shrink-0 text-muted-foreground"
-								aria-label="Mit Beleg"
-							/>{/if}
+						{#if t.receipt}
+							<Paperclip class="size-3.5 shrink-0 text-muted-foreground" aria-label="Mit Beleg" />
+						{/if}
 					</div>
-					{#if t.purpose}<div class="truncate text-xs text-muted-foreground">{t.purpose}</div>{/if}
+					{#if t.purpose}
+						<div class="truncate text-xs text-muted-foreground">{t.purpose}</div>
+					{/if}
 					{#if t.payer}
 						{@const payer = t.payer}
 						<div class="truncate text-xs text-muted-foreground">
@@ -843,18 +855,29 @@
 						</div>
 					{/if}
 					<div class="mt-1 flex flex-wrap gap-1">
-						{#if t.category}<Badge variant="outline">{t.category.name}</Badge>{/if}
-						{#if t.action}<Badge variant="outline">{t.action.name}</Badge>{/if}
-						{#if t.transferId}<Badge variant="secondary">Umbuchung</Badge>{/if}
-						{#if t.imported}<Badge variant="secondary">Import</Badge>{/if}
-						{#if t.payable}<Badge variant="secondary">Auszahlung {t.payable.recipientName}</Badge
-							>{/if}
+						{#if t.category}
+							<Badge variant="outline">{t.category.name}</Badge>
+						{/if}
+						{#if t.action}
+							<Badge variant="outline">{t.action.name}</Badge>
+						{/if}
+						{#if t.transferId}
+							<Badge variant="secondary">Umbuchung</Badge>
+						{/if}
+						{#if t.imported}
+							<Badge variant="secondary">Import</Badge>
+						{/if}
+						{#if t.payable}
+							<Badge variant="secondary">Auszahlung {t.payable.recipientName}</Badge>
+						{/if}
 					</div>
 				</Table.Cell>
 				<Table.Cell class="max-w-56 align-top">
 					{#if t.allocations.length}
 						<div class="flex flex-wrap gap-1">
-							{#each [...new Map(t.allocations.map( (a) => [a.invoiceId, a] )).values()] as a (a.invoiceId)}
+							{#each [
+								...new Map(t.allocations.map((a) => [a.invoiceId, a])).values()
+							] as a (a.invoiceId)}
 								<a href={`/modules/treasury/invoices/${a.invoiceId}`}>
 									<Badge variant="secondary">{a.invoiceNumber}</Badge>
 								</a>
@@ -1026,9 +1049,8 @@
 			<Dialog.Title>Auszahlung zuordnen</Dialog.Title>
 			<Dialog.Description>
 				{#if linkTx}
-					{fmtDate(linkTx.bookedOn)} · {linkTx.counterparty ?? 'Ausgabe'} · {formatEuro(
-						linkTx.amountCents
-					)}
+					{fmtDate(linkTx.bookedOn)} · {linkTx.counterparty ?? 'Ausgabe'} ·
+					{formatEuro(linkTx.amountCents)}
 				{/if}
 			</Dialog.Description>
 		</Dialog.Header>

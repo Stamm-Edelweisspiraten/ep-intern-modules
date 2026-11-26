@@ -6,10 +6,10 @@
  * Mitgliederadressen löst der Server immer selbst auf; aus dem Browser kommen nur ausdrücklich frei
  * eingegebene Adressen (`addresses`, ohne Mitgliedsbezug).
  */
+
+import { todayBerlin } from '$lib/sdk/dates';
 import { core, errors, type RequestContext } from '$lib/sdk/server';
 import type { MembersService } from '$modules/members/contract';
-import { dedupeAddresses, normalizeAddress } from './sender';
-import { loadSettings } from './sender.service';
 import {
 	MAX_GROUP_IDS,
 	MAX_MEMBER_IDS,
@@ -18,7 +18,8 @@ import {
 	type RecipientsResult,
 	type ResolvedRecipient
 } from './schemas';
-import { todayBerlin } from '$lib/sdk/dates';
+import { dedupeAddresses, normalizeAddress } from './sender';
+import { loadSettings } from './sender.service';
 
 async function membersService(): Promise<MembersService> {
 	return core.modules.use<MembersService>('members', MODULE_ID);

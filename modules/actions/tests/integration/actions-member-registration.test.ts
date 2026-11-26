@@ -1,25 +1,31 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { confirmIfNeeded } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { getDb, schema } from '$testing';
 import { core } from '$lib/sdk/server';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import { STANDARD_FORM_KEYS as K } from '$modules/actions/schemas';
-import { decryptHealthText } from '$modules/actions/health';
-import type { FormConfig, PublicForm, PublicSubmitResult } from '$modules/actions/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import { decryptHealthText } from '$modules/actions/health';
+import actionsModule from '$modules/actions/module';
+import type { FormConfig, PublicForm, PublicSubmitResult } from '$modules/actions/schemas';
+import { STANDARD_FORM_KEYS as K } from '$modules/actions/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	confirmIfNeeded,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const keys: Record<string, string> = {};
 const userIds: Record<string, string> = {};
@@ -106,11 +112,13 @@ async function participantRows() {
 				FROM action_participants WHERE action_id = ${actionId} ORDER BY created_at, name`
 		)) as unknown as { rows: Record<string, unknown>[] };
 		// Gesundheitsfelder sind verschlüsselt gespeichert
-		return r.rows.map((row): Record<string, unknown> => ({
-			...row,
-			diet: decryptHealthText(row.diet),
-			allergies: decryptHealthText(row.allergies)
-		}));
+		return r.rows.map(
+			(row): Record<string, unknown> => ({
+				...row,
+				diet: decryptHealthText(row.diet),
+				allergies: decryptHealthText(row.allergies)
+			})
+		);
 	});
 }
 

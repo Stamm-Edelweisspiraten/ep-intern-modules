@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import type { PdfBlock } from '$lib/sdk/types';
 import { buildReportBlocks, numberExpenses, summarize } from '$modules/actions/accounting';
 import type { AccountingEntry, ReportInput, SummaryEntry } from '$modules/actions/schemas';
-import type { PdfBlock } from '$lib/sdk/types';
 
 type Table = Extract<PdfBlock, { type: 'table' }>;
 

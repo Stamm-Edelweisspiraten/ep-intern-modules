@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { HISTORY_ACTIONS, HISTORY_ID, historyLabel } from '$modules/treasury/history-labels';
 
 describe('historyLabel', () => {

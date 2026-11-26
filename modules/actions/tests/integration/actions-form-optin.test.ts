@@ -6,33 +6,37 @@
  * - Datenschutz-Einwilligung und Disclaimer nicht ausblendbar/optional; Aktivieren ohne
  *   Datenschutz-URL → 422 (globale Einstellung `core.legal.privacyUrl` als Ersatz).
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { optInToken } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { setSetting } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { getDb, schema } from '$testing';
-import { core } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import { STANDARD_FORM_KEYS as K } from '$modules/actions/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
 import type {
 	FormConfig,
 	PublicConfirmResult,
 	PublicForm,
 	PublicSubmitResult
 } from '$modules/actions/schemas';
+import { STANDARD_FORM_KEYS as K } from '$modules/actions/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	optInToken,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setSetting,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let key = '';

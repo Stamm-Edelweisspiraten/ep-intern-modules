@@ -3,12 +3,12 @@
 	// Die Codes werden später beim Anlegen eines Artikels als „eigener Code“ eingegeben bzw. gescannt.
 	import Printer from '@lucide/svelte/icons/printer';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
-	import { FormField, NumberStepper } from '$lib/components/layout';
-	import { MAX_RESERVE_CODES, type LabelTemplate } from '../../schemas';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { apiFetch } from '$lib/sdk/client';
+	import { type LabelTemplate, MAX_RESERVE_CODES } from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
 
@@ -86,7 +86,9 @@
 			{#if codes.length}
 				<p class="text-xs text-muted-foreground">
 					Zuletzt vergeben: <span class="tabular-nums">{codes[0]}</span>
-					{#if codes.length > 1}bis <span class="tabular-nums">{codes[codes.length - 1]}</span>{/if}
+					{#if codes.length > 1}
+						bis <span class="tabular-nums">{codes[codes.length - 1]}</span>
+					{/if}
 					·
 					<button
 						type="button"
@@ -94,7 +96,8 @@
 						onclick={() => {
 							open = false;
 							printOpen = true;
-						}}>erneut drucken</button
+						}}
+						>erneut drucken</button
 					>
 				</p>
 			{/if}
@@ -107,7 +110,8 @@
 					onclick={() => {
 						open = false;
 						oncreate();
-					}}>Neues Etikett</Button
+					}}
+					>Neues Etikett</Button
 				>
 			{:else if canReserve && blankTemplates.length}
 				<Button onclick={reserve} disabled={busy}>

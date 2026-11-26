@@ -27,9 +27,9 @@ import {
 	today
 } from './db';
 import { refreshSentDocuments, type SendResult } from './documents';
-import { notifyKasse, payableNotification, type CreatedPayableInfo } from './office-notify';
+import { type ExistingSyncLine, planSync } from './logic';
+import { type CreatedPayableInfo, notifyKasse, payableNotification } from './office-notify';
 import { syncPayables } from './payables';
-import { planSync, type ExistingSyncLine } from './logic';
 import { SETTING_KEYS } from './schemas';
 
 export interface SyncResult {
@@ -52,9 +52,9 @@ async function syncDatabase(
 	ctx: RequestContext | null,
 	actionId: string | null
 ): Promise<{ result: SyncResult; createdPayables: CreatedPayableInfo[] }> {
-	const sources = await (
-		await actionsService()
-	).listReceivableSources(actionId ? { actionIds: [actionId] } : {});
+	const sources = await (await actionsService()).listReceivableSources(
+		actionId ? { actionIds: [actionId] } : {}
+	);
 	const members = await (await membersService()).listMemberContacts({});
 	const s = await core.settings.getMany([SETTING_KEYS.daysBeforeStart, SETTING_KEYS.minDays]);
 	const todayIso = today();
@@ -81,17 +81,19 @@ async function syncDatabase(
 			dueOverrides: new Map(
 				settings.filter((r) => r.due_on).map((r) => [String(r.action_id), String(r.due_on)])
 			),
-			existing: existing.map((r): ExistingSyncLine => ({
-				lineId: String(r.line_id),
-				invoiceId: String(r.invoice_id),
-				sourceRef: String(r.source_ref),
-				amountCents: num(r.amount_cents),
-				waivedCents: num(r.waived_cents),
-				description: String(r.description),
-				memberId: str(r.member_id),
-				cancelled: r.cancelled_at != null,
-				autoCancelled: Boolean(r.auto_cancelled)
-			})),
+			existing: existing.map(
+				(r): ExistingSyncLine => ({
+					lineId: String(r.line_id),
+					invoiceId: String(r.invoice_id),
+					sourceRef: String(r.source_ref),
+					amountCents: num(r.amount_cents),
+					waivedCents: num(r.waived_cents),
+					description: String(r.description),
+					memberId: str(r.member_id),
+					cancelled: r.cancelled_at != null,
+					autoCancelled: Boolean(r.auto_cancelled)
+				})
+			),
 			members,
 			today: todayIso,
 			daysBeforeStart: Number(s[SETTING_KEYS.daysBeforeStart] ?? 14),

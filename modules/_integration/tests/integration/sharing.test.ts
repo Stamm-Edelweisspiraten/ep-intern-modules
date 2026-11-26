@@ -1,27 +1,35 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser, anonymousContext, systemContext } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { isCoreError } from '$testing';
 import {
 	core,
 	describePrincipals,
+	type Principal,
 	principalKeysFor,
 	searchPrincipals,
-	validatePrincipals,
-	type Principal
+	validatePrincipals
 } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
-import eventsModule from '$modules/events/module';
 import type { RequestContext } from '$lib/sdk/types';
+import eventsModule from '$modules/events/module';
+import membersModule from '$modules/members/module';
+import {
+	anonymousContext,
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	isCoreError,
+	registerCoreApi,
+	registerModule,
+	schema,
+	syncModules,
+	systemContext,
+	useTestDatabase
+} from '$testing';
 
 const MOD = 'events';
 const LABEL = 'Stamm Edelweißpiraten';

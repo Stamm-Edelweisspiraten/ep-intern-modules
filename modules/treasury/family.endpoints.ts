@@ -4,14 +4,14 @@
  * Dienste von `members`/`actions` laufen immer AUSSERHALB der Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
-import { errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { type ApiEndpoint, errors, type RequestContext } from '$lib/sdk/server';
 import { idList, loadTransactionsWhere, mdb, membersService, rows } from './db';
 import { loadPayers, loadSummaries } from './invoices.endpoints';
 import { listPayables } from './payables';
 import {
-	familyAccountQuery,
 	type FamilyAccount,
 	type FamilyAccountQuery,
+	familyAccountQuery,
 	type InvoiceSummary,
 	type Payer,
 	type PayerMember
@@ -55,7 +55,7 @@ const byNewest = (a: InvoiceSummary, b: InvoiceSummary) =>
 	b.issuedOn.localeCompare(a.issuedOn) || b.number.localeCompare(a.number);
 
 export async function loadFamilyAccount(
-	ctx: RequestContext,
+	_ctx: RequestContext,
 	q: FamilyAccountQuery
 ): Promise<FamilyAccount> {
 	const target = await resolveTarget(q);
@@ -74,9 +74,10 @@ export async function loadFamilyAccount(
 			(s) => s.payer?.id === target.payerId
 		);
 	} else {
-		const [m] = await (
-			await membersService()
-		).listMemberContacts({ ids: [target.memberId], limit: 1 });
+		const [m] = await (await membersService()).listMemberContacts({
+			ids: [target.memberId],
+			limit: 1
+		});
 		if (!m) throw errors.notFound('Mitglied nicht gefunden');
 		name = `${m.firstName} ${m.lastName}`;
 		members = [{ id: m.id, name, emails: m.emails }];

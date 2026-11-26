@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Bestellungen: Artikel über den Dialog anlegen, für ein Mitglied bestellen und ausgeben, im Warenkorb für
 // den Stamm bestellen (ohne Rechnung), Einkauf mit Teillieferung sehen.

@@ -1,5 +1,11 @@
 import { sql } from 'drizzle-orm';
 import {
+	type FieldDefinition,
+	type FormValue,
+	formDefinitionSchema,
+	validateFormValues
+} from '$lib/forms';
+import {
 	core,
 	errors,
 	inList,
@@ -9,12 +15,6 @@ import {
 	rowsOf,
 	type Tx
 } from '$lib/sdk/server';
-import {
-	formDefinitionSchema,
-	validateFormValues,
-	type FieldDefinition,
-	type FormValue
-} from '$lib/forms';
 import type {
 	LinkedMemberData,
 	MemberContact,
@@ -23,12 +23,12 @@ import type {
 } from './contract';
 import {
 	FEE_LEVELS,
-	MEMBER_FIELDS_MAX,
+	type MailCategory,
 	MEMBER_FIELD_PRESETS,
 	MEMBER_FIELD_TYPES,
-	MODULE_ID,
-	type MailCategory,
-	type MemberFieldDef
+	MEMBER_FIELDS_MAX,
+	type MemberFieldDef,
+	MODULE_ID
 } from './schemas';
 
 const parseJson = <T>(v: unknown): T => (typeof v === 'string' ? JSON.parse(v) : (v as T));

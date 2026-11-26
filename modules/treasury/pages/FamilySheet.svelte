@@ -1,23 +1,23 @@
 <script lang="ts">
-	// Familienkonto als Seitenpanel: Rechnungen, Zahlungen, Guthaben, Auszahlungen und IBAN einer Familie.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Banknote from '@lucide/svelte/icons/banknote';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import UsersRound from '@lucide/svelte/icons/users-round';
-	import { apiFetch } from '$lib/sdk/client';
-	import * as Sheet from '$lib/components/ui/sheet';
+	// Familienkonto als Seitenpanel: Rechnungen, Zahlungen, Guthaben, Auszahlungen und IBAN einer Familie.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Account, FamilyAccount, InvoiceSummary, Payer, PayerFormInput } from '../schemas';
 	import { BASE, errorMessage, fmtDate, openApiFile } from './helpers';
 	import MarkPaidDialog from './MarkPaidDialog.svelte';
+	import type { FamilyRef, TreasuryPerm } from './navigation';
 	import PayerDialog from './PayerDialog.svelte';
 	import StatusBadge from './StatusBadge.svelte';
-	import type { FamilyRef, TreasuryPerm } from './navigation';
 
 	let {
 		open = $bindable(false),
@@ -207,7 +207,9 @@
 				<!-- Kopf: Mitglieder, Kontakt, Bankverbindung, Aktionen -->
 				<section class="space-y-3" aria-busy={loading}>
 					<div class="flex flex-wrap gap-1">
-						{#each account.members as m (m.id)}<Badge variant="outline">{m.name}</Badge>{/each}
+						{#each account.members as m (m.id)}
+							<Badge variant="outline">{m.name}</Badge>
+						{/each}
 						{#if !account.members.length}
 							<span class="text-xs text-muted-foreground">Keine Mitglieder zugeordnet</span>
 						{/if}
@@ -220,7 +222,9 @@
 							<dt class="text-muted-foreground">Bankverbindung</dt>
 							<dd class="flex min-w-0 flex-wrap items-center gap-2">
 								{#if p.ibanMasked}
-									{#if p.accountHolder}<span>{p.accountHolder}</span>{/if}
+									{#if p.accountHolder}
+										<span>{p.accountHolder}</span>
+									{/if}
 									<span class="font-mono">{iban ?? p.ibanMasked}</span>
 									{#if perm.bank && !iban}
 										<Button size="sm" variant="ghost" class="h-6 px-2" onclick={() => showIban(p)}>
@@ -345,7 +349,8 @@
 										<div class="truncate">{t.purpose ?? t.counterparty ?? 'Zahlung'}</div>
 										<div class="truncate text-xs text-muted-foreground">
 											{t.accountName}{#if t.counterparty && t.purpose}
-												· {t.counterparty}{/if}
+												· {t.counterparty}
+											{/if}
 											{#if t.allocations.length}
 												· {[...new Set(t.allocations.map((a) => a.invoiceNumber))].join(', ')}
 											{/if}
@@ -371,7 +376,8 @@
 										<div class="truncate">{p.description}</div>
 										<div class="truncate text-xs text-muted-foreground">
 											an {p.recipientName}{#if p.dueOn}
-												· fällig {fmtDate(p.dueOn)}{/if}
+												· fällig {fmtDate(p.dueOn)}
+											{/if}
 										</div>
 									</div>
 									<StatusBadge payable={p} />

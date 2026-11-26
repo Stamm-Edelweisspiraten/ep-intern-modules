@@ -3,9 +3,9 @@
 	// (Artikel → Artikel-Dialog, Lagerort → Filter). Unbekannte Codes zeigen einen Hinweis.
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { EmptyState, LoadingState } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import { BASE_PATH } from '../schemas';
 	import { errorText } from './helpers';
 	import { resolveScan } from './shared/scan';

@@ -1,34 +1,34 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
+	import Camera from '@lucide/svelte/icons/camera';
 	import Check from '@lucide/svelte/icons/check';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import Camera from '@lucide/svelte/icons/camera';
 	import Inbox from '@lucide/svelte/icons/inbox';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_RECEIPT_BYTES,
-		RECEIPT_CONTENT_TYPES,
 		type AccountingEntry,
 		type AccountingState,
-		type ExpenseLinkConfig
+		type ExpenseLinkConfig,
+		MAX_RECEIPT_BYTES,
+		RECEIPT_CONTENT_TYPES
 	} from '../schemas';
-	import { fmtDate } from './format';
-	import type { AutoIncome } from './auto-types';
-	import AccountingSummaryCards from './AccountingSummaryCards.svelte';
-	import EntriesTable, { type EntryFilter } from './EntriesTable.svelte';
-	import RefundCard from './RefundCard.svelte';
 	import AccountingEntryDialog from './AccountingEntryDialog.svelte';
-	import PayoutsSection from './PayoutsSection.svelte';
+	import AccountingSummaryCards from './AccountingSummaryCards.svelte';
+	import type { AutoIncome } from './auto-types';
+	import CloseAccountingDialog from './CloseAccountingDialog.svelte';
+	import EntriesTable, { type EntryFilter } from './EntriesTable.svelte';
+	import ExpenseLinkSection from './ExpenseLinkSection.svelte';
+	import { fmtDate } from './format';
 	import InterimDialog from './InterimDialog.svelte';
 	import InterimsCard from './InterimsCard.svelte';
-	import ExpenseLinkSection from './ExpenseLinkSection.svelte';
-	import CloseAccountingDialog from './CloseAccountingDialog.svelte';
+	import PayoutsSection from './PayoutsSection.svelte';
+	import RefundCard from './RefundCard.svelte';
 	import SubsidyApplicationSection from './SubsidyApplicationSection.svelte';
 
 	let {

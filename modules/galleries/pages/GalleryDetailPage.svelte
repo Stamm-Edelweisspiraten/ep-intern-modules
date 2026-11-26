@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import CalendarDays from '@lucide/svelte/icons/calendar-days';
 	import Download from '@lucide/svelte/icons/download';
@@ -12,32 +9,35 @@
 	import SquareCheck from '@lucide/svelte/icons/square-check';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
-	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		ConfirmDialog,
 		EmptyState,
 		PageHeader,
-		ShareMenu,
+		PageTitle,
 		type ShareCandidate,
 		type ShareEntry,
-		type ShareOwner,
-		PageTitle
+		ShareMenu,
+		type ShareOwner
 	} from '$lib/components/layout';
 	import { shareKey } from '$lib/components/layout/share-types';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
 		DOWNLOAD_PERMISSION,
-		SHARE_LEVELS,
-		SHARE_LEVEL_LABELS,
-		VISIBILITY_LABELS,
 		type GalleryDetail,
 		type GalleryInput,
-		type ShareLevel
+		SHARE_LEVEL_LABELS,
+		SHARE_LEVELS,
+		type ShareLevel,
+		VISIBILITY_LABELS
 	} from '../schemas';
 	import EventBadges from './EventBadges.svelte';
 	import { formatRefRange } from './event-format';
@@ -273,7 +273,8 @@
 				onclick={() => {
 					loading = true;
 					void load();
-				}}>Erneut versuchen</Button
+				}}
+				>Erneut versuchen</Button
 			>
 			<Button href={LIST} variant="ghost"><ArrowLeft /> Zurück zu den Galerien</Button>
 		</div>
@@ -360,12 +361,15 @@
 			<EventBadges events={detail.events} class="mt-3" />
 			{#if detail.visibility === 'public' && detail.publicConfirmation}
 				<p class="mt-2 text-xs text-muted-foreground">
-					Veröffentlichung bestätigt am {new Date(detail.publicConfirmation.at).toLocaleDateString(
-						'de-DE',
-						{ day: '2-digit', month: '2-digit', year: 'numeric' }
-					)}
+					Veröffentlichung bestätigt am
+					{new Date(detail.publicConfirmation.at).toLocaleDateString('de-DE', {
+						day: '2-digit',
+						month: '2-digit',
+						year: 'numeric'
+					})}
 					{#if detail.publicConfirmation.by}
-						von {detail.publicConfirmation.by.name}{/if}
+						von {detail.publicConfirmation.by.name}
+					{/if}
 					(Website-Einwilligungen liegen laut Bestätigung vor).
 				</p>
 			{/if}

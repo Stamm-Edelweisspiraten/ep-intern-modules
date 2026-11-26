@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import { apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { FormField } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { FormField } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { PeriodReport } from '../schemas';
 	import { BASE, errorMessage, fmtDate, openApiFile, type SharedData } from './helpers';
 
@@ -162,10 +162,12 @@
 						{#each report.accounts as a (a.id)}
 							<Table.Row>
 								<Table.Cell class="font-medium">{a.name}</Table.Cell>
-								<Table.Cell class="text-right tabular-nums">{formatEuro(a.openingCents)}</Table.Cell
+								<Table.Cell class="text-right tabular-nums"
+									>{formatEuro(a.openingCents)}</Table.Cell
 								>
 								<Table.Cell class="text-right tabular-nums">{formatEuro(a.incomeCents)}</Table.Cell>
-								<Table.Cell class="text-right tabular-nums">{formatEuro(a.expenseCents)}</Table.Cell
+								<Table.Cell class="text-right tabular-nums"
+									>{formatEuro(a.expenseCents)}</Table.Cell
 								>
 								<Table.Cell class="text-right tabular-nums"
 									>{formatEuro(a.transfersCents)}</Table.Cell
@@ -181,7 +183,10 @@
 		</Card.Root>
 
 		<div class="grid gap-6 lg:grid-cols-2">
-			{#each [{ title: 'Nach Kategorie', rows: report.byCategory }, { title: 'Nach Aktion', rows: report.byAction }] as block (block.title)}
+			{#each [
+				{ title: 'Nach Kategorie', rows: report.byCategory },
+				{ title: 'Nach Aktion', rows: report.byAction }
+			] as block (block.title)}
 				<Card.Root>
 					<Card.Header><Card.Title>{block.title}</Card.Title></Card.Header>
 					<Card.Content class="overflow-x-auto">
@@ -221,15 +226,16 @@
 			<Card.Content class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
 				<span
 					>Offen <strong class="tabular-nums">{formatEuro(report.open.openCents)}</strong> ({report
-						.open.invoiceCount} Rechnungen)</span
+						.open.invoiceCount}
+					Rechnungen)</span
 				>
 				<span class="text-destructive"
-					>Überfällig <strong class="tabular-nums">{formatEuro(report.open.overdueCents)}</strong
-					></span
+					>Überfällig
+					<strong class="tabular-nums">{formatEuro(report.open.overdueCents)}</strong></span
 				>
 				<span
-					>Guthaben <strong class="tabular-nums">{formatEuro(report.open.creditCents)}</strong
-					></span
+					>Guthaben
+					<strong class="tabular-nums">{formatEuro(report.open.creditCents)}</strong></span
 				>
 				{#if report.unassignedCount}
 					<span class="text-warning">

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import StarIcon from '@lucide/svelte/icons/star';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import PlayIcon from '@lucide/svelte/icons/play';
+	import StarIcon from '@lucide/svelte/icons/star';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { formatDuration, imageUrl, type GalleryImage } from '../schemas';
+	import { formatDuration, type GalleryImage, imageUrl } from '../schemas';
 
 	let {
 		galleryId,

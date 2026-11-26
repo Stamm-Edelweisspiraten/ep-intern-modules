@@ -1,11 +1,11 @@
 <script lang="ts">
+	import Loader from '@lucide/svelte/icons/loader-circle';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import Loader from '@lucide/svelte/icons/loader-circle';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FileField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { FileField } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 
 	type ImportResult = {
 		id: string;
@@ -94,9 +94,7 @@
 
 		{#if result}
 			<div class="grid gap-3" aria-live="polite">
-				<p class="text-sm">
-					<strong>{result.name}</strong> wurde importiert.
-				</p>
+				<p class="text-sm"> <strong>{result.name}</strong> wurde importiert. </p>
 				<ul class="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
 					{#each countRows as [label, n] (label)}
 						<li class="flex justify-between gap-2 border-b py-1">
@@ -108,7 +106,9 @@
 					<div class="rounded-md border border-warning-border bg-warning-muted p-3 text-sm">
 						<p class="font-medium">Hinweise</p>
 						<ul class="mt-1 list-disc pl-5">
-							{#each result.warnings as w (w)}<li>{w}</li>{/each}
+							{#each result.warnings as w (w)}
+								<li>{w}</li>
+							{/each}
 						</ul>
 					</div>
 				{/if}
@@ -136,7 +136,11 @@
 						Abbrechen
 					</Button>
 					<Button type="submit" disabled={!file || busy}>
-						{#if busy}<Loader class="animate-spin" /> Importiert …{:else}Importieren{/if}
+						{#if busy}
+							<Loader class="animate-spin" /> Importiert …
+						{:else}
+							Importieren
+						{/if}
 					</Button>
 				</Dialog.Footer>
 			</form>

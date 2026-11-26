@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { DataTable, PageHeader, PageTitle } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable, PageHeader, PageTitle } from '$lib/components/layout';
-	import MessagesTabs from './MessagesTabs.svelte';
+	import { apiFetch } from '$lib/sdk/client';
 	import { MESSAGE_STATUS_LABELS, type MessageStatus, type MessageSummary } from '../schemas';
 	import { BASE, errorText, formatDateTime } from './helpers';
+	import MessagesTabs from './MessagesTabs.svelte';
 
 	const PAGE_SIZE = 30;
 	let items = $state<MessageSummary[]>([]);
@@ -112,7 +112,8 @@
 				<Table.Cell class="tabular-nums">{formatDateTime(m.createdAt)}</Table.Cell>
 				<Table.Cell class="text-right tabular-nums">
 					{m.sent}/{m.total}{#if m.failed}
-						<span class="text-destructive"> · {m.failed} Fehler</span>{/if}
+						<span class="text-destructive"> · {m.failed} Fehler</span>
+					{/if}
 				</Table.Cell>
 				<Table.Cell>
 					<Badge variant={variant(m.status)}>{MESSAGE_STATUS_LABELS[m.status]}</Badge>
@@ -130,13 +131,15 @@
 							size="sm"
 							variant="outline"
 							disabled={offset === 0}
-							onclick={() => (offset = Math.max(0, offset - PAGE_SIZE))}>Zurück</Button
+							onclick={() => (offset = Math.max(0, offset - PAGE_SIZE))}
+							>Zurück</Button
 						>
 						<Button
 							size="sm"
 							variant="outline"
 							disabled={offset + PAGE_SIZE >= total}
-							onclick={() => (offset += PAGE_SIZE)}>Weiter</Button
+							onclick={() => (offset += PAGE_SIZE)}
+							>Weiter</Button
 						>
 					</span>
 				</div>

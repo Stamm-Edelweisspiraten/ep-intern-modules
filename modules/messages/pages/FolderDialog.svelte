@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { buildFolderTree, flattenFolderTree } from '../folders';
 	import {
-		MAX_FOLDER_DEPTH,
-		MAX_FOLDER_NAME,
 		folderName,
 		type InboxFolder,
+		MAX_FOLDER_DEPTH,
+		MAX_FOLDER_NAME,
 		type MailboxInfo
 	} from '../schemas';
 	import { BASE, errorText } from './helpers';

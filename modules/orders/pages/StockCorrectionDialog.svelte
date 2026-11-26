@@ -1,12 +1,12 @@
 <script lang="ts">
 	// Lagerbestand einer Artikel-Größe korrigieren (Inventur, Schwund, Fund).
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, NumberStepper } from '$lib/components/layout';
-	import { MAX_NOTE, stockCorrectionInput, type StockRow } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { MAX_NOTE, type StockRow, stockCorrectionInput } from '../schemas';
 	import { API, fieldErrorsFrom, fmtDelta, issuesToErrors, itemName } from './admin-helpers';
 
 	let {
@@ -77,8 +77,8 @@
 		<Dialog.Header>
 			<Dialog.Title>Bestand korrigieren</Dialog.Title>
 			<Dialog.Description>
-				{row ? itemName(row.articleTitle, row.variantLabel) : ''} – zum Beispiel nach einer Inventur.
-				Die Änderung erscheint in den Lagerbewegungen.
+				{row ? itemName(row.articleTitle, row.variantLabel) : ''} – zum Beispiel nach einer
+				Inventur. Die Änderung erscheint in den Lagerbewegungen.
 			</Dialog.Description>
 		</Dialog.Header>
 		<form class="space-y-4" onsubmit={submit} novalidate>
@@ -110,7 +110,9 @@
 					placeholder="z. B. Inventur Oktober"
 				/>
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || !row || delta === 0}>

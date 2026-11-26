@@ -4,30 +4,14 @@
  * desselben Absenders, neue Mails), Zugriff, Verwaltung der Liste (nur `messages.inbox.manage`), Massenversand,
  * Einstellung „eigene Spam-Erkennung“ aus, Aufbewahrung (Spam nach 30 Tagen), Audit ohne Adressen.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
-import { runJobNow } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
 import { moduleDb } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import messagesModule from '$modules/messages/module';
 import { setImapConnectorForTests } from '$modules/messages/imap.client';
+import messagesModule from '$modules/messages/module';
 import type {
 	InboxDetail,
 	InboxListResponse,
@@ -35,7 +19,30 @@ import type {
 	SenderRule,
 	SpamMarkResult
 } from '$modules/messages/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	type MailTransport,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	setSettings,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'spam-password-1234';
 let close: () => Promise<void>;

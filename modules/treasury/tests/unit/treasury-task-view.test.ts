@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { OVERVIEW_TASK_KINDS, type OverviewTask } from '$modules/treasury/schemas';
+import { describe, expect, it } from 'bun:test';
 import { taskView } from '$modules/treasury/pages/task-view';
+import { OVERVIEW_TASK_KINDS, type OverviewTask } from '$modules/treasury/schemas';
 
 const task = (kind: OverviewTask['kind']): OverviewTask =>
 	({

@@ -11,19 +11,19 @@ import {
 	loadPayerNames,
 	loadRawInvoices,
 	mdb,
+	type NameMaps,
+	type RawInvoice,
 	resolveNames,
 	rows,
-	today,
-	type NameMaps,
-	type RawInvoice
+	today
 } from './db';
 import {
+	type BankData,
 	groupByAddress,
 	invoiceTotals,
 	lineOpen,
-	reminderLevelDue,
-	type BankData,
-	type MailInvoice
+	type MailInvoice,
+	reminderLevelDue
 } from './logic';
 import { composeMail } from './mail-compose';
 import { PUSH_PAYMENT_CONFIRMATION, PUSH_REMINDER, pushToLinkedAccounts } from './push-notify';

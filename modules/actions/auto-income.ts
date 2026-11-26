@@ -1,6 +1,6 @@
+import type { AutoIncome, EntryType, FreizeitType, LodgingType } from './schemas';
 import { computeSubsidy } from './subsidy';
 import { deriveSubsidyCounts, type EligibilityParticipant } from './subsidy-eligibility';
-import type { AutoIncome, EntryType, FreizeitType, LodgingType } from './schemas';
 
 /** Reine Berechnung der automatischen Einnahmen (Beiträge, Zuschuss) aus Teilnehmerliste und Kalkulation. */
 

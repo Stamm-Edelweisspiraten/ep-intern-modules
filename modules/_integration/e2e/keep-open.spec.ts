@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // „Weiteres Mitglied anlegen“ / „Weitere Buchung erfassen“: Dialog bleibt nach dem Speichern offen,
 // Formular wird für den nächsten Eintrag geleert, „Abbrechen“ heißt danach „Fertig“.

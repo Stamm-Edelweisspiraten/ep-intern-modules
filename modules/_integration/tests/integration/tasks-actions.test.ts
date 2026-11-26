@@ -4,25 +4,30 @@
  * (`/boards/by-action`, nur mit Bearbeiten-Zugriff, einmal je Aktion) und Vererbung der Aktions-Freigabe.
  * Alles ohne `members`/`actions` prüft atrium-basic-modules `modules/tasks/tests/integration/tasks.test.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
 import tasksModule from '$modules/tasks/module';
 import type { ActionBoardInfo, BoardDetail, BoardList } from '$modules/tasks/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules';
 const keys: Record<string, string> = {};

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { groupStockRows, paginate } from '$modules/orders/pages/stock-groups';
 import type { StockRow } from '$modules/orders/schemas';
 

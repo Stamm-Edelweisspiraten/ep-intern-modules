@@ -1,25 +1,25 @@
 <script lang="ts">
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	// Eigenschaften des gewählten Elements. Änderungen gehen als Teil-Objekt an `onchange`
 	// (mit Schlüssel zum Zusammenfassen schneller Eingaben im Verlauf).
 	import Braces from '@lucide/svelte/icons/braces';
 	import BringToFront from '@lucide/svelte/icons/bring-to-front';
-	import SendToBack from '@lucide/svelte/icons/send-to-back';
-	import ArrowUp from '@lucide/svelte/icons/arrow-up';
-	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Copy from '@lucide/svelte/icons/copy';
+	import SendToBack from '@lucide/svelte/icons/send-to-back';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { BARCODE_TYPES, BARCODE_TYPE_LABELS, type LabelElement } from '$lib/sdk/labels';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, NumberStepper } from '$lib/components/layout';
+	import { BARCODE_TYPE_LABELS, BARCODE_TYPES, type LabelElement } from '$lib/sdk/labels';
+	import { MATERIAL_LABEL_LOGO_LABELS, MATERIAL_LABEL_LOGOS } from '../../label-logos';
 	import { LABEL_FIELDS, type LabelTarget } from '../../schemas';
-	import { MATERIAL_LABEL_LOGOS, MATERIAL_LABEL_LOGO_LABELS } from '../../label-logos';
 	import type { LayerMove } from './designer';
 
 	type Patch = Partial<Omit<LabelElement, 'id' | 'type'>> & Record<string, unknown>;
@@ -286,7 +286,8 @@
 		{/if}
 		{#if element.symbology === 'code128' && element.value.includes('{url}')}
 			<p class="text-xs text-warning" role="status">
-				Ein Link als Strichcode wird sehr lang und schwer lesbar – nimm besser {'{code}'} oder einen QR-Code.
+				Ein Link als Strichcode wird sehr lang und schwer lesbar – nimm besser {'{code}'} oder einen
+				QR-Code.
 			</p>
 		{/if}
 	{:else if element.type === 'image'}

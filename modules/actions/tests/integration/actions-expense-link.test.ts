@@ -1,23 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { getDb, schema } from '$testing';
-import { core } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
 import type {
 	AccountingState,
 	ExpenseLinkConfig,
@@ -25,6 +9,31 @@ import type {
 	PublicExpenseBatchResult,
 	PublicExpenseLink
 } from '$modules/actions/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	encodeMultipart,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/actions';
 const IBAN = 'DE89 3704 0044 0532 0130 00';
@@ -104,10 +113,10 @@ async function submit(
 	const fd = new FormData();
 	for (const [k, v] of Object.entries(f)) fd.append(k, v);
 	for (const file of files) fd.append('file', new File([file.bytes as BlobPart], file.name));
-	const encoded = new Response(fd);
-	const body = new Uint8Array(await encoded.arrayBuffer());
+	const encoded = await encodeMultipart(fd);
+	const body = encoded.body;
 	const headers = new Headers({
-		'content-type': opts.contentType ?? encoded.headers.get('content-type')!,
+		'content-type': opts.contentType ?? encoded.contentType,
 		'content-length': String(body.byteLength)
 	});
 	const url = new URL(`http://localhost:5173/api/v1${BASE}/public/expense-links/${token}/submit`);

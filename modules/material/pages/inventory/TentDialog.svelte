@@ -1,13 +1,13 @@
 <script lang="ts">
-	// Zelt (Bauplan) anlegen oder bearbeiten: Name, Beschreibung, Kategorie und Teile je Zelt – Typen
-	// („Dach: 6 × Kohtenbahn, möglichst aus einem Set“) oder einzelne Artikel ohne Typ („1 × Abspannseil“).
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	// Zelt (Bauplan) anlegen oder bearbeiten: Name, Beschreibung, Kategorie und Teile je Zelt – Typen
+	// („Dach: 6 × Kohtenbahn, möglichst aus einem Set“) oder einzelne Artikel ohne Typ („1 × Abspannseil“).
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -15,16 +15,16 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
+		type Category,
+		type Inventory,
 		MAX_PART_LABEL,
 		MAX_QUANTITY,
 		MAX_TENT_PARTS,
-		tentInput,
-		type Category,
-		type Inventory,
 		type Tent,
-		type TentPartInput
+		type TentPartInput,
+		tentInput
 	} from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import { categoryOptions, type Option } from './options';
@@ -283,7 +283,9 @@
 									</Button>
 								</div>
 							</div>
-							{#if err}<p class="text-xs text-destructive" role="alert">{err}</p>{/if}
+							{#if err}
+								<p class="text-xs text-destructive" role="alert">{err}</p>
+							{/if}
 						</li>
 					{/each}
 				</ul>

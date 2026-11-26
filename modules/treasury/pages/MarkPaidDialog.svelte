@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, MoneyInput, toastWithUndo } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, toastWithUndo, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { Switch } from '$lib/components/ui/switch';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import {
-		markPaidInput,
 		type Account,
 		type AllocationResult,
 		type InvoiceSummary,
+		markPaidInput,
 		type Payer
 	} from '../schemas';
-	import PayerCombobox from './PayerCombobox.svelte';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
+	import PayerCombobox from './PayerCombobox.svelte';
 
 	let {
 		open = $bindable(false),
@@ -191,7 +191,9 @@
 			{#if !accountOptions.length}
 				<p class="text-sm text-muted-foreground">Lege zuerst unter „Einstellungen“ ein Konto an.</p>
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || !accountOptions.length}>

@@ -3,11 +3,11 @@
 	// der aktuellen Zuteilung. Gewählte werden angeheftet, den Rest teilt das System weiter automatisch zu.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { ErrorState, LoadingState } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { ErrorState, LoadingState } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import { cn } from '$lib/utils';
 	import {
 		isUsableCondition,
@@ -15,8 +15,8 @@
 		type ReservationLine,
 		type TypeDetail
 	} from '../../schemas';
-	import ConditionBadge from '../shared/ConditionBadge.svelte';
 	import { API, errorText } from '../helpers';
+	import ConditionBadge from '../shared/ConditionBadge.svelte';
 
 	let {
 		open = $bindable(false),

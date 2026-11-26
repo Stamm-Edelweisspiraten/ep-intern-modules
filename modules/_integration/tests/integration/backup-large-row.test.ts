@@ -2,11 +2,11 @@
  * Datensicherung: Datenzeilen über 16 MB (früheres Limit) lassen sich prüfen und wiederherstellen.
  * Anlass: Produktiv-Sicherung (~300 MB) scheiterte bei der Prüfung mit „Eine Datenzeile der Sicherung ist zu groß.“
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { seedBackupWorld, type BackupWorld } from '../../helpers/backup-seed';
-import { exportBackup, previewBackup, runRestore } from '../../helpers/backup-flow';
 import { getDb } from '$testing';
+import { exportBackup, previewBackup, runRestore } from '../../helpers/backup-flow';
+import { type BackupWorld, seedBackupWorld } from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 

@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { formDefinitionSchema } from '$lib/forms/schema';
 import type { FieldDefinition, FormDefinition } from '$lib/forms/types';
 import {
-	MANDATORY_KEYS,
 	buildConfirmationMail,
 	buildDefaultFormDefinition,
 	buildOptInMail,
+	MANDATORY_KEYS,
 	mergeStandardFields,
 	neutralizeLinks
 } from '$modules/actions/form-support';

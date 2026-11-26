@@ -1,22 +1,25 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
 import { reassignLocked } from './assign.service';
+import pkg from './atrium-module.json';
 import { catalogEndpoints } from './catalog.endpoints';
 import { codesEndpoints } from './codes.endpoints';
+import { materialDashboard } from './dashboard';
 import { mdb } from './db';
 import { exportsEndpoints } from './exports.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { labelsEndpoints } from './labels.endpoints';
 import { runLegacyCleanup } from './legacy-cleanup';
+import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_article_codes.sql?raw';
+import m0003 from './migrations/0003_set_bulk_lines.sql?raw';
+import m0004 from './migrations/0004_rebuild.sql?raw';
+import m0005 from './migrations/0005_sets_tents.sql?raw';
+import m0006 from './migrations/0006_consumables_pantry.sql?raw';
+import m0007 from './migrations/0007_food_images.sql?raw';
 import { pantryEndpoints } from './pantry.endpoints';
 import { runPantryExpiry } from './pantry-expiry';
 import { reservationsEndpoints } from './reservations.endpoints';
 import { resetAreas, resetUsers } from './reset';
-import { setsEndpoints } from './sets.endpoints';
-import { materialSearch } from './search';
-import { materialDashboard } from './dashboard';
-import { subjectExport } from './subject-export';
-import { onUserDeleted } from './user-deleted';
 import {
 	LEADER_ROLE_NAME,
 	MANAGER_ROLE_NAME,
@@ -26,13 +29,10 @@ import {
 	OFFICE_KEY,
 	PERMISSIONS
 } from './schemas';
-import m0001 from './migrations/0001_init.sql?raw';
-import m0002 from './migrations/0002_article_codes.sql?raw';
-import m0003 from './migrations/0003_set_bulk_lines.sql?raw';
-import m0004 from './migrations/0004_rebuild.sql?raw';
-import m0005 from './migrations/0005_sets_tents.sql?raw';
-import m0006 from './migrations/0006_consumables_pantry.sql?raw';
-import m0007 from './migrations/0007_food_images.sql?raw';
+import { materialSearch } from './search';
+import { setsEndpoints } from './sets.endpoints';
+import { subjectExport } from './subject-export';
+import { onUserDeleted } from './user-deleted';
 
 const ALL = [
 	PERMISSIONS.view,

@@ -16,41 +16,41 @@ import {
 	type RequestContext,
 	rowsOf,
 	secureFileResponse,
-	toIsoOrNull,
-	type Tx
+	type Tx,
+	toIsoOrNull
 } from '$lib/sdk/server';
 import { requireAccess } from './access';
-import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import { assertOpen, closedInfo } from './accounting-core';
 import { detectReceiptType, sanitizeName } from './action-archive';
-import { ibanLast, maskFromLast } from './iban';
 import { neutralizeLinks } from './form-support';
+import { ibanLast, maskFromLast } from './iban';
+import { linkTokenValues, storedToken, tokenMatchSql } from './link-tokens';
 import { globalPrivacyUrl, takeMailQuota } from './public-mail';
 import {
 	CALC_CATEGORIES,
 	CALC_CATEGORY_LABELS,
+	type CalcCategory,
 	EXPENSE_PUBLIC_PREFIX,
-	MAX_EXPENSE_BATCH_BYTES,
-	MAX_EXPENSE_BATCH_ITEMS,
-	MAX_RECEIPT_BYTES,
-	MODULE_ID,
-	NOTIFY_EXPENSE_SUBMITTED,
+	type ExpenseAcceptInput,
+	type ExpenseLinkConfig,
+	type ExpenseSubmission,
+	type ExpenseSubmissionStatus,
 	expenseAcceptInput,
 	expenseLinkInput,
 	expenseRejectInput,
 	expenseSubmissionParams,
 	expenseSubmissionsQuery,
 	idParams,
-	publicExpenseBatchInput,
-	publicTokenParams,
-	type CalcCategory,
-	type ExpenseAcceptInput,
-	type ExpenseLinkConfig,
-	type ExpenseSubmission,
-	type ExpenseSubmissionStatus,
-	type PublicExpenseLink,
+	MAX_EXPENSE_BATCH_BYTES,
+	MAX_EXPENSE_BATCH_ITEMS,
+	MAX_RECEIPT_BYTES,
+	MODULE_ID,
+	NOTIFY_EXPENSE_SUBMITTED,
 	type PublicExpenseBatchInput,
 	type PublicExpenseBatchResult,
+	type PublicExpenseLink,
+	publicExpenseBatchInput,
+	publicTokenParams,
 	type UserRef
 } from './schemas';
 
@@ -198,7 +198,7 @@ async function loadByToken(tx: Tx, token: string, lock = false): Promise<PublicL
 			FROM expense_links l JOIN actions a ON a.id = l.action_id
 			WHERE ${tokenMatchSql(token, 'l')} ${lock ? sql`FOR UPDATE OF l` : sql``}`
 	);
-	if (!row || !row.enabled) return null;
+	if (!row?.enabled) return null;
 	const actionId = String(row.action_id);
 	if (await closedInfo(tx, actionId)) return null;
 	return {
@@ -327,7 +327,7 @@ async function submitExpenses(
 ): Promise<PublicExpenseBatchResult> {
 	const count = input.items.length;
 	// Honeypot: wie Erfolg antworten, nichts speichern, niemanden benachrichtigen
-	if (input.website && input.website.trim()) {
+	if (input.website?.trim()) {
 		return { batchId: randomUUID(), count, emailSent: !!input.email };
 	}
 

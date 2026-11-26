@@ -1,24 +1,24 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
-import pkg from './atrium-module.json';
 import { galleriesAssist, PERM_AI } from './assist';
-import { NOTIFY_GALLERY_SHARED } from './schemas';
-import { galleriesSearch } from './search';
-import { galleriesEndpoints } from './galleries.endpoints';
+import pkg from './atrium-module.json';
+import type { GalleryRefsService } from './contract';
 import { downloadEndpoints } from './download.endpoints';
+import { galleriesEndpoints } from './galleries.endpoints';
 import { imagesEndpoints } from './images.endpoints';
 import { metaEndpoints } from './meta.endpoints';
-import { websiteEndpoints } from './website.endpoints';
-import { resetAreas, resetUsers } from './reset';
-import { onUserDeleted } from './user-deleted';
 import m0001 from './migrations/0001_init.sql?raw';
 import m0002 from './migrations/0002_gallery_events.sql?raw';
 import m0003 from './migrations/0003_publish_confirmation.sql?raw';
 import m0004 from './migrations/0004_image_private.sql?raw';
 import m0005 from './migrations/0005_videos.sql?raw';
 import m0006 from './migrations/0006_gallery_dates.sql?raw';
-import { subjectExport } from './subject-export';
 import { galleryRefsService } from './refs.service';
-import type { GalleryRefsService } from './contract';
+import { resetAreas, resetUsers } from './reset';
+import { NOTIFY_GALLERY_SHARED } from './schemas';
+import { galleriesSearch } from './search';
+import { subjectExport } from './subject-export';
+import { onUserDeleted } from './user-deleted';
+import { websiteEndpoints } from './website.endpoints';
 
 export default defineModule({
 	package: pkg,

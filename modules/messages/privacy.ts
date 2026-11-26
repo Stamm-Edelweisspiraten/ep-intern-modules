@@ -13,13 +13,13 @@ import { sql } from 'drizzle-orm';
 import {
 	bestEffort,
 	core,
+	type DataSubject,
 	inList,
+	type ModuleDefinition,
+	type ModuleSubjectExport,
 	moduleDb,
 	rowsOf,
-	toIso,
-	type DataSubject,
-	type ModuleDefinition,
-	type ModuleSubjectExport
+	toIso
 } from '$lib/sdk/server';
 import { personalKey } from './mailbox';
 import { MODULE_ID } from './schemas';

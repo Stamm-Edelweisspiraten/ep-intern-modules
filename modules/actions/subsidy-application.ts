@@ -2,9 +2,9 @@ import {
 	APPLICATION_ALLOWANCE_SLOTS,
 	APPLICATION_CHILD_SLOTS,
 	APPLICATION_YOUTH_SLOTS,
-	ageAt,
 	type ApplicationAllowance,
 	type ApplicationPerson,
+	ageAt,
 	type FreizeitType,
 	type LeaderGender,
 	type LodgingType,
@@ -12,11 +12,11 @@ import {
 	type SubsidyApplicationPlan,
 	type UnassignedReason
 } from './schemas';
-import { SUBSIDY_RATES_2026, allowanceLimit, computeSubsidy } from './subsidy';
+import { allowanceLimit, computeSubsidy, SUBSIDY_RATES_2026 } from './subsidy';
 import {
 	deriveSubsidyCounts,
-	effectiveSubsidyEligible,
-	type EligibilityParticipant
+	type EligibilityParticipant,
+	effectiveSubsidyEligible
 } from './subsidy-eligibility';
 
 /**

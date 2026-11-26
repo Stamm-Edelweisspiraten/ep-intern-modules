@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Whiteboards (Basismodul aus atrium-basic-modules) zusammen mit `actions`: Whiteboard aus der Aktions-Übersicht
 // anlegen (verschoben aus modules/whiteboard/e2e/whiteboard.spec.ts).

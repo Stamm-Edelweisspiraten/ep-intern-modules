@@ -2,28 +2,35 @@
  * Modul `members` – Website-API (`/website/groups…`, Key nur mit Scope `members.website.read`)
  * und Website-Felder an `/groups` (Lesen/Schreiben, Slug-Validierung, Duplikat, Weglassen).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
-import { slugFromName } from '$modules/members/slug';
-import type { Group, Member, WebsiteGroup } from '$modules/members/schemas';
-import { websiteGroupSchema } from '$modules/members/website.schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import type { Group, Member, WebsiteGroup } from '$modules/members/schemas';
+import { slugFromName } from '$modules/members/slug';
+import { websiteGroupSchema } from '$modules/members/website.schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/members';
 const keys: Record<string, string> = {};

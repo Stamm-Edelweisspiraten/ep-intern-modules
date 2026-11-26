@@ -1,13 +1,13 @@
 <script lang="ts">
+	import Boxes from '@lucide/svelte/icons/boxes';
+	import Plus from '@lucide/svelte/icons/plus';
 	// Karte „Material“ in der Übersicht: Materialreservierungen dieser Aktion, Knopf „Material reservieren“.
 	// Nur über die REST-API von `material` (kein Import aus dem Modul); ohne aktives Modul/Recht/Zugriff unsichtbar.
 	import { page } from '$app/state';
-	import Boxes from '@lucide/svelte/icons/boxes';
-	import Plus from '@lucide/svelte/icons/plus';
-	import { apiFetch, can, formatDateDe } from '$lib/sdk/client';
 	import { Badge, type BadgeVariant } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import { apiFetch, can, formatDateDe } from '$lib/sdk/client';
 
 	let {
 		actionId,
@@ -16,7 +16,7 @@
 		endsOn = null
 	}: { actionId: string; actionName: string; startsOn: string; endsOn?: string | null } = $props();
 
-	// Lokale Typen (Auszug aus `material/schemas.ts` – kein Import aus dem Modul, ESLint-Modulgrenze)
+	// Lokale Typen (Auszug aus `material/schemas.ts` – kein Import aus dem Modul, Modulgrenze)
 	type State = 'upcoming' | 'running' | 'past' | 'cancelled';
 	interface MaterialReservation {
 		id: string;

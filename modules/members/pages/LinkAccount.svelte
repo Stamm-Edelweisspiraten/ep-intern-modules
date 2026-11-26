@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
@@ -223,7 +223,10 @@
 					</form>
 				{:else}
 					<div class="grid grid-cols-2 gap-1 rounded-lg border p-1" role="tablist">
-						{#each [{ id: 'existing', label: 'Ich habe ein Konto' }, { id: 'new', label: 'Neues Konto' }] as t (t.id)}
+						{#each [
+							{ id: 'existing', label: 'Ich habe ein Konto' },
+							{ id: 'new', label: 'Neues Konto' }
+						] as t (t.id)}
 							<button
 								type="button"
 								role="tab"
@@ -234,7 +237,8 @@
 								onclick={() => {
 									mode = t.id as 'existing' | 'new';
 									error = '';
-								}}>{t.label}</button
+								}}
+								>{t.label}</button
 							>
 						{/each}
 					</div>
@@ -299,7 +303,9 @@
 					{/if}
 				{/if}
 
-				{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+				{#if error}
+					<p class="text-sm text-destructive" role="alert">{error}</p>
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	{/if}

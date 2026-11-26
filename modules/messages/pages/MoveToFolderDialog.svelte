@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Folder from '@lucide/svelte/icons/folder';
 	import Inbox from '@lucide/svelte/icons/inbox';
 	import Search from '@lucide/svelte/icons/search';
+	import { tick } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { cn } from '$lib/utils';
@@ -112,7 +112,9 @@
 					>
 						<Inbox class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						<span class="flex-1">{rootLabel}</span>
-						{#if current === null}<Check class="size-4" aria-label="aktuell" />{/if}
+						{#if current === null}
+							<Check class="size-4" aria-label="aktuell" />
+						{/if}
 					</button>
 				</li>
 			{/if}
@@ -130,7 +132,9 @@
 					>
 						<Folder class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 						<span class="min-w-0 flex-1 truncate">{folder.name}</span>
-						{#if current === folder.id}<Check class="size-4" aria-label="aktuell" />{/if}
+						{#if current === folder.id}
+							<Check class="size-4" aria-label="aktuell" />
+						{/if}
 					</button>
 				</li>
 			{:else}

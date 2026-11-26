@@ -1,10 +1,10 @@
 <script lang="ts">
+	import Boxes from '@lucide/svelte/icons/boxes';
 	// Dashboard-Kachel „Material“ (Verwaltung): Kennzahlen, anstehende Reservierungen, gemeldete Schäden.
 	import { onMount } from 'svelte';
-	import Boxes from '@lucide/svelte/icons/boxes';
+	import { DashboardCard } from '$lib/components/layout';
 	import { apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { Overview } from '../../schemas';
 	import { API, errorText, formatPeriod, itemHref, reservationHref } from '../helpers';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';

@@ -60,6 +60,8 @@ Versand bei Änderung/Storno · Offene Posten als **eine** aufklappbare Tabelle.
 | `closed-accountings.ts` | Abgeschlossene Abrechnungen: Liste, Detail, Belege, PDF, Ablage |
 | `pages/` | `TreasuryPage` (Bereiche aus `navigation.ts`: Übersicht · Eingänge · Ausgänge · Buchungen · Berichte; `?tab=<bereich>&view=<unteransicht>`, alte Tab-Namen über `resolveLocation`), `IncomeSection` (Offene Posten · Rechnungen · Familien · Jahresbeitrag), `OutgoingSection` (Auszahlungen · Abrechnungen), `FamilySheet` (Familienkonto, aus allen Bereichen per `onfamily`), `StatusBadge`/`FilterChips` (einheitlich in allen Tabellen), `BulkPayDialog`/`BulkActions.ts` (Sammelaktionen), `AccountingPage`, `InvoicePage`, Dialoge (`TransactionDialog`, `AllocateDialog`, `InvoiceDialog`, `MarkPaidDialog`, `LineDialog`, `PayerDialog`, `AccountDialog`, `TransferDialog`, `ImportDialog`, `SuggestionsDialog`), `helpers.ts` |
 | `pages/` (weitere) | Tabs `OverviewTab` (+`task-view.ts`), `OpenItemsTab`, `InvoicesTab`, `PayersTab`, `PayablesTab`, `AccountingsTab`, `TransactionsTab`, `ReportsTab`, `AnnualFeeTab` (+`AnnualSteps`, `AnnualChecklist`, `AnnualRatesCard`, `AnnualMessageCard`, `AnnualPreviewCard`, `AnnualRecipientsCard`, `AnnualSendCard`), `SettingsTab`/`TreasurySettingsPage`, Verlauf `HistoryPanel`/`HistoryCard`/`HistorySheet`, `BookingMatchSection`, `PayerCombobox`, `PayableDialog` |
+| `assist.ts` | KI-Schreibhilfe (`PERM_AI` = `treasury.ai.use`): nur Vorlagen (Mailtexte), nie einzelne Rechnungen oder Zahler |
+| `dashboard.ts` | Übersicht „Zu erledigen“: mit `treasury.own.view` eigene offene Rechnungen (wie `GET /my/invoices`, Bankverbindung nur aus den Kassen-Einstellungen), mit `treasury.cash.view` Aufgaben der Kasse (`Overview.tasks`, Texte aus `taskView`); Dienste außerhalb von Modul-Transaktionen |
 
 Verweise auf andere Module (Issue #76 10-09): `payer_members.member_id`, `invoice_lines.member_id` (Mitglieder) und Aktions-/Teilnehmenden-IDs
 (Rechnungen aus `actions`) ohne FK. Reset `members:all` impliziert `treasury:payers` + `treasury:annual` (→ `treasury:invoices`), `actions:all`/`participants`
@@ -277,7 +279,7 @@ Audit, Modul aus → 404). Unit `tests/unit/treasury-logic.test.ts`. Uhr: `setTo
 - Lesende Endpunkte gleichen **nie** ab. Ändert ein Test Aktionsdaten direkt per SQL, danach `POST /sync`; über die `actions`-API gleicht die Kasse sofort ab.
 - Svelte: In `$effect` keine Funktion aufrufen, die synchron Zustand liest, den sie später setzt (Endlosschleife →
   „Zu viele Anfragen“); `untrack` oder Aufruf in `setTimeout` (siehe `OverviewTab`, `ReportsTab`).
-- Demo: Die Demo-DB hatte zwischenzeitlich echte SMTP-Daten; vor Tests mit Mails `node scripts/setup-demo-mail.mjs` (Mailpit) prüfen.
+- Demo: Die Demo-DB hatte zwischenzeitlich echte SMTP-Daten; vor Tests mit Mails `bun scripts/setup-demo-mail.mjs` (Mailpit) prüfen.
 - Offen/bewusst nicht: keine Jahressperre, kein SEPA/FinTS, bereits bezahlte Stamm-Ausgaben erzeugen keine Kassenbuchung,
   feste Fälligkeit zurücksetzen ändert bestehende Rechnungen nicht, Guthaben wird nicht automatisch verrechnet.
 

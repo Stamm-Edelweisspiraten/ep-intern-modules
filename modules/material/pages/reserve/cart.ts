@@ -5,11 +5,11 @@
  * Gespeichert in `sessionStorage` – Bearbeiten einer Reservierung nutzt einen eigenen Schlüssel.
  */
 import {
+	type Catalog,
+	isRealDate,
 	MAX_QUANTITY,
 	MAX_TEXT,
 	PURPOSES,
-	isRealDate,
-	type Catalog,
 	type Purpose,
 	type Reservation,
 	type ReservationLineInput

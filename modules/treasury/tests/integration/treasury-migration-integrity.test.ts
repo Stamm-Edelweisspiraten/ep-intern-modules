@@ -3,21 +3,25 @@
  * ein Fremdschlüssel (ON DELETE SET NULL); neue Indizes vorhanden. Altbestand wird simuliert, indem der
  * Fremdschlüssel entfernt, ein verwaister Verweis eingefügt und die Migration erneut ausgeführt wird.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { getDb, schema } from '$testing';
-import { splitSqlStatements } from '$testing';
 import { core } from '$lib/sdk/server';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import m0009 from '$modules/treasury/migrations/0009_integrity_indexes.sql?raw';
+import treasuryModule from '$modules/treasury/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	enableModule,
+	getDb,
+	registerCoreApi,
+	registerModule,
+	schema,
+	splitSqlStatements,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 type Row = Record<string, unknown>;

@@ -40,6 +40,7 @@ Seit 2026-10-19: **Vorlagen-Ämter** aus anderen Modulen (`manifest.offices`, z.
 | `pages/MyBioCard.svelte`, `ProfileOfficesSection.svelte`, `ExpandableText.svelte`, `helpers.ts` | Eigene Beschreibung, Profilkarte, aufklappbarer Text, Hilfen |
 | `pages/NotificationPrefsCard.svelte` | Profilkarte „Benachrichtigungen“ (nur für Inhaber*innen): je Vorlagen-Amt die Ereignisse mit `SelectField` Sofort/Täglich/Aus, speichert sofort (optimistisch, Rücksetzen bei Fehler, Toast „Gespeichert“); ohne Vorlagen-Ämter ausgeblendet |
 | `migrations/0001_init.sql`, `0002_templates_notifications.sql`, `0003_notification_queue_retention.sql`, `0004_website_optin.sql`, `0005_bio_check.sql` | Schema; Vorlagen-Herkunft, Marker, Benachrichtigungs-Einstellungen, Warteschlange; Website-Opt-in; CHECK `char_length(bio) <= 2000` |
+| `assist.ts` | KI-Schreibhilfe (`PERM_AI` = `offices.ai.use`): Beschreibung eines Amts und persönliche Beschreibung |
 
 ## Datenmodell (0001)
 - `offices`: `id` (UUID), `name`, `description`, `position integer` (Reihenfolge, neue Ämter = max + 1), `created_by`, `created_at`, `updated_at`; Index `(position, name)`.
@@ -156,7 +157,7 @@ await offices?.notify(ctx, [{ module: MODULE_ID, office: 'kasse', event: 'payabl
 - `tests/integration/offices-profile-website.test.ts`: `/me`, eine Bio für mehrere Ämter, 403 ohne Amt, 422 > 2000, Audit; Website-Opt-in (ohne Zustimmung keine
   Personendaten, Zustimmung, Widerruf mit Zeitstempel, 403 ohne Amt, Audit, Avatar 404 ohne Zustimmung); Website (Scope, Felder, keine Mails/Rollen,
   inaktive ausgeblendet, Reihenfolge, `avatarPath`), Avatar 404-Pfade, deaktivierte Inhaber*innen; Datenauskunft (`subjectExport`).
-- E2E `tests/e2e/offices.spec.ts` (Amt anlegen + Person zuordnen, Reihenfolge per Pfeil). Demo-Daten: `node scripts/seed-demo-offices.mjs` (nach `seed-demo.mjs`).
+- E2E `tests/e2e/offices.spec.ts` (Amt anlegen + Person zuordnen, Reihenfolge per Pfeil). Demo-Daten: `bun scripts/seed-demo-offices.mjs` (nach `seed-demo.mjs`).
 
 ## Entscheidungen und offen
 - Rollen gelten **sofort** (kein Freigabe-Schritt); Entfernen entzieht sie sofort (auch laufenden Sitzungen beim nächsten Request).

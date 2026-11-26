@@ -1,14 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { allocate, setCompleteness, type Candidate } from '$modules/material/allocation';
+import { describe, expect, it } from 'bun:test';
+import { allocate, type Candidate, setCompleteness } from '$modules/material/allocation';
 import {
+	type PlanItem,
+	type PlanRequest,
 	planAssignments,
 	samePicks,
-	slotInfo,
-	type PlanItem,
-	type PlanRequest
+	slotInfo
 } from '$modules/material/assignment';
 import { AvailabilityIndex } from '$modules/material/availability';
-import { expandTent, tentFree, type TentPartSpec } from '$modules/material/tents';
+import { expandTent, type TentPartSpec, tentFree } from '$modules/material/tents';
 
 // Zuteilung konkreter Artikel (Sets bevorzugt), Planer über mehrere Reservierungen, Zelte (Bauplan).
 

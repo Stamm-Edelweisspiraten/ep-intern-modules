@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Aktionsliste: lädt ohne Konsolenfehler (Regression `effect_update_depth_exceeded`) und
 // Anlegen einer Aktion mit dem Häkchen „liegt bereits in der Vergangenheit“.

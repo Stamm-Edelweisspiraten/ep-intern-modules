@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { apiFetch } from '$lib/sdk/client';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { HistoryEntry, HistoryKind } from '../history-labels';
 	import { BASE, errorMessage, fmtDateTime } from './helpers';
 
@@ -40,7 +40,9 @@
 		{#each items as e (e.id)}
 			<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
 				<span class={e.related ? 'text-muted-foreground' : 'font-medium'}>
-					{e.label}{#if e.related}<span class="text-xs"> (Buchung)</span>{/if}
+					{e.label}{#if e.related}
+						<span class="text-xs"> (Buchung)</span>
+					{/if}
 				</span>
 				<span class="text-xs text-muted-foreground">{fmtDateTime(e.at)} · {e.actor}</span>
 			</li>

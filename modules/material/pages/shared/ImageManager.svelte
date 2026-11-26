@@ -1,25 +1,25 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ImageUp from '@lucide/svelte/icons/image-up';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import type { Snippet } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog } from '$lib/components/layout';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { ConfirmDialog } from '$lib/components/layout';
-	import type { Snippet } from 'svelte';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { cn } from '$lib/utils';
 	import {
 		IMAGE_ACCEPT,
 		IMAGE_CONTENT_TYPES,
-		MAX_IMAGE_BYTES,
-		MAX_IMAGES,
-		imagesPath,
 		type ImageOwner,
-		type ImageRef
+		type ImageRef,
+		imagesPath,
+		MAX_IMAGE_BYTES,
+		MAX_IMAGES
 	} from '../../schemas';
 	import { API as BASE, errorText } from '../helpers';
 
@@ -195,9 +195,7 @@
 	>
 		{#if uploading}
 			<LoaderCircle class="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
-			<p class="text-sm" aria-live="polite">
-				Lädt hoch … {progress.done} von {progress.total}
-			</p>
+			<p class="text-sm" aria-live="polite"> Lädt hoch … {progress.done} von {progress.total} </p>
 		{:else}
 			<ImageUp class="size-6 text-muted-foreground" aria-hidden="true" />
 			<p class="text-sm">Bilder hierher ziehen oder</p>

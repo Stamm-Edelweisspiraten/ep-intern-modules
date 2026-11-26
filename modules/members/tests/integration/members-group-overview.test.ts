@@ -2,24 +2,29 @@
  * Modul `members` – `GET /groups/:id/overview` (Gruppenseite): nächste Gruppenstunde und Geburtstage der
  * nächsten 14 Tage; Geburtstage nur mit `members.member.view`, sonst leer. 401/403/404.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import membersModule from '$modules/members/module';
-import { nextWeekdayFrom } from '$modules/members/dashboard';
-import type { Group, GroupOverview, Member } from '$modules/members/schemas';
 import { addDays, todayBerlin } from '$lib/sdk/dates';
 import type { RequestContext } from '$lib/sdk/types';
+import { nextWeekdayFrom } from '$modules/members/dashboard';
+import membersModule from '$modules/members/module';
+import type { Group, GroupOverview, Member } from '$modules/members/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/members';
 const keys: Record<string, string> = {};

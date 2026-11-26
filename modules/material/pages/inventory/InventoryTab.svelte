@@ -1,25 +1,37 @@
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Download from '@lucide/svelte/icons/download';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import FolderTree from '@lucide/svelte/icons/folder-tree';
+	import Layers from '@lucide/svelte/icons/layers';
+	import ListFilter from '@lucide/svelte/icons/list-filter';
+	import MapPin from '@lucide/svelte/icons/map-pin';
+	import PackagePlus from '@lucide/svelte/icons/package-plus';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Printer from '@lucide/svelte/icons/printer';
+	import Shapes from '@lucide/svelte/icons/shapes';
+	import TentIcon from '@lucide/svelte/icons/tent';
+	import Truck from '@lucide/svelte/icons/truck';
+	import X from '@lucide/svelte/icons/x';
 	// Reiter „Lager“: Ansichten Artikel · Sets · Zelte. Artikel = große Lagertabelle (Typen aufklappbar mit
 	// ihren Artikeln, Artikel ohne Typ), Filter, Scannen (Kamera/USB), Mehrfachauswahl (Etiketten, Umlagern)
 	// und Pflege-Dialoge; Sets = zusammengehörige Artikel; Zelte = Baupläne.
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Ellipsis from '@lucide/svelte/icons/ellipsis';
-	import ListFilter from '@lucide/svelte/icons/list-filter';
-	import Download from '@lucide/svelte/icons/download';
-	import FolderTree from '@lucide/svelte/icons/folder-tree';
-	import MapPin from '@lucide/svelte/icons/map-pin';
-	import PackagePlus from '@lucide/svelte/icons/package-plus';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Printer from '@lucide/svelte/icons/printer';
-	import Layers from '@lucide/svelte/icons/layers';
-	import Shapes from '@lucide/svelte/icons/shapes';
-	import TentIcon from '@lucide/svelte/icons/tent';
-	import Truck from '@lucide/svelte/icons/truck';
-	import X from '@lucide/svelte/icons/x';
-	import { apiFetch } from '$lib/sdk/client';
+	import {
+		BottomSheet,
+		ChoiceChips,
+		DataTable,
+		deviceLayout,
+		EmptyState,
+		ErrorState,
+		ListRow,
+		LoadingState,
+		MobileActionBar,
+		SheetAction
+	} from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -28,18 +40,7 @@
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import {
-		BottomSheet,
-		ChoiceChips,
-		DataTable,
-		EmptyState,
-		ErrorState,
-		ListRow,
-		LoadingState,
-		MobileActionBar,
-		SheetAction,
-		deviceLayout
-	} from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type {
 		Category,
 		Condition,
@@ -50,7 +51,6 @@
 		MaterialType,
 		Tent
 	} from '../../schemas';
-	import { goto } from '$app/navigation';
 	import { API, errorText, formatAmount, pantryHref, safeReplaceState } from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 	import ConditionBadge from '../shared/ConditionBadge.svelte';
@@ -63,20 +63,20 @@
 	import ItemFormDialog from './ItemFormDialog.svelte';
 	import LocationsDialog from './LocationsDialog.svelte';
 	import MoveDialog from './MoveDialog.svelte';
-	import SetsView from './SetsView.svelte';
-	import TentsView from './TentsView.svelte';
-	import TypeDialog from './TypeDialog.svelte';
-	import TypeFormDialog from './TypeFormDialog.svelte';
 	import {
 		categoryOptions,
 		conditionOptions,
+		type ItemPreset,
 		inventoryPermissions,
 		locationOptions,
 		locationSummary,
 		problemCount,
-		setOptions,
-		type ItemPreset
+		setOptions
 	} from './options';
+	import SetsView from './SetsView.svelte';
+	import TentsView from './TentsView.svelte';
+	import TypeDialog from './TypeDialog.svelte';
+	import TypeFormDialog from './TypeFormDialog.svelte';
 
 	let { onreserve }: { onreserve: () => void } = $props();
 
@@ -377,14 +377,16 @@
 			<Tabs.List aria-label="Ansicht">
 				<Tabs.Trigger value="items">Artikel</Tabs.Trigger>
 				<Tabs.Trigger value="sets">
-					Sets{#if sets.length}<span class="text-muted-foreground tabular-nums">
-							({sets.length})</span
-						>{/if}
+					Sets{#if sets.length}
+						<span class="text-muted-foreground tabular-nums"> ({sets.length})</span>
+					{/if}
 				</Tabs.Trigger>
 				<Tabs.Trigger value="tents">
-					Zelte{#if tents.length}<span class="text-muted-foreground tabular-nums">
+					Zelte{#if tents.length}
+						<span class="text-muted-foreground tabular-nums">
 							({tents.filter((t) => !t.archived).length})</span
-						>{/if}
+						>
+					{/if}
 				</Tabs.Trigger>
 			</Tabs.List>
 		</Tabs.Root>
@@ -393,7 +395,8 @@
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
-							<Button {...props} size="icon" class="size-10" aria-label="Erstellen"><Plus /></Button
+							<Button {...props} size="icon" class="size-10" aria-label="Erstellen"
+								><Plus /></Button
 							>
 						{/snippet}
 					</DropdownMenu.Trigger>
@@ -490,7 +493,9 @@
 					onclick={() => (filterOpen = true)}
 				>
 					<ListFilter />
-					{#if activeFilters}<span class="tabular-nums">{activeFilters}</span>{/if}
+					{#if activeFilters}
+						<span class="tabular-nums">{activeFilters}</span>
+					{/if}
 				</Button>
 				<ScanButton {onscan} busy={scanBusy} compact />
 			</div>
@@ -536,8 +541,12 @@
 										{@render thumb(t.images[0]?.thumbUrl ?? null, t.category)}
 									{/snippet}
 									{#snippet trailing()}
-										{#if problems}<Badge variant="warning">{problems} mit Mängeln</Badge>{/if}
-										{#if t.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+										{#if problems}
+											<Badge variant="warning">{problems} mit Mängeln</Badge>
+										{/if}
+										{#if t.archived}
+											<Badge variant="outline">Archiviert</Badge>
+										{/if}
 									{/snippet}
 								</ListRow>
 							</div>
@@ -571,7 +580,9 @@
 									{#if item.condition !== 'ok'}
 										<ConditionBadge condition={item.condition as Condition} />
 									{/if}
-									{#if item.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+									{#if item.archived}
+										<Badge variant="outline">Archiviert</Badge>
+									{/if}
 								{/snippet}
 							</ListRow>
 						</div>
@@ -646,7 +657,8 @@
 					Archivierte zeigen
 				</label>
 				{#if filtered}
-					<Button size="sm" variant="ghost" onclick={resetFilters}><X /> Filter zurücksetzen</Button
+					<Button size="sm" variant="ghost" onclick={resetFilters}
+						><X /> Filter zurücksetzen</Button
 					>
 				{/if}
 				<div class="ml-auto">
@@ -733,8 +745,12 @@
 									</button>
 									<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
 										<span>Typ · {t.itemCount === 1 ? '1 Artikel' : `${t.itemCount} Artikel`}</span>
-										{#if t.consumable}<Badge variant="secondary">Verbrauch</Badge>{/if}
-										{#if t.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+										{#if t.consumable}
+											<Badge variant="secondary">Verbrauch</Badge>
+										{/if}
+										{#if t.archived}
+											<Badge variant="outline">Archiviert</Badge>
+										{/if}
 									</div>
 								</div>
 							</div>
@@ -890,8 +906,12 @@
 					{#if item.setName}
 						<div class="truncate text-xs text-muted-foreground">Set {item.setName}</div>
 					{/if}
-					{#if item.consumable && !nested}<Badge variant="secondary">Verbrauch</Badge>{/if}
-					{#if item.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+					{#if item.consumable && !nested}
+						<Badge variant="secondary">Verbrauch</Badge>
+					{/if}
+					{#if item.archived}
+						<Badge variant="outline">Archiviert</Badge>
+					{/if}
 				</div>
 			</div>
 		</Table.Cell>
@@ -900,12 +920,15 @@
 			class={[
 				'text-right font-medium tabular-nums',
 				item.consumable && item.quantity === 0 ? 'text-destructive' : ''
-			].join(' ')}>{formatAmount(item.quantity, item.unit)}</Table.Cell
+			].join(' ')}
+			>{formatAmount(item.quantity, item.unit)}</Table.Cell
 		>
 		<Table.Cell>
-			{#if item.locationName}{item.locationName}{:else}<span class="text-muted-foreground"
-					>Ohne Lagerort</span
-				>{/if}
+			{#if item.locationName}
+				{item.locationName}
+			{:else}
+				<span class="text-muted-foreground">Ohne Lagerort</span>
+			{/if}
 		</Table.Cell>
 		<Table.Cell><ConditionBadge condition={item.condition as Condition} /></Table.Cell>
 		<Table.Cell class="font-mono text-xs">{item.code}</Table.Cell>
@@ -922,7 +945,8 @@
 					onclick={() => {
 						resetFilters();
 						archived = false;
-					}}>Zurücksetzen</Button
+					}}
+					>Zurücksetzen</Button
 				>
 			{/if}
 		{/snippet}

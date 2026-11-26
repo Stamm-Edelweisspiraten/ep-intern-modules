@@ -5,25 +5,14 @@
  * einer Aktion (Zugriff über die Aktion, `/notes/by-action`, Aktion lösen). Ausgelagert aus
  * `modules/notes/tests/integration/notes.test.ts`, das dort ohne `members`/`actions` läuft.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
-import notesModule from '$modules/notes/module';
-import { hub } from '$modules/notes/live';
+import membersModule from '$modules/members/module';
 import { resetDocsForTests } from '$modules/notes/doc.service';
+import { hub } from '$modules/notes/live';
+import notesModule from '$modules/notes/module';
 import type {
 	ActionNotes,
 	LiveEvent,
@@ -31,7 +20,24 @@ import type {
 	NoteRoots,
 	NoteShares
 } from '$modules/notes/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase,
+	waitFor as waitUntil
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules';
 const keys: Record<string, string> = {};
@@ -137,7 +143,7 @@ async function openLive(who: string, noteId: string, client: string) {
 		type: T,
 		pred: (e: Extract<LiveEvent, { type: T }>) => boolean = () => true
 	) =>
-		vi.waitFor(
+		waitUntil(
 			() => {
 				const hit = events.find(
 					(e): e is Extract<LiveEvent, { type: T }> =>
@@ -311,7 +317,7 @@ describe('Gruppen (members)', () => {
 			})
 		);
 		await live.waitFor('revoked');
-		await vi.waitFor(() => expect(live.isEnded()).toBe(true));
+		await waitUntil(() => expect(live.isEnded()).toBe(true));
 		fail(await call('helper', 'GET', `/notes/${grandId}`), 404, 'not_found');
 		expect(ok<NoteDetail>(await call('parent', 'GET', `/notes/${grandId}`)).level).toBe('read');
 		ok(await call('owner', 'PUT', `/notes/${rootId}/shares`, { shares: [] }));

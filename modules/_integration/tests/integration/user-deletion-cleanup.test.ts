@@ -3,28 +3,39 @@
  * Profilbild-Objekt entfernt; öffentliche Links (Ansehen/Hochladen) gelöschter **und** deaktivierter Konten
  * liefern 404. Storage über `tests/helpers/fake-storage.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, deleteUser, setUserActive } from '$testing';
-import { setOwnAvatar } from '$testing';
-import { createRole } from '$testing';
-import { listModuleRoleGrants } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import filesModule from '$modules/files/module';
-import officesModule from '$modules/offices/module';
-import membersModule from '$modules/members/module';
-import eventsModule from '$modules/events/module';
 import type { RequestContext } from '$lib/sdk/types';
+import eventsModule from '$modules/events/module';
+import filesModule from '$modules/files/module';
+import membersModule from '$modules/members/module';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	deleteUser,
+	enableModule,
+	encodeMultipart,
+	fakeFileRows,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	listModuleRoleGrants,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setOwnAvatar,
+	setUserActive,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'correct-horse-battery';
 // Echtes 1×1-PNG: Profilbilder laufen durch `core.images` (#19)
@@ -43,7 +54,7 @@ const ctxOf = async (id: string) => (await contextForUser(id))!.ctx;
 
 interface Res {
 	status: number;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: bewusst ungetypt
 	body: any;
 }
 
@@ -88,11 +99,11 @@ function ok<T>(res: Res, status = 200): T {
 }
 
 async function multipart(who: string | null, path: string, form: FormData) {
-	const r = new Response(form);
-	const buf = new Uint8Array(await r.arrayBuffer());
+	const r = await encodeMultipart(form);
+	const buf = r.body;
 	return send(who, 'POST', path, {
 		headers: {
-			'content-type': r.headers.get('content-type')!,
+			'content-type': r.contentType,
 			'content-length': String(buf.byteLength)
 		},
 		body: buf

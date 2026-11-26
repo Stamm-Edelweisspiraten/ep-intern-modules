@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
-	import { can } from '$lib/sdk/client';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { page } from '$app/state';
 	import { PageHeader } from '$lib/components/layout';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { can } from '$lib/sdk/client';
 	import { PERMISSIONS } from '../schemas';
+	import ArticlesTab from './ArticlesTab.svelte';
 	import CatalogTab from './CatalogTab.svelte';
 	import MyOrdersTab from './MyOrdersTab.svelte';
-	import ArticlesTab from './ArticlesTab.svelte';
 	import OrdersAdminTab from './OrdersAdminTab.svelte';
 	import StockTab from './StockTab.svelte';
 	import SupplierOrdersTab from './SupplierOrdersTab.svelte';

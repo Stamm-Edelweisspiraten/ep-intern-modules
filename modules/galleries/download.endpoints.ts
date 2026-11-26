@@ -9,6 +9,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { Zip, ZipPassThrough } from 'fflate';
+import { safeFileName } from '$lib/sdk/file-names';
 import {
 	type AnyApiEndpoint,
 	core,
@@ -19,11 +20,10 @@ import {
 	secureFileResponse,
 	toIso
 } from '$lib/sdk/server';
-import { safeFileName } from '$lib/sdk/file-names';
 import { requireAccess } from './access';
 import { db, filesCtx } from './files';
 import { downloadName } from './images.service';
-import { DOWNLOAD_PERMISSION, MODULE_ID, idParams } from './schemas';
+import { DOWNLOAD_PERMISSION, idParams, MODULE_ID } from './schemas';
 
 const tags = ['Modul: galleries'];
 
@@ -97,7 +97,7 @@ export function zipStream(entries: readonly ZipEntry[]): ReadableStream<Uint8Arr
 						entry = null;
 						return;
 					}
-					if (value && value.length) {
+					if (value?.length) {
 						entry!.push(value);
 						return;
 					}

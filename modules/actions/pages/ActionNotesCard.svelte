@@ -1,13 +1,13 @@
 <script lang="ts">
+	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
+	import Plus from '@lucide/svelte/icons/plus';
+	import { toast } from 'svelte-sonner';
 	// Karte „Notizen“ in der Übersicht: Notizen des Moduls „Notizen“ zu dieser Aktion öffnen oder anlegen.
 	// Nur über die REST-API von `notes` (kein Import aus dem Modul); ohne aktives Modul/Recht unsichtbar.
 	import { goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
-	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
-	import Plus from '@lucide/svelte/icons/plus';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 
 	let { actionId, actionName }: { actionId: string; actionName: string } = $props();
 

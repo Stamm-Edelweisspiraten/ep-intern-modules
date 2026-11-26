@@ -4,13 +4,13 @@
  * Alles mit `material.inventory.view` sichtbar (wie in der Oberfläche).
  */
 import { sql } from 'drizzle-orm';
+import { formatDateDe } from '$lib/sdk/dates';
 import type { ModuleSearchProvider, RequestContext } from '$lib/sdk/server';
 import type { SearchHit } from '$lib/sdk/types/search';
-import { formatDateDe } from '$lib/sdk/dates';
 import { dateStr, likePattern, mdb, rows, str, today } from './db';
 import { itemLink, pantryLink, reservationLink } from './notify';
 import { normalizeBarcode } from './pantry';
-import { BASE_PATH, PERMISSIONS, normalizeCode } from './schemas';
+import { BASE_PATH, normalizeCode, PERMISSIONS } from './schemas';
 
 async function run(_ctx: RequestContext, query: string, limit: number): Promise<SearchHit[]> {
 	const p = likePattern(query);

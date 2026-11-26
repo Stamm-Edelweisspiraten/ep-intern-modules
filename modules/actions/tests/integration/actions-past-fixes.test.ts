@@ -1,22 +1,27 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { strFromU8, unzipSync } from 'fflate';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import { actionsService } from '$modules/actions/service';
+import { strFromU8, unzipSync } from 'fflate';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
 import type { AccountingPayee, AccountingState, ActionSummary } from '$modules/actions/schemas';
+import { actionsService } from '$modules/actions/service';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/actions';
 const IBAN = 'DE89 3704 0044 0532 0130 00';

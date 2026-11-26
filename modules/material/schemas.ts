@@ -8,10 +8,10 @@
  */
 import { z } from 'zod';
 import { isRealDate } from '$lib/sdk/dates';
-import { labelFormatSchema, labelLayoutSchema } from '$lib/sdk/labels';
 import type { LabelFormat, LabelLayout } from '$lib/sdk/labels';
+import { labelFormatSchema, labelLayoutSchema } from '$lib/sdk/labels';
 import { styleColor, styleIcon } from '$lib/sdk/style-presets';
-import { normalizeBarcode, type ExpiryState } from './pantry';
+import { type ExpiryState, normalizeBarcode } from './pantry';
 
 export const MODULE_ID = 'material';
 export const BASE_PATH = '/modules/material';

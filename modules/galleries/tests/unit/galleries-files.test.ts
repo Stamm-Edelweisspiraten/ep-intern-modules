@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { POSTER_SPECS, VARIANT_COLUMN, VARIANT_SPECS, variantPath } from '$modules/galleries/files';
 import { IMAGE_VARIANTS, MEDIA_VARIANTS } from '$modules/galleries/schemas';
 

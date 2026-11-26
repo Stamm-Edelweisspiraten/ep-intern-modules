@@ -1,12 +1,12 @@
 <script lang="ts">
+	import Wallet from '@lucide/svelte/icons/wallet';
 	// Dashboard-Kachel „Kasse“: Kontostände je Konto mit Summe und offene Forderungen
 	// (aus der Kassen-Übersicht `GET /overview`, Recht `treasury.cash.view`).
 	import { onMount } from 'svelte';
-	import Wallet from '@lucide/svelte/icons/wallet';
-	import { apiFetch } from '$lib/sdk/client';
-	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { DashboardCard } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
+	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import type { Account, Overview } from '../../schemas';
 	import { BASE, errorMessage } from '../helpers';
 
@@ -72,9 +72,13 @@
 >
 	{#if accounts.length}
 		<table class="w-full">
-			<caption class="sr-only">Kontostände</caption>
+			<caption class="sr-only"
+				>Kontostände</caption
+			>
 			<thead class="sr-only">
-				<tr><th scope="col">Konto</th><th scope="col">Stand</th></tr>
+				<tr
+					><th scope="col">Konto</th><th scope="col">Stand</th></tr
+				>
 			</thead>
 			<tbody class="divide-y">
 				{#each accounts as a (a.id)}

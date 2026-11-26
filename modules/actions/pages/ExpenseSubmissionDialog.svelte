@@ -1,9 +1,15 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Loader from '@lucide/svelte/icons/loader-circle';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import {
+		FormField,
+		formatEuro,
+		MoneyInput,
+		openProtectedFile,
+		PdfEmbed
+	} from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -12,21 +18,15 @@
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		FormField,
-		MoneyInput,
-		PdfEmbed,
-		formatEuro,
-		openProtectedFile
-	} from '$lib/components/layout';
-	import {
+		type AccountingState,
 		CALC_CATEGORIES,
 		CALC_CATEGORY_LABELS,
-		EXPENSE_SUBMISSION_STATUS_LABELS,
-		expenseAcceptInput,
-		type AccountingState,
 		type CalcCategory,
-		type ExpenseSubmission
+		EXPENSE_SUBMISSION_STATUS_LABELS,
+		type ExpenseSubmission,
+		expenseAcceptInput
 	} from '../schemas';
 	import { fmtDate } from './format';
 
@@ -311,9 +311,8 @@
 						<div class="sm:col-span-2">
 							<dt class="text-muted-foreground text-xs">Entscheidung</dt>
 							<dd>
-								{EXPENSE_SUBMISSION_STATUS_LABELS[submission.status]} am {fmtStamp(
-									submission.decidedAt
-								)}{submission.decidedBy
+								{EXPENSE_SUBMISSION_STATUS_LABELS[submission.status]} am
+								{fmtStamp(submission.decidedAt)}{submission.decidedBy
 									? ` von ${submission.decidedBy.name}`
 									: ''}{submission.rejectReason ? ` – ${submission.rejectReason}` : ''}
 							</dd>

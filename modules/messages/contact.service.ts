@@ -7,19 +7,19 @@
  * Ohne Stamm-Adresse (`core.organization.email`) landet sie in „Nicht zugeordnet“ (Verwaltung).
  */
 import { sql } from 'drizzle-orm';
-import { core, errors, moduleDb, rowsOf, type RequestContext } from '$lib/sdk/server';
+import { core, errors, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import {
 	contactDedupeKey,
 	createChallenge,
-	verifySolution,
-	type PowChallenge
+	type PowChallenge,
+	verifySolution
 } from './contact-pow';
 import { textToHtml } from './html';
 import { notifyNewMail } from './inbox-notify.service';
-import type { MailboxEntry } from './mailbox.service';
 import { UNASSIGNED } from './mailbox';
+import type { MailboxEntry } from './mailbox.service';
+import { type ContactInput, MODULE_ID } from './schemas';
 import { normalizeAddress } from './sender';
-import { MODULE_ID, type ContactInput } from './schemas';
 
 const mdb = () => moduleDb(MODULE_ID);
 const sign = (value: string) => core.crypto.forModule(MODULE_ID).hash(value);

@@ -1,16 +1,16 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import Upload from '@lucide/svelte/icons/upload';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import Upload from '@lucide/svelte/icons/upload';
-	import Plus from '@lucide/svelte/icons/plus';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { DataTable, PageHeader, Pagination, SearchInput } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable, PageHeader, Pagination, SearchInput } from '$lib/components/layout';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { ActionList, ActionSummary } from '../schemas';
-	import { fmtPeriod } from './format';
 	import ActionForm from './ActionForm.svelte';
+	import { fmtPeriod } from './format';
 	import ImportActionDialog from './ImportActionDialog.svelte';
 
 	const PAGE_SIZE = 20;
@@ -97,7 +97,9 @@
 			<Table.Cell class="font-medium">
 				<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 					<a href={`/modules/actions/${a.id}`} class="text-link hover:underline">{a.name}</a>
-					{#if a.isPast}<Badge variant="outline" class="shrink-0">Vergangen</Badge>{/if}
+					{#if a.isPast}
+						<Badge variant="outline" class="shrink-0">Vergangen</Badge>
+					{/if}
 				</div>
 			</Table.Cell>
 			<Table.Cell class="whitespace-nowrap">{fmtPeriod(a)}</Table.Cell>
@@ -110,9 +112,13 @@
 		</Table.Row>
 	{/each}
 	{#snippet footer()}
-		{#if items.length}<Pagination {total} limit={PAGE_SIZE} {offset} />{/if}
+		{#if items.length}
+			<Pagination {total} limit={PAGE_SIZE} {offset} />
+		{/if}
 	{/snippet}
 </DataTable>
 
 <ActionForm bind:open={formOpen} onsaved={(saved) => goto(`/modules/actions/${saved.id}`)} />
-{#if canCreate}<ImportActionDialog bind:open={importOpen} />{/if}
+{#if canCreate}
+	<ImportActionDialog bind:open={importOpen} />
+{/if}

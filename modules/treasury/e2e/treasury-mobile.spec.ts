@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Kasse auf Handy und Tablet: Bereichsleiste unten, Blätter von unten (Zurück schließt nur das Blatt),
 // „Zahlung erfassen“ in drei Schritten, Liste | Details auf dem Tablet. Der Desktop bleibt unverändert.

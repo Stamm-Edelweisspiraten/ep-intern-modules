@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FileField, FormField, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
 		MAX_RECEIPT_BYTES,
-		RECEIPT_CONTENT_TYPES,
-		payableInput,
 		type Payable,
-		type Payer
+		type Payer,
+		payableInput,
+		RECEIPT_CONTENT_TYPES
 	} from '../schemas';
 	import { BASE, fieldErrorsFrom, issuesToErrors } from './helpers';
 
@@ -215,7 +215,9 @@
 					/>
 				</div>
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

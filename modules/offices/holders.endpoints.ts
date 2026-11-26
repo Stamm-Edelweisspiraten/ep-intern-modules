@@ -4,7 +4,7 @@
  * Inhaber-Rolle (Schutz vor Rechteausweitung).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, core, defineEndpoint, errors } from '$lib/sdk/server';
 import { assertCanChange, syncGrants } from './grants.service';
 import { buildOffice, loadOfficeOr404, mdb, usersByIds } from './load';
 import { holdersInput, idParams, type Office } from './schemas';

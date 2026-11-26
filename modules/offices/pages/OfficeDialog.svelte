@@ -1,35 +1,35 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Search from '@lucide/svelte/icons/search';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { tick, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import {
+		AssistTextarea,
+		ContactListField,
+		type ContactRow,
+		EntityAvatar,
+		FormField
+	} from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		ContactListField,
-		EntityAvatar,
-		FormField,
-		type ContactRow,
-		AssistTextarea
-	} from '$lib/components/layout';
-	import {
+		holdersInput,
 		MAX_DESCRIPTION,
 		MAX_EMAILS,
 		MAX_HOLDERS,
 		MAX_NAME,
-		holdersInput,
-		officeCreateInput,
-		officeUpdateInput,
 		type Office,
 		type OfficeUpdateInput,
+		officeCreateInput,
+		officeUpdateInput,
 		type RoleRef,
 		type UserRef
 	} from '../schemas';
@@ -559,7 +559,8 @@
 
 						<fieldset class="min-w-0 space-y-2">
 							<legend class="mb-2 text-sm font-medium">
-								Inhaber*innen <span class="font-normal text-muted-foreground tabular-nums"
+								Inhaber*innen
+								<span class="font-normal text-muted-foreground tabular-nums"
 									>({holders.length})</span
 								>
 							</legend>

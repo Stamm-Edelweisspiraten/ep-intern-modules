@@ -1,8 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { todayBerlin } from '$lib/sdk/dates';
 import { core, moduleDb, type Row, rowsOf } from '$lib/sdk/server';
-import type { ActionRef, ActionsService, InterimRef, ReceivableSource } from './contract';
-import { ACCOUNTING_CATEGORY_LABELS } from './schemas';
+import { accessibleActions } from './accessible';
 import { summarize, toSummaryEntry } from './accounting';
 import { loadState } from './accounting.endpoints';
 import {
@@ -14,9 +13,10 @@ import {
 	loadTreasuryContributions,
 	loadTreasuryContributionsMany
 } from './accounting-core';
-import { buildAccountingReport } from './payouts.endpoints';
 import { listCalendarActions } from './calendar';
-import { accessibleActions } from './accessible';
+import type { ActionRef, ActionsService, InterimRef, ReceivableSource } from './contract';
+import { buildAccountingReport } from './payouts.endpoints';
+import { ACCOUNTING_CATEGORY_LABELS } from './schemas';
 
 const MODULE_ID = 'actions';
 
@@ -88,21 +88,23 @@ export const actionsService: ActionsService = {
 				if (list) list.push(p);
 				else peopleBy.set(key, [p]);
 			}
-			return actions.map((a): ReceivableSource => ({
-				...ref(a),
-				isPast: a.is_past === true || a.is_past === 't',
-				feeCents: Number(a.fee_cents),
-				teamFeeCents: a.team_fee_cents == null ? null : Number(a.team_fee_cents),
-				participants: (peopleBy.get(String(a.id)) ?? []).map((p) => ({
-					id: p.id as string,
-					name: p.name as string,
-					role: p.role === 'team' ? 'team' : 'participant',
-					birthDate: (p.birth_date as string | null) ?? null,
-					memberId: (p.member_id as string | null) ?? null,
-					contactEmail: (p.contact_email as string | null) ?? null,
-					groupLabel: (p.group_label as string | null) ?? null
-				}))
-			}));
+			return actions.map(
+				(a): ReceivableSource => ({
+					...ref(a),
+					isPast: a.is_past === true || a.is_past === 't',
+					feeCents: Number(a.fee_cents),
+					teamFeeCents: a.team_fee_cents == null ? null : Number(a.team_fee_cents),
+					participants: (peopleBy.get(String(a.id)) ?? []).map((p) => ({
+						id: p.id as string,
+						name: p.name as string,
+						role: p.role === 'team' ? 'team' : 'participant',
+						birthDate: (p.birth_date as string | null) ?? null,
+						memberId: (p.member_id as string | null) ?? null,
+						contactEmail: (p.contact_email as string | null) ?? null,
+						groupLabel: (p.group_label as string | null) ?? null
+					}))
+				})
+			);
 		});
 	},
 

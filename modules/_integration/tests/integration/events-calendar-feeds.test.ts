@@ -4,26 +4,31 @@
  * ohne beide): `actionsAvailable`, Aktionen im Abo (sichtbare und eigene Anmeldungen ohne Beschreibung, mit Recht
  * mit Beschreibung und Link), reines Aktionen-Abo, Filter nach einer `members`-Gruppe.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { resetAllForTests } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
 import { moduleDb } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import eventsModule from '$modules/events/module';
 import type { CalendarFeed, CalendarFeedList } from '$modules/events/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let admin: RequestContext;

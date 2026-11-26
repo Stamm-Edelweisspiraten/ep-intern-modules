@@ -1,12 +1,12 @@
 <script lang="ts">
+	import Package from '@lucide/svelte/icons/package';
 	// Dashboard-Kachel „Bestellungen & Lager“: Kopfzahlen für Kämmerer*innen (je nach Recht).
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import Package from '@lucide/svelte/icons/package';
+	import { DashboardCard } from '$lib/components/layout';
 	import { apiFetch, can } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
-	import { BASE_PATH, PERMISSIONS, type OrdersOverview } from '../../schemas';
+	import { BASE_PATH, type OrdersOverview, PERMISSIONS } from '../../schemas';
 	import { errorText } from '../helpers';
 
 	let { onstatus }: DashboardWidgetProps = $props();
@@ -111,7 +111,8 @@
 						class={[
 							'block text-2xl font-semibold tabular-nums',
 							m.value === 0 && 'text-muted-foreground'
-						]}>{m.value}</span
+						]}
+						>{m.value}</span
 					>
 					<span class="block text-xs leading-snug text-muted-foreground">{m.label}</span>
 					{#if m.hint}

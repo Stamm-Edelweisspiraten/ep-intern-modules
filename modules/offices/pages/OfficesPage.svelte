@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { tick } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
@@ -11,18 +8,21 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { tick } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import { ConfirmDialog, EmptyState, EntityAvatar, PageHeader } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { ConfirmDialog, EmptyState, EntityAvatar, PageHeader } from '$lib/components/layout';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import type { MyOffices, Office } from '../schemas';
 	import ExpandableText from './ExpandableText.svelte';
+	import { BASE, errorText, formatDate, moveItem } from './helpers';
 	import MyBioCard from './MyBioCard.svelte';
 	import OfficeDialog from './OfficeDialog.svelte';
-	import { BASE, errorText, formatDate, moveItem } from './helpers';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canManage = $derived(can(permissions, 'offices.office.manage'));

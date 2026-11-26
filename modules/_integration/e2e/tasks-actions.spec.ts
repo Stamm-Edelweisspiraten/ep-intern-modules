@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Aufgaben (Basismodul aus atrium-basic-modules) zusammen mit `actions`: Board aus einer Aktion mit Vorlage
 // „Fahrt / Lager“ (verschoben aus modules/tasks/e2e/tasks.spec.ts).

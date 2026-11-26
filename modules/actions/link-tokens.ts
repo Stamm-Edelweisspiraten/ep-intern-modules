@@ -7,7 +7,7 @@
  *   (`hashStoredLinkTokens`: `onEnable` + stündlicher Job); bis dahin findet die Suche ihn noch über `token`.
  * - Datensicherung: `actionsBackup.rehash` berechnet `token_hash` mit dem Schlüssel des Zielservers neu.
  */
-import { sql, type SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { core, type ModuleBackupHooks, moduleDb, type Tx } from '$lib/sdk/server';
 import { MODULE_ID } from './schemas';
 

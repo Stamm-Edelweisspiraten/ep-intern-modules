@@ -1,25 +1,25 @@
 <script lang="ts">
-	// Kategorien verwalten: Liste mit Reihenfolge, Anlegen/Bearbeiten mit Name, Icon und Farbe, Löschen.
-	// Vorbild für Icon/Farbe: files/pages/FolderStyleDialog.svelte.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Check from '@lucide/svelte/icons/check';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
-	import { iconLabel } from '$lib/sdk/icons';
-	import { STYLE_COLORS } from '$lib/sdk/style-presets';
+	// Kategorien verwalten: Liste mit Reihenfolge, Anlegen/Bearbeiten mit Name, Icon und Farbe, Löschen.
+	// Vorbild für Icon/Farbe: files/pages/FolderStyleDialog.svelte.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, ConfirmDialog, EmptyState, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { ColorPicker, contrastTextColor } from '$lib/components/ui/color-picker';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { IconPicker } from '$lib/components/ui/icon-picker';
 	import { Input } from '$lib/components/ui/input';
-	import { BUSY_SAVE, ConfirmDialog, EmptyState, FormField } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
+	import { iconLabel } from '$lib/sdk/icons';
+	import { STYLE_COLORS } from '$lib/sdk/style-presets';
 	import { cn } from '$lib/utils';
-	import { categoryInput, type Category } from '../../schemas';
+	import { type Category, categoryInput } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import CategoryGlyph from '../shared/CategoryGlyph.svelte';
 
@@ -198,7 +198,8 @@
 				/>
 			{/if}
 			<Dialog.Footer class="sm:justify-between">
-				<Button variant="outline" onclick={() => startEdit(null)}><Plus /> Kategorie anlegen</Button
+				<Button variant="outline" onclick={() => startEdit(null)}
+					><Plus /> Kategorie anlegen</Button
 				>
 				<Button variant="ghost" onclick={() => (open = false)}>Schließen</Button>
 			</Dialog.Footer>
@@ -268,13 +269,16 @@
 							Keine
 						</Button>
 					</div>
-					{#if errors.color}<p class="text-xs text-destructive" role="alert">{errors.color}</p>{/if}
+					{#if errors.color}
+						<p class="text-xs text-destructive" role="alert">{errors.color}</p>
+					{/if}
 				</fieldset>
 
 				<fieldset class="grid gap-2">
 					<div class="flex items-center justify-between gap-2">
 						<legend class="text-sm font-medium">
-							Icon <span class="font-normal text-muted-foreground"
+							Icon
+							<span class="font-normal text-muted-foreground"
 								>· {icon ? iconLabel(icon) : 'keins'}</span
 							>
 						</legend>
@@ -291,7 +295,9 @@
 					<div class="max-h-[min(22rem,45dvh)] overflow-y-auto rounded-md border p-2">
 						<IconPicker bind:value={icon} />
 					</div>
-					{#if errors.icon}<p class="text-xs text-destructive" role="alert">{errors.icon}</p>{/if}
+					{#if errors.icon}
+						<p class="text-xs text-destructive" role="alert">{errors.icon}</p>
+					{/if}
 				</fieldset>
 			</form>
 			<Dialog.Footer>

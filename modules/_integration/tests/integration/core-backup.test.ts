@@ -4,10 +4,16 @@
  * Teil-Wiederherstellung eines Moduls; Audit; Sicherung ohne Dateien; Wiederherstellen ohne S3.
  * Weitere Szenarien: `core-backup-secret`, `core-backup-merge`, `core-backup-security`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { invalidateStorageConfigCache } from '$testing';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { seedBackupWorld, type BackupWorld } from '../../helpers/backup-seed';
+import {
+	executeReset,
+	exportResetData,
+	getDb,
+	invalidateStorageConfigCache,
+	previewReset,
+	RESET_CONFIRM_WORD
+} from '$testing';
 import {
 	allScopeKeys,
 	dumpAll,
@@ -16,9 +22,7 @@ import {
 	previewBackup,
 	runRestore
 } from '../../helpers/backup-flow';
-import { getDb } from '$testing';
-import { executeReset, exportResetData, previewReset, RESET_CONFIRM_WORD } from '$testing';
-import { SEED_PASSWORD } from '../../helpers/backup-seed';
+import { type BackupWorld, SEED_PASSWORD, seedBackupWorld } from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 let full: Uint8Array;
@@ -173,7 +177,7 @@ describe('ohne Dateien / ohne S3', () => {
 		expect(status.result!.warnings.join(' ')).toMatch(/Kein Dateispeicher/);
 		expect(status.result!.files.uploaded).toBe(0);
 		expect(status.result!.files.skipped).toBeGreaterThan(0);
-		expect(await dumpTable('mod_offices.office_holders')).toEqual(
+		expect<unknown>(await dumpTable('mod_offices.office_holders')).toEqual(
 			before['mod_offices.office_holders']
 		);
 	}, 120_000);

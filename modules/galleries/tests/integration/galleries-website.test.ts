@@ -3,38 +3,44 @@
  * Meta-Endpoints (`/principals`, `/events`, `/settings/stamm`).
  * Nur öffentliche Galerien, nur Website-Felder, nur `thumb`/`web`, Termine nur mit „auf der Website“.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$testing';
+import type { RequestContext } from '$lib/sdk/types';
 import eventsModule from '$modules/events/module';
-import membersModule from '$modules/members/module';
+import type { GalleryRefsService } from '$modules/galleries/contract';
 import galleriesModule from '$modules/galleries/module';
-import {
-	websiteGalleryDetailSchema,
-	websiteGalleryListSchema
-} from '$modules/galleries/website.schemas';
+import { galleryRefsService } from '$modules/galleries/refs.service';
 import type {
 	GalleryDetail,
 	GalleryImage,
 	WebsiteGallery,
 	WebsiteGalleryDetail
 } from '$modules/galleries/schemas';
-import type { RequestContext } from '$lib/sdk/types';
-import type { GalleryRefsService } from '$modules/galleries/contract';
-import { galleryRefsService } from '$modules/galleries/refs.service';
+import {
+	websiteGalleryDetailSchema,
+	websiteGalleryListSchema
+} from '$modules/galleries/website.schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/galleries';
 const keys: Record<string, string> = {};

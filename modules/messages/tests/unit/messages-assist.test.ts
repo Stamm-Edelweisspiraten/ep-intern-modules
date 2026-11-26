@@ -1,5 +1,5 @@
 /** Nachrichten: Schreibhilfe für Antwortentwürfe (aus `tests/unit/ai-assist.test.ts` herausgelöst) */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 describe('Schreibhilfe: Antwortentwurf', () => {
 	it('schneidet den zitierten Verlauf ab', async () => {

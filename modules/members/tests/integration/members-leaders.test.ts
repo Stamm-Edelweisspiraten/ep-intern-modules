@@ -1,27 +1,36 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, deleteUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, navigationFor, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { runJobNow } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSetting } from '$testing';
-import { core } from '$lib/sdk/server';
 import { setTodayForTests } from '$lib/sdk/dates';
-import membersModule from '$modules/members/module';
-import { LED_EDIT, LED_EXPORT, LED_VIEW, LEADER_ROLE_NAME } from '$modules/members/schemas';
-import type { GroupRef, Member, MemberLinks, MemberList } from '$modules/members/schemas';
+import { core } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import type { GroupRef, Member, MemberLinks, MemberList } from '$modules/members/schemas';
+import { LEADER_ROLE_NAME, LED_EDIT, LED_EXPORT, LED_VIEW } from '$modules/members/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	deleteUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	navigationFor,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setPdfRendererForTests,
+	setSetting,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'leader-password-1234';
 let close: () => Promise<void>;
@@ -193,7 +202,7 @@ describe('Gruppenleitung: Rechte über das eigene Konto', () => {
 		);
 		expect(links.users.find((u) => u.id === userIds.leiter)?.self).toBe(true);
 		expect(links.users.find((u) => u.id === userIds.mutter)?.self).toBe(false);
-		expect(await grantedUsers()).toEqual([userIds.leiter]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.leiter]);
 		const perms = await permsOf('leiter');
 		for (const p of [LED_VIEW, LED_EDIT, LED_EXPORT, 'members.storage.read']) {
 			expect(perms.has(p), p).toBe(true);
@@ -428,7 +437,7 @@ describe('Gruppenleitung: Rechte kommen und gehen', () => {
 				json: { name: 'Grün', type: 'sippe', leaderIds: [lea.id] }
 			})
 		);
-		expect(await grantedUsers()).toEqual([userIds.leiter]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.leiter]);
 	});
 
 	it('Austritt der Leitung entzieht die Rolle sofort; Job gleicht Fristabläufe nach', async () => {
@@ -454,7 +463,7 @@ describe('Gruppenleitung: Rechte kommen und gehen', () => {
 				})
 			})
 		);
-		expect(await grantedUsers()).toEqual([userIds.leiter]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.leiter]);
 		setTodayForTests('2026-07-01');
 		try {
 			// Bereich wirkt sofort (frisch je Aufruf), die Rolle erst nach dem Abgleich
@@ -471,7 +480,7 @@ describe('Gruppenleitung: Rechte kommen und gehen', () => {
 				json: memberBody('Lea', { birthDate: '2004-03-01', stage: 'kreuzpfadfinder' })
 			})
 		);
-		expect(await grantedUsers()).toEqual([userIds.leiter]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.leiter]);
 	});
 
 	it('Verknüpfung lösen entzieht die Rolle', async () => {
@@ -545,7 +554,7 @@ describe('Gruppenleitung: Schutz vor Rechteausweitung', () => {
 				json: { name: 'Blau', type: 'sippe', leaderIds: [ben.id, anna.id] }
 			})
 		);
-		expect(await grantedUsers()).toEqual([userIds.mutter]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.mutter]);
 	});
 
 	it('Konto gelöscht → Rolle weg (Abgleich nach dem Commit)', async () => {

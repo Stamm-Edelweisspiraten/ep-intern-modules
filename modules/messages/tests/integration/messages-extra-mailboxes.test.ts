@@ -4,30 +4,15 @@
  * „Lesen und senden“, Zuordnung beim Abruf (IMAP-Ersatz) an Zusatz- und Weiterleitungsadressen, unbekanntes Ziel →
  * „Nicht zugeordnet“, Löschen verschiebt Mails, fremde Person 404, Audit ohne Adressen, Konto gelöscht.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, deleteUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
 import { moduleDb } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
-import officesModule from '$modules/offices/module';
-import messagesModule from '$modules/messages/module';
 import { deliveriesIdleForTests } from '$modules/messages/delivery.service';
 import { setImapConnectorForTests } from '$modules/messages/imap.client';
+import messagesModule from '$modules/messages/module';
 import type {
 	AliasesResponse,
 	ComposePrefill,
@@ -39,7 +24,29 @@ import type {
 	PollResult,
 	SendersResponse
 } from '$modules/messages/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	deleteUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setSettings,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'extra-password-1234';
 let close: () => Promise<void>;
@@ -295,7 +302,7 @@ describe('Verwaltung', () => {
 			'mia.lesen@pfadfinder.test',
 			'herbstlager@pfadfinder.test'
 		]) {
-			expect(await createMailbox({ name: 'X', address }, 409), address).toBe('conflict');
+			expect<unknown>(await createMailbox({ name: 'X', address }, 409), address).toBe('conflict');
 		}
 		expect(
 			await errCode(
@@ -309,7 +316,7 @@ describe('Verwaltung', () => {
 	});
 
 	it('Validierung: unbekannte Freigabe, doppelte Freigabe, ungültige Adresse → 422', async () => {
-		expect(
+		expect<unknown>(
 			await createMailbox(
 				{
 					name: 'X',
@@ -319,7 +326,7 @@ describe('Verwaltung', () => {
 				422
 			)
 		).toBe('validation_failed');
-		expect(
+		expect<unknown>(
 			await createMailbox(
 				{
 					name: 'X',
@@ -332,8 +339,10 @@ describe('Verwaltung', () => {
 				422
 			)
 		).toBe('validation_failed');
-		expect(await createMailbox({ name: 'X', address: 'kein-mail' }, 422)).toBe('validation_failed');
-		expect(
+		expect<unknown>(await createMailbox({ name: 'X', address: 'kein-mail' }, 422)).toBe(
+			'validation_failed'
+		);
+		expect<unknown>(
 			await createMailbox(
 				{
 					name: 'X',

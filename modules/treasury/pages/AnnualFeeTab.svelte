@@ -1,36 +1,27 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { onDestroy, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
 		ANNUAL_RUN_STATUS_LABELS,
-		FEE_LEVELS,
-		annualRunUpdate,
 		type AnnualPreview,
 		type AnnualRun,
 		type AnnualRunStatus,
 		type AnnualRunUpdate,
+		annualRunUpdate,
+		FEE_LEVELS,
 		type FeeRates
 	} from '../schemas';
-	import {
-		BASE,
-		errorMessage,
-		fieldErrorsFrom,
-		fmtDate,
-		issuesToErrors,
-		todayIso,
-		type SharedData
-	} from './helpers';
 	import AnnualChecklist from './AnnualChecklist.svelte';
 	import AnnualMessageCard from './AnnualMessageCard.svelte';
 	import AnnualPreviewCard from './AnnualPreviewCard.svelte';
@@ -38,6 +29,15 @@
 	import AnnualRecipientsCard from './AnnualRecipientsCard.svelte';
 	import AnnualSendCard from './AnnualSendCard.svelte';
 	import AnnualSteps, { type Step } from './AnnualSteps.svelte';
+	import {
+		BASE,
+		errorMessage,
+		fieldErrorsFrom,
+		fmtDate,
+		issuesToErrors,
+		type SharedData,
+		todayIso
+	} from './helpers';
 
 	let {
 		version,
@@ -449,7 +449,8 @@
 						onchange={(v) => void selectRun(v)}
 					/>
 					{#if run}
-						<Badge variant={statusVariant(run.status)}>{ANNUAL_RUN_STATUS_LABELS[run.status]}</Badge
+						<Badge variant={statusVariant(run.status)}
+							>{ANNUAL_RUN_STATUS_LABELS[run.status]}</Badge
 						>
 					{/if}
 					<span class="text-xs text-muted-foreground" aria-live="polite">
@@ -492,9 +493,8 @@
 				</div>
 				{#if run}
 					<p class="text-sm text-muted-foreground">
-						Abgerechnet werden alle, die am <strong class="text-foreground"
-							>{fmtDate(run.createdOn)}</strong
-						>
+						Abgerechnet werden alle, die am
+						<strong class="text-foreground">{fmtDate(run.createdOn)}</strong>
 						Mitglied sind. Eintritt im Beitragsjahr nach dem 28.02.: nur Stammesbeitrag.
 					</p>
 					{#if !canManage}

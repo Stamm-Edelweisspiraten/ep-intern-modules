@@ -1,14 +1,8 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import Bell from '@lucide/svelte/icons/bell';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as Table from '$lib/components/ui/table';
+	import { goto } from '$app/navigation';
 	import {
 		ChoiceChips,
 		ConfirmDialog,
@@ -22,11 +16,17 @@
 		TouchList
 	} from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch } from '$lib/sdk/client';
 	import { INVOICE_SOURCE_LABELS, type InvoiceList, type InvoiceSummary } from '../schemas';
-	import { BASE, errorMessage, fmtDate, type SharedData } from './helpers';
 	import { remindInvoices } from './BulkActions';
 	import CompactFilter from './CompactFilter.svelte';
 	import FilterChips from './FilterChips.svelte';
+	import { BASE, errorMessage, fmtDate, type SharedData } from './helpers';
 	import type { FamilyRef } from './navigation';
 	import StatusBadge from './StatusBadge.svelte';
 
@@ -257,7 +257,9 @@
 									}
 								: undefined}
 						>
-							{#snippet trailing()}<StatusBadge invoice={i} />{/snippet}
+							{#snippet trailing()}
+								<StatusBadge invoice={i} />
+							{/snippet}
 						</ListRow>
 					{/each}
 				</TouchList>
@@ -267,7 +269,8 @@
 							variant="outline"
 							class="h-11"
 							disabled={offset === 0}
-							onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+							onclick={() => (offset = Math.max(0, offset - LIMIT))}
+							>Zurück</Button
 						>
 						<span class="tabular-nums">
 							{offset + 1}–{Math.min(offset + LIMIT, data.total)} von {data.total}
@@ -276,7 +279,8 @@
 							variant="outline"
 							class="h-11"
 							disabled={offset + LIMIT >= data.total}
-							onclick={() => (offset += LIMIT)}>Weiter</Button
+							onclick={() => (offset += LIMIT)}
+							>Weiter</Button
 						>
 					</div>
 				{/if}
@@ -433,8 +437,12 @@
 										{payer.name}
 									{/if}
 								{/if}
-								{#if i.payer && i.action}·{/if}
-								{#if i.action}{i.action.name}{/if}
+								{#if i.payer && i.action}
+									·
+								{/if}
+								{#if i.action}
+									{i.action.name}
+								{/if}
 							</div>
 						{/if}
 					</Table.Cell>

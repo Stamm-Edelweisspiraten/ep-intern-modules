@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Dashboard: „Zu erledigen“ und „Diese Woche“ aus allen Modulen, weitere Kacheln, „Anpassen“
 // (ein-/ausblenden, Reihenfolge, Standard).

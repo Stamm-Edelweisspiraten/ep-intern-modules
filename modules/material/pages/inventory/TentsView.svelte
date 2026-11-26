@@ -1,18 +1,18 @@
 <script lang="ts">
-	// Lager → Zelte: Baupläne als Karten mit ihren Teilen. Pflege (Anlegen/Bearbeiten/Archivieren/Löschen)
-	// mit `material.inventory.manage`; verwendete Zelte lassen sich nur archivieren.
-	import { toast } from 'svelte-sonner';
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Tent from '@lucide/svelte/icons/tent';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	// Lager → Zelte: Baupläne als Karten mit ihren Teilen. Pflege (Anlegen/Bearbeiten/Archivieren/Löschen)
+	// mit `material.inventory.manage`; verwendete Zelte lassen sich nur archivieren.
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Category, Tent as TentPlan } from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import TentDialog from './TentDialog.svelte';
@@ -102,7 +102,9 @@
 						<Card.Title level={3} class="flex flex-wrap items-center gap-2">
 							<Tent class="size-4 text-muted-foreground" aria-hidden="true" />
 							{t.name}
-							{#if t.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+							{#if t.archived}
+								<Badge variant="outline">Archiviert</Badge>
+							{/if}
 						</Card.Title>
 						<Card.Description>
 							{[t.category?.name ?? 'Ohne Kategorie', t.description].filter(Boolean).join(' · ')}
@@ -113,7 +115,9 @@
 							{#each t.parts as p (p.id)}
 								<li class="flex items-baseline justify-between gap-3 px-3 py-1.5">
 									<span class="min-w-0">
-										{#if p.label}<span class="font-medium">{p.label}:</span>{/if}
+										{#if p.label}
+											<span class="font-medium">{p.label}:</span>
+										{/if}
 										{p.name}
 										{#if p.fromOneSet}
 											<span class="block text-xs text-muted-foreground"
@@ -147,7 +151,11 @@
 									title={t.archived ? 'Wiederherstellen' : 'Archivieren'}
 									onclick={() => setArchived(t, !t.archived)}
 								>
-									{#if t.archived}<ArchiveRestore />{:else}<Archive />{/if}
+									{#if t.archived}
+										<ArchiveRestore />
+									{:else}
+										<Archive />
+									{/if}
 								</Button>
 								{#if !t.used}
 									<Button

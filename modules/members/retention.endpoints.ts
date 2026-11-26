@@ -3,7 +3,7 @@
  * Beide Endpunkte brauchen `members.member.delete` (und `members.member.view` für die Liste).
  */
 import { z } from 'zod';
-import { core, defineEndpoint, type ApiEndpoint } from '$lib/sdk/server';
+import { type ApiEndpoint, core, defineEndpoint } from '$lib/sdk/server';
 import { anonymizeMembers, listRetentionCandidates } from './retention.service';
 
 const tags = ['Mitglieder'];

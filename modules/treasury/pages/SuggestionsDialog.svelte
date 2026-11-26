@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { BUSY_SAVE } from '$lib/components/layout';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { AllocationResult, MatchSuggestion, Transaction } from '../schemas';
 	import { BASE, fmtDate } from './helpers';
 
@@ -161,7 +161,9 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+		{#if error}
+			<p class="text-sm text-destructive" role="alert">{error}</p>
+		{/if}
 		<Dialog.Footer sticky>
 			<Button variant="outline" onclick={() => (open = false)}>Schließen</Button>
 		</Dialog.Footer>

@@ -1,54 +1,54 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Download from '@lucide/svelte/icons/download';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Card from '$lib/components/ui/card';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		ConfirmDialog,
 		EmptyState,
 		PageHeader,
 		PdfExportDialog,
-		ShareMenu,
 		type ShareCandidate,
-		type ShareEntry
+		type ShareEntry,
+		ShareMenu
 	} from '$lib/components/layout';
+	import { downloadPdf } from '$lib/components/layout/download';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { shareKey } from '$lib/components/layout/share-types';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
-		SHARE_LEVELS,
-		SHARE_LEVEL_LABELS,
 		type ActionShares,
 		type ActionSummary,
 		type Participant,
+		SHARE_LEVEL_LABELS,
+		SHARE_LEVELS,
 		type ShareLevel
 	} from '../schemas';
-	import { downloadPdf } from '$lib/components/layout/download';
-	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
-	import { fmtPeriod } from './format';
-	import { formatEuro } from '$lib/components/layout/money';
-	import ActionForm from './ActionForm.svelte';
-	import ParticipantForm from './ParticipantForm.svelte';
-	import ParticipantsTab from './ParticipantsTab.svelte';
 	import AccountingTab from './AccountingTab.svelte';
-	import CalculationTab from './CalculationTab.svelte';
-	import RegistrationTab from './RegistrationTab.svelte';
 	import ActionAssistTools from './ActionAssistTools.svelte';
+	import ActionForm from './ActionForm.svelte';
+	import ActionMaterialCard from './ActionMaterialCard.svelte';
+	import ActionNotesCard from './ActionNotesCard.svelte';
 	import ActionTasksCard from './ActionTasksCard.svelte';
 	import ActionWhiteboardsCard from './ActionWhiteboardsCard.svelte';
-	import ActionNotesCard from './ActionNotesCard.svelte';
-	import ActionMaterialCard from './ActionMaterialCard.svelte';
+	import CalculationTab from './CalculationTab.svelte';
+	import { fmtPeriod } from './format';
+	import ParticipantForm from './ParticipantForm.svelte';
+	import ParticipantsTab from './ParticipantsTab.svelte';
+	import RegistrationTab from './RegistrationTab.svelte';
 
 	let { params }: ModulePageProps = $props();
 	const id = $derived(params.id ?? '');
@@ -331,7 +331,9 @@
 		description={`${fmtPeriod(action)}${action.location ? ` · ${action.location}` : ''}`}
 	>
 		{#snippet actions()}
-			{#if action?.isPast}<Badge variant="outline">Vergangen</Badge>{/if}
+			{#if action?.isPast}
+				<Badge variant="outline">Vergangen</Badge>
+			{/if}
 			{#if shares}
 				<ShareMenu
 					shares={shares.shares}

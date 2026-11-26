@@ -4,28 +4,14 @@
  * Je Endpunkt Erfolg, Rechte (403), unbekannt (404), Validierung (422), Konflikt (409) und Audit ohne
  * personenbezogene Details.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { resetAllForTests } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
 import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
-import { setTodayForTests } from '$lib/sdk/dates';
-import type { RequestContext } from '$lib/sdk/types';
 import type {
 	Account,
 	ActionReceivables,
@@ -34,6 +20,26 @@ import type {
 	InvoiceList,
 	Transaction
 } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setPdfRendererForTests,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let close: () => Promise<void>;
@@ -470,9 +476,12 @@ describe('Belege an Buchungen (POST/GET/DELETE /transactions/:id/receipt)', () =
 			}),
 			201
 		);
+		// Bun leitet den Typ eines multipart-Teils aus der Dateiendung ab → Endung passend zum angegebenen Typ
 		const upload = (bytes: Uint8Array, type: string, who = 'kasse') => {
 			const fd = new FormData();
-			fd.set('file', new Blob([bytes as BlobPart], { type }), 'beleg.pdf');
+			const ext = { 'text/html': 'html', 'image/png': 'png', 'image/jpeg': 'jpg' }[type] ?? 'pdf';
+			const name = `beleg.${ext}`;
+			fd.set('file', new Blob([bytes as BlobPart], { type }), name);
 			return T(`/transactions/${t.id}/receipt`, { method: 'POST', body: fd, who });
 		};
 		const pdf = new TextEncoder().encode('%PDF-1.4 Beleg');

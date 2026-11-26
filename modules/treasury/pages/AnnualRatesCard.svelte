@@ -1,9 +1,9 @@
 <script lang="ts">
-	import * as Card from '$lib/components/ui/card';
-	import { Label } from '$lib/components/ui/label';
 	import { MoneyInput } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import { FEE_LEVELS, FEE_LEVEL_LABELS, type FeeRates } from '../schemas';
+	import * as Card from '$lib/components/ui/card';
+	import { Label } from '$lib/components/ui/label';
+	import { FEE_LEVEL_LABELS, FEE_LEVELS, type FeeRates } from '../schemas';
 
 	let {
 		rates = $bindable(),

@@ -1,13 +1,13 @@
 <script lang="ts">
+	import Tent from '@lucide/svelte/icons/tent';
 	// Dashboard-Kachel „Meine Anmeldungen“: kommende Aktionen, bei denen ich oder meine verknüpften
 	// Mitglieder angemeldet sind. Link auf die Aktion nur mit `actions.action.view`.
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import Tent from '@lucide/svelte/icons/tent';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { DashboardCard } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import type { MyRegistration } from '../../schemas';
 	import { fmtPeriod } from '../format';
 

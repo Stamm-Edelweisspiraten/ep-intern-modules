@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Kasse → Jahresbeitrag: Lauf anlegen, Betreff per Autosave, Empfänger/Summen, Mail-Vorschau,
 // Versand planen und Planung aufheben. Es wird bewusst NICHT versendet (der E2E-Server hat kein SMTP).

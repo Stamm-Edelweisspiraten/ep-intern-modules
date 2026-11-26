@@ -1,17 +1,17 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Loader from '@lucide/svelte/icons/loader-circle';
+	import { untrack } from 'svelte';
+	import { FormRenderer } from '$lib/components/forms';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { FormRenderer } from '$lib/components/forms';
-	import { emptyValues, validateFormValues, type FormValues } from '$lib/forms';
-	import type { PublicForm, PublicSubmitResult } from '../schemas';
+	import { emptyValues, type FormValues, validateFormValues } from '$lib/forms';
 	import { withoutIdentityFields } from '../form-support';
+	import type { PublicForm, PublicSubmitResult } from '../schemas';
 	import { fmtPeriod } from './format';
 
 	let { params }: { params: Record<string, string>; path?: string } = $props();
@@ -268,10 +268,12 @@
 					<Card.Title class="text-section">{closedText}</Card.Title>
 					<Card.Description>
 						{#if form.status === 'not_open' && form.opensAt}
-							Die Anmeldung öffnet am {new Date(form.opensAt).toLocaleString('de-DE', {
+							Die Anmeldung öffnet am
+							{new Date(form.opensAt).toLocaleString('de-DE', {
 								dateStyle: 'medium',
 								timeStyle: 'short'
-							})} Uhr.
+							})}
+							Uhr.
 						{:else}
 							Bitte wende dich bei Fragen an die Veranstaltenden.
 						{/if}
@@ -372,8 +374,11 @@
 					{/if}
 
 					<Button type="submit" size="lg" class="w-full" disabled={submitting}>
-						{#if submitting}<Loader class="animate-spin" /> Wird gesendet …{:else}Verbindlich
-							anmelden{/if}
+						{#if submitting}
+							<Loader class="animate-spin" /> Wird gesendet …
+						{:else}
+							Verbindlich anmelden
+						{/if}
 					</Button>
 
 					{#if form.privacyUrl}

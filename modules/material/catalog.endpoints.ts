@@ -2,17 +2,18 @@
  * Bestand pflegen: Lagerorte (flach), Kategorien (Icon + Farbe), Typen und Lagerartikel, die große
  * Lagertabelle (`GET /inventory`), Umlagern, Zustand/Schaden melden und die Übersicht.
  */
-import { sql, type SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
+import { addDays } from '$lib/sdk/dates';
+import { loadIconSet } from '$lib/sdk/icons';
 import {
+	type AnyApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
-	type AnyApiEndpoint,
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';
-import { addDays } from '$lib/sdk/dates';
-import { loadIconSet } from '$lib/sdk/icons';
+import { reassignLocked } from './assign.service';
 import {
 	bool,
 	canManage,
@@ -29,37 +30,36 @@ import {
 	today,
 	userNames
 } from './db';
-import { loadCategories, loadItem, loadItems, loadLocations, loadTypes } from './inventory';
-import { reassignLocked } from './assign.service';
-import { notifyDamage } from './notify';
 import { removeImagesOf } from './images.endpoints';
+import { loadCategories, loadItem, loadItems, loadLocations, loadTypes } from './inventory';
+import { notifyDamage } from './notify';
 import { listReservations } from './reservations.service';
 import {
-	PERMISSIONS,
 	batchNames,
+	type Category,
+	type Condition,
+	type ConsumptionEntry,
 	categoryInput,
 	categoryUpdateInput,
 	conditionInput,
+	type Inventory,
+	type Item,
+	type ItemDetail,
 	idParams,
 	inventoryQuery,
 	itemInput,
 	itemUpdateInput,
+	type Location,
 	locationInput,
 	locationUpdateInput,
-	moveItemsInput,
-	orderInput,
-	typeInput,
-	typeUpdateInput,
-	type Category,
-	type Condition,
-	type ConsumptionEntry,
-	type Inventory,
-	type Item,
-	type ItemDetail,
-	type Location,
 	type MaterialType,
+	moveItemsInput,
 	type Overview,
-	type TypeDetail
+	orderInput,
+	PERMISSIONS,
+	type TypeDetail,
+	typeInput,
+	typeUpdateInput
 } from './schemas';
 
 const tags = ['Modul: material'];

@@ -6,21 +6,7 @@
  * Feste Pfade vor den Parameter-Pfaden.
  */
 import { z } from 'zod';
-import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
-import {
-	assignMail,
-	composePrefill,
-	downloadAttachment,
-	listAssignTargets,
-	listMailboxSent,
-	getInboxMessage,
-	listInbox,
-	listMailboxes,
-	setDeleted,
-	setRead
-} from './inbox.service';
-import { pollInbox, testConnection } from './inbound.service';
-import { createSenderRule, deleteSenderRule, listSenderRules, markSpam } from './spam.service';
+import { type AnyApiEndpoint, core, defineEndpoint, errors } from '$lib/sdk/server';
 import {
 	bulkAction,
 	createFolder,
@@ -29,9 +15,20 @@ import {
 	moveMails,
 	updateFolder
 } from './folders.service';
+import { pollInbox, testConnection } from './inbound.service';
 import {
-	PERM_INBOX_MANAGE,
-	PERM_SEND,
+	assignMail,
+	composePrefill,
+	downloadAttachment,
+	getInboxMessage,
+	listAssignTargets,
+	listInbox,
+	listMailboxes,
+	listMailboxSent,
+	setDeleted,
+	setRead
+} from './inbox.service';
+import {
 	assignInput,
 	attachmentParams,
 	bulkInput,
@@ -43,9 +40,12 @@ import {
 	inboxListQuery,
 	mailboxSentQuery,
 	moveMailsInput,
+	PERM_INBOX_MANAGE,
+	PERM_SEND,
 	senderRuleInput,
 	spamMarkInput
 } from './schemas';
+import { createSenderRule, deleteSenderRule, listSenderRules, markSpam } from './spam.service';
 
 const folderParams = z.object({ id: z.uuid() });
 

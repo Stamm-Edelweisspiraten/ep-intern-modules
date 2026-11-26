@@ -82,7 +82,7 @@ export function rowFromMember(
 		m.street,
 		`${m.postalCode} ${m.city}`.trim(),
 		m.country && m.country !== COUNTRY_DEFAULT ? m.country : ''
-	].filter((l) => l && l.trim());
+	].filter((l) => l?.trim());
 	const row: ListRow = {
 		name: `${m.firstName} ${m.lastName}${m.scoutName ? `\n„${m.scoutName}“` : ''}`,
 		scoutName: m.scoutName ?? '',

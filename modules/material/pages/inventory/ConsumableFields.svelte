@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { FormField } from '$lib/components/layout';
 	// Schalter „Verbrauchsmaterial“ und Einheit (Typ und Artikel ohne Typ).
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { FormField } from '$lib/components/layout';
 	import { MAX_UNIT } from '../../schemas';
 
 	let {

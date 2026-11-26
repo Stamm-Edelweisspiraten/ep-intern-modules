@@ -2,12 +2,30 @@
  * Datensicherung auf einen neuen Server mit anderem APP_SECRET: Geheimnisse werden neu verschlüsselt,
  * schlüsselgebundene Hashes neu berechnet (Modul-Hooks), 2FA bleibt nutzbar.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage } from '$testing';
+import type { RestorePreview, RunStatus } from '$lib/backup/contract';
+import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import {
-	seedBackupWorld,
+	bootstrapAdmin,
+	contextForUser,
+	getDb,
+	getSetting,
+	installFakeStorage,
+	keyCheckValue,
+	resetAuthForTests,
+	resetEnvForTests,
+	schema,
+	setFileRepoForTests,
+	syncModules,
+	totpCode,
+	useTestDatabase,
+	verifyTotp
+} from '$testing';
+import { exportBackup, previewBackup, runRestore } from '../../helpers/backup-flow';
+import {
+	type BackupWorld,
 	SEED_ADMIN_EMAIL,
 	SEED_COUNTERPARTY_IBAN,
 	SEED_PASSWORD,
@@ -15,22 +33,8 @@ import {
 	SEED_PAYER_IBAN,
 	SEED_SMTP_PASSWORD,
 	SEED_TOTP_SECRET,
-	type BackupWorld
+	seedBackupWorld
 } from '../../helpers/backup-seed';
-import { exportBackup, previewBackup, runRestore } from '../../helpers/backup-flow';
-import { getDb, schema } from '$testing';
-import { resetEnvForTests } from '$testing';
-import { resetAuthForTests } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { syncModules } from '$testing';
-import { setFileRepoForTests } from '$testing';
-import { getSetting } from '$testing';
-import { keyCheckValue } from '$testing';
-import { totpCode, verifyTotp } from '$testing';
-import { core } from '$lib/sdk/server';
-import type { RequestContext } from '$lib/sdk/types';
-import type { RestorePreview, RunStatus } from '$lib/backup/contract';
 
 const OLD_SECRET = process.env.APP_SECRET!;
 const NEW_SECRET = 'ganz-anderer-server-schluessel-2026-abcdef';

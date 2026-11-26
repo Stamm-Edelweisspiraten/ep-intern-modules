@@ -4,21 +4,21 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, MoneyInput, NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, MoneyInput, NumberStepper } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
+		type Article,
 		MAX_NOTE,
 		MAX_ORDER_ITEMS,
 		MAX_PRICE_CENTS,
 		MAX_QUANTITY,
-		orderUpdateInput,
-		type Article,
-		type Order
+		type Order,
+		orderUpdateInput
 	} from '../schemas';
 	import { API, errorMessage, fieldErrorsFrom, issuesToErrors, itemName } from './admin-helpers';
 	import { recipientLabel } from './helpers';
@@ -270,13 +270,18 @@
 							</div>
 							{#if row.itemId && (row.deliveredQty > 0 || row.cancelledQty > 0)}
 								<p class="mt-1 text-xs text-muted-foreground">
-									{#if row.deliveredQty > 0}{row.deliveredQty} ausgegeben{/if}{#if row.deliveredQty > 0 && row.cancelledQty > 0}
+									{#if row.deliveredQty > 0}
+										{row.deliveredQty} ausgegeben
+									{/if}{#if row.deliveredQty > 0 && row.cancelledQty > 0}
 										·
-									{/if}{#if row.cancelledQty > 0}{row.cancelledQty} storniert – eine neue Menge ersetzt
-										das Stornierte{/if}
+									{/if}{#if row.cancelledQty > 0}
+										{row.cancelledQty} storniert – eine neue Menge ersetzt das Stornierte
+									{/if}
 								</p>
 							{/if}
-							{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+							{#if err}
+								<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -310,7 +315,9 @@
 			<FormField label="Notiz (optional)" id="oe-note" error={errors.note}>
 				<Textarea id="oe-note" bind:value={note} rows={2} maxlength={MAX_NOTE} />
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Speichern'}</Button>

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { page } from '$app/state';
 	import { EmptyState, ErrorState, PageHeader } from '$lib/components/layout';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import type { Account, Category } from '../schemas';
 	import { BASE, errorMessage, type TreasuryPerms } from './helpers';
 	import SettingsTab from './SettingsTab.svelte';

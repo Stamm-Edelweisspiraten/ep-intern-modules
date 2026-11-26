@@ -3,25 +3,25 @@
 	// Artikels können direkt Bilder hinzugefügt werden.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_BATCH_ITEMS,
-		MAX_QUANTITY,
 		batchNames,
-		itemInput,
-		itemUpdateInput,
 		type Category,
 		type Condition,
 		type ImageRef,
 		type Item,
+		itemInput,
+		itemUpdateInput,
 		type Location,
+		MAX_BATCH_ITEMS,
+		MAX_QUANTITY,
 		type MaterialSet,
 		type MaterialType
 	} from '../../schemas';
@@ -31,11 +31,11 @@
 	import {
 		categoryOptions,
 		conditionOptions,
+		type ItemPreset,
 		locationOptions,
-		setOptions,
 		previewNames,
-		typeOptions,
-		type ItemPreset
+		setOptions,
+		typeOptions
 	} from './options';
 
 	let {

@@ -4,14 +4,14 @@
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { MoneyInput, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MoneyInput, NumberStepper } from '$lib/components/layout';
-	import { priceRange } from '../stock';
 	import { MAX_LABEL, MAX_PRICE_CENTS, MAX_URL, MAX_VARIANTS } from '../schemas';
-	import { SIZE_PRESETS, formatPriceRange, newVariantRow, type VariantRow } from './helpers';
+	import { priceRange } from '../stock';
+	import { formatPriceRange, newVariantRow, SIZE_PRESETS, type VariantRow } from './helpers';
 
 	/**
 	 * Größen & Preise eines Artikels. Ohne Größen gibt es genau eine Zeile (Preis + Mindestbestand).
@@ -30,7 +30,7 @@
 	} = $props();
 
 	const range = $derived(priceRange(rows.map((r) => r.priceCents)));
-	const listError = $derived(errors['variants'] ?? '');
+	const listError = $derived(errors.variants ?? '');
 	const err = (i: number, field: string) => errors[`variants.${i}.${field}`] ?? '';
 
 	function toggleSizes(on: boolean) {

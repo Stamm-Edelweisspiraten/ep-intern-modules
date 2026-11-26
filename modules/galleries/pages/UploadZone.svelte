@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -7,18 +6,19 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
+		type GalleryImage,
 		IMAGE_ACCEPT,
 		IMAGE_CONTENT_TYPES,
 		MAX_IMAGE_BYTES,
 		MAX_VIDEO_BYTES,
 		MEDIA_ACCEPT,
 		UPLOAD_CONCURRENCY,
-		videoTypeOf,
-		type GalleryImage,
-		type UploadLimits
+		type UploadLimits,
+		videoTypeOf
 	} from '../schemas';
 	import { videoPoster } from './video-poster';
 
@@ -295,7 +295,8 @@
 					{#if busy}
 						Lädt hoch … {finished.length} von {items.length}
 					{:else if failed.length}
-						{items.length - failed.length} von {items.length} hochgeladen, {failed.length} mit Fehler
+						{items.length - failed.length} von {items.length} hochgeladen, {failed.length} mit
+						Fehler
 					{:else}
 						{items.length === 1 ? '1 Datei hochgeladen' : `${items.length} Dateien hochgeladen`}
 					{/if}

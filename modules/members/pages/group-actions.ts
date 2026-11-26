@@ -1,5 +1,5 @@
 /** Gemeinsame Helfer für Gruppenliste und Gruppenseite (nur Client). */
-import { WEEKDAY_LABELS, type Group, type MemberRef } from '../schemas';
+import { type Group, type MemberRef, WEEKDAY_LABELS } from '../schemas';
 
 export const GROUPS_PATH = '/modules/members/groups';
 

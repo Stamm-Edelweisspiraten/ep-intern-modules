@@ -41,6 +41,7 @@ Abnehmer des Dienstes `MembersService` (`contract.ts`): `actions` (verknüpfte M
 | `subject-export.ts` | Beitrag zur Datenauskunft (`subjectExport`: `findSubjects`, `resolve`, `run`) |
 | `migrations/0001_init.sql` … `0017_group_age.sql` | Schema (0007 unbenutzt) |
 | `pages/LeaderUserPicker.svelte` | Auswahl von Benutzerkonten als Gruppenleitung (Chips + Suche `GET /groups/leader-users`) |
+| `assist.ts` | KI-Schreibhilfe (`PERM_AI` = `members.ai.use`): nur Gruppentexte, keine Texte über Personen |
 
 ## Datenmodell
 - **0001**: `groups` (`name` UNIQUE, `type` CHECK `sippe|meute`, `description`, `meeting_place`, `meeting_time`),

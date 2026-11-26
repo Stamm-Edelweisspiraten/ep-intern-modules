@@ -4,7 +4,7 @@
  * Produktbilder lädt nur der Server (`fetchOffImage`) – vom OFF-Bildserver, die URL kommt aus der OFF-Antwort,
  * nie vom Client. Gespeichert wird das Bild danach lokal wie ein Upload.
  */
-import { MAX_IMAGE_BYTES, type BarcodeSuggestion } from './schemas';
+import { type BarcodeSuggestion, MAX_IMAGE_BYTES } from './schemas';
 
 const BASE = 'https://world.openfoodfacts.org/api/v2/product/';
 const FIELDS = 'product_name,product_name_de,brands,quantity,image_front_url,image_url';
@@ -29,11 +29,13 @@ interface Lookup {
 	imageUrl: string | null;
 }
 
-let fetcher: typeof fetch = (...args) => fetch(...args);
+/** Fetch-Ersatz in Tests (ohne Buns `fetch.preconnect`) */
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+let fetcher: FetchLike = (...args) => fetch(...args);
 const cache = new Map<string, { at: number; lookup: Lookup }>();
 
 /** Ersetzt den Fetch in Tests. */
-export function setOffFetchForTests(f: typeof fetch | undefined): void {
+export function setOffFetchForTests(f: FetchLike | undefined): void {
 	fetcher = f ?? ((...args) => fetch(...args));
 	cache.clear();
 }

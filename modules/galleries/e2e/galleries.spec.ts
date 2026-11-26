@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Galerien (ohne S3): anlegen über den Dialog, öffentlich/privat, Detailseite, Teilen-Menü mit Freigabe,
 // Bearbeiten, Löschen; Upload ohne Dateispeicher zeigt eine verständliche Fehlermeldung.

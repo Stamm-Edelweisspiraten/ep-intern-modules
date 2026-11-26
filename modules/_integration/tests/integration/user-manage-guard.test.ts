@@ -3,36 +3,42 @@
  * ändern, deren wirksame Rechte (inkl. Modul-Verleihungen aus `user_role_grant`) er selbst besitzt.
  * Zusätzlich: Hinweismail an die alte Adresse beim administrativen E-Mail-Wechsel, Audit nur maskiert.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { settleMails } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser, systemContext } from '$testing';
+import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
 import {
+	ADMIN_ROLE_ID,
 	bootstrapAdmin,
+	canManageUser,
+	contextForUser,
+	createApiKey,
+	createRole,
 	createUser,
 	deleteUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	removeUserAvatar,
+	replaceModuleRoleGrants,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	settleMails,
 	setUserActive,
+	setUserAvatar,
 	setUserRoles,
-	updateUser
+	syncModules,
+	systemContext,
+	uninstallFakeStorage,
+	updateUser,
+	useTestDatabase,
+	waitFor
 } from '$testing';
-import { removeUserAvatar, setUserAvatar } from '$testing';
-import { canManageUser } from '$testing';
-import { createRole } from '$testing';
-import { replaceModuleRoleGrants } from '$testing';
-import { ADMIN_ROLE_ID } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import officesModule from '$modules/offices/module';
-import type { RequestContext } from '$lib/sdk/types';
 
 const PW = 'correct-horse-battery';
 // Echtes 1×1-PNG: Profilbilder laufen durch `core.images` (#19)
@@ -217,9 +223,7 @@ describe('Administrativer E-Mail-Wechsel', () => {
 		const [before] = await getDb().select().from(schema.user).where(eq(schema.user.id, target));
 		mails.length = 0;
 		await updateUser(admin, target, { email: 'neu-adresse@example.org' });
-		await expect
-			.poll(() => mails.find((m) => m.to === before!.email), { timeout: 2000 })
-			.toBeTruthy();
+		await waitFor(() => expect(mails.find((m) => m.to === before!.email)).toBeTruthy(), 2000);
 		const mail = mails.find((m) => m.to === before!.email)!;
 		expect(mail.subject).toContain('E-Mail-Adresse');
 		expect(mail.text).toContain('n***@example.org');

@@ -3,9 +3,9 @@
  * Die Website holt je Formular eine Proof-of-Work-Aufgabe, der Browser löst sie, die Website reicht die Anfrage
  * samt Lösung serverseitig weiter. Der Key gehört nur auf den Server der Website.
  */
-import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, defineEndpoint } from '$lib/sdk/server';
 import { contactChallenge, receiveContact } from './contact.service';
-import { PERM_WEBSITE_CONTACT, contactInput, trialInput } from './schemas';
+import { contactInput, PERM_WEBSITE_CONTACT, trialInput } from './schemas';
 import { receiveTrial } from './trial.service';
 
 const tags = ['Modul: messages'];

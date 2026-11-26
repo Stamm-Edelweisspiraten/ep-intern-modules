@@ -1,34 +1,34 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import ImageOff from '@lucide/svelte/icons/image-off';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { ConfirmDialog, NumberStepper } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
 		MAX_NOTE,
 		MAX_QUANTITY,
-		orderCreateInput,
 		type OrderCreated,
+		orderCreateInput,
 		type RecipientOptions
 	} from '../schemas';
 	import {
 		BASE,
+		type CartItem,
 		cartCount,
 		cartTotal,
 		errorText,
 		itemLabel,
 		recipientChoices,
 		recipientPayload,
-		setCartQuantity,
-		type CartItem
+		setCartQuantity
 	} from './helpers';
 
 	let {
@@ -153,18 +153,26 @@
 {#snippet manageHint()}
 	<p class="text-xs text-muted-foreground">
 		Für andere Mitglieder bestellst du im Tab
-		{#if onmanage}<button
+		{#if onmanage}
+			<button
 				type="button"
 				class="font-medium text-foreground underline underline-offset-2"
-				onclick={onmanage}>Bestellungen</button
-			>{:else}„Bestellungen“{/if} über „Bestellung anlegen“.
+				onclick={onmanage}
+				>Bestellungen</button
+			>
+		{:else}
+			„Bestellungen“
+		{/if}
+		über „Bestellung anlegen“.
 	</p>
 {/snippet}
 
 <section class="space-y-4" aria-labelledby="cart-title">
 	<h2 id="cart-title" class="flex items-center gap-2 font-semibold">
 		<ShoppingCart class="size-4" aria-hidden="true" /> Warenkorb
-		{#if count}<span class="text-sm font-normal text-muted-foreground">({count})</span>{/if}
+		{#if count}
+			<span class="text-sm font-normal text-muted-foreground">({count})</span>
+		{/if}
 	</h2>
 
 	{#if !cart.length}
@@ -191,7 +199,8 @@
 									{item.articleTitle}
 								</p>
 								<p class="text-xs text-muted-foreground tabular-nums">
-									{#if item.variantLabel}Gr. {item.variantLabel} ·
+									{#if item.variantLabel}
+										Gr. {item.variantLabel} ·
 									{/if}{formatEuro(item.unitPriceCents)} je Stück
 								</p>
 							</div>
@@ -287,8 +296,8 @@
 
 		<p class="text-xs text-muted-foreground">
 			{#if unbilled}
-				Bestellung für {recipient === 'stamm' ? 'den Stamm' : 'die Gruppe'} – ohne Rechnung, die Ware
-				wird aus dem Lager ausgegeben.
+				Bestellung für {recipient === 'stamm' ? 'den Stamm' : 'die Gruppe'} – ohne Rechnung, die
+				Ware wird aus dem Lager ausgegeben.
 			{:else}
 				Die Rechnung kommt sofort per E-Mail; bezahlt wird per Überweisung an die Kasse.
 			{/if}

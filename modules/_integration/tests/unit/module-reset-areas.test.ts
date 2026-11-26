@@ -1,11 +1,11 @@
+import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { modulesDir } from '$testing';
-import type { ResetArea } from '$testing';
 import * as actionsReset from '$modules/actions/reset';
 import * as membersReset from '$modules/members/reset';
 import * as treasuryReset from '$modules/treasury/reset';
+import type { ResetArea } from '$testing';
+import { modulesDir } from '$testing';
 
 const MODULES: Record<string, ResetArea[]> = {
 	members: membersReset.resetAreas,

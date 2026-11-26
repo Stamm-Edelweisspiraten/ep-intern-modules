@@ -10,24 +10,30 @@
  * Feste UUIDs (die API prüft das Format): Aktion `0a…01`, Empfänger `0b…0N`, Zwischenabrechnung Nr. N `0c…0N`,
  * Buchungen `e0…01` Stamm-Ausgabe (Lebensmittel), `…02` Spende, `…03` Auslage (Bastelmaterial), `…04` Bahnfahrt.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleRest, migrateModuleTo, moduleSql } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import { actionsService } from '$modules/actions/service';
-import type { AccountingEntry, AccountingInterim, EntryFormInput } from '$modules/actions/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import type { AccountingEntry, AccountingInterim, EntryFormInput } from '$modules/actions/schemas';
+import { actionsService } from '$modules/actions/service';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	migrateModuleRest,
+	migrateModuleTo,
+	moduleSql,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let adminId: string;

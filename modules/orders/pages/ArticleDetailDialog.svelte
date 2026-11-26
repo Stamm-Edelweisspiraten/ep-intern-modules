@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import ImageOff from '@lucide/svelte/icons/image-off';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { untrack } from 'svelte';
 	import { NumberStepper } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { cn } from '$lib/utils';
-	import { MAX_QUANTITY, type Article } from '../schemas';
-	import { formatPriceRange, type CartItem } from './helpers';
+	import { type Article, MAX_QUANTITY } from '../schemas';
+	import { type CartItem, formatPriceRange } from './helpers';
 
 	/**
 	 * Artikel ansehen und in den Warenkorb legen. Der Aufrufer rendert den Dialog per `{#key}` neu,

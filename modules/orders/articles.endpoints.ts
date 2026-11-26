@@ -4,7 +4,8 @@
  * Feste Pfade (`/articles/order`) stehen vor `/articles/:id`.
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type ApiEndpoint, type Tx } from '$lib/sdk/server';
+import type { z } from 'zod';
+import { type ApiEndpoint, core, defineEndpoint, errors, type Tx } from '$lib/sdk/server';
 import {
 	canManageArticles,
 	loadArticleOr404,
@@ -15,16 +16,15 @@ import {
 import { idList, mdb, rows } from './db';
 import { removeFiles } from './files';
 import {
-	MAX_ARTICLES,
-	PERMISSIONS,
+	type Article,
 	articleInput,
 	articleListQuery,
 	articleOrderInput,
 	articleUpdateInput,
 	idParams,
-	type Article
+	MAX_ARTICLES,
+	PERMISSIONS
 } from './schemas';
-import type { z } from 'zod';
 
 const tags = ['Modul: orders'];
 

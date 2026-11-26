@@ -7,6 +7,8 @@ import { sql } from 'drizzle-orm';
 import { formatEuro } from '$lib/components/layout/money';
 import { core, type RequestContext } from '$lib/sdk/server';
 import type { OfficeNotification } from '$modules/offices/contract';
+import { mdb, officesService, rows } from './db';
+import { loadStock } from './orders.service';
 import {
 	MODULE_ID,
 	NOTIFY_ORDER_CREATED,
@@ -14,8 +16,6 @@ import {
 	OFFICE_KEY,
 	type RecipientKind
 } from './schemas';
-import { mdb, officesService, rows } from './db';
-import { loadStock } from './orders.service';
 import { lineDescription } from './stock';
 
 export const ORDERS_LINK = '/modules/orders?tab=bestellungen';

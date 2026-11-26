@@ -5,8 +5,8 @@
  */
 import { sql } from 'drizzle-orm';
 import {
-	addedPrincipals,
 	type AnyApiEndpoint,
+	addedPrincipals,
 	core,
 	defineEndpoint,
 	describePrincipals,
@@ -17,25 +17,25 @@ import {
 	type RequestContext,
 	requireShareCapability,
 	rowsOf,
-	searchPrincipals,
 	type StoredShare,
+	searchPrincipals,
 	type Tx,
 	validatePrincipals
 } from '$lib/sdk/server';
 import { actionShareAccess, requireAccess } from './access';
 import { notifyShared } from './notify';
 import {
-	MODULE_ID,
+	type ActionShares,
 	idParams,
+	MODULE_ID,
 	principalSearchQuery,
+	type ShareEntry,
+	type ShareLevel,
 	shareInput,
 	shareParams,
 	sharesInput,
-	userSearchQuery,
-	type ActionShares,
-	type ShareEntry,
-	type ShareLevel,
-	type UserRef
+	type UserRef,
+	userSearchQuery
 } from './schemas';
 
 const tags = ['Aktionen'];

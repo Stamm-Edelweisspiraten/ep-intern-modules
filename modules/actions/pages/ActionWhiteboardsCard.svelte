@@ -1,13 +1,13 @@
 <script lang="ts">
+	import Plus from '@lucide/svelte/icons/plus';
+	import Presentation from '@lucide/svelte/icons/presentation';
+	import { toast } from 'svelte-sonner';
 	// Karte „Whiteboards“ in der Übersicht: Whiteboards des Moduls „Whiteboards“ zu dieser Aktion öffnen oder anlegen.
 	// Nur über die REST-API von `whiteboard` (kein Import aus dem Modul); ohne aktives Modul/Recht unsichtbar.
 	import { goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Presentation from '@lucide/svelte/icons/presentation';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 
 	let { actionId, actionName }: { actionId: string; actionName: string } = $props();
 

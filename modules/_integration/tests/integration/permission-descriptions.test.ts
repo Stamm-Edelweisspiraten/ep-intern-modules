@@ -1,15 +1,19 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { registerModule } from '$testing';
-import { syncModules } from '$testing';
-import { listPermissions, syncPermissions } from '$testing';
-import { getDb, schema } from '$testing';
 import actionsModule from '$modules/actions/module';
 import eventsModule from '$modules/events/module';
 import galleriesModule from '$modules/galleries/module';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
+import {
+	getDb,
+	listPermissions,
+	registerModule,
+	schema,
+	syncModules,
+	syncPermissions,
+	useTestDatabase
+} from '$testing';
 
 const MODULES = [membersModule, actionsModule, treasuryModule, eventsModule, galleriesModule];
 
@@ -51,7 +55,7 @@ describe('Beschreibungen der Berechtigungen', () => {
 			.where(eq(schema.permission.key, key));
 		await syncModules();
 		const after = (await listPermissions()).find((p) => p.key === key);
-		expect(after?.description).toBe(eventsModule.manifest.permissionDescriptions?.[key]);
+		expect<unknown>(after?.description).toBe(eventsModule.manifest.permissionDescriptions?.[key]);
 
 		await syncPermissions([{ key, moduleId: 'events' }]);
 		const kept = (await listPermissions()).find((p) => p.key === key);

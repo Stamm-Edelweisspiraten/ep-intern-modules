@@ -6,11 +6,11 @@
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, NumberStepper } from '$lib/components/layout';
 	import {
 		MAX_NAME,
 		MAX_QUANTITY,
@@ -21,7 +21,7 @@
 		type PurposeOptions
 	} from '../../schemas';
 	import { formatPeriod } from '../helpers';
-	import { cartCount, lineKey, removeLine, setQuantity, type CartDraft } from './cart';
+	import { type CartDraft, cartCount, lineKey, removeLine, setQuantity } from './cart';
 
 	let {
 		draft = $bindable(),
@@ -80,8 +80,9 @@
 	<h2 id="material-cart-title" class="flex items-center gap-2 font-semibold">
 		<ShoppingCart class="size-4" aria-hidden="true" />
 		{editing ? 'Reservierung' : 'Warenkorb'}
-		{#if count}<span class="text-sm font-normal text-muted-foreground tabular-nums">({count})</span
-			>{/if}
+		{#if count}
+			<span class="text-sm font-normal text-muted-foreground tabular-nums">({count})</span>
+		{/if}
 	</h2>
 
 	{#if !draft.lines.length}

@@ -1,6 +1,6 @@
 // Demo-Daten für das Modul `galleries` (idempotent, über die echte API).
-// Voraussetzung: demo-server läuft, `node scripts/seed-demo.mjs` und `node scripts/seed-demo-modules.mjs`
-// wurden ausgeführt, Storage ist konfiguriert (MinIO + `node scripts/setup-demo-storage.mjs`).
+// Voraussetzung: demo-server läuft, `bun scripts/seed-demo.mjs` und `bun scripts/seed-demo-modules.mjs`
+// wurden ausgeführt, Storage ist konfiguriert (MinIO + `bun scripts/setup-demo-storage.mjs`).
 // Legt Galerien mit erzeugten Beispielbildern an (sharp) und ordnet eine Galerie einem Termin zu,
 // falls das Modul `events` aktiv ist. Vorhandene Galerien gleichen Titels mit Bildern werden übersprungen.
 import sharp from 'sharp';
@@ -31,7 +31,7 @@ async function call(method, path, body, base = '/api/v1') {
 }
 
 // Zugangsdaten überschreibbar, falls die Admin-Adresse in der Demo-DB geändert wurde:
-//   DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-galleries.mjs
+//   DEMO_EMAIL=… DEMO_PASSWORD=… bun scripts/seed-demo-galleries.mjs
 const EMAIL = process.env.DEMO_EMAIL ?? 'admin@demo.test';
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo-Admin-2026!';
 
@@ -218,7 +218,7 @@ for (const g of galleries) {
 		if (r.status === 503) {
 			console.error(
 				'Storage nicht verfügbar (503). Bitte MinIO starten (docker compose -f docker-compose.demo.yml up -d)\n' +
-					'und `node scripts/setup-demo-storage.mjs` ausführen, dann dieses Skript erneut starten.'
+					'und `bun scripts/setup-demo-storage.mjs` ausführen, dann dieses Skript erneut starten.'
 			);
 			process.exit(1);
 		}

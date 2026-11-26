@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Label } from '$lib/components/ui/label';
 	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { STAGES, STAGE_LABELS, type BulkResult, type GroupRef, type Stage } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { type BulkResult, type GroupRef, STAGE_LABELS, STAGES, type Stage } from '../schemas';
 
 	export type BulkMode = 'add-groups' | 'remove-groups' | 'set-stage' | 'set-consent';
 
@@ -148,7 +148,9 @@
 					</div>
 				{/each}
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? 'Speichert …' : 'Übernehmen'}</Button>

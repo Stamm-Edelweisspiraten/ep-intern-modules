@@ -5,35 +5,40 @@
  * - `describePrincipals`/`validatePrincipals`/`core.users.directory` werten den Kontext ebenso aus.
  * - Helfer funktionieren für Module mit harter `members`-Abhängigkeit; ohne Deklaration klarer Fehler.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { isCoreError } from '$testing';
 import {
 	core,
 	defineModule,
 	describePrincipals,
+	type PrincipalInfo,
 	principalKeysFor,
 	searchPrincipals,
-	validatePrincipals,
-	type PrincipalInfo
+	validatePrincipals
 } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
-import membersModule from '$modules/members/module';
-import eventsModule from '$modules/events/module';
-import galleriesModule from '$modules/galleries/module';
-import filesModule from '$modules/files/module';
 import actionsModule from '$modules/actions/module';
+import eventsModule from '$modules/events/module';
+import filesModule from '$modules/files/module';
+import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	isCoreError,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 /** Testmodul mit HARTER `members`-Abhängigkeit (wie `actions`, `orders`, `treasury`) */
 const hardModule = defineModule({
@@ -329,7 +334,7 @@ describe('describePrincipals / validatePrincipals werten den Kontext aus', () =>
 		const parent = await ctxOf(ids.parent!);
 		const res = await describePrincipals(parent, 'events', list(), { everyoneLabel: 'Stamm' });
 		expect(res[0]).toMatchObject({ type: 'user', name: 'Moritz Verwalter', detail: null });
-		expect(res[1]).toEqual({ type: 'member', id: ids.kid, name: 'Mitglied' });
+		expect<unknown>(res[1]).toEqual({ type: 'member', id: ids.kid, name: 'Mitglied' });
 		expect(res[2]).toMatchObject({ type: 'group', name: 'Wölflinge Rudel' });
 	});
 

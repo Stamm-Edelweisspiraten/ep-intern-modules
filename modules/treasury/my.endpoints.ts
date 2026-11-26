@@ -3,7 +3,7 @@
  * Nur lesend, ohne Audit. Der members-Dienst läuft AUSSERHALB der Modul-Transaktion (PGlite).
  */
 import { sql } from 'drizzle-orm';
-import { defineEndpoint, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { type ApiEndpoint, defineEndpoint, type RequestContext } from '$lib/sdk/server';
 import { idList, mdb, membersService, rows } from './db';
 import { invoicePurpose } from './documents';
 import { loadSummaries } from './invoices.endpoints';

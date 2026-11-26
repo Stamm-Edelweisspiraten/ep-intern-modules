@@ -1,26 +1,26 @@
 <script lang="ts">
+	import FileDown from '@lucide/svelte/icons/file-down';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Search from '@lucide/svelte/icons/search';
 	// Reiter „Meine Reservierungen“ / „Alle Reservierungen“ (Muster `orders/MyOrdersTab`):
 	// Tabelle mit Filtern, Seitenwechsel, Detail-Dialog per Zeilenklick (`?open=`), Export.
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import FileDown from '@lucide/svelte/icons/file-down';
-	import Plus from '@lucide/svelte/icons/plus';
-	import Search from '@lucide/svelte/icons/search';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import {
+		DataTable,
+		deviceLayout,
+		EmptyState,
+		ErrorState,
+		ListRow,
+		LoadingState,
+		ScrollPills
+	} from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import {
-		DataTable,
-		EmptyState,
-		ErrorState,
-		ListRow,
-		LoadingState,
-		ScrollPills,
-		deviceLayout
-	} from '$lib/components/layout';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
 		PERMISSIONS,
 		PURPOSE_LABELS,
@@ -30,10 +30,10 @@
 	} from '../../schemas';
 	import {
 		API,
-		RESERVATION_STATE_LABELS,
-		STATE_VARIANTS,
 		errorText,
 		formatPeriod,
+		RESERVATION_STATE_LABELS,
+		STATE_VARIANTS,
 		safeReplaceState
 	} from '../helpers';
 	import ReservationDetailDialog from './ReservationDetailDialog.svelte';
@@ -247,13 +247,15 @@
 							variant="outline"
 							size="sm"
 							disabled={offset === 0}
-							onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+							onclick={() => (offset = Math.max(0, offset - LIMIT))}
+							>Zurück</Button
 						>
 						<Button
 							variant="outline"
 							size="sm"
 							disabled={current >= pages}
-							onclick={() => (offset += LIMIT)}>Weiter</Button
+							onclick={() => (offset += LIMIT)}
+							>Weiter</Button
 						>
 					</div>
 				</div>
@@ -330,7 +332,9 @@
 				<Table.Head>Titel</Table.Head>
 				<Table.Head>Zweck</Table.Head>
 				<Table.Head>Material</Table.Head>
-				{#if scope === 'all'}<Table.Head>Reserviert von</Table.Head>{/if}
+				{#if scope === 'all'}
+					<Table.Head>Reserviert von</Table.Head>
+				{/if}
 				<Table.Head>Status</Table.Head>
 			</Table.Row>
 		{/snippet}
@@ -353,19 +357,24 @@
 				</Table.Cell>
 				<Table.Cell>
 					<span class="text-xs text-muted-foreground">{PURPOSE_LABELS[r.purpose]}</span>
-					{#if r.purpose !== 'other'}<div class="truncate">{purposeText(r)}</div>{/if}
+					{#if r.purpose !== 'other'}
+						<div class="truncate">{purposeText(r)}</div>
+					{/if}
 				</Table.Cell>
 				<Table.Cell class="max-w-80">
 					<div class="line-clamp-2" title={r.itemSummary}>{r.itemSummary}</div>
 				</Table.Cell>
-				{#if scope === 'all'}<Table.Cell>{r.createdByName}</Table.Cell>{/if}
+				{#if scope === 'all'}
+					<Table.Cell>{r.createdByName}</Table.Cell>
+				{/if}
 				<Table.Cell>
 					<span class="flex flex-wrap gap-1">
 						<Badge variant={STATE_VARIANTS[r.state]}>{RESERVATION_STATE_LABELS[r.state]}</Badge>
-						{#if r.returned}<Badge variant="secondary">Zurückgenommen</Badge
-							>{:else if r.handedOut && r.state !== 'cancelled'}<Badge variant="success"
-								>Ausgegeben</Badge
-							>{/if}
+						{#if r.returned}
+							<Badge variant="secondary">Zurückgenommen</Badge>
+						{:else if r.handedOut && r.state !== 'cancelled'}
+							<Badge variant="success">Ausgegeben</Badge>
+						{/if}
 					</span>
 				</Table.Cell>
 			</Table.Row>
@@ -381,13 +390,15 @@
 							variant="outline"
 							size="sm"
 							disabled={offset === 0}
-							onclick={() => (offset = Math.max(0, offset - LIMIT))}>Zurück</Button
+							onclick={() => (offset = Math.max(0, offset - LIMIT))}
+							>Zurück</Button
 						>
 						<Button
 							variant="outline"
 							size="sm"
 							disabled={current >= pages}
-							onclick={() => (offset += LIMIT)}>Weiter</Button
+							onclick={() => (offset += LIMIT)}
+							>Weiter</Button
 						>
 					</div>
 				</div>

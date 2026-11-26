@@ -2,30 +2,48 @@
  * Datensicherung (Team B): Introspektion, Bereichsplanung und Export gegen PGlite.
  * Der Export wird mit der echten Hülle/dem echten ZIP gelesen und auf Inhalt geprüft.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { resetAllForTests } from '$testing';
-import filesModule from '$modules/files/module';
-import { loadTableInfo, selfReference } from '$testing';
-import { listBackupScopes, planTables } from '$testing';
-import { decodeRowSecrets, encodeRowSecrets, keyCheckValue, secretPurposeFor } from '$testing';
-import { setBackupClockForTests, startBackupExport, takeBackupDownload } from '$testing';
-import { decryptEnvelope, deriveEnvelopeKey, readEnvelopeHeader } from '$testing';
-import { readArchive } from '$testing';
-import { collect } from '$testing';
-import { encryptSecret, isEncrypted } from '$testing';
-import { isSecretMarker, type TableInfo } from '$testing';
 import type { RequestContext } from '$lib/sdk/types';
+import filesModule from '$modules/files/module';
+import {
+	bootstrapAdmin,
+	collect,
+	contextForUser,
+	createUser,
+	decodeRowSecrets,
+	decryptEnvelope,
+	deriveEnvelopeKey,
+	enableModule,
+	encodeRowSecrets,
+	encryptSecret,
+	fakeObjects,
+	getDb,
+	installFakeStorage,
+	isEncrypted,
+	isSecretMarker,
+	keyCheckValue,
+	listBackupScopes,
+	loadTableInfo,
+	planTables,
+	readArchive,
+	readEnvelopeHeader,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	secretPurposeFor,
+	selfReference,
+	setBackupClockForTests,
+	startBackupExport,
+	syncModules,
+	type TableInfo,
+	takeBackupDownload,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'a-long-enough-pw';
 const BACKUP_PW = 'sicherungs-passwort-123';

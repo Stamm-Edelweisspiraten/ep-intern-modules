@@ -28,6 +28,7 @@ Vorname, Verknüpfung Gruppen/Termin/Galerie, Themen mit Filter, RSS, Mitschreib
 | `search.ts`, `privacy.ts`, `reset.ts` | Globale Suche (Beiträge), `onUserDeleted`/`subjectExport`, Reset `all` (`storagePrefixes: 'all'`, `rebuild` – legt die Startfragen neu an) |
 | `ui.ts`, `pages/` | `''` → `PostsPage`, `banners` → `BannersPage`, `faq` → `FaqPage`, `posts/:id` → `PostEditorPage`; `WebsiteTabs` (Reiter nach Recht), `BannerDialog`, `FaqDialog`, `helpers.ts` |
 | `migrations/0001_init.sql` | `banners`, `faqs` (+ 4 Startfragen aus der alten `website/src/lib/faqs.ts`), `posts`, `post_images`, `post_groups`, `post_tags`, `post_shares` |
+| `assist.ts` | KI-Schreibhilfe (`PERM_AI` = `website.ai.use`): Blog, häufige Fragen, Banner |
 
 ## Rechte
 | Schlüssel | Bedeutung |

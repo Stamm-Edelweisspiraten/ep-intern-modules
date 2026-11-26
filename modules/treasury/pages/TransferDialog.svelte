@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
-	import { transferInput, type Account } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { type Account, transferInput } from '../schemas';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
 
 	let {
@@ -137,7 +137,9 @@
 					Für Umbuchungen braucht es mindestens zwei Konten.
 				</p>
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer class="items-center gap-2">
 				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>

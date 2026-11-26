@@ -8,8 +8,8 @@ Fachmodule der Edelweißpiraten (Pfadfinder-Stamm) für den Core **Kalypzo Atriu
 - `modules/<id>/` – je Modul `atrium-module.json`, `module.ts`, `ui.ts`, `migrations/`, `pages/`, `tests/`, `e2e/`; Katalog `modules/atrium-modules.json`.
 - `modules/_integration/` – modulübergreifende Tests (Backup mit echten Daten, Suche, Datenschutz, Endpunkt-/Doku-Abgleich).
 - Basismodule `files`, `notes`, `tasks`, `whiteboard`, `events` stammen aus dem Repo `atrium-basic-modules` und werden von
-  `npm run setup` nach `modules/<id>/` **kopiert** (gitignored, Marker `.from-basic`, `scripts/basic-modules.mjs`). Dort **nie** ändern –
-  Änderungen im Repo `atrium-basic-modules`, danach `npm run setup`. Ihre Regeln liegen dort unter `.claude/rules/module-<id>.md`.
+  `bun run setup` nach `modules/<id>/` **kopiert** (gitignored, Marker `.from-basic`, `scripts/basic-modules.mjs`). Dort **nie** ändern –
+  Änderungen im Repo `atrium-basic-modules`, danach `bun run setup`. Ihre Regeln liegen dort unter `.claude/rules/module-<id>.md`.
 - `modules/ep-stamm` – Profil-Modul (Briefkopf, Mail-Kopf, Wappen, Einstellungs-Vorgaben); ohne es sieht alles neutral aus.
 - `scripts/` – `setup.mjs`, `core.mjs` (Befehle im Core mit `ATRIUM_MODULES_DIR=./modules`), Prüfskripte, Demo-Seeds `seed-demo-*.mjs`.
 - `.claude/rules/module-<id>.md` – Regeln je Modul (laden per `paths:`).
@@ -17,11 +17,11 @@ Fachmodule der Edelweißpiraten (Pfadfinder-Stamm) für den Core **Kalypzo Atriu
 ## Befehle
 | Befehl | Zweck |
 |---|---|
-| `npm run setup` | Core holen/installieren, `node_modules` → `.core/node_modules`, Modul-Pakete |
-| `npm run check` / `npm run lint` / `npm run format:check` | Typen / ESLint / Prettier |
-| `npm test` | Tests der Module |
-| `npm run build` / `npm run e2e` / `npm run demo` | Build / Playwright / Demo (:4300) |
-| `npm run check:catalog` / `npm run check:migrations` | Katalog vollständig / angewendete Migrationen unverändert |
+| `bun run setup` | Core holen/installieren (`bun install`), `node_modules` → `.core/node_modules`, Basismodule kopieren, Modul-Pakete |
+| `bun run check` / `bun run lint` / `bun run format` | Typen / Biome (Format + Lint) + Modulgrenzen / Biome-Korrekturen schreiben |
+| `bun run test` | Tests der Module (`bun test`; `from 'bun:test'`, Helfer wie `waitFor`/`encodeMultipart` aus `$testing`) |
+| `bun run build` / `bun run e2e` / `bun run demo` | Build / Playwright / Demo (:4300) |
+| `bun run check:catalog` / `bun run check:migrations` | Katalog vollständig / angewendete Migrationen unverändert |
 
 ## Regeln (zusätzlich zu den Core-Regeln)
 1. Nur Dateien unter `modules/`, `scripts/` und `.claude/` ändern – **nie** in `.core` (Core-Änderungen im Core-Repo, danach Tag + Submodul).

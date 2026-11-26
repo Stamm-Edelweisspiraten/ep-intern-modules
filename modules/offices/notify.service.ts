@@ -13,7 +13,7 @@ import type {
 	OfficesService,
 	OwnOfficeEmails
 } from './contract';
-import { inList, mdb, rowsOf, textOrNull, usersByIds, type DirectoryUserInfo } from './load';
+import { type DirectoryUserInfo, inList, mdb, rowsOf, textOrNull, usersByIds } from './load';
 import { registeredTemplates } from './templates';
 
 export const MAX_SUBJECT = 150;

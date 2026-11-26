@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { beforeNavigate } from '$app/navigation';
 	import Briefcase from '@lucide/svelte/icons/briefcase';
-	import { apiFetch } from '$lib/sdk/client';
+	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import {
 		Card,
@@ -11,9 +10,10 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { MyOffices } from '../schemas';
-	import MyBioCard from './MyBioCard.svelte';
 	import { BASE, errorText } from './helpers';
+	import MyBioCard from './MyBioCard.svelte';
 
 	// `userId` wird nicht gebraucht: `/me` liefert immer die eigenen Ämter
 	let { userId: _userId }: { userId: string } = $props();
@@ -84,9 +84,8 @@
 						{/each}
 					</ul>
 					<p class="mt-3 text-xs text-muted-foreground">
-						Alle Ämter mit Inhaber*innen findest du unter <a
-							href="/modules/offices"
-							class="text-link underline-offset-4 hover:underline">Ämter</a
+						Alle Ämter mit Inhaber*innen findest du unter
+						<a href="/modules/offices" class="text-link underline-offset-4 hover:underline">Ämter</a
 						>.
 					</p>
 				</CardContent>
@@ -100,9 +99,8 @@
 		{#if my.offices.length > 0}
 			<p class="text-muted-foreground text-sm">
 				Ob du Hinweise zu deinen Ämtern per E-Mail, Push oder als Tageszusammenfassung bekommst,
-				stellst du unter <a class="text-link underline" href="/profile?tab=notifications"
-					>Benachrichtigungen</a
-				> ein.
+				stellst du unter
+				<a class="text-link underline" href="/profile?tab=notifications">Benachrichtigungen</a> ein.
 			</p>
 		{/if}
 	</div>

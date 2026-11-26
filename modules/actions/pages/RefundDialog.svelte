@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import * as Table from '$lib/components/ui/table';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import { ConfirmDialog } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import * as Table from '$lib/components/ui/table';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { fmtDate } from './format';
 	import RefundDonationList from './RefundDonationList.svelte';
 	import type { RefundMode, RefundState } from './refund-types';
@@ -271,7 +271,13 @@
 							class="grid grid-cols-1 gap-1 rounded-lg border p-1 sm:grid-cols-2"
 							role="radiogroup"
 						>
-							{#each [{ v: 'auto', t: `Aus Anmeldungen (${data.autoCount} ${data.autoCount === 1 ? 'Person' : 'Personen'})` }, { v: 'manual', t: 'Namen selbst eintragen' }] as opt (opt.v)}
+							{#each [
+								{
+									v: 'auto',
+									t: `Aus Anmeldungen (${data.autoCount} ${data.autoCount === 1 ? 'Person' : 'Personen'})`
+								},
+								{ v: 'manual', t: 'Namen selbst eintragen' }
+							] as opt (opt.v)}
 								<button
 									type="button"
 									role="radio"
@@ -299,9 +305,11 @@
 									/>
 									<Button type="button" variant="outline" onclick={addNames}>Hinzufügen</Button>
 								</div>
-								{#if inputHint}<p class="text-xs text-muted-foreground" role="status">
+								{#if inputHint}
+									<p class="text-xs text-muted-foreground" role="status">
 										{inputHint}
-									</p>{/if}
+									</p>
+								{/if}
 								<div class="flex flex-wrap items-center justify-between gap-2">
 									<span class="text-sm font-medium">{countLabel(names.length)}</span>
 									{#if autoNames.length}
@@ -363,7 +371,9 @@
 					{#if shown.items.length}
 						<div class="max-h-60 overflow-auto rounded-lg border">
 							<Table.Root>
-								<caption class="sr-only">Rückzahlung je Teilnehmende*r</caption>
+								<caption class="sr-only"
+									>Rückzahlung je Teilnehmende*r</caption
+								>
 								<Table.Header>
 									<Table.Row>
 										<Table.Head>Teilnehmende*r</Table.Head>
@@ -387,7 +397,7 @@
 							Es gibt keine zahlenden Teilnehmenden oder keinen auszahlbaren Betrag.
 						</p>
 					{/if}
-				{:else if booked && booked.items.length}
+				{:else if booked?.items.length}
 					<RefundDonationList
 						{actionId}
 						items={booked.items}
@@ -405,10 +415,13 @@
 					<div class="space-y-1 text-sm">
 						<p class="font-medium">Noch nicht möglich, weil:</p>
 						<ul class="list-disc space-y-0.5 pl-5 text-muted-foreground">
-							{#each data.blockers as b (b)}<li>{b}</li>{/each}
+							{#each data.blockers as b (b)}
+								<li>{b}</li>
+							{/each}
 							{#if !data.thresholdOk && !data.blockers.some((b) => b.includes('5'))}
 								<li>
-									je Person bleiben höchstens {minLabel} (Mindestbetrag je Person ist nicht erreicht)
+									je Person bleiben höchstens {minLabel} (Mindestbetrag je Person ist nicht
+									erreicht)
 								</li>
 							{/if}
 						</ul>

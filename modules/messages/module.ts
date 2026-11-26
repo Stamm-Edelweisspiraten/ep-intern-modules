@@ -1,20 +1,26 @@
 import { z } from 'zod';
-import { NOTIFY_NEW, NOTIFY_REPLIED, notificationScopesFor } from './inbox-notify.service';
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import { messagesAssist } from './assist';
 import pkg from './atrium-module.json';
 import { contactEndpoints } from './contact.endpoints';
 import { cleanup, resumeDeliveries } from './delivery.service';
 import { cleanupInbox, loadInboxConfig, pollInbox } from './inbound.service';
 import { inboxEndpoints } from './inbox.endpoints';
 import { unreadTotal } from './inbox.service';
-import { messageEndpoints } from './messages.endpoints';
+import { NOTIFY_NEW, NOTIFY_REPLIED, notificationScopesFor } from './inbox-notify.service';
 import { mailboxAdminEndpoints } from './mailboxes-admin.endpoints';
+import { messageEndpoints } from './messages.endpoints';
+import m0001 from './migrations/0001_init.sql?raw';
+import m0002 from './migrations/0002_layout.sql?raw';
+import m0003 from './migrations/0003_inbox.sql?raw';
+import m0004 from './migrations/0004_inbox_folders.sql?raw';
+import m0005 from './migrations/0005_spam.sql?raw';
+import m0006 from './migrations/0006_extra_mailboxes.sql?raw';
 import { onMemberDeleted, onUserDeleted, subjectExport } from './privacy';
-import { isValidDomain } from './sender';
-import { messagesAssist } from './assist';
 import {
 	INBOX_RETENTION_DEFAULT,
 	INBOX_SETTING_KEYS,
+	LAYOUTS,
 	MAX_RECIPIENTS_DEFAULT,
 	MAX_RECIPIENTS_LIMIT,
 	PERM_AI,
@@ -25,16 +31,10 @@ import {
 	PERM_SETTINGS,
 	PERM_VIEW_ALL,
 	PERM_WEBSITE_CONTACT,
-	LAYOUTS,
 	REPLY_TO_MODES,
 	SETTING_KEYS
 } from './schemas';
-import m0001 from './migrations/0001_init.sql?raw';
-import m0002 from './migrations/0002_layout.sql?raw';
-import m0003 from './migrations/0003_inbox.sql?raw';
-import m0004 from './migrations/0004_inbox_folders.sql?raw';
-import m0005 from './migrations/0005_spam.sql?raw';
-import m0006 from './migrations/0006_extra_mailboxes.sql?raw';
+import { isValidDomain } from './sender';
 
 /** IMAP-Ordnername: druckbar, ohne Steuerzeichen und Platzhalter */
 const folderName = z
@@ -42,7 +42,7 @@ const folderName = z
 	.trim()
 	.min(1)
 	.max(100)
-	// eslint-disable-next-line no-control-regex
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 	.regex(/^[^\u0000-\u001f\u007f*%"\\]+$/, 'Ungültiger Ordnername');
 
 export default defineModule({

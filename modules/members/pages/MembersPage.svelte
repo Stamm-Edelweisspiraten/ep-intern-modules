@@ -1,22 +1,16 @@
 <script lang="ts">
-	import { todayBerlin } from '$lib/sdk/dates';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import Check from '@lucide/svelte/icons/check';
 	import FileDown from '@lucide/svelte/icons/file-down';
-	import Mail from '@lucide/svelte/icons/mail';
 	import Link2 from '@lucide/svelte/icons/link-2';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Table from '$lib/components/ui/table';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		ColorBadge,
 		ConfirmDialog,
@@ -27,26 +21,32 @@
 		PdfExportDialog,
 		SearchInput
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Table from '$lib/components/ui/table';
 	import type { ListCatalog, ListSelection } from '$lib/pdf-lists/types';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
 	import {
+		ageFromBirthDate,
 		BULK_MAX_IDS,
+		type BulkResult,
+		type GroupRef,
 		LED_EDIT,
 		LED_EXPORT,
 		LED_VIEW,
-		STAGES,
-		STAGE_LABELS,
 		LINK_LETTERS_MAX_IDS,
-		ageFromBirthDate,
-		type BulkResult,
-		type GroupRef,
 		type Member,
 		type MemberIdsResult,
-		type MemberList
+		type MemberList,
+		STAGE_LABELS,
+		STAGES
 	} from '../schemas';
 	import BulkDialog, { type BulkMode } from './BulkDialog.svelte';
 	import { downloadPdf } from './download';
 	import LinksDialog from './LinksDialog.svelte';
-	import MemberFilters, { UNGROUPED, type MemberFilterState } from './MemberFilters.svelte';
+	import MemberFilters, { type MemberFilterState, UNGROUPED } from './MemberFilters.svelte';
 	import MemberForm from './MemberForm.svelte';
 
 	const PAGE_SIZE = 20;
@@ -611,8 +611,9 @@
 				<Table.Head>Gruppen</Table.Head>
 				<Table.Head>Geburtsdatum</Table.Head>
 				<Table.Head>Darf gezeigt werden</Table.Head>
-				{#if canEdit || canDelete || canLinkView}<Table.Head class="text-right">Aktionen</Table.Head
-					>{/if}
+				{#if canEdit || canDelete || canLinkView}
+					<Table.Head class="text-right">Aktionen</Table.Head>
+				{/if}
 			</Table.Row>
 		{/snippet}
 		{#each items as m (m.id)}
@@ -636,9 +637,15 @@
 				<Table.Cell class="font-medium">
 					{m.firstName}
 					{m.lastName}
-					{#if m.scoutName}<span class="text-muted-foreground">„{m.scoutName}“</span>{/if}
-					{#if m.secondaryMember}<Badge variant="outline" class="ml-1">Zweitmitglied</Badge>{/if}
-					{#if isLeft(m)}<Badge variant="destructive" class="ml-1">ausgetreten</Badge>{/if}
+					{#if m.scoutName}
+						<span class="text-muted-foreground">„{m.scoutName}“</span>
+					{/if}
+					{#if m.secondaryMember}
+						<Badge variant="outline" class="ml-1">Zweitmitglied</Badge>
+					{/if}
+					{#if isLeft(m)}
+						<Badge variant="destructive" class="ml-1">ausgetreten</Badge>
+					{/if}
 				</Table.Cell>
 				<Table.Cell><Badge variant="secondary">{STAGE_LABELS[m.stage]}</Badge></Table.Cell>
 				<Table.Cell>
@@ -646,7 +653,9 @@
 						{#each m.groups as g (g.id)}
 							<ColorBadge color={g.color}>{g.name}</ColorBadge>
 						{/each}
-						{#if !m.groups.length}<span class="text-muted-foreground">–</span>{/if}
+						{#if !m.groups.length}
+							<span class="text-muted-foreground">–</span>
+						{/if}
 					</div>
 				</Table.Cell>
 				<Table.Cell class="whitespace-nowrap"
@@ -686,7 +695,8 @@
 									{#if m.linkCount}
 										<span
 											class="absolute -top-1.5 -right-1.5 grid size-4 place-content-center rounded-full bg-primary text-xs leading-none text-primary-foreground"
-											aria-hidden="true">{m.linkCount}</span
+											aria-hidden="true"
+											>{m.linkCount}</span
 										>
 									{/if}
 								</Button>
@@ -696,7 +706,8 @@
 									size="icon"
 									variant="outline"
 									aria-label={`${m.firstName} ${m.lastName} bearbeiten`}
-									onclick={() => openEdit(m)}><Pencil /></Button
+									onclick={() => openEdit(m)}
+									><Pencil /></Button
 								>
 							{/if}
 							{#if canDelete}
@@ -704,7 +715,8 @@
 									size="icon"
 									variant="destructive"
 									aria-label={`${m.firstName} ${m.lastName} löschen`}
-									onclick={() => openDelete(m)}><Trash2 /></Button
+									onclick={() => openDelete(m)}
+									><Trash2 /></Button
 								>
 							{/if}
 						</div>
@@ -713,7 +725,9 @@
 			</Table.Row>
 		{/each}
 		{#snippet footer()}
-			{#if items.length}<Pagination {total} limit={PAGE_SIZE} {offset} />{/if}
+			{#if items.length}
+				<Pagination {total} limit={PAGE_SIZE} {offset} />
+			{/if}
 		{/snippet}
 	</DataTable>
 </div>

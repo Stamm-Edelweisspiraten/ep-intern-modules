@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { orderCreateInput } from '$modules/orders/schemas';
+import { describe, expect, it } from 'bun:test';
 import { recipientChoices, recipientLabel, recipientPayload } from '$modules/orders/pages/helpers';
+import { orderCreateInput } from '$modules/orders/schemas';
 
 // Empfänger im Warenkorb (Mitglied, Gruppe, Stamm) und Body von `POST /orders`.
 

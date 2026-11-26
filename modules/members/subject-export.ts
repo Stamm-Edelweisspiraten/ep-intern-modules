@@ -5,7 +5,7 @@
  * Mail-Einstellungen, Dokumentnamen) als JSON liefern. Dokumentinhalte werden nicht mitgeliefert.
  */
 import { sql } from 'drizzle-orm';
-import { inList, moduleDb, type ModuleSubjectExport, rowsOf, toIsoOrNull } from '$lib/sdk/server';
+import { inList, type ModuleSubjectExport, moduleDb, rowsOf, toIsoOrNull } from '$lib/sdk/server';
 import { loadMembersByIds } from './members.service';
 import { MODULE_ID } from './schemas';
 

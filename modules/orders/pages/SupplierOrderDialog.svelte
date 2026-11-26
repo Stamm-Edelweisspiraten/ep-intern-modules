@@ -4,22 +4,22 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, MoneyInput, NumberStepper } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, MoneyInput, NumberStepper } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
+		type Article,
 		MAX_NOTE,
 		MAX_QUANTITY,
 		MAX_SUPPLIER,
-		supplierOrderInput,
-		type Article,
 		type SupplierOrder,
-		type SupplierSuggestion
+		type SupplierSuggestion,
+		supplierOrderInput
 	} from '../schemas';
 	import {
 		API,
@@ -366,7 +366,9 @@
 									<span class="tabular-nums">= {formatEuro(row.quantity * row.costCents)}</span>
 								{/if}
 							</div>
-							{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+							{#if err}
+								<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -423,7 +425,9 @@
 					placeholder="z. B. Bestellnummer im Shop"
 				/>
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>

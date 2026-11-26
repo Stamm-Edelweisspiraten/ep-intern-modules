@@ -1,15 +1,9 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as Table from '$lib/components/ui/table';
 	import {
 		DataTable,
 		ErrorState,
@@ -17,6 +11,12 @@
 		PageHeader,
 		PageTitle
 	} from '$lib/components/layout';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as Table from '$lib/components/ui/table';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import {
 		MESSAGE_STATUS_LABELS,

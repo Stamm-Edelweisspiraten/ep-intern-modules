@@ -4,7 +4,7 @@
  * Reihenfolge: laufende/kommende zuerst (früheste zuerst), danach vergangene (jüngste zuerst).
  */
 import { sql } from 'drizzle-orm';
-import { moduleDb, type ModuleSearchProvider, rowsOf, type SearchHit } from '$lib/sdk/server';
+import { type ModuleSearchProvider, moduleDb, rowsOf, type SearchHit } from '$lib/sdk/server';
 import { loadActionKeys, visibleActionsFilter } from './access';
 import { MODULE_ID } from './schemas';
 

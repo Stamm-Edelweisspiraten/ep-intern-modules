@@ -14,35 +14,35 @@ import {
 	IMAGE_RATE_LIMIT,
 	type Row,
 	rowsOf,
-	toIso,
-	type Tx
+	type Tx,
+	toIso
 } from '$lib/sdk/server';
 import type { EventRefInfo } from '$modules/events/contract';
 import {
-	VARIANT_COLUMN,
 	db,
 	eventsService,
 	fileResponse,
 	rangeFileResponse,
+	VARIANT_COLUMN,
 	websiteCoverSql
 } from './files';
 import {
 	CREATED_ON_SQL,
+	compareGalleries,
 	ENDS_ON_SQL,
 	STARTS_ON_SQL,
-	compareGalleries,
 	sortRowOf
 } from './galleries.service';
 import { durationOf, mediaTypeOf } from './images.service';
 import {
-	idParams,
-	websiteListQuery,
-	websiteVariantParams,
 	type ImageCover,
+	idParams,
 	type WebsiteEventRef,
 	type WebsiteGallery,
 	type WebsiteGalleryDetail,
-	type WebsiteImage
+	type WebsiteImage,
+	websiteListQuery,
+	websiteVariantParams
 } from './schemas';
 
 const TAGS = ['Modul: galleries'];

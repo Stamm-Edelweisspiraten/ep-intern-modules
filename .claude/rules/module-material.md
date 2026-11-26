@@ -136,7 +136,7 @@ Produkt löschen → `removeImagesOf('products')` (Dateien), Reset `pantry` mit 
 Unit `tests/unit/material-availability.test.ts`, `material-allocation.test.ts` (Zuteilung, Planer, Zelte), `material-cart.test.ts`,
 `material-label-designer.test.ts`, `labels.test.ts`; Integration `tests/integration/material.test.ts`, `material-sets.test.ts` (Sets, Zelte, Umplanen,
 Ausgabe, Anheften), `material-consumables-pantry.test.ts` (Rücknahme mit Verbrauch, Belegung bis zur Rücknahme, Vorrat, OFF mit Fake-Fetch,
-Ablauf-Hinweis über das Amt, Lebensmittel-Bilder mit Fake-Storage, OFF-Bild-Import inkl. fremdem Host/zu groß), Unit `material-pantry.test.ts`, Upgrade `material-migrations.test.ts` (0002, 0004, 0005, 0007); E2E `tests/e2e/material.spec.ts`. Demo `node scripts/seed-demo-material.mjs`
+Ablauf-Hinweis über das Amt, Lebensmittel-Bilder mit Fake-Storage, OFF-Bild-Import inkl. fremdem Host/zu groß), Unit `material-pantry.test.ts`, Upgrade `material-migrations.test.ts` (0002, 0004, 0005, 0007); E2E `tests/e2e/material.spec.ts`. Demo `bun scripts/seed-demo-material.mjs`
 (Sets K1/K2/KJ1/KJ2, Zelte Kohte/Jurte).
 
 ## Offen

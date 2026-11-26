@@ -1,44 +1,44 @@
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Copy from '@lucide/svelte/icons/copy';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Eye from '@lucide/svelte/icons/eye';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Printer from '@lucide/svelte/icons/printer';
+	import QrCode from '@lucide/svelte/icons/qr-code';
+	import Ruler from '@lucide/svelte/icons/ruler';
+	import Tag from '@lucide/svelte/icons/tag';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 	// Reiter „Etiketten“ (`/modules/material?tab=etiketten`): Kopfzeile mit „Etikettgrößen“ und dem Menü
 	// „Erstellen“ (Neues Etikett, Neue Etikettgröße, Leere Codes drucken), darunter alle Etiketten als Kacheln
 	// mit Live-Vorschau. Gestaltet wird im Designer `labels/:id`.
 	// Rechte: gestalten mit `material.labels.manage`, ansehen/drucken auch mit `material.inventory.manage`.
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
-	import Plus from '@lucide/svelte/icons/plus';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Pencil from '@lucide/svelte/icons/pencil';
-	import Copy from '@lucide/svelte/icons/copy';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Eye from '@lucide/svelte/icons/eye';
-	import Printer from '@lucide/svelte/icons/printer';
-	import Ruler from '@lucide/svelte/icons/ruler';
-	import Tag from '@lucide/svelte/icons/tag';
-	import QrCode from '@lucide/svelte/icons/qr-code';
-	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
-	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { ConfirmDialog, EmptyState, ErrorState, LoadingState } from '$lib/components/layout';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
 		BASE_PATH,
 		LABEL_TARGET_LABELS,
-		PERMISSIONS,
 		type LabelFormatEntry,
 		type LabelTarget,
-		type LabelTemplate
+		type LabelTemplate,
+		PERMISSIONS
 	} from '../../schemas';
 	import { API, errorText, formatDate } from '../helpers';
 	import LabelPreview from '../shared/LabelPreview.svelte';
 	import PrintLabelsDialog from '../shared/PrintLabelsDialog.svelte';
 	import BlankCodesDialog from './BlankCodesDialog.svelte';
+	import { formatSize, sampleValues } from './designer';
 	import FormatDialog from './FormatDialog.svelte';
 	import FormatsDialog from './FormatsDialog.svelte';
 	import NewLayoutDialog from './NewLayoutDialog.svelte';
-	import { formatSize, sampleValues } from './designer';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canDesign = $derived(can(permissions, PERMISSIONS.labels));
@@ -239,9 +239,11 @@
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content align="end">
 									<DropdownMenu.Item onSelect={() => goto(designerHref(t.id))}>
-										{#if canDesign}<Pencil aria-hidden="true" /> Öffnen{:else}<Eye
-												aria-hidden="true"
-											/> Ansehen{/if}
+										{#if canDesign}
+											<Pencil aria-hidden="true" /> Öffnen
+										{:else}
+											<Eye aria-hidden="true" /> Ansehen
+										{/if}
 									</DropdownMenu.Item>
 									{#if canPrint}
 										<DropdownMenu.Item onSelect={() => testPrint(t)}>

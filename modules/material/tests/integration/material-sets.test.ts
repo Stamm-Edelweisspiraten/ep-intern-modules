@@ -1,19 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { runJobNow } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
+import type { RequestContext } from '$lib/sdk/types';
 import materialModule from '$modules/material/module';
 import type {
 	Catalog,
@@ -26,7 +14,24 @@ import type {
 	ReservationLine,
 	Tent
 } from '$modules/material/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Modul „Material“ v2.1: Sets (zusammengehörige Bahnen), Zelte als Bauplan, Reservieren von Zelten mit
 // automatischer Zuteilung ganzer Sets, Umplanen bei gezielter Reservierung, Ausgabe, Zuteilung von Hand.

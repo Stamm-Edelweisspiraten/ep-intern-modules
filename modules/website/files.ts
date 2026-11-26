@@ -3,8 +3,8 @@
  * mit einem System-Kontext gelesen/geschrieben – Autor*innen und der Website-Key brauchen deshalb keine
  * Storage-Rechte. Alle Funktionen mit `core.*` nur AUSSERHALB offener Modul-Transaktionen aufrufen (PGlite).
  */
-import { core, moduleDb, secureFileResponse, type ImageVariantSpec } from '$lib/sdk/server';
-import { MODULE_ID, type ImageVariant } from './schemas';
+import { core, type ImageVariantSpec, moduleDb, secureFileResponse } from '$lib/sdk/server';
+import { type ImageVariant, MODULE_ID } from './schemas';
 
 export const db = () => moduleDb(MODULE_ID);
 export const filesCtx = () => core.auth.systemContext('website-files');

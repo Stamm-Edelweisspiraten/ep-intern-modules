@@ -2,12 +2,10 @@
  * Modul `material` – Migration 0002 (Artikel-Codes): Artikel im Zustand „vor 0002“ bekommen fortlaufende
  * Codes `A-000001 …` nach Anlagedatum, der Zähler wird fortgeschrieben, Etikett-Layouts kennen das Ziel `article`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
 import materialModule from '$modules/material/module';
+import { migrateModuleTo, moduleSql, registerModule, useTestDatabase } from '$testing';
 
 let close: () => Promise<void>;
 

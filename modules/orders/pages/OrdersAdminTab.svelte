@@ -1,8 +1,4 @@
 <script lang="ts">
-	// Verwaltung der Mitgliedsbestellungen (Kämmerer*in): Kopfzahlen, Filter, Ausgabe, Storno,
-	// Bearbeiten (`orders.order.edit`) und Löschen (`orders.order.delete`).
-	import { onMount } from 'svelte';
-	import { page } from '$app/state';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import PackageCheck from '@lucide/svelte/icons/package-check';
@@ -11,39 +7,43 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import X from '@lucide/svelte/icons/x';
+	// Verwaltung der Mitgliedsbestellungen (Kämmerer*in): Kopfzahlen, Filter, Ausgabe, Storno,
+	// Bearbeiten (`orders.order.edit`) und Löschen (`orders.order.delete`).
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
-		PERMISSIONS,
 		type Order,
 		type OrderDeleted,
 		type OrderList,
-		type OrdersOverview
+		type OrdersOverview,
+		PERMISSIONS
 	} from '../schemas';
 	import {
 		API,
-		ORDER_FILTERS,
 		errorMessage,
 		fmtDate,
 		fmtRatio,
 		itemName,
+		ORDER_FILTERS,
 		type OrderFilter
 	} from './admin-helpers';
 	import CancelItemsDialog from './CancelItemsDialog.svelte';
 	import HandoutDialog from './HandoutDialog.svelte';
+	import { recipientLabel } from './helpers';
 	import OrderCreateDialog from './OrderCreateDialog.svelte';
 	import OrderEditDialog from './OrderEditDialog.svelte';
 	import OrderStatusBadge from './OrderStatusBadge.svelte';
 	import PaymentBadge from './PaymentBadge.svelte';
 	import RecipientName from './RecipientName.svelte';
-	import { recipientLabel } from './helpers';
 
 	let {
 		onnavigate
@@ -259,8 +259,8 @@
 			class="flex items-start gap-2 rounded-md border border-warning-border bg-warning-muted p-3 text-sm text-warning"
 		>
 			<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-			Das Modul Kasse ist nicht aktiv. Rechnungen an Mitglieder und Lieferantenrechnungen werden erst
-			angelegt, wenn die Kasse aktiviert ist.
+			Das Modul Kasse ist nicht aktiv. Rechnungen an Mitglieder und Lieferantenrechnungen werden
+			erst angelegt, wenn die Kasse aktiviert ist.
 		</p>
 	{/if}
 
@@ -331,17 +331,19 @@
 							toggle(o.id);
 						}}
 					>
-						{#if isOpen}<ChevronDown class="size-4" aria-hidden="true" />{:else}<ChevronRight
-								class="size-4"
-								aria-hidden="true"
-							/>{/if}
+						{#if isOpen}
+							<ChevronDown class="size-4" aria-hidden="true" />
+						{:else}
+							<ChevronRight class="size-4" aria-hidden="true" />
+						{/if}
 						{o.number}
 					</button>
 					<div class="text-xs text-muted-foreground">{fmtDate(o.createdAt)}</div>
 				</Table.Cell>
 				<Table.Cell class="max-w-60">
 					<div class="truncate"><RecipientName recipient={o.recipient} /></div>
-					{#if o.orderedBy && (o.recipient.kind !== 'member' || o.orderedBy.name !== o.recipient.name)}
+					{#if o.orderedBy &&
+						(o.recipient.kind !== 'member' || o.orderedBy.name !== o.recipient.name)}
 						<div class="truncate text-xs text-muted-foreground">von {o.orderedBy.name}</div>
 					{/if}
 				</Table.Cell>
@@ -422,7 +424,9 @@
 						<div class="space-y-2 py-1">
 							<div class="overflow-x-auto">
 								<table class="w-full min-w-[26rem] text-sm">
-									<caption class="sr-only">Positionen der Bestellung {o.number}</caption>
+									<caption class="sr-only"
+										>Positionen der Bestellung {o.number}</caption
+									>
 									<thead class="text-xs text-muted-foreground">
 										<tr>
 											<th class="py-1 pr-2 text-left font-medium">Artikel</th>

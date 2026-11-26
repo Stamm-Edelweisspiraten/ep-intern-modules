@@ -1,13 +1,13 @@
 <script lang="ts">
+	import Cake from '@lucide/svelte/icons/cake';
+	import Clock from '@lucide/svelte/icons/clock';
+	import UsersRound from '@lucide/svelte/icons/users-round';
 	// Dashboard-Kachel „Meine Gruppe“ (Gruppenleitung): je geleiteter Gruppe Mitgliederzahl, nächste
 	// Gruppenstunde und Geburtstage der nächsten 14 Tage.
 	import { onMount } from 'svelte';
-	import UsersRound from '@lucide/svelte/icons/users-round';
-	import Cake from '@lucide/svelte/icons/cake';
-	import Clock from '@lucide/svelte/icons/clock';
+	import { DashboardCard } from '$lib/components/layout';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { LedGroupBirthday, LedGroupOverview, LedGroupSummary } from '../../schemas';
 
 	let { onstatus }: DashboardWidgetProps = $props();

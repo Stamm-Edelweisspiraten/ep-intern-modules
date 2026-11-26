@@ -3,38 +3,38 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+	LABEL_FORMAT_PRESETS,
+	type LabelFormat,
+	type LabelLayout,
+	labelFormatSchema,
+	labelLayoutSchema
+} from '$lib/sdk/labels';
+import {
+	type AnyApiEndpoint,
 	core,
 	defineEndpoint,
 	errors,
-	type AnyApiEndpoint,
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';
-import {
-	LABEL_FORMAT_PRESETS,
-	labelFormatSchema,
-	labelLayoutSchema,
-	type LabelFormat,
-	type LabelLayout
-} from '$lib/sdk/labels';
 import { idList, iso, mdb, num, rows, str } from './db';
 import { loadItems } from './inventory';
+import { MATERIAL_LABEL_LOGO_DATA } from './label-logos';
 import {
-	MAX_LABELS,
-	PERMISSIONS,
 	codeFromScan,
 	idParams,
+	type LabelFormatEntry,
+	type LabelTarget,
+	type LabelTemplate,
 	labelFormatInput,
 	labelFormatUpdateInput,
 	labelPrintInput,
 	labelTemplateInput,
 	labelTemplateUpdateInput,
-	scanPath,
-	type LabelFormatEntry,
-	type LabelTarget,
-	type LabelTemplate
+	MAX_LABELS,
+	PERMISSIONS,
+	scanPath
 } from './schemas';
-import { MATERIAL_LABEL_LOGO_DATA } from './label-logos';
 
 const tags = ['Modul: material'];
 

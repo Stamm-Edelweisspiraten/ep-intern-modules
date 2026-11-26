@@ -1,5 +1,5 @@
 /** #24: Lebenszeichen des Hintergrundversands (Jahresbeitrag) */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { isSending } from '$modules/treasury/annual-fee.service';
 import type { AnnualSendResult } from '$modules/treasury/schemas';
 

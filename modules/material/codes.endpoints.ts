@@ -3,15 +3,15 @@
  * gedruckte Etiketten vergeben.
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, core, defineEndpoint, errors } from '$lib/sdk/server';
 import { mdb, nextCodes, rows } from './db';
 import { normalizeBarcode } from './pantry';
 import {
-	PERMISSIONS,
+	type CodeTarget,
 	codeFromScan,
 	codeParams,
-	reserveCodesInput,
-	type CodeTarget
+	PERMISSIONS,
+	reserveCodesInput
 } from './schemas';
 
 const tags = ['Modul: material'];

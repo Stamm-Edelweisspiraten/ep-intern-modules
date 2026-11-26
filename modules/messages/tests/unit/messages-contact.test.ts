@@ -1,14 +1,14 @@
+import { describe, expect, it } from 'bun:test';
 import { createHmac } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { contactText } from '$modules/messages/contact.service';
 import {
+	contactDedupeKey,
+	createChallenge,
 	MAX_AGE_MS,
 	MIN_FILL_MS,
 	POW_MAX_NUMBER,
-	contactDedupeKey,
-	createChallenge,
 	verifySolution
 } from '$modules/messages/contact-pow';
-import { contactText } from '$modules/messages/contact.service';
 
 const sign = (v: string) => createHmac('sha256', 'test-key').update(v).digest('hex');
 const T0 = 1_790_000_000_000;
@@ -42,16 +42,18 @@ describe('Proof-of-Work des Kontaktformulars', () => {
 		const c = createChallenge(sign, T0, 10);
 		const now = T0 + 10_000;
 		const invalid = { ok: false, reason: 'invalid' };
-		expect(verifySolution(sign, solve(c, 11), now)).toEqual(invalid);
-		expect(verifySolution(sign, solve(c, -1), now)).toEqual(invalid);
-		expect(verifySolution(sign, solve(c, POW_MAX_NUMBER + 1), now)).toEqual(invalid);
-		expect(verifySolution(sign, { ...solve(c, 10), number: 10.5 }, now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, solve(c, 11), now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, solve(c, -1), now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, solve(c, POW_MAX_NUMBER + 1), now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, { ...solve(c, 10), number: 10.5 }, now)).toEqual(invalid);
 		const other = (v: string) => createHmac('sha256', 'anderer').update(v).digest('hex');
-		expect(verifySolution(other, solve(c, 10), now)).toEqual(invalid);
+		expect<unknown>(verifySolution(other, solve(c, 10), now)).toEqual(invalid);
 		// Zeitstempel im Salt ist signiert: älter machen bricht die Signatur
 		const salt = c.salt.replace(/\.\d+$/, `.${T0 - 60_000}`);
-		expect(verifySolution(sign, { ...solve(c, 10), salt }, now)).toEqual(invalid);
-		expect(verifySolution(sign, { ...solve(c, 10), salt: 'kaputt' }, now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, { ...solve(c, 10), salt }, now)).toEqual(invalid);
+		expect<unknown>(verifySolution(sign, { ...solve(c, 10), salt: 'kaputt' }, now)).toEqual(
+			invalid
+		);
 	});
 
 	it('jede Aufgabe hat einen eigenen Schlüssel gegen Wiederverwendung', () => {

@@ -4,38 +4,36 @@
 </script>
 
 <script lang="ts">
-	import { page } from '$app/state';
-	import { todayBerlin } from '$lib/sdk/dates';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { BUSY_SAVE, FileField, FormField, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
 	import {
 		ACCOUNTING_CATEGORY_LABELS,
+		type AccountingCategory,
+		type AccountingEntry,
+		type AccountingPayee,
+		type BankSuggestion,
 		CALC_CATEGORIES,
-		ENTRY_TYPES,
 		ENTRY_TYPE_LABELS,
+		ENTRY_TYPES,
+		entryInput,
 		INCOME_CATEGORIES,
 		MAX_PURPOSE_LENGTH,
 		MAX_RECEIPT_BYTES,
 		PAID_BY,
 		PAID_BY_LABELS,
-		RECEIPT_CONTENT_TYPES,
-		entryInput,
-		type AccountingCategory,
-		type AccountingEntry,
-		type AccountingPayee,
-		type BankSuggestion
+		RECEIPT_CONTENT_TYPES
 	} from '../schemas';
-	import PayeeDialog from './PayeeDialog.svelte';
-	import SuggestInput from './SuggestInput.svelte';
 	import {
 		bankDetail,
 		bankTitle,
@@ -43,6 +41,8 @@
 		loadBankAccount,
 		loadBankSuggestions
 	} from './bank-suggest';
+	import PayeeDialog from './PayeeDialog.svelte';
+	import SuggestInput from './SuggestInput.svelte';
 
 	let {
 		open = $bindable(false),
@@ -600,7 +600,9 @@
 				<p class="text-xs text-muted-foreground">PDF oder Bild, maximal 10 MB.</p>
 			</div>
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky class="items-center gap-3 sm:justify-between">
 				{#if canKeepOpen}
 					<div class="flex items-center gap-2">

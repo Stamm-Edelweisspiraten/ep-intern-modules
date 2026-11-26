@@ -4,25 +4,31 @@
  * offener Abrechnung). Daten werden direkt in der DB angelegt; geprüft werden Filter, Sortierung,
  * Zähler, Zugriff (nur eigene/verknüpfte bzw. edit), 403 ohne Recht und Modul deaktiviert.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { resetAllForTests } from '$testing';
-import { core } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
 import { setTodayForTests } from '$lib/sdk/dates';
-import type { MyRegistration, OpenAccounting } from '$modules/actions/schemas';
+import { core } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import type { MyRegistration, OpenAccounting } from '$modules/actions/schemas';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'actions-my-password-1';
 let close: () => Promise<void>;
@@ -276,7 +282,7 @@ describe('GET /my/registrations', () => {
 			feeCents: null
 		});
 		// Fremde Teilnehmende (Ole) erscheinen nicht; Team zahlt den Team-Beitrag
-		expect(sommer).toEqual({
+		expect<unknown>(sommer).toEqual({
 			actionId: actionIds.sommer,
 			name: 'Sommerlager',
 			startsOn: '2026-07-10',
@@ -307,7 +313,7 @@ describe('GET /accounting/open', () => {
 			'Frühjahrsfahrt',
 			'Endet heute'
 		]);
-		expect(list[1]).toEqual({
+		expect<unknown>(list[1]).toEqual({
 			actionId: actionIds.vorbei,
 			name: 'Frühjahrsfahrt',
 			endsOn: '2026-05-03',

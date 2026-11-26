@@ -1,23 +1,28 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
 import { setTodayForTests } from '$lib/sdk/dates';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
 import type { HistoryEntry } from '$modules/treasury/history-labels';
+import treasuryModule from '$modules/treasury/module';
 import type { Account, InvoiceDetail, Payable, Transaction } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let admin: RequestContext;
 let close: () => Promise<void>;

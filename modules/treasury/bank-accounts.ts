@@ -5,8 +5,8 @@
  * Suche liefert nur die Maske; den Klartext gibt es einzeln über `bankAccount(ref)`.
  */
 import { sql } from 'drizzle-orm';
-import type { BankAccountDetails, BankAccountSuggestion } from './contract';
 import { decryptIban } from './bank';
+import type { BankAccountDetails, BankAccountSuggestion } from './contract';
 import { mdb, rows, str } from './db';
 import { formatIban, maskIban } from './iban';
 

@@ -1,14 +1,11 @@
 <script lang="ts">
-	import { onMount, untrack, type Component } from 'svelte';
-	import { page } from '$app/state';
-	import { goto, replaceState } from '$app/navigation';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Folder from '@lucide/svelte/icons/folder';
-	import Info from '@lucide/svelte/icons/info';
 	import FolderInput from '@lucide/svelte/icons/folder-input';
 	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
+	import Info from '@lucide/svelte/icons/info';
 	import Mail from '@lucide/svelte/icons/mail';
 	import MailOpen from '@lucide/svelte/icons/mail-open';
 	import Paperclip from '@lucide/svelte/icons/paperclip';
@@ -22,9 +19,19 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import X from '@lucide/svelte/icons/x';
+	import { type Component, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import {
+		ConfirmDialog,
+		DataTable,
+		ErrorState,
+		LoadingState,
+		PageHeader,
+		PageTitle,
+		toastWithUndo
+	} from '$lib/components/layout';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -36,41 +43,34 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Table from '$lib/components/ui/table';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import {
-		ConfirmDialog,
-		DataTable,
-		ErrorState,
-		LoadingState,
-		PageHeader,
-		PageTitle,
-		toastWithUndo
-	} from '$lib/components/layout';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import { refreshNavBadges } from '$lib/sdk/client/nav-badges.svelte';
 	import { cn } from '$lib/utils';
 	import { descendantIds, folderDepth, folderPath } from '../folders';
 	import {
-		MAX_FOLDER_DEPTH,
-		MESSAGE_STATUS_LABELS,
 		type BulkAction,
 		type InboxFolder,
 		type InboxListResponse,
 		type InboxSummary,
+		MAX_FOLDER_DEPTH,
 		type MailboxesResponse,
 		type MailboxInfo,
 		type MailboxSentItem,
 		type MailboxSentResponse,
+		MESSAGE_STATUS_LABELS,
 		type MessageStatus,
 		type MoveMailsResult,
-		type SpamMarkResult,
-		type PollResult
+		type PollResult,
+		type SpamMarkResult
 	} from '../schemas';
 	import FolderDetailsDialog from './FolderDetailsDialog.svelte';
 	import FolderDialog from './FolderDialog.svelte';
+	import { BASE, errorText, type FolderAction, formatDateTime } from './helpers';
+	import { inboxDrag, MAIL_DRAG_MIME, setDragGhost } from './inbox-drag.svelte';
 	import MailboxTree from './MailboxTree.svelte';
 	import MessagesTabs from './MessagesTabs.svelte';
 	import MoveToFolderDialog from './MoveToFolderDialog.svelte';
 	import SpamRulesDialog from './SpamRulesDialog.svelte';
-	import { BASE, errorText, formatDateTime, type FolderAction } from './helpers';
-	import { MAIL_DRAG_MIME, inboxDrag, setDragGhost } from './inbox-drag.svelte';
 
 	const PAGE_SIZE = 50;
 	const SYSTEM_LABELS: Record<string, string> = {
@@ -848,7 +848,8 @@
 									<span class="truncate text-sm font-normal text-muted-foreground"
 										>{current.name}</span
 									>
-									<span class="text-sm font-normal text-muted-foreground" aria-hidden="true">›</span
+									<span class="text-sm font-normal text-muted-foreground" aria-hidden="true"
+										>›</span
 									>
 								{/if}
 								{#each path.slice(0, -1) as p (p.id)}
@@ -859,7 +860,8 @@
 									>
 										{p.name}
 									</button>
-									<span class="text-sm font-normal text-muted-foreground" aria-hidden="true">›</span
+									<span class="text-sm font-normal text-muted-foreground" aria-hidden="true"
+										>›</span
 									>
 								{/each}
 								<span class="truncate">{viewLabel}</span>
@@ -881,7 +883,9 @@
 									<DropdownMenu.Content align="start" class="w-52">
 										{#each folderHeaderEntries as entry (entry.key)}
 											{@const Icon = entry.icon}
-											{#if entry.separator}<DropdownMenu.Separator />{/if}
+											{#if entry.separator}
+												<DropdownMenu.Separator />
+											{/if}
 											<DropdownMenu.Item
 												variant={entry.destructive ? 'destructive' : 'default'}
 												onclick={entry.run}
@@ -1114,7 +1118,9 @@
 															draggable="false"
 															onclick={(e) => e.stopPropagation()}
 														>
-															{#if !m.read}<span class="sr-only">Ungelesen: </span>{/if}
+															{#if !m.read}
+																<span class="sr-only">Ungelesen: </span>
+															{/if}
 															{m.subject || '(kein Betreff)'}
 														</a>
 														<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1127,7 +1133,9 @@
 																	aria-label={`${m.attachmentCount} Anhänge`}
 																/>
 															{/if}
-															{#if m.spam}<Badge variant="warning">Spam</Badge>{/if}
+															{#if m.spam}
+																<Badge variant="warning">Spam</Badge>
+															{/if}
 															{#if view === 'trash' && m.folderId && current}
 																<span class="inline-flex shrink-0 items-center gap-0.5">
 																	<Folder class="size-3" aria-hidden="true" />
@@ -1161,7 +1169,8 @@
 															size="sm"
 															variant="outline"
 															disabled={offset + PAGE_SIZE >= total}
-															onclick={() => (offset += PAGE_SIZE)}>Weiter</Button
+															onclick={() => (offset += PAGE_SIZE)}
+															>Weiter</Button
 														>
 													</span>
 												</div>
@@ -1178,7 +1187,9 @@
 							{/if}
 							{#each ctxEntries as entry (entry.key)}
 								{@const Icon = entry.icon}
-								{#if entry.separator}<ContextMenu.Separator />{/if}
+								{#if entry.separator}
+									<ContextMenu.Separator />
+								{/if}
 								<ContextMenu.Item
 									variant={entry.destructive ? 'destructive' : 'default'}
 									onclick={entry.run}

@@ -1,28 +1,21 @@
-import { sql, type SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { csvCents, csvDocument } from '$lib/sdk/csv';
 import {
+	type ApiEndpoint,
 	core,
 	errors,
 	isUniqueViolation,
-	type ApiEndpoint,
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';
 import { replaceAllocations } from './allocation';
 import { decryptIban, storeIban } from './bank';
 import { applyCounterparty } from './counterparty';
-import { learnPayerFromTransaction } from './payer-learning';
 import {
-	invoicePdfResponse,
-	listDocuments,
-	payerStatementResponse,
-	refreshSentDocuments,
-	sendDocuments
-} from './documents';
-import { formatIban, maskIban } from './iban';
-import {
-	collectIds,
+	actionsService,
 	CONTACT_BATCH,
+	collectIds,
 	idList,
 	invoiceMetricsSql,
 	invoiceStatusSql,
@@ -32,21 +25,27 @@ import {
 	loadRawInvoices,
 	mdb,
 	membersService,
+	type NameMaps,
 	nextInvoiceNumber,
 	num,
 	PAYER_SQL,
+	type RawInvoice,
 	requireAccount,
 	resolveNames,
 	rows,
 	str,
 	toDetail,
-	toSummary,
 	today,
-	actionsService,
-	type NameMaps,
-	type RawInvoice
+	toSummary
 } from './db';
-import { csvCents, csvDocument } from '$lib/sdk/csv';
+import {
+	invoicePdfResponse,
+	listDocuments,
+	payerStatementResponse,
+	refreshSentDocuments,
+	sendDocuments
+} from './documents';
+import { formatIban, maskIban } from './iban';
 import {
 	distribute,
 	formatDateDe,
@@ -55,36 +54,37 @@ import {
 	suggestPayers
 } from './logic';
 import { notifyPaid, runReminderJob, sendManualReminders } from './notify';
+import { learnPayerFromTransaction } from './payer-learning';
 import {
-	CONTRIBUTIONS_CATEGORY_ID,
-	MEMBERSHIP_CATEGORY_ID,
-	INVOICE_STATUS_LABELS,
-	actionSettingsInput,
-	cancelInput,
-	idParams,
-	invoiceInput,
-	invoiceListQuery,
-	invoicePatchInput,
-	lineParams,
-	lineWaiveInput,
-	markPaidInput,
-	openItemsQuery,
-	payerInput,
 	type ActionReceivables,
 	type ActionSettingsInput,
 	type AllocationResult,
+	actionSettingsInput,
+	CONTRIBUTIONS_CATEGORY_ID,
+	cancelInput,
+	INVOICE_STATUS_LABELS,
 	type InvoiceInput,
 	type InvoiceList,
 	type InvoiceListQuery,
 	type InvoicePatchInput,
 	type InvoiceSummary,
+	idParams,
+	invoiceInput,
+	invoiceListQuery,
+	invoicePatchInput,
 	type LineWaiveInput,
+	lineParams,
+	lineWaiveInput,
 	type MarkPaidInput,
+	MEMBERSHIP_CATEGORY_ID,
+	markPaidInput,
 	type OpenItems,
 	type OpenItemsGroup,
+	openItemsQuery,
 	type Payer,
 	type PayerInput,
-	type PayerSuggestion
+	type PayerSuggestion,
+	payerInput
 } from './schemas';
 import { syncAction, syncAll } from './sync';
 
@@ -366,7 +366,7 @@ function groupOpenItems(
 }
 
 async function openItems(
-	ctx: RequestContext,
+	_ctx: RequestContext,
 	q: z.infer<typeof openItemsQuery>
 ): Promise<OpenItems> {
 	// Nur Rechnungen mit offenem Betrag oder Guthaben laden (Kennzahlen in SQL)
@@ -500,9 +500,9 @@ async function savePayer(tx: Tx, id: string, input: PayerInput) {
 
 /** Forderungen je Aktion: Summen per SQL-Aggregat (`GROUP BY action_id`), nicht stornierte Aktions-Rechnungen */
 async function actionReceivables(actionIds?: string[]): Promise<ActionReceivables[]> {
-	const sources = await (
-		await actionsService()
-	).listReceivableSources(actionIds ? { actionIds } : undefined);
+	const sources = await (await actionsService()).listReceivableSources(
+		actionIds ? { actionIds } : undefined
+	);
 	if (!sources.length) return [];
 	const t = today();
 	const ids = idList(sources.map((s) => s.id));
@@ -1159,9 +1159,7 @@ export const invoiceEndpoints = [
 		handler: async ({ query }) => {
 			const q = query as { search?: string; ids?: string };
 			const ids = q.ids ? q.ids.split(',').filter((v) => z.uuid().safeParse(v).success) : undefined;
-			const list = await (
-				await membersService()
-			).listMemberContacts({
+			const list = await (await membersService()).listMemberContacts({
 				ids,
 				search: q.search,
 				limit: ids ? 200 : q.search ? 30 : 1000

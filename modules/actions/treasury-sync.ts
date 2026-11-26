@@ -5,7 +5,7 @@
  * Läuft NACH dem Handler, also nach dessen Transaktion; ohne aktive Kasse passiert nichts.
  * Lesende Endpunkte und Vorgänge ohne Einfluss auf Rechnungen/Auszahlungen lösen nichts aus.
  */
-import { core, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { type ApiEndpoint, core, type RequestContext } from '$lib/sdk/server';
 import type { TreasuryService } from '$modules/treasury/contract';
 
 /** Schreibende Pfade ohne Einfluss auf die Kasse (Freigaben, Formular, Belegdateien, Kostenlink, Rückzahlungsbriefe/-links) */

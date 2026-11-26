@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import { htmlToText, sanitizeBody } from '$modules/messages/html';
 import {
 	dedupeAddresses,
 	firstGivenName,
@@ -7,7 +8,6 @@ import {
 	slugPart,
 	splitFullName
 } from '$modules/messages/sender';
-import { htmlToText, sanitizeBody } from '$modules/messages/html';
 import { formatSender } from '$testing';
 
 describe('Absenderadresse vorname.nachname@domain', () => {

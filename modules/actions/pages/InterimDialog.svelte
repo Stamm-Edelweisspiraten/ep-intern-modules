@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { SummaryList, type SummaryRow } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { SummaryList, type SummaryRow } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { AccountingEntry } from '../schemas';
 	import { REFUND_CATEGORY } from './refund-types';
 
@@ -149,7 +149,9 @@
 							{#each missing.slice(0, 5) as e (e.id)}
 								<li>{e.description} ({formatEuro(e.amountCents)})</li>
 							{/each}
-							{#if missing.length > 5}<li>… und {missing.length - 5} weitere</li>{/if}
+							{#if missing.length > 5}
+								<li>… und {missing.length - 5} weitere</li>
+							{/if}
 						</ul>
 						<div class="flex items-start gap-2">
 							<Checkbox
@@ -188,7 +190,9 @@
 				</p>
 			{/if}
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 
 			<Dialog.Footer class="gap-2">
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>

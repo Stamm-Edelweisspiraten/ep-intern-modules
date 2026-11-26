@@ -1,11 +1,11 @@
 <script lang="ts">
+	import ShoppingBag from '@lucide/svelte/icons/shopping-bag';
 	// Dashboard-Kachel „Meine Bestellungen“: noch nicht vollständig ausgegebene eigene Bestellungen.
 	import { onMount } from 'svelte';
-	import ShoppingBag from '@lucide/svelte/icons/shopping-bag';
-	import { apiFetch } from '$lib/sdk/client';
-	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { DashboardCard } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
+	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
 	import { BASE_PATH, type Order, type OrderList } from '../../schemas';
 	import { errorText, formatDate, recipientLabel } from '../helpers';
 	import OrderStatusBadge from '../OrderStatusBadge.svelte';

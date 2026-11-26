@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, MoneyInput, toastWithUndo } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -10,8 +11,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
-	import { MoneyInput, toastWithUndo, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { distribute, normalizeName } from '../logic';
 	import type { AllocationResult, MatchSuggestion, OpenLine, Transaction } from '../schemas';
 	import { BASE, fmtDate } from './helpers';
@@ -201,7 +201,9 @@
 					</div>
 					<div class="text-xs text-muted-foreground">
 						{fmtDate(transaction.bookedOn)} · {transaction.accountName}
-						{#if transaction.purpose}· {transaction.purpose}{/if}
+						{#if transaction.purpose}
+							· {transaction.purpose}
+						{/if}
 					</div>
 				</div>
 
@@ -319,7 +321,9 @@
 					</div>
 				{/if}
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky class="items-center gap-2">
 				<span class="mr-auto hidden text-xs text-muted-foreground sm:inline">Enter speichert</span>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>

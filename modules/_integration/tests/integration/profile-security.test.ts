@@ -3,31 +3,41 @@
  * Session-Widerruf beim E-Mail-Wechsel, Info-Mail bei Kontaktänderung durch verknüpfte Konten,
  * Startseiten-Schema, Avatar (Magic-Bytes, eigener Pfad, aktive Benutzer).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { settleMails } from '$testing';
-import { fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { getAuth } from '$testing';
-import { contextForUser } from '$testing';
-import { readAvatar, removeOwnAvatar, requestEmailChange, setOwnAvatar } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSetting } from '$testing';
-import { resolveStartPage } from '$testing';
 import { core } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	fakeObjects,
+	getAuth,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	readAvatar,
+	registerCoreApi,
+	registerModule,
+	removeOwnAvatar,
+	requestEmailChange,
+	resetAllForTests,
+	resolveStartPage,
+	schema,
+	setMailTransportForTests,
+	setOwnAvatar,
+	setSetting,
+	settleMails,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const ORIGIN = 'http://localhost:5173';
 const PW = 'correct-horse-battery';

@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { BUSY_LOAD, BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { FormField, BUSY_SAVE, BUSY_LOAD } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		payeeInput,
-		payeeUpdateInput,
 		type AccountingPayee,
-		type BankSuggestion
+		type BankSuggestion,
+		payeeInput,
+		payeeUpdateInput
 	} from '../schemas';
-	import SuggestInput from './SuggestInput.svelte';
 	import {
 		bankDetail,
 		bankTitle,
@@ -21,6 +20,7 @@
 		loadBankAccount,
 		loadBankSuggestions
 	} from './bank-suggest';
+	import SuggestInput from './SuggestInput.svelte';
 
 	let {
 		open = $bindable(false),
@@ -228,7 +228,9 @@
 				/>
 			</FormField>
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || loadingIban}>

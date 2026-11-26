@@ -1,12 +1,12 @@
 <script lang="ts">
 	// Offene Mengen einer Mitgliedsbestellung stornieren (ganz oder teilweise, mit Grund).
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, NumberStepper } from '$lib/components/layout';
-	import { MAX_NOTE, orderCancelInput, type Order } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { MAX_NOTE, type Order, orderCancelInput } from '../schemas';
 	import { API, fieldErrorsFrom, issuesToErrors, itemName } from './admin-helpers';
 
 	let {
@@ -117,7 +117,9 @@
 								<div class="text-xs text-muted-foreground tabular-nums">
 									bestellt {item.quantity} · ausgegeben {item.deliveredQty} · offen {item.openQty}
 								</div>
-								{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+								{#if err}
+									<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+								{/if}
 							</div>
 							<NumberStepper
 								label={`Stornieren: ${itemName(item.articleTitle, item.variantLabel)}`}
@@ -144,7 +146,9 @@
 			<p class="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
 				Die Rechnung wird automatisch angepasst.
 			</p>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" variant="destructive" disabled={busy || total <= 0}>

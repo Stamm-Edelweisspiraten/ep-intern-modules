@@ -12,21 +12,21 @@
 import { core, errors, type RequestContext } from '$lib/sdk/server';
 import type { MembersService } from '$modules/members/contract';
 import type { OfficesService } from '$modules/offices/contract';
-import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
-import { myExtraMailboxes, type MyExtraMailbox } from './extra-mailbox.service';
+import { type MyExtraMailbox, myExtraMailboxes } from './extra-mailbox.service';
 import {
+	INBOX_SETTING_KEYS,
+	LAYOUTS,
 	MAX_RECIPIENTS_DEFAULT,
 	MAX_RECIPIENTS_LIMIT,
-	MODULE_ID,
-	LAYOUTS,
-	INBOX_SETTING_KEYS,
-	REPLY_TO_MODES,
-	SETTING_KEYS,
 	type MessageLayout,
+	MODULE_ID,
+	REPLY_TO_MODES,
 	type ReplyToMode,
+	SETTING_KEYS,
 	type Sender,
 	type SendersResponse
 } from './schemas';
+import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
 
 export interface MessageSettings {
 	domain: string;
@@ -112,7 +112,7 @@ const domainOf = (address: string) => address.split('@').pop()?.trim().toLowerCa
  * müssen SPF/DKIM/DMARC für die Absender-Domain stimmen, sonst landen Mails eher im Spam.
  */
 async function deliverabilityHint(
-	settings: MessageSettings,
+	_settings: MessageSettings,
 	senders: Sender[]
 ): Promise<string | null> {
 	const smtp = await core.settings.getMany(['core.smtp.from']);

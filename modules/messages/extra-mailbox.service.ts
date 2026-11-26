@@ -18,36 +18,36 @@ import {
 	errors,
 	inList,
 	moduleDb,
+	type Principal,
+	type PrincipalInfo,
 	principalKeysFor,
 	principalMatchSql,
 	principalUserIds,
+	type RequestContext,
 	replaceObjectShares,
 	rowsOf,
 	searchPrincipals,
+	type Tx,
 	toIso,
-	validatePrincipals,
-	type Principal,
-	type PrincipalInfo,
-	type RequestContext,
-	type Tx
+	validatePrincipals
 } from '$lib/sdk/server';
-import { UNASSIGNED, extraKey, kindOf } from './mailbox';
+import { extraKey, kindOf, UNASSIGNED } from './mailbox';
 import { loadMailboxDirectory, type MailboxEntry } from './mailbox.service';
 import {
-	EXTRA_SHARE_TYPES,
-	MAX_ALIASES,
-	MAX_EXTRA_MAILBOXES,
-	MODULE_ID,
-	PERM_SEND,
+	type AliasesResponse,
 	type AliasInput,
 	type AliasTarget,
-	type AliasesResponse,
+	EXTRA_SHARE_TYPES,
 	type ExtraMailbox,
 	type ExtraMailboxInput,
 	type ExtraMailboxUpdateInput,
 	type ExtraShareLevel,
 	type ExtraShareType,
-	type MailboxAlias
+	MAX_ALIASES,
+	MAX_EXTRA_MAILBOXES,
+	type MailboxAlias,
+	MODULE_ID,
+	PERM_SEND
 } from './schemas';
 
 const mdb = () => moduleDb(MODULE_ID);

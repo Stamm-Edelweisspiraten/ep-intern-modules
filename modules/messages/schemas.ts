@@ -24,7 +24,7 @@ export const PERM_AI = 'messages.ai.use';
 
 /** Kontaktformular der Website (`POST /website/contact`): Grenzen wie auf der Website */
 export const CONTACT_LIMITS = { name: 100, email: 254, phone: 40, message: 5000 } as const;
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 const ONE_LINE = /^[^\u0000-\u001f\u007f]*$/;
 
 export const contactInput = z
@@ -275,7 +275,7 @@ export const folderName = z
 	.trim()
 	.min(1, 'Bitte einen Namen eingeben')
 	.max(MAX_FOLDER_NAME, `Höchstens ${MAX_FOLDER_NAME} Zeichen`)
-	// eslint-disable-next-line no-control-regex
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 	.regex(/^[^\u0000-\u001f\u007f]+$/, 'Ungültige Zeichen im Namen');
 
 export const folderCreateInput = z.object({

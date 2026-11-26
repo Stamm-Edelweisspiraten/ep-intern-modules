@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { core, moduleDb } from '$lib/sdk/server';
-import type { AddressSuggestion, AddressSuggestions } from './schemas';
-import plzData from './data/plz-de.json';
 import { directoryName, splitHouseNumber } from './address-utils';
+import plzData from './data/plz-de.json';
+import type { AddressSuggestion, AddressSuggestions } from './schemas';
 
 export { directoryName, splitHouseNumber };
 
@@ -124,9 +124,12 @@ function baseUrl(raw: unknown): URL | null {
 	}
 }
 
+/** Fetch-Ersatz in Tests (ohne Buns `fetch.preconnect`) */
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 /** Ersetzt den Fetch in Tests. */
-let fetcher: typeof fetch = (...args) => fetch(...args);
-export function setAddressFetchForTests(f: typeof fetch | undefined): void {
+let fetcher: FetchLike = (...args) => fetch(...args);
+export function setAddressFetchForTests(f: FetchLike | undefined): void {
 	fetcher = f ?? ((...args) => fetch(...args));
 	streetCache.clear();
 	photonCache.clear();

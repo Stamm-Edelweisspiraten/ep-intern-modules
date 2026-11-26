@@ -3,29 +3,37 @@
  * Zuordnung nach Alter bzw. gewählter Gruppe, Rückfall ins Stamm-Postfach (Gruppe ohne Postfach/Leitung),
  * Benachrichtigung der Gruppenleitung, Spam-Schutz (gleiche Aufgabe wie das Kontaktformular, einmalig), Audit ohne Daten.
  */
+
+import { afterAll, afterEach, beforeAll, describe, expect, it, setSystemTime } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { settleMails } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSettings } from '$testing';
-import membersModule from '$modules/members/module';
-import messagesModule from '$modules/messages/module';
-import type { PowChallenge } from '$modules/messages/contact-pow';
-import type { InboxDetail, InboxListResponse } from '$modules/messages/schemas';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import type { PowChallenge } from '$modules/messages/contact-pow';
+import messagesModule from '$modules/messages/module';
+import type { InboxDetail, InboxListResponse } from '$modules/messages/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	type MailTransport,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setSettings,
+	settleMails,
+	syncModules,
+	useTestDatabase,
+	waitFor as waitUntil
+} from '$testing';
 
 const PW = 'trial-password-1234';
 let close: () => Promise<void>;
@@ -79,7 +87,7 @@ async function solved() {
 /** Aufgabe holen, lösen und die Zeitfalle (3 s) überspringen */
 async function freshPow() {
 	const pow = await solved();
-	vi.setSystemTime(Date.now() + 5_000);
+	setSystemTime(Date.now() + 5_000);
 	return pow;
 }
 const input = (pow: Awaited<ReturnType<typeof solved>>, over: Record<string, unknown> = {}) => ({
@@ -203,7 +211,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-	vi.useRealTimers();
+	setSystemTime();
 	resetAllForTests();
 });
 
@@ -219,7 +227,7 @@ describe('Probestunden-Formular der Website', () => {
 	});
 
 	it('legt die Anfrage passend zum Alter ins Gruppen-Postfach und benachrichtigt die Leitung', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const pow = await freshPow();
 		mails = [];
 		expect(await data(await submit(input(pow)), 201)).toEqual({
@@ -242,7 +250,7 @@ describe('Probestunden-Formular der Website', () => {
 		expect(stamm.items.some((i) => i.subject.startsWith('Probestunde'))).toBe(false);
 
 		await settleMails();
-		await vi.waitFor(() =>
+		await waitUntil(() =>
 			expect(mails.some((m) => String(m.to).includes('lea@example.test'))).toBe(true)
 		);
 		expect(mails.some((m) => String(m.to).includes('sven@example.test'))).toBe(false);
@@ -254,7 +262,7 @@ describe('Probestunden-Formular der Website', () => {
 	});
 
 	it('Gruppe ohne Postfach → Stamm-Postfach mit Hinweis; gewählte Gruppe geht vor dem Alter', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const ben = input(await freshPow(), { childName: 'Ben', childAge: 13 });
 		expect(await data(await submit(ben), 201)).toEqual({ received: true, group: 'adler' });
 		const stamm = await data<InboxListResponse>(await M('sven', box('stamm')));
@@ -275,7 +283,7 @@ describe('Probestunden-Formular der Website', () => {
 	});
 
 	it('prüft Eingaben und Spam-Schutz; eine Aufgabe gilt formularübergreifend nur einmal', async () => {
-		vi.useFakeTimers({ toFake: ['Date'] });
+		setSystemTime(new Date()); // nur Date anhalten (früher vi.useFakeTimers({ toFake: ['Date'] }))
 		const pow = await freshPow();
 		expect((await errOf(await submit(input(pow, { phone: '' })), 422)).code).toBe(
 			'validation_failed'

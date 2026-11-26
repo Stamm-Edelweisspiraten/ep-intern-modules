@@ -1,15 +1,8 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Input } from '$lib/components/ui/input';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { tick, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		BUSY_SAVE,
 		EmptyState,
@@ -18,6 +11,13 @@
 		LoadingState,
 		toastWithUndo
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
 	import { SENDER_RULE_LABELS, type SenderRule, type SenderRuleKindValue } from '../schemas';
 	import { BASE, errorText } from './helpers';
 
@@ -194,7 +194,9 @@
 							<div class="min-w-0 flex-1">
 								<p class="flex flex-wrap items-center gap-2 text-sm font-medium break-all">
 									{r.pattern}
-									{#if r.matchType === 'domain'}<Badge variant="secondary">Domain</Badge>{/if}
+									{#if r.matchType === 'domain'}
+										<Badge variant="secondary">Domain</Badge>
+									{/if}
 								</p>
 								<p class="text-xs text-muted-foreground">
 									{r.origin === 'button'
@@ -202,9 +204,8 @@
 											? 'Über „Spam“ an einer Mail'
 											: 'Über „Kein Spam“ an einer Mail'
 										: 'Von Hand eingetragen'}
-									{r.createdByName ? ` · ${r.createdByName}` : ''} · {formatDateDe(
-										todayBerlin(new Date(r.createdAt))
-									)}
+									{r.createdByName ? ` · ${r.createdByName}` : ''} ·
+									{formatDateDe(todayBerlin(new Date(r.createdAt)))}
 								</p>
 							</div>
 							<Button

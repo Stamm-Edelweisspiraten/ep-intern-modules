@@ -1,12 +1,12 @@
 <script lang="ts">
 	// Wareneingang einer Lieferantenbestellung buchen (Teillieferung möglich).
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { FormField, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, NumberStepper } from '$lib/components/layout';
-	import { MAX_NOTE, supplierReceiveInput, type SupplierOrder } from '../schemas';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { MAX_NOTE, type SupplierOrder, supplierReceiveInput } from '../schemas';
 	import { API, fieldErrorsFrom, issuesToErrors, itemName } from './admin-helpers';
 
 	let {
@@ -105,7 +105,9 @@
 								<div class="text-xs text-muted-foreground tabular-nums">
 									bestellt {item.quantity} · eingegangen {item.receivedQty} · offen {item.openQty}
 								</div>
-								{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+								{#if err}
+									<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+								{/if}
 							</div>
 							<NumberStepper
 								label={`Eingegangen: ${itemName(item.articleTitle, item.variantLabel)}`}
@@ -121,8 +123,8 @@
 				</ul>
 				{#if rest > 0 && total > 0}
 					<p class="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground" aria-live="polite">
-						Teillieferung: {rest} Stück bleiben offen. Offene Bestellungen der Mitglieder lassen sich
-						danach mit dem eingegangenen Bestand ausgeben.
+						Teillieferung: {rest} Stück bleiben offen. Offene Bestellungen der Mitglieder lassen
+						sich danach mit dem eingegangenen Bestand ausgeben.
 					</p>
 				{/if}
 			{/if}
@@ -135,7 +137,9 @@
 					placeholder="z. B. Lieferschein 4711"
 				/>
 			</FormField>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || total <= 0}>

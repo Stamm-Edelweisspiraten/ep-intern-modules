@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
+	type PayableDesired,
 	parseReimbursementRef,
 	planPayables,
 	reimbursementDescription,
-	reimbursementRef,
-	type PayableDesired
+	reimbursementRef
 } from '$modules/treasury/logic';
 
 describe('Schlüssel für Auslagen-Auszahlungen', () => {

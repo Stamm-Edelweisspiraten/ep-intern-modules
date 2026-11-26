@@ -30,7 +30,7 @@ async function call(method, path, body, base = '/api/v1') {
 	return { status: res.status, json };
 }
 
-// Zugangsdaten überschreibbar:  DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-orders.mjs
+// Zugangsdaten überschreibbar:  DEMO_EMAIL=… DEMO_PASSWORD=… bun scripts/seed-demo-orders.mjs
 const EMAIL = process.env.DEMO_EMAIL ?? 'admin@demo.test';
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo-Admin-2026!';
 

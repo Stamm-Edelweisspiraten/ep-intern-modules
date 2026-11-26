@@ -1,20 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { runJobNow } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
+import type { RequestContext } from '$lib/sdk/types';
 import materialModule from '$modules/material/module';
 import type {
 	Catalog,
@@ -32,7 +19,26 @@ import type {
 	ReservationListItem,
 	ReservationPage
 } from '$modules/material/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Modul „Material“ v2: Kategorien (Icon/Farbe), Lagerorte, Typen und Lagerartikel, Reservierungen nach Typ
 // und Artikel mit Verfügbarkeit, Zweck, Rechte, Zustand melden, Codes, Exporte, Etiketten, Modul aus.

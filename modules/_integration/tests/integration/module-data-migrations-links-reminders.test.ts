@@ -5,14 +5,18 @@
  * - treasury 0008: doppelte automatische Erinnerungen gleicher Stufe → die späteren gelten als manuell,
  *   danach greift der Unique-Index; Bestand gilt als zugestellt (`status = 'sent'`)
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleRest, migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
-import membersModule from '$modules/members/module';
 import actionsModule from '$modules/actions/module';
+import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
+import {
+	migrateModuleRest,
+	migrateModuleTo,
+	moduleSql,
+	registerModule,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 
@@ -61,7 +65,7 @@ describe('members 0012_link_code_uses', () => {
 			'members',
 			sql`SELECT member_id, use_count, max_uses FROM member_link_codes ORDER BY member_id`
 		);
-		expect(rows.map((r) => ({ ...r, use_count: Number(r.use_count) }))).toEqual([
+		expect<unknown>(rows.map((r) => ({ ...r, use_count: Number(r.use_count) }))).toEqual([
 			{ member_id: 'm1', use_count: 2, max_uses: null },
 			{ member_id: 'm2', use_count: 0, max_uses: null }
 		]);

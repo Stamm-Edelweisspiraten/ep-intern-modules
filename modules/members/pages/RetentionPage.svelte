@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ShieldOff from '@lucide/svelte/icons/shield-off';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import { ConfirmDialog, DataTable, PageHeader } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable, PageHeader } from '$lib/components/layout';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import type { AnonymizeResult, RetentionList } from '../retention.service';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);

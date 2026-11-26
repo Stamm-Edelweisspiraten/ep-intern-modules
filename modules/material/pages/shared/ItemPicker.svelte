@@ -2,11 +2,11 @@
 	// Objekte für den Etikettendruck wählen: Lagerartikel per Suche (`GET /inventory?search=`) bzw.
 	// Lagerorte (`GET /locations`, lokal gefiltert). Gewählte erscheinen als Chips über der Trefferliste.
 	import X from '@lucide/svelte/icons/x';
-	import { apiFetch } from '$lib/sdk/client';
-	import { Input } from '$lib/components/ui/input';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Badge } from '$lib/components/ui/badge';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Input } from '$lib/components/ui/input';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Inventory, Item, Location } from '../../schemas';
 	import { API, errorText } from '../helpers';
 

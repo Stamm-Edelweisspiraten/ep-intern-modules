@@ -1,10 +1,10 @@
 <script lang="ts">
 	// Ausgabe einer Mitgliedsbestellung aus dem Lager (Teilmengen erlaubt, Rest wartet auf Nachschub).
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { NumberStepper } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { Order, OrderItem } from '../schemas';
 	import { API, fieldErrorsFrom, itemName } from './admin-helpers';
 	import { recipientLabel } from './helpers';
@@ -107,10 +107,13 @@
 								{#if missing > 0}
 									<p class="mt-1 text-xs text-warning">
 										{missing}
-										{missing === 1 ? 'fehlt' : 'fehlen'} – {missing === 1 ? 'wird' : 'werden'} nachbestellt
+										{missing === 1 ? 'fehlt' : 'fehlen'} –
+										{missing === 1 ? 'wird' : 'werden'} nachbestellt
 									</p>
 								{/if}
-								{#if err}<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>{/if}
+								{#if err}
+									<p class="mt-1 text-xs text-destructive" role="alert">{err}</p>
+								{/if}
 							</div>
 							<NumberStepper
 								label={`Ausgeben: ${itemName(item.articleTitle, item.variantLabel)}`}
@@ -125,7 +128,9 @@
 					{/each}
 				</ul>
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy || total <= 0}>

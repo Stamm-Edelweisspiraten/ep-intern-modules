@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Send from '@lucide/svelte/icons/send';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SEND, ConfirmDialog, FormField } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Input } from '$lib/components/ui/input';
-	import { ConfirmDialog, FormField, BUSY_SEND } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import type { AnnualPreview, AnnualRun, AnnualSendResult } from '../schemas';
 	import {
 		addDaysIso,
@@ -187,7 +187,9 @@
 {#snippet permHint(text: string, keys: string[])}
 	<p class="text-xs text-muted-foreground">
 		{text}
-		{#each keys as k, i (k)}{i ? ' und ' : ''}<code class="text-[0.7rem]">{k}</code>{/each}.
+		{#each keys as k, i (k)}
+			{i ? ' und ' : ''}<code class="text-[0.7rem]">{k}</code>
+		{/each}.
 	</p>
 {/snippet}
 

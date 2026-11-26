@@ -1,5 +1,5 @@
 /** Reine Logik des Moduls `orders` (`stock.ts`): Mengen, Fehlmengen, Preise, Status, Nummern, Texte. */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
 	billableCents,
 	deficit,

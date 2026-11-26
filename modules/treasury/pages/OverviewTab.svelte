@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { toast } from 'svelte-sonner';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
@@ -14,7 +11,11 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Upload from '@lucide/svelte/icons/upload';
 	import Wallet from '@lucide/svelte/icons/wallet';
-	import { apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { BUSY_SAVE, EmptyState, FormField, ListRow, TouchList } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -22,8 +23,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { EmptyState, FormField, ListRow, TouchList, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import {
 		ACCOUNT_KIND_LABELS,
 		type ActionReceivables,
@@ -36,9 +36,9 @@
 		errorMessage,
 		fmtDate,
 		fmtDateTime,
+		type SharedData,
 		signedEuro,
-		transactionTitle,
-		type SharedData
+		transactionTitle
 	} from './helpers';
 	import type { FamilyRef } from './navigation';
 	import { taskView } from './task-view';
@@ -221,7 +221,9 @@
 {#snippet kpiBody(k: Kpi)}
 	<span class="flex items-center justify-between gap-1 text-xs text-muted-foreground">
 		<span class="truncate">{k.label}</span>
-		{#if k.run}<ChevronRight class="size-3.5 shrink-0 opacity-60" aria-hidden="true" />{/if}
+		{#if k.run}
+			<ChevronRight class="size-3.5 shrink-0 opacity-60" aria-hidden="true" />
+		{/if}
 	</span>
 	<span
 		class="block text-lg leading-tight font-semibold tabular-nums {k.tone === 'critical'
@@ -319,10 +321,11 @@
 							<span
 								class="flex size-9 shrink-0 items-center justify-center rounded-full bg-link/10 text-link"
 							>
-								{#if a.kind === 'cash'}<Wallet
-										class="size-4.5"
-										aria-hidden="true"
-									/>{:else}<Landmark class="size-4.5" aria-hidden="true" />{/if}
+								{#if a.kind === 'cash'}
+									<Wallet class="size-4.5" aria-hidden="true" />
+								{:else}
+									<Landmark class="size-4.5" aria-hidden="true" />
+								{/if}
 							</span>
 						{/snippet}
 					</ListRow>
@@ -372,7 +375,9 @@
 							t.needsAllocation && perm.editTx ? onallocate(t) : onopen('transactions')}
 					>
 						{#snippet trailing()}
-							{#if t.needsAllocation}<Badge variant="warning">offen</Badge>{/if}
+							{#if t.needsAllocation}
+								<Badge variant="warning">offen</Badge>
+							{/if}
 						{/snippet}
 					</ListRow>
 				{/each}
@@ -388,7 +393,9 @@
 	<div class="space-y-4">
 		<Skeleton class="h-32" />
 		<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-			{#each [1, 2, 3, 4, 5] as i (i)}<Skeleton class="h-16" />{/each}
+			{#each [1, 2, 3, 4, 5] as i (i)}
+				<Skeleton class="h-16" />
+			{/each}
 		</div>
 	</div>
 {:else if error}
@@ -546,9 +553,8 @@
 						Je Teilnehmende*r entsteht automatisch eine Rechnung. Änderungen an Aktionen kommen
 						sofort an, der vollständige Abgleich läuft stündlich.
 						<span class="mt-1 block">
-							Stand des letzten Abgleichs: {data.lastSyncAt
-								? fmtDateTime(data.lastSyncAt)
-								: 'noch keiner'}
+							Stand des letzten Abgleichs:
+							{data.lastSyncAt ? fmtDateTime(data.lastSyncAt) : 'noch keiner'}
 						</span>
 					</Card.Description>
 					{#if onsync && perm.editInvoice}
@@ -572,11 +578,17 @@
 											<div class="truncate text-sm font-medium">{a.name}</div>
 											<div class="truncate text-xs text-muted-foreground">
 												ab {fmtDate(a.startsOn)} · {formatEuro(a.feeCents)} je Person
-												{#if a.dueOn}· fällig {fmtDate(a.dueOn)}{/if}
+												{#if a.dueOn}
+													· fällig {fmtDate(a.dueOn)}
+												{/if}
 											</div>
 										</div>
-										{#if a.excluded}<Badge variant="outline">ausgeschlossen</Badge>{/if}
-										{#if a.isPast}<Badge variant="outline">vergangen</Badge>{/if}
+										{#if a.excluded}
+											<Badge variant="outline">ausgeschlossen</Badge>
+										{/if}
+										{#if a.isPast}
+											<Badge variant="outline">vergangen</Badge>
+										{/if}
 										{#if a.overdueCents > 0}
 											<Badge variant="destructive">{formatEuro(a.overdueCents)} überfällig</Badge>
 										{/if}

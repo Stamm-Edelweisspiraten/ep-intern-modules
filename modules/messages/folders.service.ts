@@ -11,19 +11,13 @@ import {
 	inList,
 	isUniqueViolation,
 	moduleDb,
-	rowsOf,
-	toIso,
-	userLabel,
 	type RequestContext,
 	type Row,
-	type Tx
+	rowsOf,
+	type Tx,
+	toIso,
+	userLabel
 } from '$lib/sdk/server';
-import { UNASSIGNED, isSharedMailbox } from './mailbox';
-import {
-	accessibleMailboxes,
-	loadMailboxDirectory,
-	type AccessibleMailbox
-} from './mailbox.service';
 import {
 	descendantIds,
 	folderDepth,
@@ -32,16 +26,22 @@ import {
 	subtreeHeight,
 	wouldCycle
 } from './folders';
+import { isSharedMailbox, UNASSIGNED } from './mailbox';
 import {
-	MAX_FOLDERS_PER_MAILBOX,
-	MAX_FOLDER_DEPTH,
-	MODULE_ID,
+	type AccessibleMailbox,
+	accessibleMailboxes,
+	loadMailboxDirectory
+} from './mailbox.service';
+import {
 	type BulkAction,
 	type DeleteFolderResult,
-	type FolderDetails,
 	type FolderCreateInput,
+	type FolderDetails,
 	type FolderUpdateInput,
 	type InboxFolder,
+	MAX_FOLDER_DEPTH,
+	MAX_FOLDERS_PER_MAILBOX,
+	MODULE_ID,
 	type MoveMailsInput,
 	type MoveMailsResult
 } from './schemas';

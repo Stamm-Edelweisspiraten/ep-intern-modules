@@ -1,27 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { runJobNow } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { moduleDb } from '$lib/sdk/server';
 import { setTodayForTests } from '$lib/sdk/dates';
+import { moduleDb } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import materialModule from '$modules/material/module';
-import officesModule from '$modules/offices/module';
-import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
-import type { Office } from '$modules/offices/schemas';
 import { setOffFetchForTests } from '$modules/material/off.service';
 import type {
 	BarcodeResult,
@@ -35,7 +18,31 @@ import type {
 	ProductDetail,
 	Reservation
 } from '$modules/material/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import officesModule from '$modules/offices/module';
+import type { Office } from '$modules/offices/schemas';
+import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	fakeFileRows,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 // Material v2.2: Verbrauchsmaterial (Ausgabe → Rücknahme mit Verbrauch) und Vorrat (Lebensmittel mit Strichcode,
 // Chargen mit MHD, Einlagern/Entnehmen nach „zuerst ablaufend“, Vorschlag aus Open Food Facts, Ablauf-Hinweis).
@@ -215,20 +222,24 @@ describe('Verbrauchsmaterial', () => {
 			201
 		);
 		expect(fackeln).toMatchObject({ consumable: true, unit: '' });
-		[kiste] = await data<Item[]>(
-			await post('/items', 'admin', { typeId: fackeln.id, name: 'Fackelkiste', quantity: 30 }),
-			201
-		);
+		kiste = (
+			await data<Item[]>(
+				await post('/items', 'admin', { typeId: fackeln.id, name: 'Fackelkiste', quantity: 30 }),
+				201
+			)
+		)[0]!;
 		expect(kiste).toMatchObject({ consumable: true, quantity: 30 });
-		[petroleum] = await data<Item[]>(
-			await post('/items', 'admin', {
-				name: 'Petroleum',
-				quantity: 20,
-				consumable: true,
-				unit: 'l'
-			}),
-			201
-		);
+		petroleum = (
+			await data<Item[]>(
+				await post('/items', 'admin', {
+					name: 'Petroleum',
+					quantity: 20,
+					consumable: true,
+					unit: 'l'
+				}),
+				201
+			)
+		)[0]!;
 		expect(petroleum).toMatchObject({ consumable: true, unit: 'l' });
 		// 0 nur bei Verbrauchsmaterial
 		await fail(await post('/items', 'admin', { name: 'Hammer', quantity: 0 }), 422);

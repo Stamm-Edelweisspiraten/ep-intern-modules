@@ -3,32 +3,37 @@
  * Gruppenleitung, ausgetretene ignoriert) und Kachel-Endpunkt `GET /led/overview` (nur geleitete
  * Gruppen, aktive Mitglieder, Geburtstage der nächsten 14 Tage).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSetting } from '$testing';
-import { collectDashboardFeed } from '$testing';
 import { setTodayForTests } from '$lib/sdk/dates';
-import membersModule from '$modules/members/module';
-import membersUi from '$modules/members/ui';
+import type { RequestContext } from '$lib/sdk/types';
 import { nextBirthday } from '$modules/members/dashboard';
+import membersModule from '$modules/members/module';
 import {
-	LED_VIEW,
 	type GroupRef,
+	LED_VIEW,
 	type LedGroupOverview,
 	type Member
 } from '$modules/members/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import membersUi from '$modules/members/ui';
+import {
+	bootstrapAdmin,
+	collectDashboardFeed,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setSetting,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Woche Mo 02.11. – So 08.11.2026
 const TODAY = '2026-11-04';

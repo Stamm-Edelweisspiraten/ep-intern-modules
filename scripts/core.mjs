@@ -1,9 +1,9 @@
-// Führt einen Befehl im Core (`.core`) mit den Modulen dieses Repos aus: `node scripts/core.mjs <befehl> [args…]`
+// Führt einen Befehl im Core (`.core`) mit den Modulen dieses Repos aus: `bun scripts/core.mjs <befehl> [args…]`
 //
-// Beispiele (siehe package.json): check · test · build · e2e · demo · lint
+// Beispiele (siehe package.json): check · test · build · e2e · demo · lint · format
 // Der Core findet die Module über ATRIUM_MODULES_DIR (absoluter Pfad auf ./modules).
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { copiedBasicModules } from './basic-modules.mjs';
@@ -13,50 +13,57 @@ const CORE = join(ROOT, '.core');
 const MODULES = join(ROOT, 'modules').replace(/\\/g, '/');
 
 if (!existsSync(join(CORE, 'node_modules'))) {
-	console.error('Core nicht eingerichtet – zuerst `npm run setup`.');
+	console.error('Core nicht eingerichtet – zuerst `bun run setup`.');
 	process.exit(1);
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-/** @type {Record<string, [string, string[]]>} */
+/** Ordner unter modules/ außer den kopierten Basismodulen und node_modules */
+function ownModuleDirs() {
+	const copied = new Set(copiedBasicModules());
+	return readdirSync(MODULES, { withFileTypes: true })
+		.filter((d) => d.isDirectory() && d.name !== 'node_modules' && !copied.has(d.name))
+		.map((d) => `${MODULES}/${d.name}`);
+}
+// Läuft unter Bun: `process.execPath` ist die Bun-Binärdatei (Werkzeuge über `bun run`, nicht `bunx`)
+const bun = process.execPath;
+/** Pfade im Aufruf (z. B. eine Testdatei) ersetzen die Modulordner */
+const hasPath = rest.some((a) => !a.startsWith('-'));
+
+/** Schritte je Befehl: [Programm, Argumente, im Repo statt im Core] */
+/** @type {Record<string, [string, string[], boolean?][]>} */
 const COMMANDS = {
-	check: [npm, ['run', 'check']],
-	// nur die Tests der Module (Core-Tests laufen im Core-Repo)
-	// ohne die kopierten Basismodule (deren Tests laufen in atrium-basic-modules; modulübergreifende in _integration)
-	test: [
-		npx,
+	check: [[bun, ['run', 'check']]],
+	// nur die Tests der Module (Core-Tests laufen im Core-Repo), ohne die kopierten Basismodule (deren Tests laufen in
+	// atrium-basic-modules; modulübergreifende in _integration). `bun test` kennt kein --exclude → eigene Ordner als Pfade
+	test: [[bun, ['scripts/test.mjs', ...rest, ...(hasPath ? [] : ownModuleDirs())]]],
+	build: [[bun, ['run', 'build']]],
+	// Biome (Format + Lint, eigene biome.json dieses Repos) und Modulgrenzen (Prüfer des Core)
+	lint: [
+		[bun, ['run', 'biome', 'check', ...(rest.length ? rest : ['.'])], true],
+		[bun, ['.core/tools/module-boundaries.ts'], true]
+	],
+	format: [[bun, ['run', 'biome', 'check', '--write', ...(rest.length ? rest : ['.'])], true]],
+	e2e: [
 		[
-			'vitest',
-			'run',
-			MODULES,
-			...copiedBasicModules().map((id) => `--exclude=**/modules/${id}/**`),
-			...rest
+			bun,
+			['run', 'playwright', 'test', '--project', 'modules', '--project', 'integration', ...rest]
 		]
 	],
-	build: [npm, ['run', 'build']],
-	// Lint/Format aus der Wurzel dieses Repos (eigene eslint.config.js lädt die des Core, eigene .prettierrc)
-	lint: [npx, ['eslint', 'modules', 'scripts', ...rest]],
-	format: [npx, ['prettier', '--check', 'modules', 'scripts', ...rest]],
-	e2e: [npx, ['playwright', 'test', '--project', 'modules', '--project', 'integration', ...rest]],
-	demo: ['node', ['scripts/demo-server.mjs', ...rest]]
+	demo: [[bun, ['scripts/demo-server.mjs', ...rest]]]
 };
 
-/** Befehle, die im Module-Repo selbst laufen (nicht in `.core`) */
-const IN_REPO = new Set(['lint', 'format']);
-
-const entry = COMMANDS[cmd ?? ''];
-if (!entry) {
+const steps = COMMANDS[cmd ?? ''];
+if (!steps) {
 	console.error(`Unbekannter Befehl „${cmd ?? ''}“. Möglich: ${Object.keys(COMMANDS).join(', ')}`);
 	process.exit(2);
 }
-const [bin, args] = entry;
-const r = spawnSync(bin, args, {
-	cwd: IN_REPO.has(cmd) ? ROOT : CORE,
-	stdio: 'inherit',
-	shell: process.platform === 'win32',
-	env: { ...process.env, ATRIUM_MODULES_DIR: MODULES }
-});
-process.exit(r.status ?? 1);
+for (const [bin, args, inRepo] of steps) {
+	const r = spawnSync(bin, args, {
+		cwd: inRepo ? ROOT : CORE,
+		stdio: 'inherit',
+		env: { ...process.env, ATRIUM_MODULES_DIR: MODULES }
+	});
+	if (r.status !== 0) process.exit(r.status ?? 1);
+}

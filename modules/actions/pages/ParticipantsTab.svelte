@@ -1,29 +1,29 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Download from '@lucide/svelte/icons/download';
-	import Mail from '@lucide/svelte/icons/mail';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import FileDown from '@lucide/svelte/icons/file-down';
+	import Mail from '@lucide/svelte/icons/mail';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Search from '@lucide/svelte/icons/search';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { DataTable, MobileActionBar } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Input } from '$lib/components/ui/input';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable, MobileActionBar } from '$lib/components/layout';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import {
+		ageAt,
 		DIET_LABELS,
 		PARTICIPANT_BULK_MAX_IDS,
 		PARTICIPANT_ROLE_LABELS,
-		ageAt,
 		type Participant,
 		type ParticipantRole
 	} from '../schemas';
@@ -103,7 +103,13 @@
 	// --- Schnellfilter ---------------------------------------------------------
 
 	type FilterKey =
-		'role:participant' | 'role:team' | 'pay:paid' | 'pay:open' | 'sub:yes' | 'sub:no' | 'missing';
+		| 'role:participant'
+		| 'role:team'
+		| 'pay:paid'
+		| 'pay:open'
+		| 'sub:yes'
+		| 'sub:no'
+		| 'missing';
 
 	interface Chip {
 		key: FilterKey;
@@ -355,9 +361,7 @@
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger disabled={bulkBusy}>
 							{#snippet child({ props })}
-								<Button {...props} size="sm" variant="outline">
-									Zuschuss <ChevronDown />
-								</Button>
+								<Button {...props} size="sm" variant="outline"> Zuschuss <ChevronDown /> </Button>
 							{/snippet}
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="start">
@@ -381,9 +385,7 @@
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger disabled={bulkBusy}>
 							{#snippet child({ props })}
-								<Button {...props} size="sm" variant="outline">
-									Rolle <ChevronDown />
-								</Button>
+								<Button {...props} size="sm" variant="outline"> Rolle <ChevronDown /> </Button>
 							{/snippet}
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content align="start">
@@ -397,7 +399,9 @@
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
-					{#if bulkBusy}<span class="text-xs text-muted-foreground">Speichert …</span>{/if}
+					{#if bulkBusy}
+						<span class="text-xs text-muted-foreground">Speichert …</span>
+					{/if}
 					<Button size="sm" variant="ghost" class="ml-auto" onclick={() => (selected = [])}>
 						<X /> Auswahl aufheben
 					</Button>
@@ -431,9 +435,13 @@
 					<Table.Head>Ernährung</Table.Head>
 					<Table.Head>Allergien / Hinweise</Table.Head>
 				{/if}
-				{#if showPayments}<Table.Head>Beitrag</Table.Head>{/if}
+				{#if showPayments}
+					<Table.Head>Beitrag</Table.Head>
+				{/if}
 				<Table.Head>Quelle</Table.Head>
-				{#if canEdit}<Table.Head class="text-right">Aktionen</Table.Head>{/if}
+				{#if canEdit}
+					<Table.Head class="text-right">Aktionen</Table.Head>
+				{/if}
 			</Table.Row>
 		{/snippet}
 		{#each filtered as p (p.id)}
@@ -478,13 +486,15 @@
 								size="icon"
 								variant="outline"
 								aria-label={`${p.name} bearbeiten`}
-								onclick={() => onedit(p)}><Pencil /></Button
+								onclick={() => onedit(p)}
+								><Pencil /></Button
 							>
 							<Button
 								size="icon"
 								variant="destructive"
 								aria-label={`${p.name} entfernen`}
-								onclick={() => ondelete(p)}><Trash2 /></Button
+								onclick={() => ondelete(p)}
+								><Trash2 /></Button
 							>
 						</div>
 					</Table.Cell>

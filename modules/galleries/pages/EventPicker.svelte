@@ -1,12 +1,12 @@
 <script lang="ts">
-	import * as Popover from '$lib/components/ui/popover';
 	import CalendarPlus from '@lucide/svelte/icons/calendar-plus';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
+	import * as Popover from '$lib/components/ui/popover';
 	import { apiFetch } from '$lib/sdk/client';
 	import { cn } from '$lib/utils.js';
-	import { MAX_EVENTS_PER_GALLERY, type EventRef } from '../schemas';
+	import { type EventRef, MAX_EVENTS_PER_GALLERY } from '../schemas';
 	import { formatRefRange } from './event-format';
 
 	/**
@@ -221,7 +221,9 @@
 							)}
 							aria-hidden="true"
 						>
-							{#if checked}<CheckIcon class="size-3.5" />{/if}
+							{#if checked}
+								<CheckIcon class="size-3.5" />
+							{/if}
 						</span>
 						<span class="min-w-0 flex-1">
 							<span class="flex items-center gap-1.5">
@@ -251,7 +253,9 @@
 						{value.length} ausgewählt
 					{/if}
 				</span>
-				{#if loading && results.length > 0}<span>Sucht …</span>{/if}
+				{#if loading && results.length > 0}
+					<span>Sucht …</span>
+				{/if}
 			</div>
 		</Popover.Content>
 	</Popover.Root>

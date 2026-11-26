@@ -3,27 +3,34 @@
  * Selbstregistrierung über den Brief erst nach E-Mail-Bestätigung anmeldbar.
  * #26: Mitglieder-Audit ohne Klarnamen.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { PDFDocument } from 'pdf-lib';
-import { useTestDatabase } from '$testing';
-import { settleMails } from '$testing';
-import { getDb, schema } from '$testing';
-import { getAuth } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, getUser, verifyUserEmail } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { createRole } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import membersModule from '$modules/members/module';
 import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getAuth,
+	getDb,
+	getUser,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setPdfRendererForTests,
+	settleMails,
+	syncModules,
+	useTestDatabase,
+	verifyUserEmail
+} from '$testing';
 
 const PW = 'parent-password-123';
 const BASE = '/modules/members';

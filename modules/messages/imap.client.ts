@@ -78,8 +78,10 @@ async function connectImapFlow(config: ImapConfig): Promise<ImapSession> {
 					{ uid: true, source: truncated ? { start: 0, maxLength: HEAD_BYTES } : true },
 					{ uid: true }
 				);
-				if (!msg || !msg.source) continue;
-				out.push({ uid, size, source: msg.source, truncated });
+				// fetchOne liefert `false`/`undefined`, wenn die Nachricht fehlt
+				const source = msg ? msg.source : undefined;
+				if (!source) continue;
+				out.push({ uid, size, source, truncated });
 			}
 			return out;
 		},

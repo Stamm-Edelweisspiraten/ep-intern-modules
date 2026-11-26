@@ -3,25 +3,30 @@
  * - `GET /actions/:id/member-suggestions` + `POST /actions/:id/participants` mit `memberId`
  * - `GET /bank-suggestions[/:ref]` über `TreasuryService.searchBankAccounts` / `bankAccount`
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
 import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
+import type { BankSuggestion, MemberSuggestion } from '$modules/actions/schemas';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
-import type { BankSuggestion, MemberSuggestion } from '$modules/actions/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const keys: Record<string, string> = {};
 const userIds: Record<string, string> = {};

@@ -3,8 +3,15 @@
  * liegt in `atrium-basic-modules` und läuft dort ohne `actions`): eigene Aktionen in Terminliste und Monatskalender,
  * Aktionen abwählbar und nicht bei Gruppen-/Tag-Filter, `actionsAvailable`, Audit ohne Aktionsnamen.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
+import { setTodayForTests } from '$lib/sdk/dates';
+import { moduleDb } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import eventsModule from '$modules/events/module';
+import type { ExportOptions } from '$modules/events/schemas';
+import membersModule from '$modules/members/module';
 import {
 	bootstrapAdmin,
 	contextForUser,
@@ -22,13 +29,6 @@ import {
 	syncModules,
 	useTestDatabase
 } from '$testing';
-import { setTodayForTests } from '$lib/sdk/dates';
-import { moduleDb } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
-import eventsModule from '$modules/events/module';
-import type { ExportOptions } from '$modules/events/schemas';
-import type { RequestContext } from '$lib/sdk/types';
 
 let close: () => Promise<void>;
 let admin: RequestContext;

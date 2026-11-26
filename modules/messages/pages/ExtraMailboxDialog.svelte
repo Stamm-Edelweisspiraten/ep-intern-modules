@@ -1,22 +1,22 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
+	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
+	import { FormField, SharePanel } from '$lib/components/layout';
+	import { shareKey } from '$lib/components/layout/share-types';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { FormField, SharePanel } from '$lib/components/layout';
-	import type { ShareCandidate, ShareEntry } from '$lib/components/layout';
-	import { shareKey } from '$lib/components/layout/share-types';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import type { PrincipalInfo } from '$lib/sdk/types/sharing';
 	import {
-		EXTRA_SHARE_LEVELS,
 		EXTRA_SHARE_LEVEL_LABELS,
-		MAX_EXTRA_DESCRIPTION,
-		MAX_EXTRA_NAME,
+		EXTRA_SHARE_LEVELS,
+		type ExtraMailbox,
 		extraMailboxInput,
-		type ExtraMailbox
+		MAX_EXTRA_DESCRIPTION,
+		MAX_EXTRA_NAME
 	} from '../schemas';
 	import { BASE, errorText } from './helpers';
 

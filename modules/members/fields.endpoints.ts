@@ -1,4 +1,4 @@
-import { defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, defineEndpoint } from '$lib/sdk/server';
 import { listFieldDefs, putFieldDefs } from './fields.service';
 import { memberFieldsInput } from './schemas';
 

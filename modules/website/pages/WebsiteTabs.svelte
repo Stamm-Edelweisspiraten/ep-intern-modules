@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { can } from '$lib/sdk/client';
 	import { LinkTabs } from '$lib/components/layout';
+	import { can } from '$lib/sdk/client';
 	import { PERM } from '../schemas';
 	import { BASE } from './helpers';
 

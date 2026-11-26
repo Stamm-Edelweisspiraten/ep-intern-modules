@@ -10,28 +10,28 @@
  * höchstens 2000 Einträge, höchstens 300 MB entpackt (über die Header-Angaben VOR dem
  * Entpacken geprüft), Belege <= 10 MB. Archivnamen werden nie als Dateisystem-/Storage-Pfad benutzt.
  */
-import { strFromU8, strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
+import { strFromU8, strToU8, unzipSync, type Zippable, zipSync } from 'fflate';
 import { z } from 'zod';
 import { safeFileName } from '$lib/sdk/file-names';
 import { detectContentType } from '$lib/sdk/server/file-response';
 import {
 	ACCOUNTING_CATEGORIES,
+	actionInput,
 	CALC_CATEGORIES,
+	calcItemInput,
+	calculationInput,
 	ENTRY_TYPES,
+	entryInput,
+	formConfigInput,
+	isIncomeCategory,
 	MAX_AMOUNT_CENTS,
 	MAX_CALC_ITEMS,
 	MAX_RECEIPT_BYTES,
 	PAID_BY,
 	PARTICIPANT_ROLES,
-	RECEIPT_CONTENT_TYPES,
-	actionInput,
-	calcItemInput,
-	calculationInput,
-	entryInput,
-	formConfigInput,
-	isIncomeCategory,
 	participantInput,
 	payeeInput,
+	RECEIPT_CONTENT_TYPES,
 	REFUND_CATEGORY
 } from './schemas';
 
@@ -91,7 +91,7 @@ const RECEIPT_FILE_RE = /^receipts\/[A-Za-z0-9._-]{1,200}$/;
  * (Verzeichniseintrag) und `receipts/<name>`. Alles andere wirft einen `ArchiveError`.
  */
 export function assertSafeArchivePath(name: string): void {
-	// eslint-disable-next-line no-control-regex
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 	if (!name || name.length > 255 || /[\u0000-\u001f\u007f\\:]/.test(name)) {
 		throw new ArchiveError('Archiv enthält einen ungültigen Dateinamen');
 	}
@@ -230,7 +230,7 @@ const entrySchema = z
 					.trim()
 					.min(1)
 					.max(200)
-					// eslint-disable-next-line no-control-regex
+					// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 					.refine((v) => !/[\u0000-\u001f\u007f]/.test(v), 'Enthält ungültige Zeichen'),
 				contentType: z.enum(RECEIPT_CONTENT_TYPES)
 			})

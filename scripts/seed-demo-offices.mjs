@@ -1,5 +1,5 @@
 // Demo-Daten für das Modul `offices` (Ämter; idempotent, über die echte API).
-// Voraussetzung: demo-server läuft, `node scripts/seed-demo.mjs` wurde ausgeführt (Demo-Benutzer und Rollen).
+// Voraussetzung: demo-server läuft, `bun scripts/seed-demo.mjs` wurde ausgeführt (Demo-Benutzer und Rollen).
 // Aktiviert das Modul, legt Ämter mit E-Mail-Adressen, verknüpften Rollen und Inhaber*innen an und
 // hinterlegt persönliche Beschreibungen (Anmeldung als die jeweilige Person). Vorhandene Ämter gleichen
 // Namens werden aktualisiert statt doppelt angelegt.
@@ -29,7 +29,7 @@ async function call(method, path, body, base = '/api/v1') {
 }
 
 // Zugangsdaten überschreibbar, falls die Admin-Adresse in der Demo-DB geändert wurde:
-//   DEMO_EMAIL=… DEMO_PASSWORD=… node scripts/seed-demo-offices.mjs
+//   DEMO_EMAIL=… DEMO_PASSWORD=… bun scripts/seed-demo-offices.mjs
 const EMAIL = process.env.DEMO_EMAIL ?? 'admin@demo.test';
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'Demo-Admin-2026!';
 /** Passwort der Demo-Benutzer aus `seed-demo.mjs` */

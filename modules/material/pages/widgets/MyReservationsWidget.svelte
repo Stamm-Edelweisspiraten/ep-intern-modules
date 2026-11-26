@@ -1,19 +1,19 @@
 <script lang="ts">
+	import Boxes from '@lucide/svelte/icons/boxes';
 	// Dashboard-Kachel „Meine Materialreservierungen“: eigene laufende und kommende Reservierungen.
 	import { onMount } from 'svelte';
-	import Boxes from '@lucide/svelte/icons/boxes';
+	import { DashboardCard } from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
 	import { apiFetch } from '$lib/sdk/client';
 	import type { DashboardWidgetProps } from '$lib/sdk/types/module-ui';
-	import { Badge } from '$lib/components/ui/badge';
-	import { DashboardCard } from '$lib/components/layout';
 	import type { ReservationListItem } from '../../schemas';
 	import {
 		API,
-		RESERVATION_STATE_LABELS,
-		STATE_VARIANTS,
 		errorText,
 		formatPeriod,
-		reservationHref
+		RESERVATION_STATE_LABELS,
+		reservationHref,
+		STATE_VARIANTS
 	} from '../helpers';
 
 	let { onstatus }: DashboardWidgetProps = $props();

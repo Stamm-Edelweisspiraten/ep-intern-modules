@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { strToU8, zipSync, type Zippable } from 'fflate';
+import { describe, expect, it } from 'bun:test';
+import { strToU8, type Zippable, zipSync } from 'fflate';
 import {
 	ARCHIVE_FORMAT,
+	type ArchiveDocument,
 	ArchiveError,
+	type ArchiveManifest,
 	archiveDocumentSchema,
 	archiveFilename,
 	assertSafeArchivePath,
@@ -11,9 +13,7 @@ import {
 	parseArchive,
 	sanitizeName,
 	slugify,
-	unpackArchive,
-	type ArchiveDocument,
-	type ArchiveManifest
+	unpackArchive
 } from '$modules/actions/action-archive';
 
 const PDF = strToU8('%PDF-1.4\n%test');

@@ -3,34 +3,42 @@
  * Treffer nur für Sichtbares (Freigaben, eigene Datensätze, Rechte), Papierkorb nie,
  * Kasse ohne Recht keine Treffer bzw. mit `own.view` nur eigene, deaktiviertes Modul → keine Treffer.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { searchEverything } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
 import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import type { SearchHit } from '$lib/sdk/types/search';
 import actionsModule from '$modules/actions/module';
 import filesModule from '$modules/files/module';
+import type { FileNode } from '$modules/files/schemas';
 import membersModule from '$modules/members/module';
 import officesModule from '$modules/offices/module';
 import ordersModule from '$modules/orders/module';
 import treasuryModule from '$modules/treasury/module';
-import { setTodayForTests } from '$lib/sdk/dates';
-import type { FileNode } from '$modules/files/schemas';
 import type { InvoiceDetail } from '$modules/treasury/schemas';
-import type { RequestContext } from '$lib/sdk/types';
-import type { SearchHit } from '$lib/sdk/types/search';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	encodeMultipart,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	searchEverything,
+	setMailTransportForTests,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'search-modules-b-password';
 let close: () => Promise<void>;
@@ -118,8 +126,8 @@ async function folder(who: string, name: string, parentId: string | null = null)
 async function upload(who: string, parentId: string, name: string): Promise<string> {
 	const fd = new FormData();
 	fd.set('file', new File([new TextEncoder().encode('Inhalt')], name, { type: 'text/plain' }));
-	const encoded = new Response(fd);
-	const bytes = new Uint8Array(await encoded.arrayBuffer());
+	const encoded = await encodeMultipart(fd);
+	const bytes = encoded.body;
 	resetAllForTests();
 	const url = new URL(`http://localhost:5173/api/v1/modules/files/nodes/${parentId}/upload`);
 	const res = await handleApiRequest({
@@ -127,7 +135,7 @@ async function upload(who: string, parentId: string, name: string): Promise<stri
 			method: 'POST',
 			headers: {
 				authorization: `Bearer ${keys[who]}`,
-				'content-type': encoded.headers.get('content-type')!,
+				'content-type': encoded.contentType,
 				'content-length': String(bytes.byteLength)
 			},
 			body: bytes
@@ -354,10 +362,12 @@ describe('offices', () => {
 				type: 'Amt'
 			})
 		]);
-		expect((await hits('reader', 'kochgeschirr', 'offices')).map((h) => h.id)).toEqual([
+		expect<unknown>((await hits('reader', 'kochgeschirr', 'offices')).map((h) => h.id)).toEqual([
 			ids.office
 		]);
-		expect((await hits('reader', 'Olivia', 'offices')).map((h) => h.id)).toEqual([ids.office]);
+		expect<unknown>((await hits('reader', 'Olivia', 'offices')).map((h) => h.id)).toEqual([
+			ids.office
+		]);
 	});
 
 	it('ohne Recht keine Treffer', async () => {

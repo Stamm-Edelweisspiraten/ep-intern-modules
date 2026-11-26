@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { AssistTextarea, BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { AssistTextarea, FormField, BUSY_SAVE } from '$lib/components/layout';
-	import { actionInput, type ActionSummary } from '../schemas';
+	import { Label } from '$lib/components/ui/label';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
+	import { type ActionSummary, actionInput } from '../schemas';
 
 	let {
 		open = $bindable(false),
@@ -255,7 +255,9 @@
 				</div>
 			</div>
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

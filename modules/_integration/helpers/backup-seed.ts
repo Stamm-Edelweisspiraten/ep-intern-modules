@@ -7,36 +7,41 @@
  *   Person (Better-Auth-Verschlüsselung), IBANs in `actions` und `treasury`, Link-Token in `files` (`token_enc` + Hash).
  * - Aufräumen: `world.close()` (DB schließen, Fake-Storage aushängen).
  */
-import { expect } from 'vitest';
+import { expect } from 'bun:test';
+import { symmetricEncrypt } from 'better-auth/crypto';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
-import { symmetricEncrypt } from 'better-auth/crypto';
-import { useTestDatabase } from '$testing';
-import { installFakeStorage, uninstallFakeStorage, fakeObjects } from '$testing';
-import { getDb, schema } from '$lib/server/core/database/client';
-import { contextForUser } from '$lib/server/core/auth/context';
+import type { RequestContext } from '$lib/sdk/types';
+import { registerCoreApi } from '$lib/server/core/api/endpoints';
+import { createApiKey } from '$lib/server/core/api/keys';
+import { handleApiRequest } from '$lib/server/core/api/router';
 import { getAuth } from '$lib/server/core/auth';
+import { contextForUser } from '$lib/server/core/auth/context';
 import { bootstrapAdmin, createUser } from '$lib/server/core/auth/users';
-import { createRole } from '$lib/server/core/permissions/roles';
+import { getDb, schema } from '$lib/server/core/database/client';
+import { setMailTransportForTests } from '$lib/server/core/mail';
 import { registerModule } from '$lib/server/core/modules/registry';
 import { enableModule, syncModules } from '$lib/server/core/modules/service';
-import { registerCoreApi } from '$lib/server/core/api/endpoints';
-import { handleApiRequest } from '$lib/server/core/api/router';
-import { createApiKey } from '$lib/server/core/api/keys';
+import { setPdfRendererForTests } from '$lib/server/core/pdf';
+import { createRole } from '$lib/server/core/permissions/roles';
+import { resetAllForTests } from '$lib/server/core/rate-limit';
 import { setSetting } from '$lib/server/core/settings/service';
 import { setFileRepoForTests } from '$lib/server/core/storage';
-import { setMailTransportForTests } from '$lib/server/core/mail';
-import { setPdfRendererForTests } from '$lib/server/core/pdf';
-import { resetAllForTests } from '$lib/server/core/rate-limit';
-import membersModule from '$modules/members/module';
 import actionsModule from '$modules/actions/module';
-import treasuryModule from '$modules/treasury/module';
-import ordersModule from '$modules/orders/module';
-import officesModule from '$modules/offices/module';
 import eventsModule from '$modules/events/module';
-import galleriesModule from '$modules/galleries/module';
 import filesModule from '$modules/files/module';
-import type { RequestContext } from '$lib/sdk/types';
+import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import officesModule from '$modules/offices/module';
+import ordersModule from '$modules/orders/module';
+import treasuryModule from '$modules/treasury/module';
+import {
+	encodeMultipart,
+	fakeObjects,
+	installFakeStorage,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 export const SEED_PASSWORD = 'Sehr-Sicheres-Passwort-1';
 export const SEED_ADMIN_EMAIL = 'admin@backup.test';
@@ -141,11 +146,11 @@ async function request(token: string | null, method: string, path: string, init:
 
 /** Multipart-Upload mit `content-length` (manche Endpunkte verlangen ihn) */
 async function multipart(token: string, path: string, fd: FormData) {
-	const encoded = new Response(fd);
-	const bytes = new Uint8Array(await encoded.arrayBuffer());
+	const encoded = await encodeMultipart(fd);
+	const bytes = encoded.body;
 	return request(token, 'POST', path, {
 		headers: {
-			'content-type': encoded.headers.get('content-type')!,
+			'content-type': encoded.contentType,
 			'content-length': String(bytes.byteLength)
 		},
 		body: bytes

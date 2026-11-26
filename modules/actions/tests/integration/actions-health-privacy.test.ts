@@ -3,37 +3,43 @@
  * ZIP-Export und PDF keine Ernährung/Allergien/Sonstiges/gesundheitsbezogenen Antworten; mit Recht
  * vollständig. In der Datenbank stehen die Felder verschlüsselt, der Altbestand wird migriert.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { confirmIfNeeded } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
-import { setPdfRendererForTests } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { resetAllForTests } from '$testing';
-import { resetEnvForTests } from '$testing';
-import { loadTableInfo } from '$testing';
-import { decodeRowSecrets, encodeRowSecrets } from '$testing';
 import { core } from '$lib/sdk/server';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import { parseArchive } from '$modules/actions/action-archive';
 import { encryptStoredHealthData, isHealthAnswerKey } from '$modules/actions/health';
+import actionsModule from '$modules/actions/module';
 import {
-	STANDARD_FORM_KEYS as K,
 	type FormConfig,
+	STANDARD_FORM_KEYS as K,
 	type Participant
 } from '$modules/actions/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	confirmIfNeeded,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	decodeRowSecrets,
+	enableModule,
+	encodeRowSecrets,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	loadTableInfo,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	resetEnvForTests,
+	schema,
+	setMailTransportForTests,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const keys: Record<string, string> = {};
 const userIds: Record<string, string> = {};

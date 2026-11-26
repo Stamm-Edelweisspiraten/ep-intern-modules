@@ -6,8 +6,9 @@
  *
  * Core-Services (storage, crypto, audit) laufen immer außerhalb der Modul-Transaktion.
  */
-import { sanitizeFormHtml } from './form-html';
+
 import { sql } from 'drizzle-orm';
+import { formDefinitionSchema } from '$lib/forms/schema';
 import { todayBerlin } from '$lib/sdk/dates';
 import {
 	type ApiEndpoint,
@@ -15,47 +16,47 @@ import {
 	errors,
 	isCoreError,
 	moduleDb,
-	readUpload,
 	type RequestContext,
+	readUpload,
 	rowsOf,
-	toIsoOrNull,
-	type Tx
+	type Tx,
+	toIsoOrNull
 } from '$lib/sdk/server';
-import { formDefinitionSchema } from '$lib/forms/schema';
 import { requireAccess } from './access';
-import { linkTokenValues } from './link-tokens';
 import { closedInfo, loadRefundSnapshot } from './accounting-core';
 import {
 	ARCHIVE_FORMAT,
 	ARCHIVE_VERSION,
 	ARCHIVE_ZIP_TYPES,
+	type ArchiveDocument,
 	ArchiveError,
-	MAX_ARCHIVE_BYTES,
-	MAX_EXPORT_RECEIPT_BYTES,
+	type ArchiveManifest,
 	archiveFilename,
 	buildArchive,
 	detectReceiptType,
+	MAX_ARCHIVE_BYTES,
+	MAX_EXPORT_RECEIPT_BYTES,
 	parseArchive,
-	sanitizeName,
-	type ArchiveDocument,
-	type ArchiveManifest
+	sanitizeName
 } from './action-archive';
+import { sanitizeFormHtml } from './form-html';
 import {
 	buildDefaultFormDefinition,
 	mergeStandardFields,
 	normalizeDedupeKey
 } from './form-support';
-import { ibanLast, isValidIban, normalizeIban } from './iban';
 import { canSeeHealth, healthColumns, readHealthFor } from './health';
+import { ibanLast, isValidIban, normalizeIban } from './iban';
+import { linkTokenValues } from './link-tokens';
 import {
-	CHECKLIST_ITEMS,
-	MAX_RECEIPT_BYTES,
-	MODULE_ID,
-	idParams,
 	type CalcBasis,
 	type CalcCategory,
+	CHECKLIST_ITEMS,
 	type FreizeitType,
-	type LodgingType
+	idParams,
+	type LodgingType,
+	MAX_RECEIPT_BYTES,
+	MODULE_ID
 } from './schemas';
 
 const TAGS = ['Modul: actions'];
@@ -433,7 +434,7 @@ async function importAction(ctx: RequestContext, request: Request): Promise<Impo
 		sniff: false
 	});
 
-	let parsed;
+	let parsed: ReturnType<typeof parseArchive>;
 	try {
 		parsed = parseArchive(file.bytes);
 	} catch (e) {

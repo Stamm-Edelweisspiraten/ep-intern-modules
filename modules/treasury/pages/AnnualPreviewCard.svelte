@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
-	import { apiFetch } from '$lib/sdk/client';
+	import { onDestroy, untrack } from 'svelte';
+	import { formatEuro } from '$lib/components/layout/money';
+	import PdfEmbed from '$lib/components/layout/PdfEmbed.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { formatEuro } from '$lib/components/layout/money';
-	import PdfEmbed from '$lib/components/layout/PdfEmbed.svelte';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { AnnualMailPreview, AnnualPreviewInvoice } from '../schemas';
 	import { BASE, errorMessage } from './helpers';
 
@@ -165,7 +165,9 @@
 					{options}
 					bind:value={key}
 				/>
-				{#if busy}<span class="text-xs text-muted-foreground" aria-live="polite">Lädt …</span>{/if}
+				{#if busy}
+					<span class="text-xs text-muted-foreground" aria-live="polite">Lädt …</span>
+				{/if}
 			</div>
 			<div class="grid min-w-0 gap-4 lg:grid-cols-2">
 				<section class="min-w-0 space-y-2" aria-label="Mail-Vorschau">

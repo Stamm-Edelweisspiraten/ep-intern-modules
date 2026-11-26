@@ -1,7 +1,4 @@
 <script lang="ts">
-	// Ansicht eines Typs mit seinen Lagerartikeln (zentrierter Dialog); Aktionen je nach Recht.
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Archive from '@lucide/svelte/icons/archive';
 	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
 	import CalendarPlus from '@lucide/svelte/icons/calendar-plus';
@@ -10,12 +7,15 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Printer from '@lucide/svelte/icons/printer';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { apiFetch } from '$lib/sdk/client';
+	// Ansicht eines Typs mit seinen Lagerartikeln (zentrierter Dialog); Aktionen je nach Recht.
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, ErrorState, LoadingState } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { ConfirmDialog, ErrorState, LoadingState } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import { cn } from '$lib/utils';
 	import type { MaterialType, TypeDetail } from '../../schemas';
 	import { API, errorText, formatAmount } from '../helpers';
@@ -121,8 +121,12 @@
 				<Dialog.Title class="flex flex-wrap items-center gap-2 break-words">
 					<CategoryGlyph category={type.category} size="sm" />
 					{type.name}
-					{#if type.consumable}<Badge variant="secondary">Verbrauchsmaterial</Badge>{/if}
-					{#if type.archived}<Badge variant="outline">Archiviert</Badge>{/if}
+					{#if type.consumable}
+						<Badge variant="secondary">Verbrauchsmaterial</Badge>
+					{/if}
+					{#if type.archived}
+						<Badge variant="outline">Archiviert</Badge>
+					{/if}
 				</Dialog.Title>
 				<Dialog.Description>
 					Typ · {type.category?.name ?? 'Ohne Kategorie'} ·
@@ -195,7 +199,9 @@
 									>
 										<span class="min-w-0 flex-1 truncate font-medium">
 											{i.name}
-											{#if i.archived}<Badge variant="outline" class="ml-1">Archiviert</Badge>{/if}
+											{#if i.archived}
+												<Badge variant="outline" class="ml-1">Archiviert</Badge>
+											{/if}
 										</span>
 										<span class="text-muted-foreground">{i.locationName ?? 'Ohne Lagerort'}</span>
 										<span class="tabular-nums"
@@ -222,9 +228,7 @@
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger>
 								{#snippet child({ props })}
-									<Button {...props} variant="outline" disabled={busy}>
-										<Ellipsis /> Mehr
-									</Button>
+									<Button {...props} variant="outline" disabled={busy}> <Ellipsis /> Mehr </Button>
 								{/snippet}
 							</DropdownMenu.Trigger>
 							<DropdownMenu.Content align="start">

@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { letterGeometry, type PdfLayoutData, type PdfTemplate } from '$lib/sdk/server';
-import stamm from '$modules/ep-stamm/module';
-import { FOOTER_TEXT_LINES, STAMM_TEMPLATES, stammHead } from '$modules/ep-stamm/letterhead';
 import { STAMM_SETTING_DEFAULTS } from '$modules/ep-stamm/defaults';
+import { FOOTER_TEXT_LINES, STAMM_TEMPLATES, stammHead } from '$modules/ep-stamm/letterhead';
+import stamm from '$modules/ep-stamm/module';
 
 const data: PdfLayoutData = {
 	title: 'Einladung',

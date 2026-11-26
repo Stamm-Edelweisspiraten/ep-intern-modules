@@ -3,9 +3,9 @@
  * Nur wer mindestens ein Amt hat, darf eine Beschreibung speichern.
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
+import { type AnyApiEndpoint, core, defineEndpoint, errors, type Tx } from '$lib/sdk/server';
 import { mdb, rowsOf, textOrNull } from './load';
-import { bioInput, websiteOptInInput, type MyOffices } from './schemas';
+import { bioInput, type MyOffices, websiteOptInInput } from './schemas';
 
 const tags = ['Modul: offices'];
 

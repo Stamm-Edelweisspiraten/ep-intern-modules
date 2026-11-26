@@ -2,12 +2,15 @@
  * Stammesprofil gegen den Core: Vorlagen, Einstellungs-Vorgaben, Mail-Kopf und Logo wirken nur, solange das
  * Modul aktiv ist; gespeicherte Einstellungen gewinnen; alte Vorlagen-IDs (`stamm-brief` …) bleiben gültig.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import type { RequestContext } from '$lib/sdk/types';
+import { STAMM_TEMPLATES } from '$modules/ep-stamm/letterhead';
+import stamm from '$modules/ep-stamm/module';
 import {
 	adminContext,
 	brandIcon,
-	brandLogo,
 	brandingState,
+	brandLogo,
 	core,
 	describeTemplates,
 	disableModule,
@@ -23,9 +26,6 @@ import {
 	syncModules,
 	useTestDatabase
 } from '$testing';
-import type { RequestContext } from '$lib/sdk/types';
-import stamm from '$modules/ep-stamm/module';
-import { STAMM_TEMPLATES } from '$modules/ep-stamm/letterhead';
 
 const ADMIN = 'stamm-admin@example.test';
 const PW = 'correct-horse-battery';

@@ -1,31 +1,40 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { isRealPostgres, pgTestUrl, useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule, unregisterModule } from '$testing';
-import { enableModule, runModuleMigrations, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { withMigrationLock } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { runDueJobs } from '$testing';
-import { resetAllForTests } from '$testing';
-import { env } from '$testing';
-import { core, defineModule, isCoreError } from '$lib/sdk/server';
 import { setTodayForTests } from '$lib/sdk/dates';
-import actionsModule from '$modules/actions/module';
-import membersModule from '$modules/members/module';
-import treasuryModule from '$modules/treasury/module';
-import ordersModule from '$modules/orders/module';
-import filesModule from '$modules/files/module';
-import { runReminderJob } from '$modules/treasury/notify';
-import { nextNumber } from '$modules/orders/db';
-import { assertQuota } from '$modules/files/storage';
-import type { InvoiceDetail } from '$modules/treasury/schemas';
+import { core, defineModule, isCoreError } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import filesModule from '$modules/files/module';
+import { assertQuota } from '$modules/files/storage';
+import membersModule from '$modules/members/module';
+import { nextNumber } from '$modules/orders/db';
+import ordersModule from '$modules/orders/module';
+import treasuryModule from '$modules/treasury/module';
+import { runReminderJob } from '$modules/treasury/notify';
+import type { InvoiceDetail } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	env,
+	getDb,
+	handleApiRequest,
+	isRealPostgres,
+	pgTestUrl,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runDueJobs,
+	runModuleMigrations,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	unregisterModule,
+	useTestDatabase,
+	waitFor as waitUntil,
+	withMigrationLock
+} from '$testing';
 
 /*
  * #60: Nebenläufigkeit der Advisory-Sperren unter ECHTEM PostgreSQL (mehrere Verbindungen).
@@ -281,9 +290,9 @@ describe.skipIf(!pgTestUrl())('PostgreSQL: Nebenläufigkeit der Sperren (#60)', 
 		}
 	});
 
-	it('Core-Migrationssperre (withMigrationLock): zweiter Start wartet, bis der erste fertig ist', async (ctx) => {
+	it('Core-Migrationssperre (withMigrationLock): zweiter Start wartet, bis der erste fertig ist', async () => {
 		// Session-Sperre auf eigener Verbindung – mit PGlite(-Socket) teilen sich alle eine Sitzung
-		if (!realPg) ctx.skip();
+		if (!realPg) return;
 		const url = env().DATABASE_URL;
 		let releaseA!: () => void;
 		const holdA = new Promise<void>((r) => (releaseA = r));
@@ -299,7 +308,7 @@ describe.skipIf(!pgTestUrl())('PostgreSQL: Nebenläufigkeit der Sperren (#60)', 
 			bEntered = true;
 		});
 		// B steht nachweislich in der Warteschlange der Advisory-Sperre
-		await vi.waitFor(
+		await waitUntil(
 			async () => {
 				const r = await getDb().execute(
 					sql`SELECT count(*) AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted`

@@ -1,23 +1,23 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { todayBerlin } from '$lib/sdk/dates';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, BUSY_SAVE } from '$lib/components/layout';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
 	import {
-		DIETS,
 		DIET_LABELS,
-		PARTICIPANT_ROLES,
-		PARTICIPANT_ROLE_LABELS,
-		participantInput,
+		DIETS,
 		type MemberSuggestion,
-		type Participant
+		PARTICIPANT_ROLE_LABELS,
+		PARTICIPANT_ROLES,
+		type Participant,
+		participantInput
 	} from '../schemas';
 	import SuggestInput from './SuggestInput.svelte';
 
@@ -377,7 +377,9 @@
 				</FormField>
 			{/if}
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

@@ -3,7 +3,7 @@
  * `messages.mailbox.manage`. Feste Pfade vor den Parameter-Pfaden.
  */
 import { z } from 'zod';
-import { PRINCIPAL_SEARCH_RATE_LIMIT, defineEndpoint, type AnyApiEndpoint } from '$lib/sdk/server';
+import { type AnyApiEndpoint, defineEndpoint, PRINCIPAL_SEARCH_RATE_LIMIT } from '$lib/sdk/server';
 import {
 	createAlias,
 	createExtraMailbox,
@@ -15,10 +15,10 @@ import {
 	updateExtraMailbox
 } from './extra-mailbox.service';
 import {
-	PERM_MAILBOX_MANAGE,
 	aliasInput,
 	extraMailboxInput,
 	extraMailboxUpdateInput,
+	PERM_MAILBOX_MANAGE,
 	principalSearchQuery
 } from './schemas';
 

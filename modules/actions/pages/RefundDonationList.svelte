@@ -1,22 +1,22 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import Copy from '@lucide/svelte/icons/copy';
+	import MoreHorizontal from '@lucide/svelte/icons/ellipsis';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Lock from '@lucide/svelte/icons/lock';
-	import MoreHorizontal from '@lucide/svelte/icons/ellipsis';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
-	import { MoneyInput, AssistTextarea } from '$lib/components/layout';
-	import { Label } from '$lib/components/ui/label';
+	import { toast } from 'svelte-sonner';
+	import { AssistTextarea, MoneyInput } from '$lib/components/layout';
 	import { downloadPdf } from '$lib/components/layout/download';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { SegmentedSlider } from '$lib/components/ui/segmented-slider';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { formatDateDe, todayBerlin } from '$lib/sdk/dates';
-	import { choiceOf, donationForChoice, validateDonation, type DonationChoice } from '../refund';
+	import { choiceOf, type DonationChoice, donationForChoice, validateDonation } from '../refund';
 	import type { RefundItem } from './refund-types';
 
 	let {
@@ -227,11 +227,11 @@
 		{/if}
 		<p id="refund-deadline-hint" class="text-xs text-muted-foreground">
 			{#if deadline && deadlineRunning}
-				Bis zum {formatDateDe(deadline)} kann jede Person über den Link wählen. Die Kasse zahlt erst danach
-				aus; ohne Rückmeldung wird ausgezahlt.
+				Bis zum {formatDateDe(deadline)} kann jede Person über den Link wählen. Die Kasse zahlt erst
+				danach aus; ohne Rückmeldung wird ausgezahlt.
 			{:else if deadline}
-				Die Frist ist am {formatDateDe(deadline)} abgelaufen. Der Link ist geschlossen, die Kasse zahlt
-				aus. Nachträgliche Rückmeldungen kannst du hier noch eintragen.
+				Die Frist ist am {formatDateDe(deadline)} abgelaufen. Der Link ist geschlossen, die Kasse
+				zahlt aus. Nachträgliche Rückmeldungen kannst du hier noch eintragen.
 			{:else}
 				Ohne Frist zahlt die Kasse sofort aus. Mit Frist wartet sie, bis alle sich melden konnten.
 			{/if}
@@ -241,8 +241,10 @@
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<p class="text-sm text-muted-foreground" aria-live="polite">
 			Auszahlung {formatEuro(totals.payout)} · gespendet {formatEuro(totals.donated)}
-			{#if totals.donors}({totals.donors}
-				{totals.donors === 1 ? 'Person' : 'Personen'}){/if}
+			{#if totals.donors}
+				({totals.donors}
+				{totals.donors === 1 ? 'Person' : 'Personen'})
+			{/if}
 		</p>
 		{#if editable}
 			<Button variant="outline" size="sm" disabled={lettersBusy} onclick={() => letters()}>
@@ -290,7 +292,9 @@
 						</div>
 					</div>
 					<div class="flex flex-wrap items-center gap-1.5">
-						{#if it.decidedVia === 'link'}<Badge variant="info">über Link</Badge>{/if}
+						{#if it.decidedVia === 'link'}
+							<Badge variant="info">über Link</Badge>
+						{/if}
 						{#if locked}
 							<Badge variant="success"><Lock class="size-3" aria-hidden="true" /> überwiesen</Badge>
 						{/if}

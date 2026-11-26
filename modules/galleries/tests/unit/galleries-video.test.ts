@@ -2,16 +2,16 @@
  * Videos in Galerien (reine Teile): Formaterkennung, Entfernen der Metadaten ohne Neukodierung,
  * Range-Anfragen (`parseRange`, `sliceStream`), Hilfen aus `schemas.ts`.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { parseRange, sliceStream } from '$modules/galleries/files';
 import { formatDuration, uploadFields, videoTypeOf } from '$modules/galleries/schemas';
 import { sniffVideoType, stripVideoMetadata } from '$modules/galleries/video';
 import {
+	box,
+	contains,
 	DEVICE_TEXT,
 	GPS_TEXT,
 	MDAT_PAYLOAD,
-	box,
-	contains,
 	sampleMp4,
 	sampleWebm
 } from '../video-fixtures';

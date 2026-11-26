@@ -16,11 +16,11 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+	type ApiEndpoint,
 	createShareAccess,
 	errors,
 	principalKeysFor,
 	principalMatchSql,
-	type ApiEndpoint,
 	type RequestContext,
 	type Tx
 } from '$lib/sdk/server';

@@ -2,9 +2,9 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Info from '@lucide/svelte/icons/info';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { formatEuro } from '$lib/components/layout/money';
 	import type { AnnualPreview } from '../schemas';
 
 	/** „Vor dem Versand“: bündelt die Warnungen der Vorschau direkt am Senden-Schritt */

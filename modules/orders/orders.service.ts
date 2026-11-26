@@ -2,17 +2,9 @@
  * Bestellungen (Mitglieder, Gruppen, Stamm): Laden (in der Transaktion), Aufbereiten (danach: Namen, Zahlstand),
  * Lagerübersicht und Zugriffshilfen. Dienste/Core-Aufrufe nur AUSSERHALB offener Transaktionen.
  */
-import { sql, type SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { errors, type RequestContext, type Tx } from '$lib/sdk/server';
-import {
-	PERMISSIONS,
-	type MemberOption,
-	type Order,
-	type OrderItem,
-	type OrderPayment,
-	type RecipientKind,
-	type StockRow
-} from './schemas';
+import type { Row } from './db';
 import {
 	groupRows,
 	idList,
@@ -22,10 +14,18 @@ import {
 	num,
 	rows,
 	str,
-	treasuryService
+	treasuryService,
+	userNames
 } from './db';
-import type { Row } from './db';
-import { userNames } from './db';
+import {
+	type MemberOption,
+	type Order,
+	type OrderItem,
+	type OrderPayment,
+	PERMISSIONS,
+	type RecipientKind,
+	type StockRow
+} from './schemas';
 import { billableCents, deficit, openQty, orderStatus } from './stock';
 
 /** Rohdaten einer Bestellung aus der Datenbank */
@@ -119,7 +119,7 @@ export async function orderAccess(ctx: RequestContext): Promise<OrderAccess> {
 
 /** Darf die*der Aufrufende diese Bestellung sehen (selbst bestellt, verknüpftes Mitglied, geleitete Gruppe, Stamm)? */
 export function isOwnOrder(order: Row, ctx: RequestContext, access: OrderAccess): boolean {
-	if (!!ctx.userId && order.ordered_by === ctx.userId) return true;
+	if (ctx.userId && order.ordered_by === ctx.userId) return true;
 	const kind = String(order.recipient_kind ?? 'member');
 	if (kind === 'group') return access.ledGroupIds.has(String(order.group_id));
 	if (kind === 'stamm') return access.stamm;

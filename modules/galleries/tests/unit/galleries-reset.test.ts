@@ -1,8 +1,8 @@
+import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { modulesDir } from '$testing';
 import { resetAreas, resetUsers } from '$modules/galleries/reset';
+import { modulesDir } from '$testing';
 
 const dir = join(modulesDir(), 'galleries', 'migrations');
 const sqlText = readdirSync(dir)

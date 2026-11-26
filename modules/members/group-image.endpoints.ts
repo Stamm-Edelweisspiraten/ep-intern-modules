@@ -11,8 +11,8 @@ import {
 	secureFileResponse,
 	type Tx
 } from '$lib/sdk/server';
-import { processGroupImage, processedGroupImagePath } from './group-image.service';
-import { GROUP_IMAGE_CONTENT_TYPES, MAX_GROUP_IMAGE_BYTES, idParams } from './schemas';
+import { processedGroupImagePath, processGroupImage } from './group-image.service';
+import { GROUP_IMAGE_CONTENT_TYPES, idParams, MAX_GROUP_IMAGE_BYTES } from './schemas';
 
 const MODULE = 'members';
 

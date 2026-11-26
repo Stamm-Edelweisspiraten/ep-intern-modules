@@ -1,15 +1,15 @@
 /** Mitglieder: Datumsprüfung mit „heute“ in Europe/Berlin (aus `tests/unit/sdk-dates.test.ts` herausgelöst) */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, setSystemTime, vi } from 'bun:test';
 import { memberInput } from '$modules/members/schemas';
 
 afterEach(() => {
-	vi.useRealTimers();
+	setSystemTime();
 });
 
 describe('memberInput und todayBerlin', () => {
 	it('Mitglied mit Eintritt „heute“ nachts um 00:30 wird akzeptiert', () => {
 		vi.useFakeTimers();
-		vi.setSystemTime(new Date('2026-10-20T22:30:00Z'));
+		setSystemTime(new Date('2026-10-20T22:30:00Z'));
 		const parsed = memberInput.safeParse({
 			firstName: 'Mia',
 			lastName: 'Muster',

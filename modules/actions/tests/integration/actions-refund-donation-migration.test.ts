@@ -3,13 +3,17 @@
  * (Spende 0, Buchung verknüpft); danach entfernt das Löschen der Buchung nicht mehr den Snapshot
  * (FK `action_refund_booking.entry_id` → SET NULL statt CASCADE).
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { migrateModuleRest, migrateModuleTo, moduleSql } from '$testing';
-import { registerModule } from '$testing';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
+import {
+	migrateModuleRest,
+	migrateModuleTo,
+	moduleSql,
+	registerModule,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 

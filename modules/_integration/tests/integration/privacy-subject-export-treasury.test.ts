@@ -3,25 +3,30 @@
  * Fassungen (nur Liste), Zahler mit maskierter IBAN, Auszahlungen – bei Sammelrechnungen nur die
  * eigenen Posten; nie IBAN-Hash oder verschlüsselte Werte.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { setPdfRendererForTests } from '$testing';
+import { setTodayForTests } from '$lib/sdk/dates';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
 import treasuryModule from '$modules/treasury/module';
-import { setTodayForTests } from '$lib/sdk/dates';
 import type { Account, InvoiceDetail } from '$modules/treasury/schemas';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setMailTransportForTests,
+	setPdfRendererForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let key = '';

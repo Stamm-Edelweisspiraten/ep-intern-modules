@@ -15,25 +15,14 @@ import {
 	errors,
 	inList,
 	moduleDb,
+	type RequestContext,
 	rowsOf,
 	toIso,
-	userLabel,
-	type RequestContext
+	userLabel
 } from '$lib/sdk/server';
 import type { MembersService } from '$modules/members/contract';
 import type { ParsedInbound } from './inbound-parse';
-import { loadMailboxDirectory, accessibleMailboxes } from './mailbox.service';
-import { isValidDomain } from './sender';
-import { loadSettings } from './sender.service';
-import {
-	FLOOD_WINDOW_MINUTES,
-	domainOf,
-	matchSenderRule,
-	parseSenderPattern,
-	scoreSpam,
-	type SenderRuleKind,
-	type SpamVerdict
-} from './spam-rules';
+import { accessibleMailboxes, loadMailboxDirectory } from './mailbox.service';
 import {
 	INBOX_SETTING_KEYS,
 	MAX_SENDER_RULES,
@@ -44,6 +33,17 @@ import {
 	type SpamMarkInput,
 	type SpamMarkResult
 } from './schemas';
+import { isValidDomain } from './sender';
+import { loadSettings } from './sender.service';
+import {
+	domainOf,
+	FLOOD_WINDOW_MINUTES,
+	matchSenderRule,
+	parseSenderPattern,
+	type SenderRuleKind,
+	type SpamVerdict,
+	scoreSpam
+} from './spam-rules';
 
 const mdb = () => moduleDb(MODULE_ID);
 const str = (v: unknown) => (v == null ? '' : String(v));

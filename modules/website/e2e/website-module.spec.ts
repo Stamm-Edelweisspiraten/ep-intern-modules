@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Modul „Website“ (ohne S3): Beitrag anlegen, Text schreiben, speichern (Hinweis „Alles gespeichert“ direkt nach dem Laden –
 // Regression: setEditable löste ein Update aus), veröffentlichen, zurückziehen; Banner anlegen; Fragen sortieren.

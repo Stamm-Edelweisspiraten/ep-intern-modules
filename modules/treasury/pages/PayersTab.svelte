@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import UsersRound from '@lucide/svelte/icons/users-round';
-	import { apiFetch } from '$lib/sdk/client';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { ConfirmDialog, EmptyState } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Payer, PayerFormInput, PayerSuggestion } from '../schemas';
 	import { BASE, errorMessage, openApiFile, type SharedData } from './helpers';
 	import type { FamilyRef } from './navigation';
@@ -173,7 +173,9 @@
 									{p.name}
 								{/if}
 							</Card.Title>
-							{#if p.email}<Card.Description class="truncate">{p.email}</Card.Description>{/if}
+							{#if p.email}
+								<Card.Description class="truncate">{p.email}</Card.Description>
+							{/if}
 						</div>
 						{#if perm.editInvoice}
 							<Button
@@ -203,7 +205,9 @@
 					</Card.Header>
 					<Card.Content class="space-y-3">
 						<div class="flex flex-wrap gap-1">
-							{#each p.members as m (m.id)}<Badge variant="outline">{m.name}</Badge>{/each}
+							{#each p.members as m (m.id)}
+								<Badge variant="outline">{m.name}</Badge>
+							{/each}
 							{#if !p.members.length}
 								<span class="text-xs text-muted-foreground">Keine Mitglieder zugeordnet</span>
 							{/if}
@@ -211,7 +215,9 @@
 						{#if p.ibanMasked || p.accountHolder}
 							<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 								<span>{p.accountHolder ?? 'Bankverbindung'}</span>
-								{#if p.ibanMasked}<span class="font-mono">{p.ibanMasked}</span>{/if}
+								{#if p.ibanMasked}
+									<span class="font-mono">{p.ibanMasked}</span>
+								{/if}
 								{#if p.ibanMasked && perm.bank}
 									<Button size="sm" variant="ghost" class="h-6 px-2" onclick={() => showIban(p)}>
 										anzeigen
@@ -225,7 +231,9 @@
 								{#if p.overdueCents}
 									<span class="text-destructive">überfällig {formatEuro(p.overdueCents)}</span>
 								{/if}
-								{#if p.creditCents}<span>Guthaben {formatEuro(p.creditCents)}</span>{/if}
+								{#if p.creditCents}
+									<span>Guthaben {formatEuro(p.creditCents)}</span>
+								{/if}
 							</div>
 							<div class="flex flex-wrap gap-2">
 								{#if onfamily}

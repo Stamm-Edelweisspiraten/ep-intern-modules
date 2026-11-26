@@ -7,8 +7,8 @@ import {
 	addedPrincipals,
 	bestEffort,
 	core,
-	principalUserIds,
 	type Principal,
+	principalUserIds,
 	type RequestContext
 } from '$lib/sdk/server';
 import { MODULE_ID, NOTIFY_GALLERY_SHARED } from './schemas';

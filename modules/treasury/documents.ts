@@ -4,16 +4,18 @@
  * bereits versendete Rechnung (Betrag, Rolle, Ermäßigung, Frist, Storno), geht automatisch eine neue
  * Fassung an dieselben Adressen. Core-Dienste (PDF, Mail, Audit) laufen außerhalb von Transaktionen.
  */
-import { PUSH_INVOICE, pushToLinkedAccounts } from './push-notify';
+
 import { sql } from 'drizzle-orm';
+import { formatEuro } from '$lib/components/layout/money';
 import {
 	contentDisposition,
 	core,
 	errors,
-	safeFileName,
-	type RequestContext
+	type RequestContext,
+	safeFileName
 } from '$lib/sdk/server';
 import type { PdfBlock } from '$lib/sdk/types';
+import { joinNames } from './annual-fee';
 import {
 	collectIds,
 	idList,
@@ -23,29 +25,28 @@ import {
 	loadRawInvoices,
 	mdb,
 	membersService,
+	type NameMaps,
 	num,
+	type RawInvoice,
 	resolveNames,
 	rows,
-	str,
-	type NameMaps,
-	type RawInvoice
+	str
 } from './db';
-import { formatEuro } from '$lib/components/layout/money';
-import { epcPayload, formatDateDe, groupByAddress, renderTemplate, type BankData } from './logic';
 import { formatIban } from './iban';
-import { joinNames } from './annual-fee';
+import { type BankData, epcPayload, formatDateDe, groupByAddress, renderTemplate } from './logic';
 import { composeMail } from './mail-compose';
 import { paymentBox, paymentText } from './mail-html';
 import { loadBankData } from './notify';
+import { PUSH_INVOICE, pushToLinkedAccounts } from './push-notify';
 import {
 	DEFAULT_INVOICE_BODY,
 	DEFAULT_INVOICE_SUBJECT,
+	type DocumentReason,
 	FEE_LEVEL_LABELS,
 	FEE_LEVELS,
-	SETTING_KEYS,
-	type DocumentReason,
 	type FeeLevel,
-	type InvoiceDocument
+	type InvoiceDocument,
+	SETTING_KEYS
 } from './schemas';
 
 /** Jahresbeitrag: alles, was das PDF braucht (alte Snapshots haben das Feld nicht) */
@@ -126,7 +127,7 @@ function addressLines(inv: RawInvoice, contact: Contact | undefined): string[] {
 		String(inv.row.recipient_name),
 		...(contact ? [contact.street, `${contact.postalCode} ${contact.city}`.trim()] : [])
 	]
-		.filter((l) => l && l.trim())
+		.filter((l) => l?.trim())
 		.map((l) => l.slice(0, 60));
 }
 
@@ -901,7 +902,7 @@ export async function payerStatementResponse(
 		name,
 		...(contact ? [contact.street, `${contact.postalCode} ${contact.city}`.trim()] : [])
 	]
-		.filter((l) => l && l.trim())
+		.filter((l) => l?.trim())
 		.map((l) => l.slice(0, 60));
 	const rowsOut: string[][] = [];
 	let total = 0;

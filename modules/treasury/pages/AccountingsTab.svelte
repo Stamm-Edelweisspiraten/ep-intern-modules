@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Download from '@lucide/svelte/icons/download';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import { apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -11,7 +11,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { AccountingInterimItem, ClosedAccountingItem } from '../closed-accountings';
 	import { BASE, errorMessage, fmtDate, openApiFile, type SharedData } from './helpers';
 
@@ -123,7 +123,8 @@
 								{#if c.status === 'closed'}
 									<a
 										href={detailHref(c.actionId)}
-										class="font-medium underline-offset-2 hover:underline">{c.name}</a
+										class="font-medium underline-offset-2 hover:underline"
+										>{c.name}</a
 									>
 								{:else}
 									<span class="font-medium">{c.name}</span>
@@ -184,9 +185,9 @@
 									<span class="text-xs text-muted-foreground">nach Abschluss</span>
 								{:else if c.filedAt}
 									<Badge variant="secondary">abgelegt {fmtDate(c.filedAt)}</Badge>
-									{#if c.filedBy}<div class="text-xs text-muted-foreground">
-											von {c.filedBy}
-										</div>{/if}
+									{#if c.filedBy}
+										<div class="text-xs text-muted-foreground"> von {c.filedBy} </div>
+									{/if}
 								{:else}
 									<Badge variant="outline">offen</Badge>
 								{/if}

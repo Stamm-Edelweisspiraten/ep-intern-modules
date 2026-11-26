@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Nachrichten: Verlauf lädt genau einmal (Regression: Endlosschleife → 429 „Zu viele Anfragen“),
 // die Seitenleiste zeigt „Stamm“ nur einmal, und „Neue Nachricht“ hat ein Eingabefeld für Empfänger.

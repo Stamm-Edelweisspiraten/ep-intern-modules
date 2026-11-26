@@ -7,18 +7,18 @@
 	// Wunsch direkt weiter scannen.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { BUSY_SAVE, FormField, NumberStepper } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import { EXPIRY_LABELS } from '../../pantry';
-	import { MAX_QUANTITY, type FoodProduct } from '../../schemas';
+	import { type FoodProduct, MAX_QUANTITY } from '../../schemas';
 	import {
 		API,
-		EXPIRY_VARIANTS,
 		apiFieldErrors,
+		EXPIRY_VARIANTS,
 		errorText,
 		formatAmount,
 		formatDate
@@ -100,7 +100,8 @@
 				{product.name}
 			</Dialog.Title>
 			<Dialog.Description>
-				{[product.brand, product.packageSize].filter(Boolean).join(' · ') || 'Lebensmittel'} · Bestand
+				{[product.brand, product.packageSize].filter(Boolean).join(' · ') || 'Lebensmittel'} ·
+				Bestand
 				{formatAmount(product.quantity, product.unit)}
 			</Dialog.Description>
 		</Dialog.Header>

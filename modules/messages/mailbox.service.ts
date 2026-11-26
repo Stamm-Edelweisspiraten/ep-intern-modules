@@ -12,19 +12,19 @@
 import { core, errors, type RequestContext } from '$lib/sdk/server';
 import type { MembersService } from '$modules/members/contract';
 import type { OfficesService } from '$modules/offices/contract';
+import { extraDirectoryEntries, loadAliasRows, myExtraMailboxes } from './extra-mailbox.service';
 import {
-	UNASSIGNED,
 	isSharedMailbox,
 	kindOf,
+	type MailboxKind,
+	type MailboxTarget,
 	personalKey,
 	senderKeyFor,
-	type MailboxKind,
-	type MailboxTarget
+	UNASSIGNED
 } from './mailbox';
+import { MODULE_ID, PERM_INBOX_MANAGE, PERM_INBOX_STAMM, PERM_SEND } from './schemas';
 import { isValidDomain, normalizeAddress, personalAddress, splitFullName } from './sender';
 import { listSenders, loadSettings } from './sender.service';
-import { extraDirectoryEntries, loadAliasRows, myExtraMailboxes } from './extra-mailbox.service';
-import { MODULE_ID, PERM_INBOX_MANAGE, PERM_INBOX_STAMM, PERM_SEND } from './schemas';
 
 const system = () => core.auth.systemContext(MODULE_ID);
 

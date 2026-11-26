@@ -15,12 +15,12 @@ import {
 	errors,
 	IMAGE_RATE_LIMIT,
 	moduleDb,
-	resultRows,
 	type Row,
+	resultRows,
 	type Tx
 } from '$lib/sdk/server';
-import { groupSlugParams, type GroupType, type WebsiteGroup } from './schemas';
 import { groupThumbnail } from './group-image.service';
+import { type GroupType, groupSlugParams, type WebsiteGroup } from './schemas';
 
 const imageQuery = z.object({
 	/** `thumb` = kleine Fassung (lange Kante 640 px) für Karten */

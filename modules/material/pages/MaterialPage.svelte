@@ -1,17 +1,17 @@
 <script lang="ts">
+	import { afterNavigate } from '$app/navigation';
 	// Materialseite mit Reitern wie „Bestellungen“: Reservieren · Meine · Alle · Lager · Vorrat · Etiketten (je nach Recht).
 	import { page } from '$app/state';
-	import { afterNavigate } from '$app/navigation';
-	import { can } from '$lib/sdk/client';
+	import { deviceLayout, PageHeader, ScrollPills } from '$lib/components/layout';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { PageHeader, ScrollPills, deviceLayout } from '$lib/components/layout';
+	import { can } from '$lib/sdk/client';
 	import { PERMISSIONS } from '../schemas';
-	import { safeReplaceState, type MaterialTab } from './helpers';
-	import ReserveTab from './reserve/ReserveTab.svelte';
-	import ReservationsTab from './reservations/ReservationsTab.svelte';
+	import { type MaterialTab, safeReplaceState } from './helpers';
 	import InventoryTab from './inventory/InventoryTab.svelte';
 	import LabelsTab from './labels/LabelsTab.svelte';
 	import PantryTab from './pantry/PantryTab.svelte';
+	import ReservationsTab from './reservations/ReservationsTab.svelte';
+	import ReserveTab from './reserve/ReserveTab.svelte';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const perm = $derived({

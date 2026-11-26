@@ -1,9 +1,9 @@
 <script lang="ts">
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import * as Table from '$lib/components/ui/table';
 	import { DataTable } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
-	import { FEE_LEVEL_LABELS, type AnnualPreview, type AnnualPreviewMember } from '../schemas';
+	import * as Table from '$lib/components/ui/table';
+	import { type AnnualPreview, type AnnualPreviewMember, FEE_LEVEL_LABELS } from '../schemas';
 
 	let {
 		preview,
@@ -83,9 +83,8 @@
 							<li class="flex gap-2">
 								<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
 								<span>
-									<strong>Ohne E-Mail</strong> ({preview.withoutEmail.length}): {names(
-										preview.withoutEmail
-									)} – die Rechnung entsteht trotzdem, die Mail nicht.
+									<strong>Ohne E-Mail</strong> ({preview.withoutEmail.length}):
+									{names(preview.withoutEmail)} – die Rechnung entsteht trotzdem, die Mail nicht.
 								</span>
 							</li>
 						{/if}
@@ -103,9 +102,9 @@
 								<TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
 								<span>
 									{preview.payerSuggestions}
-									{preview.payerSuggestions === 1 ? 'Mitglied hat' : 'Mitglieder haben'} Geschwister ohne
-									Zahler – unter <strong>Mehr → Zahler &amp; Familien</strong> zusammenfassen, dann gibt
-									es eine Sammelrechnung.
+									{preview.payerSuggestions === 1 ? 'Mitglied hat' : 'Mitglieder haben'} Geschwister
+									ohne Zahler – unter <strong>Mehr → Zahler &amp; Familien</strong> zusammenfassen,
+									dann gibt es eine Sammelrechnung.
 								</span>
 							</li>
 						{/if}
@@ -126,7 +125,9 @@
 		<Table.Row>
 			<Table.Cell class="max-w-56 align-top">
 				<div class="truncate font-medium">{inv.recipientName}</div>
-				{#if inv.payerId}<div class="text-xs text-muted-foreground">Zahler</div>{/if}
+				{#if inv.payerId}
+					<div class="text-xs text-muted-foreground">Zahler</div>
+				{/if}
 			</Table.Cell>
 			<Table.Cell class="min-w-48 align-top">
 				<ul class="space-y-0.5">
@@ -137,7 +138,9 @@
 							<span class="text-xs text-muted-foreground tabular-nums">
 								· {formatEuro(m.totalCents)}</span
 							>
-							{#if note}<div class="text-xs text-muted-foreground">{note}</div>{/if}
+							{#if note}
+								<div class="text-xs text-muted-foreground">{note}</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>

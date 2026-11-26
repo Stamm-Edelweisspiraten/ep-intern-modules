@@ -2,14 +2,14 @@
 	// Typ anlegen oder bearbeiten (Name, Kategorie, Beschreibung, Notizen, Bilder).
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { BUSY_SAVE, FormField } from '$lib/components/layout';
-	import { typeInput, type Category, type ImageRef, type MaterialType } from '../../schemas';
+	import { apiFetch } from '$lib/sdk/client';
+	import { type Category, type ImageRef, type MaterialType, typeInput } from '../../schemas';
 	import { API, apiFieldErrors, errorText, fieldErrors } from '../helpers';
 	import ImageManager from '../shared/ImageManager.svelte';
 	import ConsumableFields from './ConsumableFields.svelte';

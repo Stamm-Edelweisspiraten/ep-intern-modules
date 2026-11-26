@@ -2,25 +2,31 @@
  * Globale Suche: Suchquellen der Module members, actions, events, galleries.
  * Treffer nur mit Recht und nur für sichtbare Objekte; LIKE-Platzhalter wörtlich; keine sensiblen Felder.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { searchEverything } from '$testing';
 import type { RequestContext } from '$lib/sdk/types';
 import type { SearchHit } from '$lib/sdk/types/search';
-import membersModule from '$modules/members/module';
 import actionsModule from '$modules/actions/module';
 import eventsModule from '$modules/events/module';
 import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	schema,
+	searchEverything,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 const keys: Record<string, string> = {};
@@ -323,19 +329,21 @@ describe('members', () => {
 describe('actions', () => {
 	it('liefert eigene und freigegebene Aktionen, keine fremden', async () => {
 		const found = await hits(ids.alice!, 'Zeltlager', 'actions');
-		expect(found.map((h) => h.id).sort()).toEqual([ids.actionOwn, ids.actionShared].sort());
+		expect<unknown>(found.map((h) => h.id).sort()).toEqual(
+			[ids.actionOwn, ids.actionShared].sort()
+		);
 		// kommende vor vergangenen
-		expect(found[0]!.id).toBe(ids.actionOwn);
+		expect<unknown>(found[0]!.id).toBe(ids.actionOwn);
 		expect(found[0]!.href).toBe(`/modules/actions/${ids.actionOwn}`);
 		expect(found[0]!.type).toBe('Aktion');
 		const [y, m, d] = isoDay(30).split('-');
 		expect(found[0]!.subtitle).toBe(`${d}.${m}.${y} · Cuxhaven`);
 		const admin = await hits(ids.admin!, 'Zeltlager', 'actions');
-		expect(admin.map((h) => h.id)).toContain(ids.actionForeign);
+		expect<unknown>(admin.map((h) => h.id)).toContain(ids.actionForeign);
 	});
 
 	it('Ort ist durchsuchbar, Platzhalter wörtlich', async () => {
-		expect((await hits(ids.alice!, 'Harz', 'actions')).map((h) => h.id)).toEqual([
+		expect<unknown>((await hits(ids.alice!, 'Harz', 'actions')).map((h) => h.id)).toEqual([
 			ids.actionShared
 		]);
 		expect(await hits(ids.alice!, 'Zelt%Nord', 'actions')).toEqual([]);
@@ -345,7 +353,7 @@ describe('actions', () => {
 describe('events', () => {
 	it('liefert nur sichtbare Termine, kommende zuerst, Tags durchsuchbar', async () => {
 		const found = await hits(ids.alice!, 'Zelt', 'events');
-		expect(found.map((h) => h.id)).toEqual([ids.eventOwn, ids.eventShared, ids.eventPast]);
+		expect<unknown>(found.map((h) => h.id)).toEqual([ids.eventOwn, ids.eventShared, ids.eventPast]);
 		expect(found.map((h) => h.id)).not.toContain(ids.eventForeign);
 		const first = found[0]!;
 		expect(first.type).toBe('Termin');
@@ -355,7 +363,7 @@ describe('events', () => {
 			`/modules/events?month=${isoDay(10).slice(0, 7)}&event=${ids.eventOwn}`
 		);
 		const byTag = await hits(ids.alice!, 'Material', 'events');
-		expect(byTag.map((h) => h.id)).toEqual([ids.eventOwn, ids.eventPast]);
+		expect<unknown>(byTag.map((h) => h.id)).toEqual([ids.eventOwn, ids.eventPast]);
 	});
 
 	it('Platzhalter wirken wörtlich', async () => {
@@ -366,7 +374,7 @@ describe('events', () => {
 describe('galleries', () => {
 	it('liefert eigene und öffentliche Galerien, keine fremden privaten', async () => {
 		const found = await hits(ids.alice!, 'Zeltbilder', 'galleries');
-		expect(found.map((h) => h.id).sort()).toEqual([ids.galOwn, ids.galPublic].sort());
+		expect<unknown>(found.map((h) => h.id).sort()).toEqual([ids.galOwn, ids.galPublic].sort());
 		const own = found.find((h) => h.id === ids.galOwn)!;
 		expect(own.href).toBe(`/modules/galleries/${ids.galOwn}`);
 		expect(own.subtitle).toBe('0 Bilder');

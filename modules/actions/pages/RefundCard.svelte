@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import { fmtDate } from './format';
 	import RefundDialog from './RefundDialog.svelte';
 	import type { RefundState } from './refund-types';
@@ -89,7 +89,9 @@
 			<div class="min-w-0">
 				<div class="text-sm font-semibold">Rückzahlung des Überschusses</div>
 				<div class="flex items-center gap-1.5 text-sm text-muted-foreground" role="status">
-					{#if booked}<Check class="size-4 shrink-0 text-success" aria-hidden="true" />{/if}
+					{#if booked}
+						<Check class="size-4 shrink-0 text-success" aria-hidden="true" />
+					{/if}
 					<span>{status}</span>
 				</div>
 			</div>

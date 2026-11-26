@@ -1,27 +1,27 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import XIcon from '@lucide/svelte/icons/x';
-	import StarIcon from '@lucide/svelte/icons/star';
-	import StarOffIcon from '@lucide/svelte/icons/star-off';
 	import DownloadIcon from '@lucide/svelte/icons/download';
-	import PencilIcon from '@lucide/svelte/icons/pencil';
-	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpenIcon from '@lucide/svelte/icons/lock-open';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Button } from '$lib/components/ui/button';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import StarIcon from '@lucide/svelte/icons/star';
+	import StarOffIcon from '@lucide/svelte/icons/star-off';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import XIcon from '@lucide/svelte/icons/x';
+	import { toast } from 'svelte-sonner';
+	import { AssistTextarea, ConfirmDialog } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { Label } from '$lib/components/ui/label';
-	import { ConfirmDialog, AssistTextarea } from '$lib/components/layout';
 	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
 		formatDuration,
+		type GalleryImage,
 		imageUpdateInput,
 		imageUrl,
-		MAX_IMAGE_DESCRIPTION,
-		type GalleryImage
+		MAX_IMAGE_DESCRIPTION
 	} from '../schemas';
 
 	let {
@@ -539,8 +539,8 @@
 				</div>
 				{#if shown.isPrivate && !editing}
 					<p class="text-muted-foreground -mt-2 text-xs">
-						Nur intern: {isVideo ? 'Das Video' : 'Das Bild'} erscheint nie auf der Stammeswebsite, auch
-						wenn die Galerie öffentlich ist.
+						Nur intern: {isVideo ? 'Das Video' : 'Das Bild'} erscheint nie auf der Stammeswebsite,
+						auch wenn die Galerie öffentlich ist.
 					</p>
 				{/if}
 				{#if canEdit && isCover && coverIsDefault && !editing}

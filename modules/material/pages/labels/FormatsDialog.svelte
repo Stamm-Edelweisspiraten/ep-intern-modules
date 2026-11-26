@@ -1,22 +1,22 @@
 <script lang="ts">
+	import Lock from '@lucide/svelte/icons/lock';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	// Dialog „Etikettgrößen“: eigene Größen (bearbeiten/löschen) und Vorgaben (schreibgeschützt).
 	// Anlegen/Bearbeiten über `FormatDialog`.
 	import Plus from '@lucide/svelte/icons/plus';
-	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Lock from '@lucide/svelte/icons/lock';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
-	import { labelsPerPage, type LabelFormat } from '$lib/sdk/labels';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
 	import { ConfirmDialog } from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { apiFetch } from '$lib/sdk/client';
+	import { type LabelFormat, labelsPerPage } from '$lib/sdk/labels';
 	import type { LabelFormatEntry } from '../../schemas';
 	import { API, errorText } from '../helpers';
 	import SheetPreview from '../shared/SheetPreview.svelte';
-	import FormatDialog from './FormatDialog.svelte';
 	import { formatMm, formatSize } from './designer';
+	import FormatDialog from './FormatDialog.svelte';
 
 	let {
 		open = $bindable(false),
@@ -119,7 +119,9 @@
 			</div>
 			{#if custom.length}
 				<ul class="divide-y" aria-labelledby="formats-own-heading">
-					{#each custom as f (f.key)}{@render row(f)}{/each}
+					{#each custom as f (f.key)}
+						{@render row(f)}
+					{/each}
 				</ul>
 			{:else}
 				<p class="py-2 text-sm text-muted-foreground">Noch keine eigenen Größen.</p>
@@ -132,7 +134,9 @@
 				<Badge variant="secondary"><Lock aria-hidden="true" class="size-3" /> nur ansehen</Badge>
 			</h3>
 			<ul class="divide-y" aria-labelledby="formats-presets-heading">
-				{#each presets as f (f.key)}{@render row(f)}{/each}
+				{#each presets as f (f.key)}
+					{@render row(f)}
+				{/each}
 			</ul>
 		</section>
 

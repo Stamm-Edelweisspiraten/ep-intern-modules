@@ -7,34 +7,32 @@
 import { sql } from 'drizzle-orm';
 import {
 	core,
+	detectContentType,
 	errors,
 	inList,
 	moduleDb,
+	type RequestContext,
+	type Row,
 	rowsOf,
 	secureFileResponse,
-	detectContentType,
 	toIso,
-	userLabel,
-	type RequestContext,
-	type Row
+	userLabel
 } from '$lib/sdk/server';
-import { inboxDocument, inlineCidImages, neutralizeLinks, quoteForEditor } from './html';
-import { UNASSIGNED, isSharedMailbox, prefixedSubject } from './mailbox';
-import { notifyNewMail } from './inbox-notify.service';
-import {
-	accessibleMailboxes,
-	loadMailboxDirectory,
-	type AccessibleMailbox
-} from './mailbox.service';
-import { loadInboxConfig } from './inbound.service';
 import { folderPathOf, mailboxStats } from './folders.service';
+import { inboxDocument, inlineCidImages, neutralizeLinks, quoteForEditor } from './html';
+import { loadInboxConfig } from './inbound.service';
+import { notifyNewMail } from './inbox-notify.service';
+import { isSharedMailbox, prefixedSubject, UNASSIGNED } from './mailbox';
+import {
+	type AccessibleMailbox,
+	accessibleMailboxes,
+	loadMailboxDirectory
+} from './mailbox.service';
 import {
 	BASE_PATH,
-	INLINE_IMAGE_MAX,
-	MODULE_ID,
-	PERM_INBOX_MANAGE,
 	type ComposeMode,
 	type ComposePrefill,
+	INLINE_IMAGE_MAX,
 	type InboxAddress,
 	type InboxAttachmentInfo,
 	type InboxDetail,
@@ -45,6 +43,8 @@ import {
 	type MailboxSentItem,
 	type MailboxSentResponse,
 	type MessageStatus,
+	MODULE_ID,
+	PERM_INBOX_MANAGE,
 	type ThreadEntry
 } from './schemas';
 
@@ -252,16 +252,18 @@ export async function listMailboxSent(
 		data.rows.map((r) => strOrNull(r.created_by))
 	);
 	return {
-		items: data.rows.map((r): MailboxSentItem => ({
-			id: str(r.id),
-			subject: str(r.subject),
-			to: str(r.first_to),
-			recipients: Number(r.total ?? 0),
-			createdAt: toIso(r.created_at),
-			createdByName: userLabel(names, strOrNull(r.created_by)),
-			status: str(r.status) as MessageStatus,
-			attachmentCount: Number(r.attachment_count ?? 0)
-		})),
+		items: data.rows.map(
+			(r): MailboxSentItem => ({
+				id: str(r.id),
+				subject: str(r.subject),
+				to: str(r.first_to),
+				recipients: Number(r.total ?? 0),
+				createdAt: toIso(r.created_at),
+				createdByName: userLabel(names, strOrNull(r.created_by)),
+				status: str(r.status) as MessageStatus,
+				attachmentCount: Number(r.attachment_count ?? 0)
+			})
+		),
 		total: data.total
 	};
 }

@@ -1,26 +1,26 @@
 <script lang="ts">
-	// Lager: Bestand je Artikel (Größen zusammengefasst, aufklappbar), Fehlmengen, Nachbestellen,
-	// Korrektur, Lagerbewegungen; seitenweise.
-	import { onMount } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { page } from '$app/state';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import History from '@lucide/svelte/icons/history';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
 	import X from '@lucide/svelte/icons/x';
+	// Lager: Bestand je Artikel (Größen zusammengefasst, aufklappbar), Fehlmengen, Nachbestellen,
+	// Korrektur, Lagerbewegungen; seitenweise.
+	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch, can } from '$lib/sdk/client';
+	import { page } from '$app/state';
+	import { DataTable } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import { DataTable } from '$lib/components/layout';
+	import { apiFetch, can } from '$lib/sdk/client';
 	import {
 		MOVEMENT_KIND_LABELS,
 		PERMISSIONS,
@@ -39,8 +39,8 @@
 		urlHost
 	} from './admin-helpers';
 	import StockCorrectionDialog from './StockCorrectionDialog.svelte';
-	import { groupStockRows, paginate } from './stock-groups';
 	import SupplierOrderDialog from './SupplierOrderDialog.svelte';
+	import { groupStockRows, paginate } from './stock-groups';
 
 	let {
 		onsupplierorder
@@ -197,7 +197,9 @@
 					onclick={() => setFilter(true)}
 				>
 					Nur Fehlmengen
-					{#if deficitCount > 0}<span class="tabular-nums opacity-70">{deficitCount}</span>{/if}
+					{#if deficitCount > 0}
+						<span class="tabular-nums opacity-70">{deficitCount}</span>
+					{/if}
 				</Button>
 			</div>
 			<Input
@@ -270,11 +272,11 @@
 								<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
 									<span>{g.variantCount} {g.variantCount === 1 ? 'Größe' : 'Größen'}</span>
 									{#if g.lowCount > 0}
-										<span class="text-warning">
-											· {g.lowCount} unter Mindestbestand
-										</span>
+										<span class="text-warning"> · {g.lowCount} unter Mindestbestand </span>
 									{/if}
-									{#if !g.articleActive}<Badge variant="outline">nicht im Katalog</Badge>{/if}
+									{#if !g.articleActive}
+										<Badge variant="outline">nicht im Katalog</Badge>
+									{/if}
 								</div>
 								{#if !open}
 									<div class="mt-1 flex flex-wrap gap-1" aria-hidden="true">
@@ -298,7 +300,8 @@
 						</div>
 					</Table.Cell>
 					<Table.Cell class="text-right font-medium tabular-nums">{g.stock}</Table.Cell>
-					<Table.Cell class="text-right tabular-nums text-muted-foreground">{g.minStock}</Table.Cell
+					<Table.Cell class="text-right tabular-nums text-muted-foreground"
+						>{g.minStock}</Table.Cell
 					>
 					<Table.Cell class="text-right tabular-nums">{g.demand}</Table.Cell>
 					<Table.Cell class="text-right tabular-nums">{g.inTransit}</Table.Cell>
@@ -316,7 +319,7 @@
 			{/if}
 		{/each}
 		{#snippet footer()}
-			{#if rows && rows.length}
+			{#if rows?.length}
 				<div class="space-y-3">
 					{#if paged.pages > 1}
 						<div class="flex items-center justify-between gap-2 text-sm text-muted-foreground">
@@ -397,8 +400,12 @@
 			{:else}
 				<div class="truncate font-medium">{r.articleTitle}</div>
 				<div class="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-					{#if r.variantLabel}<span>Größe {r.variantLabel}</span>{/if}
-					{#if !r.articleActive}<Badge variant="outline">nicht im Katalog</Badge>{/if}
+					{#if r.variantLabel}
+						<span>Größe {r.variantLabel}</span>
+					{/if}
+					{#if !r.articleActive}
+						<Badge variant="outline">nicht im Katalog</Badge>
+					{/if}
 				</div>
 			{/if}
 		</Table.Cell>
@@ -454,7 +461,9 @@
 		</Sheet.Header>
 		<div class="space-y-3 p-4">
 			{#if movesLoading && !moves}
-				{#each [1, 2, 3, 4] as n (n)}<Skeleton class="h-14 w-full" />{/each}
+				{#each [1, 2, 3, 4] as n (n)}
+					<Skeleton class="h-14 w-full" />
+				{/each}
 			{:else if movesError}
 				<p class="text-sm text-destructive" role="alert">
 					{movesError}
@@ -475,10 +484,16 @@
 								</div>
 								<div class="text-xs text-muted-foreground">
 									{fmtDateTime(m.createdAt)}{m.createdBy ? ` · ${m.createdBy.name}` : ''}
-									{#if m.orderNumber}· Bestellung {m.orderNumber}{/if}
-									{#if m.supplierOrderNumber}· Einkauf {m.supplierOrderNumber}{/if}
+									{#if m.orderNumber}
+										· Bestellung {m.orderNumber}
+									{/if}
+									{#if m.supplierOrderNumber}
+										· Einkauf {m.supplierOrderNumber}
+									{/if}
 								</div>
-								{#if m.note}<p class="text-xs break-words">{m.note}</p>{/if}
+								{#if m.note}
+									<p class="text-xs break-words">{m.note}</p>
+								{/if}
 							</div>
 							<span
 								class={[

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { type APIRequestContext, expect, type Page, test } from '@playwright/test';
 
 // Rückzahlung spenden: interne Wahl je Person in der Abrechnung und öffentliche Seite hinter dem QR-Code.
 // Screenshots für die visuelle Prüfung landen in `test-results/refund-donation-*.png`.

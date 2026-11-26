@@ -73,7 +73,7 @@ const text = (max: number) =>
 		.trim()
 		.min(1, 'Pflichtfeld')
 		.max(max, `Höchstens ${max} Zeichen`)
-		// eslint-disable-next-line no-control-regex
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 		.refine((v) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v), 'Ungültige Zeichen');
 
 const optionalText = (max: number) =>

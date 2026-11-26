@@ -1,24 +1,24 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Download from '@lucide/svelte/icons/download';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import { apiFetch, can } from '$lib/sdk/client';
-	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import {
+		BUSY_LOAD,
+		EmptyState,
+		PageHeader,
+		SummaryList,
+		type SummaryRow
+	} from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Table from '$lib/components/ui/table';
-	import {
-		EmptyState,
-		PageHeader,
-		SummaryList,
-		type SummaryRow,
-		BUSY_LOAD
-	} from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { apiFetch, can } from '$lib/sdk/client';
+	import type { ModulePageProps } from '$lib/sdk/types/module-ui';
 	import type { AccountingInterimItem, ClosedAccountingDetailItem } from '../closed-accountings';
 	import { PAYABLE_SOURCE_LABELS } from '../schemas';
 	import { BASE, errorMessage, fmtDate, openApiFile } from './helpers';
@@ -203,7 +203,8 @@
 			} · abgeschlossen am ${fmtDate(acc.closedAt)}`}
 		>
 			{#snippet actions()}
-				<Button variant="outline" onclick={pdf} disabled={busy}><FileText /> PDF mit Belegen</Button
+				<Button variant="outline" onclick={pdf} disabled={busy}
+					><FileText /> PDF mit Belegen</Button
 				>
 				<Button variant="outline" onclick={() => setFiled(!acc?.filedAt)} disabled={busy}>
 					{acc?.filedAt ? 'Ablage zurücknehmen' : 'Als abgelegt markieren'}
@@ -259,7 +260,8 @@
 								</Table.Row>
 							{:else}
 								<Table.Row>
-									<Table.Cell colspan={3} class="text-muted-foreground">Keine Buchungen.</Table.Cell
+									<Table.Cell colspan={3} class="text-muted-foreground"
+										>Keine Buchungen.</Table.Cell
 									>
 								</Table.Row>
 							{/each}
@@ -428,7 +430,8 @@
 						{:else}
 							{#if !autoRows.length}
 								<Table.Row>
-									<Table.Cell colspan={5} class="text-muted-foreground">Keine Buchungen.</Table.Cell
+									<Table.Cell colspan={5} class="text-muted-foreground"
+										>Keine Buchungen.</Table.Cell
 									>
 								</Table.Row>
 							{/if}
@@ -493,9 +496,8 @@
 				{/if}
 				{#if acc.refund}
 					<p class="mt-3 text-sm text-muted-foreground">
-						Rückzahlung des Überschusses: {acc.refund.count} Personen, zusammen {formatEuro(
-							acc.refund.totalCents
-						)} (gebucht {fmtDate(acc.refund.bookedAt)}).
+						Rückzahlung des Überschusses: {acc.refund.count} Personen, zusammen
+						{formatEuro(acc.refund.totalCents)} (gebucht {fmtDate(acc.refund.bookedAt)}).
 						{#if acc.refund.donatedCents > 0}
 							{acc.refund.donorCount}
 							{acc.refund.donorCount === 1 ? 'Person hat' : 'Personen haben'}

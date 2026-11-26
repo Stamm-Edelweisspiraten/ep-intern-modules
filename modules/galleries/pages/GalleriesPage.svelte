@@ -1,30 +1,30 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import CalendarDays from '@lucide/svelte/icons/calendar-days';
 	import Globe from '@lucide/svelte/icons/globe';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import {
+		EmptyState,
+		PageHeader,
+		PageTitle,
+		Pagination,
+		SearchInput
+	} from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
 	import {
-		EmptyState,
-		PageHeader,
-		Pagination,
-		SearchInput,
-		PageTitle
-	} from '$lib/components/layout';
-	import {
-		VISIBILITIES,
-		VISIBILITY_LABELS,
-		imageUrl,
 		type GalleryDetail,
 		type GalleryItem,
 		type GalleryList,
+		imageUrl,
+		VISIBILITIES,
+		VISIBILITY_LABELS,
 		type Visibility
 	} from '../schemas';
 	import EventBadges from './EventBadges.svelte';

@@ -3,14 +3,24 @@
  * erneute Anmeldung (Passwort, TOTP), Sicherungs-Passwort, manipulierte Dateien, Bestätigungswort,
  * nur ein Wartungsvorgang gleichzeitig.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { sql } from 'drizzle-orm';
+import type { RequestContext } from '$lib/sdk/types';
 import {
-	seedBackupWorld,
-	SEED_PASSWORD,
-	SEED_TOTP_SECRET,
-	type BackupWorld
-} from '../../helpers/backup-seed';
+	acquireMaintenanceLock,
+	analyzeBackup,
+	contextForUser,
+	executeRestore,
+	getDb,
+	MERGE_CONFIRM_WORD,
+	RESTORE_CONFIRM_WORD,
+	releaseMaintenanceLock,
+	resetAllForTests,
+	startBackupExport,
+	takeBackupDownload,
+	totpCode,
+	waitForRestore
+} from '$testing';
 import {
 	BACKUP_PW,
 	exportBackup,
@@ -18,15 +28,12 @@ import {
 	previewBackup,
 	uploadBackup
 } from '../../helpers/backup-flow';
-import { getDb } from '$testing';
-import { contextForUser } from '$testing';
-import { startBackupExport, takeBackupDownload } from '$testing';
-import { analyzeBackup, executeRestore, waitForRestore } from '$testing';
-import { MERGE_CONFIRM_WORD, RESTORE_CONFIRM_WORD } from '$testing';
-import { totpCode } from '$testing';
-import { acquireMaintenanceLock, releaseMaintenanceLock } from '$testing';
-import { resetAllForTests } from '$testing';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	type BackupWorld,
+	SEED_PASSWORD,
+	SEED_TOTP_SECRET,
+	seedBackupWorld
+} from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 let file: Uint8Array;

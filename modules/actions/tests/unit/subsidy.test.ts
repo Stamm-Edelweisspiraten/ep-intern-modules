@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { computeSubsidy } from '$modules/actions/subsidy';
+import { describe, expect, it } from 'bun:test';
 import type { SubsidyInput } from '$modules/actions/schemas';
+import { computeSubsidy } from '$modules/actions/subsidy';
 
 const base = (over: Partial<SubsidyInput> = {}): SubsidyInput => ({
 	nights: 3,

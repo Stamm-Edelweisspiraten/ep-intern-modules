@@ -1,19 +1,26 @@
-import { beforeAll, describe, expect, it } from 'vitest';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, setUserActive } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { listAudit } from '$testing';
-import { getDb, schema } from '$testing';
+import { beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
+import type { RequestContext } from '$lib/sdk/types';
 import actionsModule from '$modules/actions/module';
 import membersModule from '$modules/members/module';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setUserActive,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/actions';
 
@@ -130,7 +137,7 @@ describe('Aktionen: Anlegen und Validierung', () => {
 			201
 		);
 		actionId = a.id;
-		expect(a.owner.userId).toBe(userIds.owner);
+		expect<unknown>(a.owner.userId).toBe(userIds.owner);
 		expect(a.access).toEqual({ level: 'edit', isOwner: true, canShare: true });
 		expect(a.participantCount).toBe(0);
 	});
@@ -253,9 +260,9 @@ describe('Aktionen: Zugriffsmatrix', () => {
 			shares: { userId: string; name: string; level: string }[];
 			canManage: boolean;
 		}>(await as('owner', `/actions/${actionId}/shares`));
-		expect(shares.owner.userId).toBe(userIds.owner);
+		expect<unknown>(shares.owner.userId).toBe(userIds.owner);
 		expect(shares.canManage).toBe(true);
-		expect(shares.shares.map((s) => s.userId).sort()).toEqual(
+		expect<unknown>(shares.shares.map((s) => s.userId).sort()).toEqual(
 			[userIds.colleague, userIds.reader].sort()
 		);
 		expect(shares.shares.every((s) => s.name !== 'Unbekannt')).toBe(true);
@@ -303,7 +310,7 @@ describe('Benutzersuche für Freigaben', () => {
 		const found = await data<{ id: string; name: string; email: string }[]>(
 			await as('owner', '/users?search=reader')
 		);
-		expect(found.map((f) => f.id)).toEqual([userIds.reader]);
+		expect<unknown>(found.map((f) => f.id)).toEqual([userIds.reader]);
 		expect(Object.keys(found[0]!).sort()).toEqual(['email', 'id', 'image', 'name']);
 		// E-Mail nur mit core.users.view; Suche nur im Namen
 		expect(found[0]!.email).toBe('');

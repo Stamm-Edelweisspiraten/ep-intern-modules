@@ -3,27 +3,36 @@
  * Varianten ersetzen inkl. Archivierung bestellter Größen, Löschen/Archivieren, Reihenfolge,
  * Bilder (Upload mit Fake-Storage, Abruf, Löschen, Sortieren), Audit, Modul aus → 404.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, fakeObjects, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { listAudit } from '$testing';
-import { core } from '$testing';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
 import ordersModule from '$modules/orders/module';
 import type { Article, ArticleImage, ArticleInput } from '$modules/orders/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	fakeFileRows,
+	fakeObjects,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/orders';
 const keys: Record<string, string> = {};

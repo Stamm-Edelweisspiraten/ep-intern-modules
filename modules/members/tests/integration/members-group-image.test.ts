@@ -3,25 +3,31 @@
  * falscher Inhalt → 400, Website liefert nur die bereinigte Variante, Job `members.reprocess-group-images`
  * bereinigt den Bestand idempotent. Storage über `tests/helpers/fake-storage.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
-import { fakeFileRows, installFakeStorage, uninstallFakeStorage } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { runJobNow } from '$testing';
-import { core } from '$testing';
-import membersModule from '$modules/members/module';
-import { isProcessedGroupImagePath } from '$modules/members/group-image.service';
 import type { RequestContext } from '$lib/sdk/types';
+import { isProcessedGroupImagePath } from '$modules/members/group-image.service';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	enableModule,
+	fakeFileRows,
+	getDb,
+	handleApiRequest,
+	installFakeStorage,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
+} from '$testing';
 
 const ROOT = 'http://localhost:5173/api/v1/modules/members';
 let key: string;

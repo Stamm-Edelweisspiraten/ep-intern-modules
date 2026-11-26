@@ -1,25 +1,33 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser, deleteUser, setUserActive } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { resetAllForTests } from '$testing';
 import { core } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
+import type { RequestContext } from '$lib/sdk/types';
 import { ledGroupIds } from '$modules/members/leader.service';
 import { messagingService } from '$modules/members/messaging.service';
+import membersModule from '$modules/members/module';
 import { principalsService } from '$modules/members/principals.service';
-import { subjectExport } from '$modules/members/subject-export';
-import { LED_VIEW } from '$modules/members/schemas';
 import type { Group, LinkUserRef, Member, MemberList } from '$modules/members/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import { LED_VIEW } from '$modules/members/schemas';
+import { subjectExport } from '$modules/members/subject-export';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	deleteUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setUserActive,
+	syncModules,
+	useTestDatabase,
+	waitFor
+} from '$testing';
 
 /**
  * Benutzerkonten als Gruppenleitung (`group_leader_users`, Migr. 0016): Rolle „Gruppenleitung“,
@@ -152,7 +160,9 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 			201
 		);
 		expect(gruen.leaders).toEqual([]);
-		expect(gruen.leaderUsers).toEqual([{ id: userIds.tessa, name: 'tessa', active: true }]);
+		expect<unknown>(gruen.leaderUsers).toEqual([
+			{ id: userIds.tessa, name: 'tessa', active: true }
+		]);
 		const list = await data<Group[]>(await A('/groups'));
 		expect(list.find((g) => g.id === gruen.id)?.leaderUsers[0]?.name).toBe('tessa');
 	});
@@ -174,7 +184,7 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 	});
 
 	it('Konto-Leitung bekommt die Rolle „Gruppenleitung“ und den Bereich der Gruppe', async () => {
-		expect(await grantedUsers()).toEqual([userIds.tessa]);
+		expect<unknown>(await grantedUsers()).toEqual([userIds.tessa]);
 		const tessa = await ctxOf(userIds.tessa!);
 		expect(tessa.permissions.has(LED_VIEW)).toBe(true);
 		expect(await ledGroupIds(tessa)).toEqual([gruen.id]);
@@ -188,7 +198,7 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 
 	it('Gruppen-Postfach, Absender und Freigabe-Schlüssel enthalten die Konto-Leitung', async () => {
 		const boxes = await messagingService.listGroupMailboxes();
-		expect(boxes).toEqual([
+		expect<unknown>(boxes).toEqual([
 			{ id: gruen.id, name: 'Grün', email: 'gruen@stamm.test', leaderUserIds: [userIds.tessa] }
 		]);
 		const led = await messagingService.listLedGroups(await ctxOf(userIds.tessa!));
@@ -200,7 +210,7 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 			memberIds: [],
 			groupIds: [gruen.id]
 		});
-		expect(users).toContain(userIds.tessa);
+		expect<unknown>(users).toContain(userIds.tessa);
 	});
 
 	it('Mitglieder- und Konto-Leitung gemischt; einziges leitendes Mitglied bleibt löschbar', async () => {
@@ -216,7 +226,7 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 			})
 		);
 		expect(updated.leaders.map((l) => l.id)).toEqual([ben.id]);
-		expect(updated.leaderUsers.map((u) => u.id)).toEqual([userIds.tessa]);
+		expect<unknown>(updated.leaderUsers.map((u) => u.id)).toEqual([userIds.tessa]);
 		// Website-Felder bleiben ohne `website` unverändert
 		expect(updated.website.contactEmail).toBe('gruen@stamm.test');
 		// Ben ist nicht die einzige Leitung (Konto „tessa“ leitet mit) → Löschen erlaubt
@@ -240,13 +250,13 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 				json: { name: 'Grün', type: 'sippe', leaderUserIds: [userIds.tessa] }
 			})
 		);
-		expect(kept.leaderUsers.map((u) => u.id)).toEqual([userIds.tessa]);
+		expect<unknown>(kept.leaderUsers.map((u) => u.id)).toEqual([userIds.tessa]);
 	});
 
 	it('Kontosuche für die Auswahl (ab 2 Zeichen, mit members.group.edit)', async () => {
 		expect(await data<LinkUserRef[]>(await A('/groups/leader-users?search=t'))).toEqual([]);
 		const found = await data<LinkUserRef[]>(await A('/groups/leader-users?search=tom'));
-		expect(found.map((u) => u.id)).toEqual([userIds.tom]);
+		expect<unknown>(found.map((u) => u.id)).toEqual([userIds.tom]);
 		const key = await keyOf('tom');
 		expect((await as(key, '/groups/leader-users?search=tom')).status).toBe(403);
 	});
@@ -275,6 +285,6 @@ describe('Benutzerkonten als Gruppenleitung', () => {
 		await deleteUser(admin, userIds.tessa!);
 		const g = await data<Group>(await A(`/groups/${gruen.id}`));
 		expect(g.leaderUsers).toEqual([]);
-		await expect.poll(() => grantedUsers()).toEqual([]);
+		await waitFor(async () => expect(await grantedUsers()).toEqual([]));
 	});
 });

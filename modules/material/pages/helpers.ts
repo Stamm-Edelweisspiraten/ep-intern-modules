@@ -2,18 +2,18 @@
  * Hilfen für die Oberfläche des Moduls `material` (ohne Server-Imports).
  */
 import { replaceState } from '$app/navigation';
+import type { BadgeVariant } from '$lib/components/ui/badge';
 import { ApiClientError } from '$lib/sdk/client';
 import { formatDateDe } from '$lib/sdk/dates';
-import type { BadgeVariant } from '$lib/components/ui/badge';
+import type { ExpiryState } from '../pantry';
 import {
 	BASE_PATH,
 	CONDITION_LABELS,
-	RESERVATION_STATE_LABELS,
-	formatAmount,
 	type Condition,
+	formatAmount,
+	RESERVATION_STATE_LABELS,
 	type ReservationState
 } from '../schemas';
-import type { ExpiryState } from '../pantry';
 
 /** Basis für `apiFetch` */
 export const API = BASE_PATH;

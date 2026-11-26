@@ -4,20 +4,20 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+	type AnyApiEndpoint,
 	defineEndpoint,
 	PRINCIPAL_SEARCH_RATE_LIMIT,
 	principalMatchSql,
 	requireShareCapability,
-	searchPrincipals,
-	type AnyApiEndpoint
+	searchPrincipals
 } from '$lib/sdk/server';
 import { eventsService, uploadLimits } from './files';
 import { everyoneLabel } from './galleries.service';
 import {
-	MODULE_ID,
-	eventSearchQuery,
-	principalSearchQuery,
 	type EventRef,
+	eventSearchQuery,
+	MODULE_ID,
+	principalSearchQuery,
 	type UploadLimits
 } from './schemas';
 
@@ -61,13 +61,15 @@ export const metaEndpoints: AnyApiEndpoint[] = [
 				search: query.search || undefined,
 				limit: query.limit
 			});
-			return refs.map((r): EventRef => ({
-				id: r.id,
-				title: r.title,
-				startsOn: r.startsOn,
-				endsOn: r.endsOn,
-				color: r.color
-			}));
+			return refs.map(
+				(r): EventRef => ({
+					id: r.id,
+					title: r.title,
+					startsOn: r.startsOn,
+					endsOn: r.endsOn,
+					color: r.color
+				})
+			);
 		}
 	}),
 	defineEndpoint({

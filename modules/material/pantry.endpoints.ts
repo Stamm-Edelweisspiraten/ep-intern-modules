@@ -2,31 +2,31 @@
  * Vorrat (Lebensmittel): Produkte mit Hersteller-Barcode, Chargen mit MHD, Einlagern und Entnehmen (zuerst
  * ablaufende zuerst), Verlauf, Barcode-Scan mit Vorschlag aus Open Food Facts. Nicht reservierbar.
  */
-import { sql, type SQL } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
+import { type SQL, sql } from 'drizzle-orm';
 import { formatDateDe } from '$lib/sdk/dates';
+import { type AnyApiEndpoint, core, defineEndpoint, errors, type Tx } from '$lib/sdk/server';
 import { dateStr, idList, iso, likePattern, mdb, num, rows, str, today, userNames } from './db';
 import { removeImagesOf } from './images.endpoints';
 import { imagesFor } from './inventory';
 import { lookupBarcode } from './off.service';
 import { expiryState, fefoOrder, normalizeBarcode, pickBatches } from './pantry';
 import {
-	PERMISSIONS,
+	type BarcodeResult,
 	barcodeParams,
 	batchParams,
 	batchUpdateInput,
 	checkInInput,
 	checkOutInput,
-	formatAmount,
-	idParams,
-	pantryQuery,
-	productInput,
-	productUpdateInput,
-	type BarcodeResult,
 	type FoodBatch,
 	type FoodProduct,
+	formatAmount,
+	idParams,
 	type MovementKind,
-	type ProductDetail
+	PERMISSIONS,
+	type ProductDetail,
+	pantryQuery,
+	productInput,
+	productUpdateInput
 } from './schemas';
 
 const tags = ['Modul: material'];

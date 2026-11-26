@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { labelLayoutSchema, placeholdersIn, type LabelLayout } from '$lib/sdk/labels';
-import { LABEL_FIELDS, LABEL_TARGETS } from '$modules/material/schemas';
+import { describe, expect, it } from 'bun:test';
+import {
+	LABEL_FORMAT_PRESETS,
+	type LabelLayout,
+	labelLayoutSchema,
+	placeholdersIn
+} from '$lib/sdk/labels';
 import {
 	createElement,
 	createHistory,
@@ -19,7 +23,7 @@ import {
 	undoHistory
 } from '$modules/material/pages/labels/designer';
 import { LABEL_STARTERS, starterLayout } from '$modules/material/pages/labels/starters';
-import { LABEL_FORMAT_PRESETS } from '$lib/sdk/labels';
+import { LABEL_FIELDS, LABEL_TARGETS } from '$modules/material/schemas';
 
 const bounds = { width: 70, height: 37 };
 

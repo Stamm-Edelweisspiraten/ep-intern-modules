@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { strToU8, zipSync } from 'fflate';
 import { ArchiveError, assertNoZip64, unpackArchive } from '$modules/actions/action-archive';
 

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
 	core,
 	inList,
@@ -118,7 +118,7 @@ async function searchMembers(query: {
 		IDS_MAX
 	);
 
-	let where;
+	let where: SQL;
 	if (search.length >= SEARCH_MIN) {
 		const cleaned = search.replace(/[%_\\]/g, '');
 		if (!cleaned.trim()) return [];

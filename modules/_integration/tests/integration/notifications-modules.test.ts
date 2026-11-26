@@ -3,30 +3,36 @@
  * Aktionen (geteilt, neue Anmeldung, Abrechnung), Termine (neu/geändert/abgesagt, Standard „Aus“), Galerien
  * und Dateien (geteilt). Nie an die handelnde Person, nur an Konten mit Leserecht.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { setMailTransportForTests, type MailTransport } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setMyPreference } from '$testing';
-import { principalUserIds } from '$lib/sdk/server';
 import { addDays, todayBerlin } from '$lib/sdk/dates';
-import membersModule from '$modules/members/module';
-import actionsModule from '$modules/actions/module';
-import eventsModule from '$modules/events/module';
-import galleriesModule from '$modules/galleries/module';
-import filesModule from '$modules/files/module';
-import { notifyRegistration } from '$modules/actions/notify';
+import { principalUserIds } from '$lib/sdk/server';
 import type { RequestContext } from '$lib/sdk/types';
+import actionsModule from '$modules/actions/module';
+import { notifyRegistration } from '$modules/actions/notify';
+import eventsModule from '$modules/events/module';
+import filesModule from '$modules/files/module';
+import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	type MailTransport,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setMailTransportForTests,
+	setMyPreference,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const PW = 'notify-modules-1234';
 let close: () => Promise<void>;
@@ -55,7 +61,7 @@ async function api(who: string, method: string, path: string, json?: unknown) {
 	});
 	const body = (await res.json()) as { data?: unknown; error?: unknown };
 	expect(res.status, JSON.stringify(body.error)).toBeLessThan(300);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: bewusst ungetypt
 	return body.data as any;
 }
 
@@ -128,12 +134,12 @@ describe('principalUserIds', () => {
 			],
 			{ permission: 'events.event.view', exclude: [ids.admin] }
 		);
-		expect(users).toEqual([ids.bob]);
+		expect<unknown>(users).toEqual([ids.bob]);
 		const everyone = await principalUserIds('events', [{ type: 'everyone', id: '*' }], {
 			permission: 'events.event.view',
 			everyone: true
 		});
-		expect(everyone.sort()).toEqual([ids.admin, ids.bob].sort());
+		expect<unknown>(everyone.sort()).toEqual([ids.admin, ids.bob].sort());
 		expect(
 			await principalUserIds('events', [{ type: 'everyone', id: '*' }], {
 				permission: 'events.event.view'

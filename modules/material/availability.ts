@@ -86,7 +86,7 @@ export class AvailabilityIndex {
 	/** Nutzbare Gesamtanzahl eines Artikels bzw. Typs */
 	totalItem(id: string): number {
 		const s = this.items.get(id);
-		return s && s.usable ? s.quantity : 0;
+		return s?.usable ? s.quantity : 0;
 	}
 
 	totalType(typeId: string): number {

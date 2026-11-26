@@ -1,19 +1,23 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { setSetting } from '$testing';
-import { resetAllForTests } from '$testing';
+import type { RequestContext } from '$lib/sdk/types';
 import { setAddressFetchForTests } from '$modules/members/address.service';
 import membersModule from '$modules/members/module';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setSetting,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 const BASE = '/modules/members';
 let admin: RequestContext;

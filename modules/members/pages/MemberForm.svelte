@@ -3,21 +3,11 @@
 </script>
 
 <script lang="ts">
-	import { todayBerlin } from '$lib/sdk/dates';
-	import { tick } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { MultiSelect } from '$lib/components/ui/multi-select';
-	import { Switch } from '$lib/components/ui/switch';
-	import * as Tabs from '$lib/components/ui/tabs';
+	import { tick } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { FormRenderer } from '$lib/components/forms';
 	import {
 		ColorBadge,
 		ConfirmDialog,
@@ -25,30 +15,40 @@
 		FileField,
 		FormField
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { MultiSelect } from '$lib/components/ui/multi-select';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormRenderer } from '$lib/components/forms';
+	import { Switch } from '$lib/components/ui/switch';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import type { FieldDefinition, FormValues } from '$lib/forms';
-	import AddressFields from './AddressFields.svelte';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { todayBerlin } from '$lib/sdk/dates';
 	import {
+		ageFromBirthDate,
+		type ContactEntry,
 		DOCUMENT_CONTENT_TYPES,
 		DOCUMENT_KINDS,
 		DOCUMENT_LABELS,
-		FEE_LEVELS,
-		FEE_LEVEL_LABELS,
-		GROUP_TYPE_LABELS,
-		MAX_DOCUMENT_BYTES,
-		ageFromBirthDate,
-		memberInput,
-		STAGES,
-		STAGE_LABELS,
 		type DocumentKind,
+		FEE_LEVEL_LABELS,
+		FEE_LEVELS,
 		type FeeLevel,
+		GROUP_TYPE_LABELS,
 		type GroupRef,
-		type ContactEntry,
+		MAX_DOCUMENT_BYTES,
 		type Member,
 		type MemberFormInput,
+		memberInput,
+		STAGE_LABELS,
+		STAGES,
 		type Stage
 	} from '../schemas';
+	import AddressFields from './AddressFields.svelte';
 
 	let {
 		open = $bindable(false),
@@ -558,8 +558,12 @@
 					{member.firstName}
 					{member.lastName}
 					<Badge variant="secondary">{STAGE_LABELS[member.stage]}</Badge>
-					{#if member.secondaryMember}<Badge variant="outline">Zweitmitglied</Badge>{/if}
-					{#if left}<Badge variant="destructive">ausgetreten</Badge>{/if}
+					{#if member.secondaryMember}
+						<Badge variant="outline">Zweitmitglied</Badge>
+					{/if}
+					{#if left}
+						<Badge variant="destructive">ausgetreten</Badge>
+					{/if}
 				</Dialog.Title>
 				<Dialog.Description>
 					Nur Ansicht{canEdit ? ' – zum Ändern auf „Bearbeiten“ klicken.' : '.'}
@@ -639,7 +643,8 @@
 										{#if age !== null && age >= 0}
 											<span
 												class="text-sm whitespace-nowrap text-muted-foreground"
-												aria-live="polite">({age}&nbsp;{age === 1 ? 'Jahr' : 'Jahre'})</span
+												aria-live="polite"
+												>({age}&nbsp;{age === 1 ? 'Jahr' : 'Jahre'})</span
 											>
 										{/if}
 									</div>
@@ -853,7 +858,8 @@
 										{/key}
 										{#if canUpload && !viewing}
 											<p class="text-xs text-muted-foreground">
-												{name ? 'Eine neue Datei ersetzt die vorhandene. ' : ''}PDF oder Bild, max. {maxMb}
+												{name ? 'Eine neue Datei ersetzt die vorhandene. ' : ''}PDF oder Bild, max.
+												{maxMb}
 												MB{member ? '' : '; wird nach dem Anlegen hochgeladen'}.
 											</p>
 										{:else if !name}
@@ -867,7 +873,9 @@
 				</div>
 			</Tabs.Root>
 
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer class={creating ? 'items-center gap-3 sm:justify-between' : undefined}>
 				{#if viewing && member}
 					{#if canLinkView && onlinks}

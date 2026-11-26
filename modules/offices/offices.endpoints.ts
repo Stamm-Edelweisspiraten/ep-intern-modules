@@ -4,22 +4,22 @@
  * Namen auflösen → Audit (Core-Aufrufe immer außerhalb der Modul-Transaktion).
  */
 import { sql } from 'drizzle-orm';
-import { core, defineEndpoint, errors, type AnyApiEndpoint, type Tx } from '$lib/sdk/server';
+import { type AnyApiEndpoint, core, defineEndpoint, errors, type Tx } from '$lib/sdk/server';
 import { assertCanChange, holderRoleId, syncGrants, validateRoleIds } from './grants.service';
-import { applyTemplatesCached } from './templates.service';
 import { buildOffice, buildOffices, loadOfficeOr404, loadOffices, mdb, rowsOf } from './load';
 import {
 	HOLDER_ROLE_NAME,
-	MAX_OFFICES,
 	idParams,
+	MAX_OFFICES,
+	type Office,
 	officeCreateInput,
 	officeOrderInput,
 	officeUpdateInput,
-	userSearchQuery,
-	type Office,
 	type RoleRef,
-	type UserRef
+	type UserRef,
+	userSearchQuery
 } from './schemas';
+import { applyTemplatesCached } from './templates.service';
 
 const tags = ['Modul: offices'];
 

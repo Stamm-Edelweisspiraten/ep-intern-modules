@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Benachrichtigungen: Profil-Reiter mit Regler je Typ, Admin-Reiter, PWA-Dateien (Manifest, Service Worker).
 // Ein echtes Push-Abo braucht den Push-Dienst des Browsers (FCM) und ist hier nicht prüfbar.

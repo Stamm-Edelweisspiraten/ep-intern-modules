@@ -4,8 +4,8 @@ import {
 	core,
 	errors,
 	moduleDb,
-	readUpload,
 	type RequestContext,
+	readUpload,
 	resultRows,
 	safeFileName,
 	secureFileResponse,
@@ -14,9 +14,9 @@ import {
 import { assertMemberInScope } from './leader.service';
 import {
 	DOCUMENT_CONTENT_TYPES,
-	MAX_DOCUMENT_BYTES,
+	type DocumentKind,
 	documentParams,
-	type DocumentKind
+	MAX_DOCUMENT_BYTES
 } from './schemas';
 
 const MODULE = 'members';

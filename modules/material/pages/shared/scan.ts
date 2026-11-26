@@ -2,8 +2,8 @@
  * Gescannten Inhalt (Code oder volle Scan-URL aus dem QR-Code) auflösen.
  */
 import { ApiClientError, apiFetch } from '$lib/sdk/client';
+import { type CodeTarget, codeFromScan } from '../../schemas';
 import { API } from '../helpers';
-import { codeFromScan, type CodeTarget } from '../../schemas';
 
 /** `null` bei unbekanntem oder fremdem Code; andere Fehler werden geworfen */
 export async function resolveScan(raw: string): Promise<CodeTarget | null> {

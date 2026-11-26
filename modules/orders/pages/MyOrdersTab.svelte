@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { ConfirmDialog, DataTable } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import { SelectField } from '$lib/components/ui/select-field';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
-	import { lineDescription } from '../stock';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Order, OrderList } from '../schemas';
+	import { lineDescription } from '../stock';
+	import { BASE, errorText, formatDate } from './helpers';
 	import OrderStatusBadge from './OrderStatusBadge.svelte';
 	import PaymentBadge from './PaymentBadge.svelte';
 	import RecipientName from './RecipientName.svelte';
-	import { BASE, errorText, formatDate } from './helpers';
 
 	const LIMIT = 50;
 	let status = $state<string | null>(null);
@@ -141,9 +141,7 @@
 			<Table.Cell class="max-w-80">
 				<div class="line-clamp-2" title={itemsText(o)}>{itemsText(o)}</div>
 				{#if o.note}
-					<div class="truncate text-xs text-muted-foreground" title={o.note}>
-						Notiz: {o.note}
-					</div>
+					<div class="truncate text-xs text-muted-foreground" title={o.note}> Notiz: {o.note} </div>
 				{/if}
 			</Table.Cell>
 			<Table.Cell class="text-right whitespace-nowrap tabular-nums">
@@ -188,7 +186,8 @@
 						onclick={() => {
 							offset = Math.max(0, offset - LIMIT);
 							void load();
-						}}>Zurück</Button
+						}}
+						>Zurück</Button
 					>
 					<Button
 						variant="outline"
@@ -197,7 +196,8 @@
 						onclick={() => {
 							offset += LIMIT;
 							void load();
-						}}>Weiter</Button
+						}}
+						>Weiter</Button
 					>
 				</div>
 			</div>

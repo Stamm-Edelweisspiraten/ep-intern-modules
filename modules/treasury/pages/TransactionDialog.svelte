@@ -1,30 +1,30 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FileField, FormField, MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
+	import { Label } from '$lib/components/ui/label';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FileField, FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_RECEIPT_BYTES,
-		RECEIPT_CONTENT_TYPES,
-		transactionCreateInput,
-		transactionInput,
 		type Account,
 		type Category,
+		MAX_RECEIPT_BYTES,
 		type Payer,
+		RECEIPT_CONTENT_TYPES,
 		type Transaction,
-		type TransactionCreated
+		type TransactionCreated,
+		transactionCreateInput,
+		transactionInput
 	} from '../schemas';
 	import BookingMatchSection from './BookingMatchSection.svelte';
-	import PayerCombobox from './PayerCombobox.svelte';
 	import { BASE, defaultAccountId, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
+	import PayerCombobox from './PayerCombobox.svelte';
 
 	let {
 		open = $bindable(false),
@@ -467,7 +467,9 @@
 					{/key}
 				{/if}
 			</div>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky class="items-center gap-3 sm:justify-between">
 				{#if canMatch}
 					<div class="flex items-center gap-2">

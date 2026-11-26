@@ -3,14 +3,16 @@
  * Absender und Empfänger vorab prüfen, Vorschau, Nachricht senden (multipart mit Anhängen), Verlauf, Wiederholen.
  * Feste Pfade (`/senders`, `/recipients/resolve`) vor den Parameter-Pfaden.
  */
+
+import { DEFAULT_ALLOWED_CONTENT_TYPES, EXTENSION_CONTENT_TYPES } from '$lib/sdk/content-types';
 import {
+	type AnyApiEndpoint,
 	checkUploadBytes,
 	defineEndpoint,
 	errors,
-	readFormData,
-	type AnyApiEndpoint
+	readFormData
 } from '$lib/sdk/server';
-import { DEFAULT_ALLOWED_CONTENT_TYPES, EXTENSION_CONTENT_TYPES } from '$lib/sdk/content-types';
+import type { UploadedAttachment } from './delivery.service';
 import {
 	createMessage,
 	getMessage,
@@ -19,19 +21,18 @@ import {
 	retryMessage
 } from './delivery.service';
 import { resolveRecipients } from './recipients.service';
-import { listSenders } from './sender.service';
 import {
-	MAX_FILES,
-	MAX_FILE_BYTES,
-	MAX_TOTAL_BYTES,
-	PERM_SEND,
 	idParams,
 	listQuery,
+	MAX_FILE_BYTES,
+	MAX_FILES,
+	MAX_TOTAL_BYTES,
+	PERM_SEND,
 	previewInput,
 	recipientsInput,
 	sendInput
 } from './schemas';
-import type { UploadedAttachment } from './delivery.service';
+import { listSenders } from './sender.service';
 
 const tags = ['Modul: messages'];
 /** Zuschlag für Textfelder und Multipart-Grenzen über der Anhangsgrenze */

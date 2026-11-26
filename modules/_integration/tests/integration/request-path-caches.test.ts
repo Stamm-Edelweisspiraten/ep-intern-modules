@@ -7,20 +7,25 @@
  *   `storage-batch-images.test.ts`)
  * - SMTP-Einstellungen: dasselbe Muster (`mail-transport.test.ts`)
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { getDb, schema } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { invalidateModuleStateCache } from '$testing';
-import { registerCoreApi } from '$testing';
-import { setSetting } from '$testing';
-import { invalidateStorageConfigCache, loadConfig } from '$testing';
 import eventsModule from '$modules/events/module';
 import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	enableModule,
+	getDb,
+	invalidateModuleStateCache,
+	invalidateStorageConfigCache,
+	loadConfig,
+	registerCoreApi,
+	registerModule,
+	schema,
+	setSetting,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let adminId = '';

@@ -1,8 +1,8 @@
 node_modules
 modules/node_modules
 modules/package.json
-modules/package-lock.json
-# Basismodule: von `npm run setup` aus atrium-basic-modules kopiert (scripts/basic-modules.mjs)
+modules/bun.lock
+# Basismodule: von `bun run setup` aus atrium-basic-modules kopiert (scripts/basic-modules.mjs)
 /modules/files/
 /modules/notes/
 /modules/tasks/

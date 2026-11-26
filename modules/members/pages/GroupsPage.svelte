@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { toast } from 'svelte-sonner';
 	import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import FileDown from '@lucide/svelte/icons/file-down';
@@ -12,12 +9,9 @@
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
 	import X from '@lucide/svelte/icons/x';
-	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import {
 		ConfirmDialog,
 		EmptyState,
@@ -27,6 +21,13 @@
 		MobileActionBar,
 		PageHeader
 	} from '$lib/components/layout';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { ApiClientError, apiFetch, can } from '$lib/sdk/client';
+	import { GROUP_TYPE_LABELS, type Group } from '../schemas';
 	import GroupDialog from './GroupDialog.svelte';
 	import GroupSheetsDialog from './GroupSheetsDialog.svelte';
 	import {
@@ -37,7 +38,6 @@
 		meetingText,
 		memberCountText
 	} from './group-actions';
-	import { GROUP_TYPE_LABELS, type Group } from '../schemas';
 
 	const permissions = $derived((page.data.permissions ?? []) as string[]);
 	const canEdit = $derived(can(permissions, 'members.group.edit'));
@@ -140,7 +140,9 @@
 
 <PageHeader title="Gruppen" description="Sippen und Meuten des Stammes verwalten.">
 	{#snippet actions()}
-		{#if canEdit}<Button onclick={openCreate}>Gruppe anlegen</Button>{/if}
+		{#if canEdit}
+			<Button onclick={openCreate}>Gruppe anlegen</Button>
+		{/if}
 	{/snippet}
 </PageHeader>
 
@@ -190,7 +192,9 @@
 		<Card.Root>
 			<Card.Content class="pt-6">
 				<EmptyState title="Noch keine Gruppen" description="Lege die erste Sippe oder Meute an.">
-					{#if canEdit}<Button onclick={openCreate}>Gruppe anlegen</Button>{/if}
+					{#if canEdit}
+						<Button onclick={openCreate}>Gruppe anlegen</Button>
+					{/if}
 				</EmptyState>
 			</Card.Content>
 		</Card.Root>
@@ -287,7 +291,9 @@
 												</DropdownMenu.Item>
 											{/if}
 											{#if canDelete}
-												{#if canEdit || canMail || canExport}<DropdownMenu.Separator />{/if}
+												{#if canEdit || canMail || canExport}
+													<DropdownMenu.Separator />
+												{/if}
 												<DropdownMenu.Item
 													variant="destructive"
 													onclick={() => {

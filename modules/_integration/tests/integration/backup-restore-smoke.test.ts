@@ -2,25 +2,27 @@
  * Datensicherung: Rauchtest Export → Upload → Analyse → Wiederherstellen/Zusammenführen (PGlite + Fake-S3).
  * Ausführliche Szenarien (anderer Schlüssel, Kontoschutz, Rollback …) liegen in `core-backup*.test.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { sql } from 'drizzle-orm';
-import { seedBackupWorld, SEED_PASSWORD, type BackupWorld } from '../../helpers/backup-seed';
-import { getDb } from '$testing';
-import { startBackupExport, takeBackupDownload } from '$testing';
-import { listBackupScopes } from '$testing';
 import {
 	analyzeBackup,
 	appendUpload,
 	createUpload,
+	decryptSecret,
 	executeRestore,
+	getAuth,
+	getDb,
+	isCoreError,
+	listBackupScopes,
+	MERGE_CONFIRM_WORD,
+	RESTORE_CONFIRM_WORD,
+	resetAllForTests,
+	startBackupExport,
+	takeBackupDownload,
 	waitForRestore
 } from '$testing';
-import { MERGE_CONFIRM_WORD, RESTORE_CONFIRM_WORD } from '$testing';
-import { resetAllForTests } from '$testing';
-import { isCoreError } from '$testing';
-import { decryptSecret } from '$testing';
-import { getAuth } from '$testing';
+import { type BackupWorld, SEED_PASSWORD, seedBackupWorld } from '../../helpers/backup-seed';
 
 let world: BackupWorld;
 let file: Uint8Array;
@@ -157,7 +159,7 @@ describe('Wiederherstellen (Rauchtest)', () => {
 		expect(status.result!.loggedOut).toBe(false);
 		expect(status.result!.files.uploaded).toBeGreaterThan(0);
 
-		for (const t of TABLES) expect(await dump(t), t).toEqual(before[t]);
+		for (const t of TABLES) expect<unknown>(await dump(t), t).toEqual(before[t]);
 		expect(await cover()).toBe(coverBefore);
 		// Ämter-Rollen nach dem Abgleich-Job wieder verliehen
 		const grants = (await getDb().execute(

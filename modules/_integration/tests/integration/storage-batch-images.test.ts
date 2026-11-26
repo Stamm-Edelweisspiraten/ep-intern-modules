@@ -7,36 +7,40 @@
  * - `principalKeysFor` wird je Kontext (Request) memoisiert
  * Storage über `tests/helpers/fake-storage.ts`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
 import sharp from 'sharp';
-import { useTestDatabase } from '$testing';
+import { principalKeysFor } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
+import eventsModule from '$modules/events/module';
+import filesModule from '$modules/files/module';
+import galleriesModule from '$modules/galleries/module';
+import type { GalleryDetail, GalleryImage } from '$modules/galleries/schemas';
+import membersModule from '$modules/members/module';
 import {
+	bootstrapAdmin,
+	contextForUser,
+	core,
+	createApiKey,
+	createRole,
+	createUser,
+	enableModule,
+	encodeMultipart,
 	fakeFileRows,
 	fakeObjects,
 	fakeS3Calls,
+	getDb,
+	handleApiRequest,
 	installFakeStorage,
-	uninstallFakeStorage
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	schema,
+	setSetting,
+	syncModules,
+	uninstallFakeStorage,
+	useTestDatabase
 } from '$testing';
-import { getDb, schema } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setSetting } from '$testing';
-import { core } from '$testing';
-import { principalKeysFor } from '$lib/sdk/server';
-import eventsModule from '$modules/events/module';
-import membersModule from '$modules/members/module';
-import galleriesModule from '$modules/galleries/module';
-import filesModule from '$modules/files/module';
-import type { GalleryDetail, GalleryImage } from '$modules/galleries/schemas';
-import type { RequestContext } from '$lib/sdk/types';
 
 const BASE = 'http://localhost:5173/api/v1/modules';
 const PW = 'a-long-enough-pw';
@@ -49,7 +53,7 @@ const ctxOf = async (id: string) => (await contextForUser(id))!.ctx;
 
 interface Res {
 	status: number;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	// biome-ignore lint/suspicious/noExplicitAny: bewusst ungetypt
 	body: any;
 }
 
@@ -103,11 +107,11 @@ async function uploadGalleryImage(galleryId: string, bytes: Uint8Array): Promise
 async function uploadFile(parent: string, name: string): Promise<string> {
 	const form = new FormData();
 	form.set('file', new File([new Uint8Array(10).fill(65)], name, { type: 'text/plain' }));
-	const r = new Response(form);
-	const buf = new Uint8Array(await r.arrayBuffer());
+	const r = await encodeMultipart(form);
+	const buf = r.body;
 	const res = await raw('owner', 'POST', `/files/nodes/${parent}/upload`, {
 		headers: {
-			'content-type': r.headers.get('content-type')!,
+			'content-type': r.contentType,
 			'content-length': String(buf.byteLength)
 		},
 		body: buf

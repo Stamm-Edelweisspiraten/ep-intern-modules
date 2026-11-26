@@ -1,15 +1,15 @@
 /** Verlauf (Historie) einer Rechnung, Buchung oder Auszahlung aus dem Audit-Log (`GET /history`) */
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { core, errors, type ApiEndpoint, type RequestContext } from '$lib/sdk/server';
+import { type ApiEndpoint, core, errors, type RequestContext } from '$lib/sdk/server';
 import { mdb, rows } from './db';
 import {
 	HISTORY_ACTIONS,
 	HISTORY_ID,
 	HISTORY_KINDS,
-	historyLabel,
 	type HistoryEntry,
-	type HistoryKind
+	type HistoryKind,
+	historyLabel
 } from './history-labels';
 
 const TAGS = ['Modul: treasury'];

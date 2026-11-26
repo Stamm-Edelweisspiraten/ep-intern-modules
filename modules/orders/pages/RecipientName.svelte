@@ -1,7 +1,7 @@
 <script lang="ts">
 	// Empfänger einer Bestellung: Mitgliedsname bzw. Gruppenname/„Stamm“ mit kleinem Badge (ohne Rechnung).
 	import { Badge } from '$lib/components/ui/badge';
-	import { RECIPIENT_KIND_LABELS, type Order } from '../schemas';
+	import { type Order, RECIPIENT_KIND_LABELS } from '../schemas';
 
 	let { recipient, class: className = '' }: { recipient: Order['recipient']; class?: string } =
 		$props();

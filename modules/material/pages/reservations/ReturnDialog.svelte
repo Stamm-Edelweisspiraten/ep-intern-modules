@@ -3,10 +3,10 @@
 	// um diese Menge. Ohne Verbrauchsmaterial nur bestätigen.
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
-	import { apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, NumberStepper } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { BUSY_SAVE, NumberStepper } from '$lib/components/layout';
+	import { apiFetch } from '$lib/sdk/client';
 	import type { Reservation } from '../../schemas';
 	import { API, apiFieldErrors, errorText, formatAmount } from '../helpers';
 
@@ -87,7 +87,9 @@
 							max={c.issued}
 							bind:value={consumed[c.itemId]!}
 						/>
-						{#if c.unit}<span class="text-sm text-muted-foreground">{c.unit}</span>{/if}
+						{#if c.unit}
+							<span class="text-sm text-muted-foreground">{c.unit}</span>
+						{/if}
 						<Button
 							type="button"
 							variant="ghost"
@@ -100,7 +102,9 @@
 					<p class="text-xs text-muted-foreground tabular-nums">
 						Zurück ins Lager: {formatAmount(c.issued - (consumed[c.itemId] ?? 0), c.unit)}
 					</p>
-					{#if err}<p class="text-xs text-destructive">{err}</p>{/if}
+					{#if err}
+						<p class="text-xs text-destructive">{err}</p>
+					{/if}
 				</div>
 			{/each}
 		</form>

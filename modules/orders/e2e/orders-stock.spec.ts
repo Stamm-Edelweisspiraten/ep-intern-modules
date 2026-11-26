@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Lager: Artikel mit Größen als eine Zeile mit Summen (aufklappbar), Seitenwechsel ab 20 Artikeln;
 // Größen im Bearbeiten-Dialog verschieben.

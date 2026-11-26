@@ -1,38 +1,44 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { eq, sql } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin, createUser } from '$testing';
-import { createRole } from '$testing';
-import { registerModule } from '$testing';
-import { disableModule, enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { handleApiRequest } from '$testing';
-import { createApiKey } from '$testing';
-import { getDb, schema } from '$testing';
-import { listAudit } from '$testing';
-import { resetAllForTests } from '$testing';
-import { setMailTransportForTests } from '$testing';
-import { runJobNow } from '$testing';
 import { core } from '$lib/sdk/server';
+import type { RequestContext } from '$lib/sdk/types';
 import membersModule from '$modules/members/module';
 import officesModule from '$modules/offices/module';
-import ordersModule from '$modules/orders/module';
-import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
 import type { Office } from '$modules/offices/schemas';
+import { resetTemplateCacheForTests } from '$modules/offices/templates.service';
+import ordersModule from '$modules/orders/module';
 import type {
 	MemberOption,
 	Order,
-	RecipientOptions,
 	OrderCreated,
 	OrderList,
 	OrdersOverview,
+	RecipientOptions,
 	StockMovement,
 	StockRow,
 	SupplierOrder,
 	SupplierSuggestion
 } from '$modules/orders/schemas';
-import type { RequestContext } from '$lib/sdk/types';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	createApiKey,
+	createRole,
+	createUser,
+	disableModule,
+	enableModule,
+	getDb,
+	handleApiRequest,
+	listAudit,
+	registerCoreApi,
+	registerModule,
+	resetAllForTests,
+	runJobNow,
+	schema,
+	setMailTransportForTests,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 // Modul „Bestellungen“: Bestellen, Rechte, Storno, Ausgabe, Lager, Einkauf mit Teillieferung,
 // Fehlmengen-Meldung, Audit, Modul deaktiviert. Ohne Kasse (Rechnung steht aus).
@@ -452,7 +458,7 @@ describe('Einkauf beim Lieferanten', () => {
 
 	it('schlägt Fehlmengen vor und bestellt', async () => {
 		const sug = await data<SupplierSuggestion>(await O('/supplier-orders/suggestion', 'lager'));
-		expect(sug.items.map((i) => [i.variantId, i.quantity]).sort()).toEqual(
+		expect<unknown>(sug.items.map((i) => [i.variantId, i.quantity]).sort()).toEqual(
 			[
 				[halstuch.variantIds[0], 1],
 				[halstuch.variantIds[1], 3]
@@ -744,7 +750,16 @@ describe('Bestellung bearbeiten und löschen', () => {
 			await post(`/orders/${order.id}/handout`, 'admin', { items: [{ itemId, quantity: 1 }] }),
 			201
 		);
-		const low = await fail(await patch('admin', { items: [{ itemId, quantity: 0 }] }), 422);
+		// zweite Position, damit nicht schon das Schema („Mindestens ein Artikel“) greift, sondern die Ausgabe-Prüfung
+		const low = await fail(
+			await patch('admin', {
+				items: [
+					{ itemId, quantity: 0 },
+					{ variantId: aufnaeher.variantIds[0], quantity: 1 }
+				]
+			}),
+			422
+		);
 		expect(JSON.stringify(low.details)).toContain('ausgegeben');
 		await fail(
 			await patch('admin', { items: [{ variantId: aufnaeher.variantIds[0], quantity: 1 }] }),

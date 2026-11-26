@@ -1,14 +1,14 @@
 import { defineModule, manifestFromPackage } from '$lib/sdk/server';
+import { PERM_AI, websiteAssist } from './assist';
 import pkg from './atrium-module.json';
-import { websiteAssist, PERM_AI } from './assist';
-import { NOTIFY_POST_INVITED, NOTIFY_POST_STATUS } from './schemas';
 import { contentEndpoints } from './content.endpoints';
+import m0001 from './migrations/0001_init.sql?raw';
 import { postsEndpoints } from './posts.endpoints';
-import { websiteEndpoints } from './website.endpoints';
-import { websiteSearch } from './search';
 import { onUserDeleted, subjectExport } from './privacy';
 import { resetAreas, resetUsers } from './reset';
-import m0001 from './migrations/0001_init.sql?raw';
+import { NOTIFY_POST_INVITED, NOTIFY_POST_STATUS } from './schemas';
+import { websiteSearch } from './search';
+import { websiteEndpoints } from './website.endpoints';
 
 export default defineModule({
 	package: pkg,

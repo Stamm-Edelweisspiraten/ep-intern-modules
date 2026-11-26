@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 // Material v2: Lagertabelle und zentrierter Artikel-Dialog (auch über den QR-Link `/scan/<code>`),
 // Reservieren wie „Bestellen“ (Katalog → Detail → Warenkorb → Reservieren), Etiketten-Kacheln und echtes PDF.

@@ -5,8 +5,8 @@ import {
 	inList,
 	principalKeysFor,
 	type RequestContext,
-	rowsOf,
-	type Row
+	type Row,
+	rowsOf
 } from '$lib/sdk/server';
 import { visibleGalleriesFilter } from './access';
 import type { GalleryCardInfo, GalleryRefInfo, GalleryRefsService } from './contract';

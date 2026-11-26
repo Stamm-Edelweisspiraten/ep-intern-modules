@@ -3,20 +3,20 @@
  * Punkte je Regel, Schwelle, Vorrang von Sperr-/Vertrauensliste und bekannten Absendern (nicht bei
  * fehlgeschlagener Absenderprüfung), Linkanalyse, Listen-Einträge, Spam-Wert des Servers, Link-Entschärfung.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import { neutralizeLinks } from '$modules/messages/html';
+import { serverSpamScoreOf } from '$modules/messages/inbound-parse';
 import {
-	FORM_POINTS_MAX,
-	SPAM_THRESHOLD,
 	baseDomain,
 	extractLinks,
+	FORM_POINTS_MAX,
 	matchSenderRule,
 	parseSenderPattern,
-	scoreSpam,
+	SPAM_THRESHOLD,
 	type SpamContext,
-	type SpamInput
+	type SpamInput,
+	scoreSpam
 } from '$modules/messages/spam-rules';
-import { serverSpamScoreOf } from '$modules/messages/inbound-parse';
-import { neutralizeLinks } from '$modules/messages/html';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 

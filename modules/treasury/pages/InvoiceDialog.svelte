@@ -1,26 +1,26 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { tick } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { BUSY_SAVE, FormField, MoneyInput } from '$lib/components/layout';
+	import { formatEuro } from '$lib/components/layout/money';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
-	import { formatEuro } from '$lib/components/layout/money';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		MAX_INVOICE_LINES,
+		type InvoiceDetail,
 		invoiceInput,
 		invoicePatchInput,
-		type InvoiceDetail,
+		MAX_INVOICE_LINES,
 		type Payer
 	} from '../schemas';
-	import { BASE, addDaysIso, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
+	import { addDaysIso, BASE, fieldErrorsFrom, issuesToErrors, todayIso } from './helpers';
 
 	type Ref = { id: string; name: string };
 	type DraftLine = {
@@ -286,7 +286,9 @@
 							>Summe <strong class="tabular-nums">{formatEuro(total)}</strong></span
 						>
 					</div>
-					{#if errors.lines}<p class="text-xs text-destructive" role="alert">{errors.lines}</p>{/if}
+					{#if errors.lines}
+						<p class="text-xs text-destructive" role="alert">{errors.lines}</p>
+					{/if}
 				</fieldset>
 			{/if}
 
@@ -297,7 +299,9 @@
 				<Switch id="inv-paused" bind:checked={remindersPaused} />
 				<Label for="inv-paused">Keine automatischen Erinnerungen für diese Rechnung</Label>
 			</div>
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer sticky>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

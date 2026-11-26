@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { suggestPayable, type PayableCandidate } from '$modules/treasury/logic';
+import { describe, expect, it } from 'bun:test';
+import { type PayableCandidate, suggestPayable } from '$modules/treasury/logic';
 
 const c = (
 	id: string,

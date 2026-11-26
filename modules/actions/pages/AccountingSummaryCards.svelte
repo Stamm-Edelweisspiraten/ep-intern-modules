@@ -1,7 +1,7 @@
 <script lang="ts">
 	import AlertTriangle from '@lucide/svelte/icons/triangle-alert';
-	import { Button } from '$lib/components/ui/button';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
 	import type { AccountingSummary } from '../schemas';
 
 	let { summary, onshowmissing }: { summary: AccountingSummary; onshowmissing: () => void } =
@@ -12,7 +12,9 @@
 	<div class="bg-card ring-foreground/10 flex flex-col gap-1 rounded-xl px-4 py-3 ring-1">
 		<span class="text-xs text-muted-foreground">{label}</span>
 		<span class={['text-xl font-semibold tabular-nums', tone]}>{formatEuro(cents)}</span>
-		{#if hint}<span class="text-xs text-muted-foreground tabular-nums">{hint}</span>{/if}
+		{#if hint}
+			<span class="text-xs text-muted-foreground tabular-nums">{hint}</span>
+		{/if}
 	</div>
 {/snippet}
 

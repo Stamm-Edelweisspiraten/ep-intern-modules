@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { BUSY_SAVE, FormField, MoneyInput } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Switch } from '$lib/components/ui/switch';
 	import { SelectField } from '$lib/components/ui/select-field';
-	import { FormField, MoneyInput, BUSY_SAVE } from '$lib/components/layout';
+	import { Switch } from '$lib/components/ui/switch';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
-		ACCOUNT_KINDS,
 		ACCOUNT_KIND_LABELS,
-		accountInput,
+		ACCOUNT_KINDS,
 		type Account,
-		type AccountKind
+		type AccountKind,
+		accountInput
 	} from '../schemas';
 	import { BASE, fieldErrorsFrom, issuesToErrors } from './helpers';
 
@@ -127,7 +127,9 @@
 					<Label for="ac-archived">Archiviert (keine neuen Buchungen)</Label>
 				</div>
 			{/if}
-			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+			{#if error}
+				<p class="text-sm text-destructive" role="alert">{error}</p>
+			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}>Abbrechen</Button>
 				<Button type="submit" disabled={busy}>{busy ? BUSY_SAVE : 'Speichern'}</Button>

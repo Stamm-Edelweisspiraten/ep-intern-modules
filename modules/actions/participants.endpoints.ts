@@ -6,25 +6,25 @@ import {
 	moduleDb,
 	type RequestContext,
 	rowsOf,
-	toIso,
-	type Tx
+	type Tx,
+	toIso
 } from '$lib/sdk/server';
 import type { MembersService } from '$modules/members/contract';
 import type { ParticipantPayment, TreasuryService } from '$modules/treasury/contract';
 import { requireAccess } from './access';
 import { canSeeHealth, encryptHealthText, readHealthFor } from './health';
-import { effectiveSubsidyEligible } from './subsidy-eligibility';
 import {
-	MODULE_ID,
 	idParams,
-	participantBulkInput,
-	participantInput,
-	participantParams,
+	MODULE_ID,
 	type Participant,
 	type ParticipantBulkInput,
 	type ParticipantInput,
-	type ParticipantRole
+	type ParticipantRole,
+	participantBulkInput,
+	participantInput,
+	participantParams
 } from './schemas';
+import { effectiveSubsidyEligible } from './subsidy-eligibility';
 
 const TAGS = ['Modul: actions'];
 

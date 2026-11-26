@@ -1,25 +1,25 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import { Input } from '$lib/components/ui/input';
-	import { SelectField } from '$lib/components/ui/select-field';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { toast } from 'svelte-sonner';
 	import { MoneyInput } from '$lib/components/layout';
 	import { formatEuro } from '$lib/components/layout/money';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Input } from '$lib/components/ui/input';
+	import { SelectField } from '$lib/components/ui/select-field';
 	import {
 		CALC_BASES,
 		CALC_BASIS_LABELS,
 		CALC_CATEGORY_LABELS,
 		CALC_GROUPS,
 		type CalcBasis,
-		MAX_CALC_ITEMS,
 		type CalcCategory,
 		type CalcItem,
-		type CalculationResult
+		type CalculationResult,
+		MAX_CALC_ITEMS
 	} from '../schemas';
 
 	let {
@@ -84,7 +84,8 @@
 	<Card.Header>
 		<Card.Title>Kosten</Card.Title>
 		<Card.Description
-			>Wähle je Posten, ob einmalig, pro Person oder pro Person und Nacht gerechnet wird.</Card.Description
+			>Wähle je Posten, ob einmalig, pro Person oder pro Person und Nacht gerechnet
+			wird.</Card.Description
 		>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-6">

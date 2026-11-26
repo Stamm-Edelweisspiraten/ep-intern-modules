@@ -6,14 +6,14 @@
 import { sql } from 'drizzle-orm';
 import {
 	core,
-	moduleDb,
 	type ModuleSearchProvider,
+	moduleDb,
 	type Row,
 	rowsOf,
 	type SearchHit,
 	type Tx
 } from '$lib/sdk/server';
-import { GROUP_TYPE_LABELS, MODULE_ID, STAGE_LABELS, type GroupType, type Stage } from './schemas';
+import { GROUP_TYPE_LABELS, type GroupType, MODULE_ID, STAGE_LABELS, type Stage } from './schemas';
 
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 

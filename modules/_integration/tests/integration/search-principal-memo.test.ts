@@ -3,23 +3,29 @@
  * events, galleries und files je eigene Freigaben prüfen. Mit echtem Pool laufen die Quellen
  * parallel (gleiches Ergebnis, gleiche Reihenfolge); PGlite strikt nacheinander.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { useTestDatabase } from '$testing';
-import { contextForUser } from '$testing';
-import { bootstrapAdmin } from '$testing';
-import { registerModule } from '$testing';
-import { enableModule, syncModules } from '$testing';
-import { registerCoreApi } from '$testing';
-import { databaseAllowsParallelQueries, getDb, schema, setDb } from '$testing';
-import { searchEverything } from '$testing';
 import { core, principalKeysFor } from '$lib/sdk/server';
-import membersModule from '$modules/members/module';
-import eventsModule from '$modules/events/module';
-import galleriesModule from '$modules/galleries/module';
-import filesModule from '$modules/files/module';
-import type { PrincipalProvider } from '$lib/sdk/types/sharing';
 import type { RequestContext } from '$lib/sdk/types';
+import type { PrincipalProvider } from '$lib/sdk/types/sharing';
+import eventsModule from '$modules/events/module';
+import filesModule from '$modules/files/module';
+import galleriesModule from '$modules/galleries/module';
+import membersModule from '$modules/members/module';
+import {
+	bootstrapAdmin,
+	contextForUser,
+	databaseAllowsParallelQueries,
+	enableModule,
+	getDb,
+	registerCoreApi,
+	registerModule,
+	schema,
+	searchEverything,
+	setDb,
+	syncModules,
+	useTestDatabase
+} from '$testing';
 
 let close: () => Promise<void>;
 let adminId = '';

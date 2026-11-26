@@ -3,8 +3,8 @@
  * geleiteten Gruppen mit Gruppen-Adresse. Ohne Rechteprüfung – der Aufrufer prüft seine Rechte.
  */
 import { sql } from 'drizzle-orm';
-import { inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import { todayBerlin } from '$lib/sdk/dates';
+import { inList, moduleDb, type RequestContext, rowsOf } from '$lib/sdk/server';
 import type { GroupMailbox, LedGroupRef, MembersService, WebsiteGroupRef } from './contract';
 import { activeLeader, ledGroupIds } from './leader.service';
 import { MODULE_ID } from './schemas';

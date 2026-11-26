@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { toast } from 'svelte-sonner';
 	import CheckCheck from '@lucide/svelte/icons/check-check';
 	import Copy from '@lucide/svelte/icons/copy';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import { ApiClientError, apiFetch } from '$lib/sdk/client';
+	import { untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
+	import { ConfirmDialog, DataTable, formatEuro } from '$lib/components/layout';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -14,7 +14,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Table from '$lib/components/ui/table';
-	import { ConfirmDialog, DataTable, formatEuro } from '$lib/components/layout';
+	import { ApiClientError, apiFetch } from '$lib/sdk/client';
 	import {
 		CALC_CATEGORY_LABELS,
 		EXPENSE_SUBMISSION_STATUS_LABELS,
@@ -276,7 +276,8 @@
 					{/if}
 				{:else}
 					<p class="text-muted-foreground text-sm">
-						Nur Ansicht – {config.exists && config.enabled
+						Nur Ansicht –
+						{config.exists && config.enabled
 							? 'der Kosten-Link ist aktiv.'
 							: 'der Kosten-Link ist nicht aktiv.'}
 					</p>

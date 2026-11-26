@@ -3,7 +3,7 @@
  * Anhänge sowie Kennzeichen für Spam, automatische Mails, eigene Benachrichtigungen und das Ergebnis
  * der Absenderprüfung (`Authentication-Results`). Ohne Core-Zugriffe (in Unit-Tests nutzbar).
  */
-import { simpleParser, type AddressObject, type HeaderValue } from 'mailparser';
+import { type AddressObject, type HeaderValue, simpleParser } from 'mailparser';
 import { MESSAGE_ID_PATTERN } from './mailbox';
 
 export interface InboundAddress {
@@ -87,7 +87,7 @@ function addressList(value: AddressObject | AddressObject[] | undefined): Inboun
 function oneLine(value: unknown, max = 300): string {
 	return (
 		String(value ?? '')
-			// eslint-disable-next-line no-control-regex
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: Steuerzeichen werden bewusst erkannt/entfernt
 			.replace(/[\u0000-\u001f\u007f]+/g, ' ')
 			.replace(/\s+/g, ' ')
 			.trim()

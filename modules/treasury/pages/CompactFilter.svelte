@@ -1,12 +1,12 @@
 <script lang="ts">
+	import Search from '@lucide/svelte/icons/search';
+	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	// Handy/Tablet: Suche + „Filter“-Knopf über einer Liste. Die Filter (Chips) öffnen auf dem
 	// Handy als Blatt von unten, auf dem Tablet als Popover am Knopf. Zahl am Knopf = aktive Filter.
 	import type { Snippet } from 'svelte';
-	import Search from '@lucide/svelte/icons/search';
-	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import { BottomSheet, CountBadge, type DeviceLayout } from '$lib/components/layout';
 	import { Button } from '$lib/components/ui/button';
 	import * as Popover from '$lib/components/ui/popover';
-	import { BottomSheet, CountBadge, type DeviceLayout } from '$lib/components/layout';
 
 	let {
 		search = $bindable(''),
@@ -48,7 +48,9 @@
 	>
 		<SlidersHorizontal class="size-4.5" />
 		{filterLabel}
-		{#if activeCount}<CountBadge count={activeCount} label={`${activeCount} aktiv`} />{/if}
+		{#if activeCount}
+			<CountBadge count={activeCount} label={`${activeCount} aktiv`} />
+		{/if}
 	</Button>
 {/snippet}
 

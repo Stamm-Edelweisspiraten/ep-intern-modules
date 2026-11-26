@@ -1,16 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
+import { formDefinitionSchema, validateFormValues } from '$lib/forms';
 import {
 	buildDefaultFormDefinition,
 	identityValues,
 	isBremenCity,
+	type MemberForRegistration,
 	memberUpdates,
 	mergeStandardFields,
 	prefillValues,
-	withoutIdentityFields,
-	type MemberForRegistration
+	withoutIdentityFields
 } from '$modules/actions/form-support';
 import { STANDARD_FORM_KEYS as K } from '$modules/actions/schemas';
-import { formDefinitionSchema, validateFormValues } from '$lib/forms';
 
 const member: MemberForRegistration = {
 	firstName: 'Kind',

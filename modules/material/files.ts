@@ -3,8 +3,8 @@
  * Rechteprüfung mit einem System-Kontext – Mitglieder brauchen keine Storage-Rechte.
  * Alle Funktionen mit `core.*` nur AUSSERHALB offener Modul-Transaktionen aufrufen (PGlite).
  */
-import { core, secureFileResponse, type ImageVariantSpec } from '$lib/sdk/server';
-import { MODULE_ID, type ImageOwner, type ImageVariant } from './schemas';
+import { core, type ImageVariantSpec, secureFileResponse } from '$lib/sdk/server';
+import { type ImageOwner, type ImageVariant, MODULE_ID } from './schemas';
 
 export const filesCtx = () => core.auth.systemContext('material-files');
 
